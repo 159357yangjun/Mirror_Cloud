@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { BookOpen, Cloud, ExternalLink, GitBranch, GitFork, HardDrive, LoaderCircle, Server, X } from 'lucide-react'
+import { BookOpen, CheckCircle2, Cloud, ExternalLink, GitBranch, GitFork, HardDrive, LoaderCircle, Server, X } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
+  copyText,
   createObjectStorage,
   createRepositoryStorage,
   createS3Storage,
@@ -25,6 +26,58 @@ const providerNames: Record<SupportedProviderKey, string> = {
   github: 'GitHub',
   gitee: 'Gitee',
   webdav: 'WebDAV',
+}
+
+const providerGuideSteps: Record<SupportedProviderKey, string[]> = {
+  github: [
+    '准备一个用于图片托管的 GitHub 仓库，并确认目标分支（通常是 main）。',
+    '创建 Fine-grained Personal Access Token，只授权目标仓库，并授予 Contents: Read and write。',
+    '填写 Owner、仓库名、分支和资源目录。资源目录默认 assets，不需要提前创建，第一次上传后会自动出现。',
+    '公开仓库可以把“自定义公开域名”留空，应用会生成 Raw URL；私有仓库需要额外的公开代理/CDN。',
+    '点击“测试并保存”。保存后先到“图库”刷新一次，确认可以直接浏览远端真实文件，再上传第一张图片。',
+  ],
+  gitee: [
+    '准备一个用于图片托管的 Gitee 仓库，并确认目标分支。',
+    '在 Gitee 创建具备仓库读写权限的 Access Token。',
+    '填写 Owner、仓库名、分支、资源目录和 Token。',
+    '若图片要公开访问，请确认仓库或自定义公开地址可以被外部访问。',
+    '点击“测试并保存”，随后到“图库”验证远端文件浏览。',
+  ],
+  r2: [
+    '在 Cloudflare R2 创建 Bucket，并记下 Account ID。',
+    '创建 R2 API Token / Access Key，获得 Access Key ID 与 Secret Access Key。',
+    'Region 保持 auto；填写 Bucket、Account ID 和密钥。',
+    '配置可公开访问的域名（自定义域名或允许公开读取的地址），用于生成图片 URL。',
+    '点击“测试并保存”，再上传一张测试图片验证。',
+  ],
+  s3: [
+    '准备兼容 S3 的 Bucket、Endpoint 和 Region。',
+    '创建具备对象读写权限的 Access Key ID / Secret Access Key。',
+    '填写 Endpoint、Region、Bucket 和密钥；资源目录可选。',
+    '填写真正能让别人访问图片的公开 URL 前缀。',
+    '点击“测试并保存”，再到图库验证浏览。',
+  ],
+  oss: [
+    '在阿里云 OSS 创建 Bucket，并确认区域对应的 Endpoint。',
+    '创建具备该 Bucket 读写权限的 AccessKey ID / AccessKey Secret。',
+    '填写 Bucket、Endpoint、密钥和可选资源目录。',
+    '建议绑定 CDN 或自定义公开域名并填入公开访问域名。',
+    '点击“测试并保存”，再上传测试图片。',
+  ],
+  cos: [
+    '在腾讯云 COS 创建 Bucket，并确认区域对应的 Endpoint。',
+    '创建具备该 Bucket 读写权限的 SecretId / SecretKey。',
+    '填写 Bucket、Endpoint、密钥和可选资源目录。',
+    '建议绑定 CDN 或自定义公开域名并填入公开访问域名。',
+    '点击“测试并保存”，再上传测试图片。',
+  ],
+  webdav: [
+    '准备 WebDAV Endpoint、用户名与密码 / App Password。',
+    '确认账号对目标目录具备读取、写入和删除权限。',
+    '填写可选资源目录。',
+    'WebDAV 地址通常不是公网图片地址，因此还需要填写别人可以直接访问文件的公开 URL 前缀。',
+    '点击“测试并保存”，再到图库验证远端浏览。',
+  ],
 }
 
 function defaultObjectEndpoint(provider: 'oss' | 'cos') {
@@ -56,6 +109,8 @@ export function StorageSetupDialog({
           ? Server
           : Cloud
 
+  const [showGuide, setShowGuide] = useState(false)
+  const [tokenStatus, setTokenStatus] = useState<string | null>(null)
   const [s3Form, setS3Form] = useState<CreateS3StorageInput>({
     providerKey: provider === 's3' ? 's3' : 'r2',
     name: provider === 's3' ? 'S3 Storage' : 'Cloudflare R2',
@@ -71,7 +126,7 @@ export function StorageSetupDialog({
   const [objectForm, setObjectForm] = useState<CreateObjectStorageInput>({
     providerKey: provider === 'cos' ? 'cos' : 'oss',
     name: providerNames[provider],
-    endpoint: isObject ? defaultObjectEndpoint(provider) : '',
+    endpoint: defaultObjectEndpoint(provider === 'cos' ? 'cos' : 'oss'),
     bucket: '',
     root: '',
     publicBaseUrl: '',
@@ -122,15 +177,25 @@ export function StorageSetupDialog({
   const setWebDav = (key: keyof CreateWebDavStorageInput, value: string) =>
     setWebdavForm((current) => ({ ...current, [key]: value }))
 
+  async function openGitHubTokenPage() {
+    const url = 'https://github.com/settings/personal-access-tokens/new'
+    setTokenStatus('正在打开 GitHub Token 页面…')
+    try {
+      await openExternalUrl(url)
+      setTokenStatus('已请求打开浏览器。创建 Token 后回到这里粘贴；权限请选择 Contents: Read and write。')
+    } catch (error) {
+      try {
+        await copyText(url)
+        setTokenStatus('未能自动打开浏览器，Token 创建地址已复制到剪贴板。')
+      } catch {
+        setTokenStatus(`无法打开 GitHub：${String(error)}`)
+      }
+    }
+  }
+
   return (
-    <div
-      className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/25 p-3 sm:p-6 backdrop-blur-sm"
-      onMouseDown={onClose}
-    >
-      <section
-        onMouseDown={(event) => event.stopPropagation()}
-        className="max-h-[92vh] w-full max-w-[760px] overflow-auto rounded-[24px] border border-white bg-white p-4 shadow-[0_30px_100px_rgba(15,23,42,.22)] sm:rounded-[28px] sm:p-6"
-      >
+    <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/25 p-3 backdrop-blur-sm sm:p-6" onMouseDown={onClose}>
+      <section onMouseDown={(event) => event.stopPropagation()} className="max-h-[92vh] w-full max-w-[760px] overflow-auto rounded-[24px] border border-white bg-white p-4 shadow-[0_30px_100px_rgba(15,23,42,.22)] sm:rounded-[28px] sm:p-6">
         <div className="flex items-start gap-4">
           <div className="grid size-11 place-items-center rounded-2xl bg-slate-100"><Icon size={19} /></div>
           <div>
@@ -144,17 +209,36 @@ export function StorageSetupDialog({
             </p>
           </div>
           <div className="ml-auto flex items-center gap-1.5">
-            <button
-              disabled={!guideUrl}
-              onClick={() => guideUrl && void openExternalUrl(guideUrl)}
-              className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-slate-500 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-35"
-              title={guideUrl ? `查看 ${providerNames[provider]} 配置教程` : '部署 website/ 后设置 VITE_DOCS_BASE_URL 即可启用教程链接'}
-            >
-              <BookOpen size={14} /> 配置教程
+            <button type="button" onClick={() => setShowGuide((value) => !value)} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-100">
+              <BookOpen size={14} /> {showGuide ? '收起教程' : '配置教程'}
             </button>
             <button onClick={onClose} className="rounded-full p-2 text-slate-400 hover:bg-slate-100" aria-label="关闭"><X size={18} /></button>
           </div>
         </div>
+
+        {showGuide && (
+          <div className="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-indigo-950">{providerNames[provider]} 配置教程</div>
+                <div className="mt-1 text-[11px] leading-5 text-indigo-700/70">教程内置在应用里，不依赖文档网站。按顺序完成即可。</div>
+              </div>
+              {guideUrl && (
+                <button type="button" onClick={() => void openExternalUrl(guideUrl)} className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-medium text-indigo-700">
+                  在线文档 <ExternalLink size={11} />
+                </button>
+              )}
+            </div>
+            <div className="mt-4 space-y-2">
+              {providerGuideSteps[provider].map((step, index) => (
+                <div key={step} className="flex gap-3 rounded-xl bg-white/80 p-3">
+                  <div className="grid size-6 shrink-0 place-items-center rounded-full bg-indigo-100 text-[11px] font-semibold text-indigo-700">{index + 1}</div>
+                  <div className="text-xs leading-6 text-slate-600">{step}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {isRepository && (
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -166,15 +250,18 @@ export function StorageSetupDialog({
             <div>
               <Field label="访问令牌" type="password" value={repoForm.token} onChange={(value) => setRepo('token', value)} placeholder={provider === 'github' ? 'github_pat_... / ghp_...' : 'Access Token'} />
               {provider === 'github' && (
-                <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-[11px] leading-5 text-slate-400">
-                  <span>填写 Personal Access Token，不是 SSH 密钥、SSH 指纹或 GitHub 密码。</span>
-                  <button
-                    type="button"
-                    onClick={() => void openExternalUrl('https://github.com/settings/personal-access-tokens/new')}
-                    className="inline-flex items-center gap-1 font-medium text-slate-600 hover:text-slate-950"
-                  >
-                    创建 Token <ExternalLink size={11} />
-                  </button>
+                <div className="mt-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] leading-5 text-slate-400">
+                    <span>Personal Access Token，不是 SSH 密钥、SSH 指纹或 GitHub 密码。</span>
+                    <button type="button" onClick={() => void openGitHubTokenPage()} className="inline-flex items-center gap-1 font-medium text-slate-700 hover:text-slate-950">
+                      创建 Token <ExternalLink size={11} />
+                    </button>
+                  </div>
+                  {tokenStatus && (
+                    <div className={`mt-2 flex items-start gap-2 rounded-lg px-2.5 py-2 text-[11px] leading-5 ${tokenStatus.startsWith('无法') ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`}>
+                      <CheckCircle2 size={12} className="mt-1 shrink-0" />{tokenStatus}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -189,11 +276,9 @@ export function StorageSetupDialog({
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="显示名称" value={s3Form.name} onChange={(value) => setS3('name', value)} />
             <Field label="Bucket" value={s3Form.bucket} onChange={(value) => setS3('bucket', value)} placeholder="images" />
-            {provider === 'r2' ? (
-              <Field label="Account ID" value={s3Form.accountId || ''} onChange={(value) => setS3('accountId', value)} placeholder="Cloudflare Account ID" />
-            ) : (
-              <Field label="Endpoint" value={s3Form.endpoint || ''} onChange={(value) => setS3('endpoint', value)} placeholder="https://s3.example.com" />
-            )}
+            {provider === 'r2'
+              ? <Field label="Account ID" value={s3Form.accountId || ''} onChange={(value) => setS3('accountId', value)} placeholder="Cloudflare Account ID" />
+              : <Field label="Endpoint" value={s3Form.endpoint || ''} onChange={(value) => setS3('endpoint', value)} placeholder="https://s3.example.com" />}
             <Field label="Region" value={s3Form.region || ''} onChange={(value) => setS3('region', value)} placeholder={provider === 'r2' ? 'auto' : 'us-east-1'} />
             <Field label="Access Key ID" value={s3Form.accessKeyId} onChange={(value) => setS3('accessKeyId', value)} />
             <Field label="Secret Access Key" type="password" value={s3Form.secretAccessKey} onChange={(value) => setS3('secretAccessKey', value)} />
@@ -209,7 +294,7 @@ export function StorageSetupDialog({
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="显示名称" value={objectForm.name} onChange={(value) => setObject('name', value)} />
             <Field label="Bucket" value={objectForm.bucket} onChange={(value) => setObject('bucket', value)} placeholder="images" />
-            <div className="sm:col-span-2"><Field label="Endpoint" value={objectForm.endpoint} onChange={(value) => setObject('endpoint', value)} placeholder={defaultObjectEndpoint(provider)} /></div>
+            <div className="sm:col-span-2"><Field label="Endpoint" value={objectForm.endpoint} onChange={(value) => setObject('endpoint', value)} placeholder={defaultObjectEndpoint(provider === 'cos' ? 'cos' : 'oss')} /></div>
             <Field label={provider === 'cos' ? 'SecretId' : 'AccessKey ID'} value={objectForm.accessKeyId} onChange={(value) => setObject('accessKeyId', value)} />
             <Field label={provider === 'cos' ? 'SecretKey' : 'AccessKey Secret'} type="password" value={objectForm.secretAccessKey} onChange={(value) => setObject('secretAccessKey', value)} />
             <Field label="资源目录（可选）" value={objectForm.root || ''} onChange={(value) => setObject('root', value)} placeholder="assets" />
