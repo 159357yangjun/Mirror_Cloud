@@ -1,0 +1,50 @@
+name: Build Windows Preview
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - '.github/workflows/build-preview-windows.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify committed dependency locks
+        shell: pwsh
+        run: |
+          $locks = @('Cargo.lock', 'apps/desktop/package-lock.json', 'website/package-lock.json')
+          foreach ($lock in $locks) {
+            if (-not (Test-Path $lock)) { throw "Missing committed dependency lock: $lock" }
+          }
+
+      - name: Install desktop dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Build Windows preview bundles
+        working-directory: apps/desktop
+        run: npm run tauri build
+
+      - name: Upload preview installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-hosting-platform-v1.4.0-preview-windows
+          path: |
+            target/release/bundle/**/*.exe
+            target/release/bundle/**/*.msi
+          if-no-files-found: error
