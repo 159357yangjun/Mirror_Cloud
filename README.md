@@ -88,6 +88,8 @@ npm run tauri dev
 python scripts/validate.py
 python scripts/check_contracts.py
 python scripts/check_user_flow.py
+python scripts/check_release_version.py
+python scripts/check_tauri_dependency_family.py
 ```
 
 完整本地发布检查：
@@ -96,18 +98,18 @@ python scripts/check_user_flow.py
 ./scripts/release.ps1
 ```
 
-GitHub Actions 的 `CI` 会继续执行 Rust format/check/test、桌面前端 build 和文档 build。`Release Bundle` 在手动触发时只生成构建产物；推送 `v*` tag 时才会创建对应 GitHub Release。
+GitHub Actions 的 `CI` 会继续执行 Rust format/check/test、桌面前端 build 和文档 build，并在耗时编译前检查版本同步与 Tauri Rust/JS 依赖族兼容性。`Release Bundle` 在手动触发时只生成构建产物；推送与项目版本一致的 `v*` tag 时才会创建对应 GitHub Release。
 
 ## 发布产物
 
-正式发布使用 **GitHub Releases**，而不是 GitHub Packages。目标产物：
+正式发布使用 **GitHub Releases**，而不是 GitHub Packages。Release 工作流会把 Tauri 原始文件名标准化为稳定、可脚本化使用的名称：
 
-- Windows NSIS `.exe`
-- Windows `.msi`
-- 干净的 tracked-source `.zip`
+- `image-hosting-platform-v<version>-windows-x64-setup.exe`
+- `image-hosting-platform-v<version>-windows-x64.msi`
+- `image-hosting-platform-v<version>-source.zip`
 - `SHA256SUMS.txt`
 
-根目录不再长期保存某个旧版本的 release manifest/checksum 快照，避免开发线继续推进后产生误导。
+发布流程要求恰好生成一个 Windows EXE 和一个 MSI，并在发布前验证依赖锁未被构建过程改写。根目录不再长期保存某个旧版本的 release manifest/checksum 快照，避免开发线继续推进后产生误导。
 
 ## 文档
 

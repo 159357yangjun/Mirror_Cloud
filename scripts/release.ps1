@@ -19,7 +19,7 @@ if (-not $env:VITE_DOCS_BASE_URL) {
     Write-Warning "VITE_DOCS_BASE_URL is not set. The desktop build will hide online tutorial links."
 }
 
-Write-Host "[1/11] Verify tracked working tree is clean"
+Write-Host "[1/12] Verify tracked working tree is clean"
 git diff --quiet
 if ($LASTEXITCODE -ne 0) {
     throw "Tracked working-tree changes detected. Commit or revert them before creating a release bundle."
@@ -29,15 +29,18 @@ if ($LASTEXITCODE -ne 0) {
     throw "Staged changes detected. Commit or unstage them before creating a release bundle."
 }
 
-Write-Host "[2/11] Release version consistency"
+Write-Host "[2/12] Release version consistency"
 Invoke-NativeChecked "python" @("scripts/check_release_version.py") "Release version validation"
 
-Write-Host "[3/11] Static project validation"
+Write-Host "[3/12] Tauri dependency family compatibility"
+Invoke-NativeChecked "python" @("scripts/check_tauri_dependency_family.py") "Tauri dependency family validation"
+
+Write-Host "[4/12] Static project validation"
 Invoke-NativeChecked "python" @("scripts/validate.py") "Static validation"
 Invoke-NativeChecked "python" @("scripts/check_contracts.py") "Command contract validation"
 Invoke-NativeChecked "python" @("scripts/check_user_flow.py") "User-flow contract validation"
 
-Write-Host "[4/11] Verify committed dependency locks"
+Write-Host "[5/12] Verify committed dependency locks"
 $LockFiles = @("Cargo.lock", "apps/desktop/package-lock.json", "website/package-lock.json")
 foreach ($LockFile in $LockFiles) {
     if (-not (Test-Path $LockFile)) {
@@ -45,22 +48,22 @@ foreach ($LockFile in $LockFiles) {
     }
 }
 
-Write-Host "[5/11] Rust format"
+Write-Host "[6/12] Rust format"
 Invoke-NativeChecked "cargo" @("fmt", "--all", "--", "--check") "Rust format check"
 
-Write-Host "[6/11] Rust check (locked)"
+Write-Host "[7/12] Rust check (locked)"
 Invoke-NativeChecked "cargo" @("check", "--workspace", "--locked") "Rust check"
 
-Write-Host "[7/11] Rust tests (locked)"
+Write-Host "[8/12] Rust tests (locked)"
 Invoke-NativeChecked "cargo" @("test", "--workspace", "--locked") "Rust tests"
 
-Write-Host "[8/11] Desktop dependencies and frontend build"
+Write-Host "[9/12] Desktop dependencies and frontend build"
 Push-Location apps/desktop
 try {
     Invoke-NativeChecked "npm" @("ci") "Desktop npm ci"
     Invoke-NativeChecked "npm" @("run", "build") "Desktop frontend build"
 
-    Write-Host "[9/11] Tauri bundle"
+    Write-Host "[10/12] Tauri bundle"
     Invoke-NativeChecked "npm" @("run", "tauri", "build") "Tauri bundle"
 }
 finally {
@@ -69,7 +72,7 @@ finally {
 
 Invoke-NativeChecked "git" @("diff", "--exit-code", "--", "Cargo.lock", "apps/desktop/package-lock.json", "website/package-lock.json") "Dependency-lock immutability check"
 
-Write-Host "[10/11] Documentation site"
+Write-Host "[11/12] Documentation site"
 Push-Location website
 try {
     Invoke-NativeChecked "npm" @("ci") "Docs npm ci"
@@ -79,7 +82,7 @@ finally {
     Pop-Location
 }
 
-Write-Host "[11/11] Stage installers, source archive and checksums"
+Write-Host "[12/12] Stage installers, source archive and checksums"
 $Version = (Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json).version
 $ArtifactDir = Join-Path $Root "artifacts"
 New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null

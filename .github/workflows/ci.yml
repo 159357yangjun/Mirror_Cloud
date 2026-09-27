@@ -23,6 +23,8 @@ jobs:
         run: python scripts/check_user_flow.py
       - name: Release version consistency validation
         run: python scripts/check_release_version.py
+      - name: Tauri dependency family validation
+        run: python scripts/check_tauri_dependency_family.py
       - name: Verify committed dependency locks
         shell: pwsh
         run: |
