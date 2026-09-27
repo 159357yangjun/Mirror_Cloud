@@ -27,16 +27,13 @@ jobs:
           python scripts/check_contracts.py
           python scripts/check_user_flow.py
 
-      - name: Resolve and freeze dependency graph for this release run
+      - name: Verify committed dependency locks
         shell: pwsh
         run: |
-          cargo generate-lockfile
-          Push-Location apps/desktop
-          npm install --package-lock-only --ignore-scripts
-          Pop-Location
-          Push-Location website
-          npm install --package-lock-only --ignore-scripts
-          Pop-Location
+          $locks = @('Cargo.lock', 'apps/desktop/package-lock.json', 'website/package-lock.json')
+          foreach ($lock in $locks) {
+            if (-not (Test-Path $lock)) { throw "Missing committed dependency lock: $lock" }
+          }
 
       - name: Validate locked Rust dependency graph
         run: |
@@ -103,9 +100,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Resolve docs lock
-        working-directory: website
-        run: npm install --package-lock-only --ignore-scripts
       - name: Install docs dependencies from lock
         working-directory: website
         run: npm ci

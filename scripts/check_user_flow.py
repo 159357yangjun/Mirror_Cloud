@@ -91,8 +91,8 @@ require('PluginPermission::ExternalWrite' in plugin_runtime, 'webhook requires e
 require('PluginPermission::Secret' in plugin_runtime, 'AI API key access requires secret permission at runtime')
 require('"type": "image_url"' in plugin_runtime and '"detail": "auto"' in plugin_runtime, 'AI caption sends actual image as multimodal input')
 require('official.ai-caption' in migration9 and '"secret"' in migration9, 'existing AI Caption installs migrate to secret permission')
-require('cargo generate-lockfile' in ci and 'npm ci' in ci and '--locked' in ci, 'CI freezes dependency graph before locked builds')
-require('cargo generate-lockfile' in release and release.count('npm ci') >= 2 and '--locked' in release, 'release build uses generated dependency locks')
+require('cargo generate-lockfile' not in ci and 'npm ci' in ci and '--locked' in ci and all((ROOT / rel).exists() for rel in ('Cargo.lock', 'apps/desktop/package-lock.json', 'website/package-lock.json')), 'CI consumes committed dependency locks without regenerating them')
+require('cargo generate-lockfile' not in release and release.count('npm ci') >= 2 and '--locked' in release, 'release build consumes committed dependency locks without regenerating them')
 
 require('granted_permissions: &[PluginPermission]' in plugin_runtime and 'granted_permissions.contains(&permission)' in plugin_runtime, 'plugin runtime requires explicit user grants')
 require('granted_permissions_json' in persistence and 'set_granted_permissions' in persistence, 'plugin grants persist separately from manifest declarations')
