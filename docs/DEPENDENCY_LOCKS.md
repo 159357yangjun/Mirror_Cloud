@@ -37,6 +37,12 @@ Direct Rust Tauri dependencies use exact `=x.y.z` constraints instead of broad c
 
 When intentionally upgrading Tauri, update the Rust manifest, JavaScript manifest and both relevant lockfiles together. Then run the normal CI checks **and a real Windows `tauri build`** before treating the new dependency family as release-ready. If the tested minor lines change, update the compatibility guard in the same reviewed change.
 
+## GitHub Actions supply chain
+
+Every external `uses:` reference in `.github/workflows` is pinned to a full 40-character commit SHA. Human-readable upstream release versions remain in trailing YAML comments, while `scripts/check_workflow_action_pins.py` rejects movable tags or branch refs in CI and release validation.
+
+`.github/dependabot.yml` is prepared to check GitHub Actions weekly and group Action version updates into a small number of pull requests targeting `dev`. GitHub reads Dependabot version-update configuration from the repository default branch, so this automation becomes active only after the configuration reaches the default branch through the normal `dev` → stable release process. Application npm/Cargo dependencies remain intentionally excluded from automated version PRs because Tauri Rust and JavaScript packages must be upgraded as a tested compatibility set rather than as unrelated single-package updates.
+
 ## Intentional dependency updates
 
 When any dependency intentionally changes, update the relevant manifest and lockfile together in the same reviewed commit. A missing or stale Cargo lock causes `--locked` to fail; a stale npm lock causes `npm ci` to fail.
