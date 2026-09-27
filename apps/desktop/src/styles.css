@@ -59,10 +59,10 @@
 }
 
 * { box-sizing: border-box; }
-html, body, #root { min-height: 100%; margin: 0; }
+html, body, #root { height: 100%; min-height: 100%; margin: 0; }
 body {
   min-width: 0;
-  overflow-x: hidden;
+  overflow: hidden;
   color: var(--text-primary);
   background-color: var(--app-bg);
   background-image: var(--wallpaper);
@@ -95,6 +95,15 @@ button { cursor: pointer; }
 .theme-muted { color: var(--text-muted); }
 
 .app-sidebar, .app-main { transition: width .18s ease, margin-left .18s ease; }
+.app-main {
+  height: 100vh;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  scroll-behavior: smooth;
+  scrollbar-gutter: stable;
+}
 
 @media (max-width: 820px) {
   .app-sidebar { width: 72px !important; }
