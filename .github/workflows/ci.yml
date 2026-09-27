@@ -32,7 +32,23 @@ jobs:
           npm install --package-lock-only --ignore-scripts
           Pop-Location
       - name: Rust format
-        run: cargo fmt --all -- --check
+        id: rustfmt
+        shell: pwsh
+        run: |
+          cargo fmt --all
+          git diff -- '*.rs' | Out-File -Encoding utf8 rustfmt.patch
+          if ((Get-Item rustfmt.patch).Length -gt 3) {
+            Write-Host 'rustfmt changed tracked Rust files. See the rustfmt-diff artifact.'
+            git diff --check -- '*.rs'
+            exit 1
+          }
+      - name: Upload rustfmt diff
+        if: failure() && steps.rustfmt.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustfmt-diff
+          path: rustfmt.patch
+          if-no-files-found: error
       - name: Rust check
         run: cargo check --workspace --locked
       - name: Rust tests
