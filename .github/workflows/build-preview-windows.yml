@@ -49,10 +49,11 @@ jobs:
           path.write_text(text, encoding='utf-8')
           '@ | python -
 
+          # Order matters: downgrade the concrete Wry runtime before its runtime dependency.
           $pins = @(
             @('tauri', '2.11.5'),
-            @('tauri-runtime', '2.11.3'),
             @('tauri-runtime-wry', '2.11.4'),
+            @('tauri-runtime', '2.11.3'),
             @('tauri-macros', '2.6.3'),
             @('tauri-build', '2.6.3'),
             @('tauri-codegen', '2.6.3'),
