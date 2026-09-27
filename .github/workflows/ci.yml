@@ -26,6 +26,7 @@ jobs:
             website/package-lock.json
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: '1.98.1'
           components: rustfmt
       - name: Cache Rust dependencies and debug build
         uses: actions/cache@v6

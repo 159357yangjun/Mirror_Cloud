@@ -22,6 +22,7 @@ jobs:
           cache-dependency-path: apps/desktop/package-lock.json
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: '1.98.1'
           components: rustfmt
 
       - name: Validate source contracts

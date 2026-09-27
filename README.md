@@ -80,7 +80,7 @@ npm install
 npm run tauri dev
 ```
 
-项目要求 Node.js `>= 22.12`、Rust stable / Cargo、Windows Tauri 所需的 WebView2 和 Visual Studio C++ Build Tools。
+项目要求 Node.js `>= 22.12`、Rust `1.98.1` / Cargo、Windows Tauri 所需的 WebView2 和 Visual Studio C++ Build Tools。`rust-toolchain.toml` 会把仓库内 Rust 命令固定到当前验证过的工具链版本。
 
 ## 验证
 
