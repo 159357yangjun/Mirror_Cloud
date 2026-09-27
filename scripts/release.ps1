@@ -39,6 +39,7 @@ Write-Host "[4/12] Static project validation"
 Invoke-NativeChecked "python" @("scripts/validate.py") "Static validation"
 Invoke-NativeChecked "python" @("scripts/check_contracts.py") "Command contract validation"
 Invoke-NativeChecked "python" @("scripts/check_user_flow.py") "User-flow contract validation"
+Invoke-NativeChecked "python" @("scripts/check_workflow_action_pins.py") "Workflow action pin validation"
 
 Write-Host "[5/12] Verify committed dependency locks"
 $LockFiles = @("Cargo.lock", "apps/desktop/package-lock.json", "website/package-lock.json")

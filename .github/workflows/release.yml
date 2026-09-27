@@ -14,13 +14,13 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 75
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable, 2026-09-03
         with:
           toolchain: '1.98.1'
           components: rustfmt
@@ -30,6 +30,7 @@ jobs:
           python scripts/validate.py
           python scripts/check_contracts.py
           python scripts/check_user_flow.py
+          python scripts/check_workflow_action_pins.py
           python scripts/check_release_version.py
           python scripts/check_tauri_dependency_family.py
 
@@ -99,7 +100,7 @@ jobs:
             } | Set-Content -Encoding utf8 $checksumPath
 
       - name: Upload Windows release files
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: image-hosting-platform-release-files
           path: release/*
@@ -107,7 +108,7 @@ jobs:
           retention-days: 30
 
       - name: Upload dependency locks used by this release
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: image-hosting-platform-dependency-locks
           path: |
@@ -121,8 +122,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
           cache: npm
@@ -136,7 +137,7 @@ jobs:
         working-directory: website
         run: npm run build
       - name: Upload static docs
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: image-hosting-platform-docs
           path: website/dist/**
@@ -152,13 +153,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Download staged release files
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: image-hosting-platform-release-files
           path: release
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           name: Image Hosting Platform ${{ github.ref_name }}
           generate_release_notes: true

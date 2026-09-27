@@ -88,6 +88,7 @@ npm run tauri dev
 python scripts/validate.py
 python scripts/check_contracts.py
 python scripts/check_user_flow.py
+python scripts/check_workflow_action_pins.py
 python scripts/check_release_version.py
 python scripts/check_tauri_dependency_family.py
 ```
@@ -98,7 +99,7 @@ python scripts/check_tauri_dependency_family.py
 ./scripts/release.ps1
 ```
 
-GitHub Actions 的 `CI` 会继续执行 Rust format/check/test、桌面前端 build 和文档 build，并在耗时编译前检查版本同步与 Tauri Rust/JS 依赖族兼容性。`Release Bundle` 在手动触发时只生成构建产物；推送与项目版本一致的 `v*` tag 时才会创建对应 GitHub Release。
+GitHub Actions 的 `CI` 会继续执行 Rust format/check/test、桌面前端 build 和文档 build，并在耗时编译前检查版本同步、Tauri Rust/JS 依赖族兼容性以及外部 Actions 的不可变 SHA pin。`Release Bundle` 在手动触发时只生成构建产物；推送与项目版本一致的 `v*` tag 时才会创建对应 GitHub Release。
 
 ## 发布产物
 
