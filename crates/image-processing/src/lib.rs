@@ -1,7 +1,9 @@
 use std::io::Cursor;
 
 use bytes::Bytes;
-use image::{codecs::jpeg::JpegEncoder, imageops::FilterType, DynamicImage, GenericImageView, ImageFormat};
+use image::{
+    DynamicImage, GenericImageView, ImageFormat, codecs::jpeg::JpegEncoder, imageops::FilterType,
+};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -103,7 +105,11 @@ pub fn process_image(
     })
 }
 
-fn resize_to_fit(image: DynamicImage, max_width: Option<u32>, max_height: Option<u32>) -> DynamicImage {
+fn resize_to_fit(
+    image: DynamicImage,
+    max_width: Option<u32>,
+    max_height: Option<u32>,
+) -> DynamicImage {
     let (width, height) = image.dimensions();
     let max_width = max_width.unwrap_or(width).max(1);
     let max_height = max_height.unwrap_or(height).max(1);
@@ -162,7 +168,9 @@ pub fn encode_rgba_png(
     height: u32,
 ) -> Result<Vec<u8>, ImageProcessingError> {
     if width == 0 || height == 0 {
-        return Err(ImageProcessingError::Encode("clipboard image has invalid dimensions".into()));
+        return Err(ImageProcessingError::Encode(
+            "clipboard image has invalid dimensions".into(),
+        ));
     }
     let expected = width as usize * height as usize * 4;
     if rgba.len() != expected {
@@ -171,8 +179,9 @@ pub fn encode_rgba_png(
             rgba.len()
         )));
     }
-    let image = image::RgbaImage::from_raw(width, height, rgba.to_vec())
-        .ok_or_else(|| ImageProcessingError::Encode("cannot build clipboard image buffer".into()))?;
+    let image = image::RgbaImage::from_raw(width, height, rgba.to_vec()).ok_or_else(|| {
+        ImageProcessingError::Encode("cannot build clipboard image buffer".into())
+    })?;
     let mut output = Cursor::new(Vec::new());
     DynamicImage::ImageRgba8(image)
         .write_to(&mut output, ImageFormat::Png)

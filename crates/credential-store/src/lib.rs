@@ -1,4 +1,4 @@
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -16,7 +16,9 @@ pub struct CredentialStore {
 
 impl CredentialStore {
     pub fn new(service: impl Into<String>) -> Self {
-        Self { service: service.into() }
+        Self {
+            service: service.into(),
+        }
     }
 
     fn entry(&self, key: &str) -> Result<keyring::Entry, CredentialError> {
@@ -31,7 +33,8 @@ impl CredentialStore {
     }
 
     pub fn get_json<T: DeserializeOwned>(&self, key: &str) -> Result<T, CredentialError> {
-        let encoded = self.entry(key)?
+        let encoded = self
+            .entry(key)?
             .get_password()
             .map_err(|e| CredentialError::Keyring(e.to_string()))?;
         Ok(serde_json::from_str(&encoded)?)

@@ -1,4 +1,7 @@
-use std::{path::{Path, PathBuf}, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use bytes::Bytes;
 use chrono::Utc;
@@ -8,9 +11,11 @@ use domain::{
     Workflow, WorkflowStep,
 };
 use persistence_sqlite::{
-    AssetPluginOutputRecord, AssetRepository, DeploymentWriteRecord, PluginRepository, SettingsRepository, StorageGroupRecord, StorageGroupRepository,
-    StorageRecord, StorageRepository, TaskRepository, WorkflowRepository,
+    AssetPluginOutputRecord, AssetRepository, DeploymentWriteRecord, PluginRepository,
+    SettingsRepository, StorageGroupRecord, StorageGroupRepository, StorageRecord,
+    StorageRepository, TaskRepository, WorkflowRepository,
 };
+use plugin_runtime::{PluginContext, PluginHook, PluginManifest, PluginPermission};
 use storage_core::{StorageProvider, UploadRequest};
 use storage_gitee::{GiteeCredentials, GiteeStorage, GiteeStorageConfig};
 use storage_github::{GitHubCredentials, GitHubStorage, GitHubStorageConfig};
@@ -19,7 +24,6 @@ use storage_opendal::{
     S3Credentials, S3StorageConfig, WebDavCredentials, WebDavStorageConfig,
 };
 use task_engine::TaskEngine;
-use plugin_runtime::{PluginContext, PluginHook, PluginManifest, PluginPermission};
 use uuid::Uuid;
 use workflow_engine::prepare_asset;
 
@@ -43,11 +47,16 @@ fn is_safe_compensation_path(path: &str) -> bool {
         .any(|segment| {
             segment.len() == 33
                 && segment.starts_with('u')
-                && segment[1..].chars().all(|character| character.is_ascii_hexdigit())
+                && segment[1..]
+                    .chars()
+                    .all(|character| character.is_ascii_hexdigit())
         })
 }
 
-async fn rollback_successful_uploads(context: &CliContext, outcomes: &[UploadOutcome]) -> Vec<String> {
+async fn rollback_successful_uploads(
+    context: &CliContext,
+    outcomes: &[UploadOutcome],
+) -> Vec<String> {
     let mut failures = Vec::new();
     for outcome in outcomes.iter().filter(|outcome| outcome.error.is_none()) {
         if !is_safe_compensation_path(&outcome.remote_path) {
@@ -60,23 +69,35 @@ async fn rollback_successful_uploads(context: &CliContext, outcomes: &[UploadOut
         let storage = match context.storages.get(outcome.storage_id).await {
             Ok(Some(storage)) => storage,
             Ok(None) => {
-                failures.push(format!("{}: storage no longer exists", outcome.storage_name));
+                failures.push(format!(
+                    "{}: storage no longer exists",
+                    outcome.storage_name
+                ));
                 continue;
             }
             Err(error) => {
-                failures.push(format!("{}: cannot reload storage for rollback: {error}", outcome.storage_name));
+                failures.push(format!(
+                    "{}: cannot reload storage for rollback: {error}",
+                    outcome.storage_name
+                ));
                 continue;
             }
         };
         let provider = match build_provider(context, &storage) {
             Ok(provider) => provider,
             Err(error) => {
-                failures.push(format!("{}: cannot rebuild provider for rollback: {error}", outcome.storage_name));
+                failures.push(format!(
+                    "{}: cannot rebuild provider for rollback: {error}",
+                    outcome.storage_name
+                ));
                 continue;
             }
         };
         if let Err(error) = provider.delete(&outcome.remote_path).await {
-            failures.push(format!("{}: rollback delete failed: {error}", outcome.storage_name));
+            failures.push(format!(
+                "{}: rollback delete failed: {error}",
+                outcome.storage_name
+            ));
         }
     }
     failures
@@ -107,14 +128,23 @@ pub async fn upload_with_default_workflow(
         if !path.is_file() {
             return Err(format!("Image file does not exist: {}", path.display()));
         }
-        let mime = mime_guess::from_path(path).first_or_octet_stream().essence_str().to_string();
+        let mime = mime_guess::from_path(path)
+            .first_or_octet_stream()
+            .essence_str()
+            .to_string();
         if !mime.starts_with("image/") {
-            return Err(format!("Only image files are supported: {}", path.display()));
+            return Err(format!(
+                "Only image files are supported: {}",
+                path.display()
+            ));
         }
     }
 
     std::fs::create_dir_all(data_dir).map_err(|error| {
-        format!("Cannot create application data directory {}: {error}", data_dir.display())
+        format!(
+            "Cannot create application data directory {}: {error}",
+            data_dir.display()
+        )
     })?;
     let pool = persistence_sqlite::connect_path(&data_dir.join("publisher.sqlite3"))
         .await
@@ -163,17 +193,31 @@ pub async fn upload_with_default_workflow(
         match publish_one(&context, &workflow_record.workflow, path, task.id).await {
             Ok((url, warnings)) => {
                 if warnings.is_empty() {
-                    context.tasks.complete(task.id).await.map_err(|error| error.to_string())?;
+                    context
+                        .tasks
+                        .complete(task.id)
+                        .await
+                        .map_err(|error| error.to_string())?;
                 } else {
                     let note = warnings.join(" | ");
-                    context.tasks.complete_with_note(task.id, note.clone()).await.map_err(|error| error.to_string())?;
+                    context
+                        .tasks
+                        .complete_with_note(task.id, note.clone())
+                        .await
+                        .map_err(|error| error.to_string())?;
                     eprintln!("Publisher warning: {note}");
                 }
                 urls.push(url);
             }
             Err(error) => {
-                let asset_name = path.file_name().and_then(|value| value.to_str()).unwrap_or("asset");
-                let mime_type = mime_guess::from_path(path).first_or_octet_stream().essence_str().to_string();
+                let asset_name = path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("asset");
+                let mime_type = mime_guess::from_path(path)
+                    .first_or_octet_stream()
+                    .essence_str()
+                    .to_string();
                 let (_, hook_warnings) = run_enabled_plugins_for_hook(
                     &context,
                     PluginHook::OnPublishFailure,
@@ -183,7 +227,10 @@ pub async fn upload_with_default_workflow(
                     serde_json::json!({"source":"cli","taskId":task.id.to_string(),"path":path.to_string_lossy(),"error":error.clone()}),
                 ).await;
                 if !hook_warnings.is_empty() {
-                    eprintln!("Publisher failure-hook warning: {}", hook_warnings.join(" | "));
+                    eprintln!(
+                        "Publisher failure-hook warning: {}",
+                        hook_warnings.join(" | ")
+                    );
                 }
                 let _ = context.tasks.fail(task.id, error.clone()).await;
                 return Err(error);
@@ -194,53 +241,163 @@ pub async fn upload_with_default_workflow(
     Ok(urls)
 }
 
-
-async fn ensure_default_workflow(context: &CliContext) -> Result<persistence_sqlite::WorkflowRecord, String> {
-    let rows = context.workflows.list().await.map_err(|e|format!("Cannot load workflows: {e}"))?;
+async fn ensure_default_workflow(
+    context: &CliContext,
+) -> Result<persistence_sqlite::WorkflowRecord, String> {
+    let rows = context
+        .workflows
+        .list()
+        .await
+        .map_err(|e| format!("Cannot load workflows: {e}"))?;
     let mut target: Option<PublishTarget> = None;
-    if let Some(setting) = context.settings.get(DEFAULT_TARGET_KEY).await.map_err(|e|e.to_string())? {
-        let kind=setting.get("kind").and_then(serde_json::Value::as_str).unwrap_or("");
-        let id=setting.get("id").and_then(serde_json::Value::as_str).unwrap_or("");
-        if let Ok(uuid)=Uuid::parse_str(id) {
-            target=match kind { "storage"=>Some(PublishTarget::Storage{storage_id:uuid}), "group"=>Some(PublishTarget::StorageGroup{storage_group_id:uuid}), _=>None };
+    if let Some(setting) = context
+        .settings
+        .get(DEFAULT_TARGET_KEY)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        let kind = setting
+            .get("kind")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+        let id = setting
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+        if let Ok(uuid) = Uuid::parse_str(id) {
+            target = match kind {
+                "storage" => Some(PublishTarget::Storage { storage_id: uuid }),
+                "group" => Some(PublishTarget::StorageGroup {
+                    storage_group_id: uuid,
+                }),
+                _ => None,
+            };
         }
     }
     if target.is_none() {
-        target = rows.iter().find(|r|r.is_default).and_then(|r| r.workflow.steps.iter().find_map(|step| match step { WorkflowStep::Publish{target}=>Some(target.clone()), _=>None }));
+        target = rows.iter().find(|r| r.is_default).and_then(|r| {
+            r.workflow.steps.iter().find_map(|step| match step {
+                WorkflowStep::Publish { target } => Some(target.clone()),
+                _ => None,
+            })
+        });
     }
     if target.is_none() {
-        if let Some(storage)=context.storages.list().await.map_err(|e|e.to_string())?.into_iter().find(|s|s.enabled) {
-            target=Some(PublishTarget::Storage{storage_id:storage.id});
+        if let Some(storage) = context
+            .storages
+            .list()
+            .await
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .find(|s| s.enabled)
+        {
+            target = Some(PublishTarget::Storage {
+                storage_id: storage.id,
+            });
         }
     }
-    let target=target.ok_or_else(|| "No upload target is configured. Open Publisher and connect one cloud storage first.".to_string())?;
+    let target = target.ok_or_else(|| {
+        "No upload target is configured. Open Publisher and connect one cloud storage first."
+            .to_string()
+    })?;
     match &target {
-        PublishTarget::Storage{storage_id} => { context.storages.get(*storage_id).await.map_err(|e|e.to_string())?.ok_or_else(||"Default storage no longer exists".to_string())?; },
-        PublishTarget::StorageGroup{storage_group_id} => { context.groups.get(*storage_group_id).await.map_err(|e|e.to_string())?.ok_or_else(||"Default storage group no longer exists".to_string())?; },
+        PublishTarget::Storage { storage_id } => {
+            context
+                .storages
+                .get(*storage_id)
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| "Default storage no longer exists".to_string())?;
+        }
+        PublishTarget::StorageGroup { storage_group_id } => {
+            context
+                .groups
+                .get(*storage_group_id)
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| "Default storage group no longer exists".to_string())?;
+        }
     }
-    let setting = match &target { PublishTarget::Storage{storage_id}=>serde_json::json!({"kind":"storage","id":storage_id.to_string()}), PublishTarget::StorageGroup{storage_group_id}=>serde_json::json!({"kind":"group","id":storage_group_id.to_string()}) };
-    context.settings.set(DEFAULT_TARGET_KEY,&setting).await.map_err(|e|e.to_string())?;
-    let workflow=Workflow { id:Uuid::new_v4(), name:"自动上传链".into(), steps:vec![
-        WorkflowStep::Resize{max_width:1920,max_height:1920},
-        WorkflowStep::Convert{format:"webp".into(),quality:90},
-        WorkflowStep::Rename{template:"uploads/{year}/{month}/{hash:12}-u{uuid}-{stem}.{ext}".into()},
-        WorkflowStep::Publish{target},
-        WorkflowStep::Output{template:"{url}".into()},
-    ]};
-    context.workflows.upsert_system_default(&workflow,"由 Publisher 自动维护；用户只需要选择默认云端并开关插件。",SYSTEM_PIPELINE_SOURCE).await.map_err(|e|e.to_string())?;
-    context.workflows.list().await.map_err(|e|e.to_string())?.into_iter().find(|r|r.is_default).ok_or_else(||"Cannot create default upload pipeline".to_string())
+    let setting = match &target {
+        PublishTarget::Storage { storage_id } => {
+            serde_json::json!({"kind":"storage","id":storage_id.to_string()})
+        }
+        PublishTarget::StorageGroup { storage_group_id } => {
+            serde_json::json!({"kind":"group","id":storage_group_id.to_string()})
+        }
+    };
+    context
+        .settings
+        .set(DEFAULT_TARGET_KEY, &setting)
+        .await
+        .map_err(|e| e.to_string())?;
+    let workflow = Workflow {
+        id: Uuid::new_v4(),
+        name: "自动上传链".into(),
+        steps: vec![
+            WorkflowStep::Resize {
+                max_width: 1920,
+                max_height: 1920,
+            },
+            WorkflowStep::Convert {
+                format: "webp".into(),
+                quality: 90,
+            },
+            WorkflowStep::Rename {
+                template: "uploads/{year}/{month}/{hash:12}-u{uuid}-{stem}.{ext}".into(),
+            },
+            WorkflowStep::Publish { target },
+            WorkflowStep::Output {
+                template: "{url}".into(),
+            },
+        ],
+    };
+    context
+        .workflows
+        .upsert_system_default(
+            &workflow,
+            "由 Publisher 自动维护；用户只需要选择默认云端并开关插件。",
+            SYSTEM_PIPELINE_SOURCE,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    context
+        .workflows
+        .list()
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|r| r.is_default)
+        .ok_or_else(|| "Cannot create default upload pipeline".to_string())
 }
 
-async fn load_ai_settings(context:&CliContext) -> serde_json::Value {
-    let mut settings=context.settings.get(AI_SETTINGS_KEY).await.ok().flatten().unwrap_or(serde_json::json!({"baseUrl":"https://api.openai.com/v1","model":""}));
-    let legacy=settings.get("apiKey").and_then(serde_json::Value::as_str).filter(|v|!v.is_empty()).map(str::to_string);
-    if let Some(legacy)=legacy {
-        let _=context.credentials.set_json(AI_CREDENTIAL_KEY,&legacy);
-        if let Some(obj)=settings.as_object_mut(){ obj.remove("apiKey"); }
-        let _=context.settings.set(AI_SETTINGS_KEY,&settings).await;
+async fn load_ai_settings(context: &CliContext) -> serde_json::Value {
+    let mut settings = context
+        .settings
+        .get(AI_SETTINGS_KEY)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or(serde_json::json!({"baseUrl":"https://api.openai.com/v1","model":""}));
+    let legacy = settings
+        .get("apiKey")
+        .and_then(serde_json::Value::as_str)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string);
+    if let Some(legacy) = legacy {
+        let _ = context.credentials.set_json(AI_CREDENTIAL_KEY, &legacy);
+        if let Some(obj) = settings.as_object_mut() {
+            obj.remove("apiKey");
+        }
+        let _ = context.settings.set(AI_SETTINGS_KEY, &settings).await;
     }
-    let key=context.credentials.get_json::<String>(AI_CREDENTIAL_KEY).unwrap_or_default();
-    if let Some(obj)=settings.as_object_mut(){ obj.insert("apiKey".into(),serde_json::Value::String(key)); }
+    let key = context
+        .credentials
+        .get_json::<String>(AI_CREDENTIAL_KEY)
+        .unwrap_or_default();
+    if let Some(obj) = settings.as_object_mut() {
+        obj.insert("apiKey".into(), serde_json::Value::String(key));
+    }
     settings
 }
 
@@ -261,7 +418,9 @@ async fn preflight_target(context: &CliContext, workflow: &Workflow) -> Result<(
                 .get(storage_id)
                 .await
                 .map_err(|error| error.to_string())?
-                .ok_or_else(|| "The default workflow points to a storage that no longer exists".to_string())?;
+                .ok_or_else(|| {
+                    "The default workflow points to a storage that no longer exists".to_string()
+                })?;
             let _ = build_provider(context, &record)?;
         }
         PublishTarget::StorageGroup { storage_group_id } => {
@@ -270,10 +429,20 @@ async fn preflight_target(context: &CliContext, workflow: &Workflow) -> Result<(
                 .get(storage_group_id)
                 .await
                 .map_err(|error| error.to_string())?
-                .ok_or_else(|| "The default workflow points to a storage group that no longer exists".to_string())?;
+                .ok_or_else(|| {
+                    "The default workflow points to a storage group that no longer exists"
+                        .to_string()
+                })?;
             let mut viable = 0usize;
             for member in &group.members {
-                let Some(record) = context.storages.get(member.storage_id).await.map_err(|e| e.to_string())? else { continue; };
+                let Some(record) = context
+                    .storages
+                    .get(member.storage_id)
+                    .await
+                    .map_err(|e| e.to_string())?
+                else {
+                    continue;
+                };
                 if build_provider(context, &record).is_ok() {
                     viable += 1;
                 }
@@ -358,7 +527,8 @@ async fn publish_one(
             "height":prepared.height,
             "sizeBytes":prepared.body.len()
         }),
-    ).await;
+    )
+    .await;
 
     let outcomes = match prepared.target.clone() {
         PublishTarget::Storage { storage_id } => {
@@ -369,16 +539,18 @@ async fn publish_one(
                 .map_err(|error| error.to_string())?
                 .ok_or_else(|| "Workflow storage no longer exists".to_string())?;
             let provider = build_provider(context, &storage)?;
-            vec![upload_target(
-                storage.id,
-                storage.name.clone(),
-                DeploymentRole::Primary,
-                provider,
-                prepared.body.clone(),
-                prepared.remote_path.clone(),
-                prepared.mime_type.clone(),
-            )
-            .await]
+            vec![
+                upload_target(
+                    storage.id,
+                    storage.name.clone(),
+                    DeploymentRole::Primary,
+                    provider,
+                    prepared.body.clone(),
+                    prepared.remote_path.clone(),
+                    prepared.mime_type.clone(),
+                )
+                .await,
+            ]
         }
         PublishTarget::StorageGroup { storage_group_id } => {
             let group = context
@@ -465,9 +637,14 @@ async fn publish_one(
             let suffix = if rollback_failures.is_empty() {
                 "; uploaded files were rolled back".to_string()
             } else {
-                format!("; rollback was incomplete and orphan files may remain: {}", rollback_failures.join(" | "))
+                format!(
+                    "; rollback was incomplete and orphan files may remain: {}",
+                    rollback_failures.join(" | ")
+                )
             };
-            return Err(format!("Upload succeeded but the provider did not return a public URL{suffix}"));
+            return Err(format!(
+                "Upload succeeded but the provider did not return a public URL{suffix}"
+            ));
         }
     };
 
@@ -480,7 +657,10 @@ async fn publish_one(
         let suffix = if rollback_failures.is_empty() {
             "; uploaded files were rolled back".to_string()
         } else {
-            format!("; rollback was incomplete and orphan files may remain: {}", rollback_failures.join(" | "))
+            format!(
+                "; rollback was incomplete and orphan files may remain: {}",
+                rollback_failures.join(" | ")
+            )
         };
         return Err(format!("Cannot record uploaded asset: {error}{suffix}"));
     }
@@ -490,10 +670,17 @@ async fn publish_one(
         .chain(after_process_warnings.into_iter())
         .map(|warning| format!("plugin: {warning}"))
         .collect::<Vec<_>>();
-    warnings.extend(outcomes
-        .iter()
-        .filter_map(|outcome| outcome.error.as_ref().map(|error| format!("{} ({:?}): {error}", outcome.storage_name, outcome.role)))
-        .collect::<Vec<_>>());
+    warnings.extend(
+        outcomes
+            .iter()
+            .filter_map(|outcome| {
+                outcome
+                    .error
+                    .as_ref()
+                    .map(|error| format!("{} ({:?}): {error}", outcome.storage_name, outcome.role))
+            })
+            .collect::<Vec<_>>(),
+    );
     let (outputs, plugin_warnings) = run_enabled_plugins_for_hook(
         context,
         PluginHook::AfterUpload,
@@ -501,14 +688,22 @@ async fn publish_one(
         Some(&public_url),
         &variant.mime_type,
         serde_json::json!({"source":"cli","taskId":task_id.to_string()}),
-    ).await;
-    warnings.extend(plugin_warnings.into_iter().map(|warning| format!("plugin: {warning}")));
-    if let Err(error) = context.assets.replace_plugin_outputs(asset.id, &outputs).await {
+    )
+    .await;
+    warnings.extend(
+        plugin_warnings
+            .into_iter()
+            .map(|warning| format!("plugin: {warning}")),
+    );
+    if let Err(error) = context
+        .assets
+        .replace_plugin_outputs(asset.id, &outputs)
+        .await
+    {
         warnings.push(format!("cannot record plugin outputs: {error}"));
     }
     Ok((public_url, warnings))
 }
-
 
 async fn run_enabled_plugins_for_hook(
     context: &CliContext,
@@ -520,7 +715,12 @@ async fn run_enabled_plugins_for_hook(
 ) -> (Vec<AssetPluginOutputRecord>, Vec<String>) {
     let rows = match context.plugins.list().await {
         Ok(rows) => rows,
-        Err(error) => return (Vec::new(), vec![format!("cannot load plugin list: {error}")]),
+        Err(error) => {
+            return (
+                Vec::new(),
+                vec![format!("cannot load plugin list: {error}")],
+            );
+        }
     };
     let ai_settings = load_ai_settings(context).await;
     let mut failures = Vec::new();
@@ -528,19 +728,31 @@ async fn run_enabled_plugins_for_hook(
     for row in rows.into_iter().filter(|row| row.enabled) {
         let manifest: PluginManifest = match serde_json::from_value(row.manifest_json.clone()) {
             Ok(manifest) => manifest,
-            Err(error) => { failures.push(format!("{}: invalid manifest ({error})", row.name)); continue; }
+            Err(error) => {
+                failures.push(format!("{}: invalid manifest ({error})", row.name));
+                continue;
+            }
         };
-        let enabled_hooks: Vec<PluginHook> = serde_json::from_value(row.enabled_hooks_json.clone()).unwrap_or_else(|_| vec![PluginHook::AfterUpload]);
+        let enabled_hooks: Vec<PluginHook> = serde_json::from_value(row.enabled_hooks_json.clone())
+            .unwrap_or_else(|_| vec![PluginHook::AfterUpload]);
         if !enabled_hooks.contains(&hook) {
             continue;
         }
-        let granted_permissions: Vec<PluginPermission> = serde_json::from_value(row.granted_permissions_json.clone()).unwrap_or_default();
+        let granted_permissions: Vec<PluginPermission> =
+            serde_json::from_value(row.granted_permissions_json.clone()).unwrap_or_default();
         let mut config = row.config_json.clone();
         if matches!(manifest.kind, plugin_runtime::PluginKind::AiPrompt) {
             if let Some(obj) = config.as_object_mut() {
                 for key in ["baseUrl", "model", "apiKey"] {
-                    if obj.get(key).and_then(serde_json::Value::as_str).unwrap_or("").is_empty() {
-                        if let Some(value) = ai_settings.get(key) { obj.insert(key.into(), value.clone()); }
+                    if obj
+                        .get(key)
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("")
+                        .is_empty()
+                    {
+                        if let Some(value) = ai_settings.get(key) {
+                            obj.insert(key.into(), value.clone());
+                        }
                     }
                 }
             }
@@ -552,15 +764,36 @@ async fn run_enabled_plugins_for_hook(
             metadata: metadata.clone(),
         };
         let started = std::time::Instant::now();
-        let hook_name = serde_json::to_value(hook).ok().and_then(|value| value.as_str().map(str::to_string)).unwrap_or_else(|| format!("{hook:?}").to_lowercase());
-        match plugin_runtime::execute_for_hook(&manifest, &granted_permissions, &config, &plugin_context, hook).await {
+        let hook_name = serde_json::to_value(hook)
+            .ok()
+            .and_then(|value| value.as_str().map(str::to_string))
+            .unwrap_or_else(|| format!("{hook:?}").to_lowercase());
+        match plugin_runtime::execute_for_hook(
+            &manifest,
+            &granted_permissions,
+            &config,
+            &plugin_context,
+            hook,
+        )
+        .await
+        {
             Ok(output) => {
                 let duration_ms = started.elapsed().as_millis().min(i64::MAX as u128) as i64;
-                let _ = context.plugins.record_execution(&manifest.id, &manifest.name, &hook_name, "success", duration_ms, None).await;
+                let _ = context
+                    .plugins
+                    .record_execution(
+                        &manifest.id,
+                        &manifest.name,
+                        &hook_name,
+                        "success",
+                        duration_ms,
+                        None,
+                    )
+                    .await;
                 outputs.push(AssetPluginOutputRecord {
                     plugin_id: manifest.id.clone(),
                     plugin_name: manifest.name.clone(),
-                    plugin_kind: format!("{:?}",manifest.kind).to_lowercase(),
+                    plugin_kind: format!("{:?}", manifest.kind).to_lowercase(),
                     text: output.text,
                     data_json: output.data,
                     created_at: Utc::now(),
@@ -570,14 +803,23 @@ async fn run_enabled_plugins_for_hook(
                 let message = error.to_string();
                 let audit: String = message.chars().take(1200).collect();
                 let duration_ms = started.elapsed().as_millis().min(i64::MAX as u128) as i64;
-                let _ = context.plugins.record_execution(&manifest.id, &manifest.name, &hook_name, "failed", duration_ms, Some(&audit)).await;
+                let _ = context
+                    .plugins
+                    .record_execution(
+                        &manifest.id,
+                        &manifest.name,
+                        &hook_name,
+                        "failed",
+                        duration_ms,
+                        Some(&audit),
+                    )
+                    .await;
                 failures.push(format!("{}: {message}", manifest.name));
             }
         }
     }
     (outputs, failures)
 }
-
 
 async fn upload_group_member(
     context: &CliContext,
@@ -587,7 +829,12 @@ async fn upload_group_member(
     mime_type: String,
 ) -> Result<UploadOutcome, String> {
     let role = role_from_str(&member.role)?;
-    let Some(storage) = context.storages.get(member.storage_id).await.map_err(|e| e.to_string())? else {
+    let Some(storage) = context
+        .storages
+        .get(member.storage_id)
+        .await
+        .map_err(|e| e.to_string())?
+    else {
         return Ok(UploadOutcome {
             storage_id: member.storage_id,
             storage_name: member.storage_name.clone(),
@@ -632,26 +879,69 @@ async fn upload_group(
     if group.strategy != "primary_with_backups" {
         let mut outcomes = Vec::with_capacity(group.members.len());
         for member in &group.members {
-            outcomes.push(upload_group_member(context, member, body.clone(), remote_path.clone(), mime_type.clone()).await?);
+            outcomes.push(
+                upload_group_member(
+                    context,
+                    member,
+                    body.clone(),
+                    remote_path.clone(),
+                    mime_type.clone(),
+                )
+                .await?,
+            );
         }
         return Ok(outcomes);
     }
 
-    let primary = group.members.iter().find(|member| member.role == "primary")
+    let primary = group
+        .members
+        .iter()
+        .find(|member| member.role == "primary")
         .ok_or_else(|| "The storage group has no primary storage".to_string())?;
-    let primary_outcome = upload_group_member(context, primary, body.clone(), remote_path.clone(), mime_type.clone()).await?;
+    let primary_outcome = upload_group_member(
+        context,
+        primary,
+        body.clone(),
+        remote_path.clone(),
+        mime_type.clone(),
+    )
+    .await?;
     let primary_succeeded = primary_outcome.error.is_none();
     let mut outcomes = vec![primary_outcome];
 
-    for mirror in group.members.iter().filter(|member| member.role == "mirror") {
-        outcomes.push(upload_group_member(context, mirror, body.clone(), remote_path.clone(), mime_type.clone()).await?);
+    for mirror in group
+        .members
+        .iter()
+        .filter(|member| member.role == "mirror")
+    {
+        outcomes.push(
+            upload_group_member(
+                context,
+                mirror,
+                body.clone(),
+                remote_path.clone(),
+                mime_type.clone(),
+            )
+            .await?,
+        );
     }
 
     if !primary_succeeded {
-        let mut backups = group.members.iter().filter(|member| member.role == "backup").collect::<Vec<_>>();
+        let mut backups = group
+            .members
+            .iter()
+            .filter(|member| member.role == "backup")
+            .collect::<Vec<_>>();
         backups.sort_by_key(|member| member.priority);
         for backup in backups {
-            let outcome = upload_group_member(context, backup, body.clone(), remote_path.clone(), mime_type.clone()).await?;
+            let outcome = upload_group_member(
+                context,
+                backup,
+                body.clone(),
+                remote_path.clone(),
+                mime_type.clone(),
+            )
+            .await?;
             let succeeded = outcome.error.is_none();
             outcomes.push(outcome);
             if succeeded {
@@ -707,7 +997,10 @@ fn role_from_str(value: &str) -> Result<DeploymentRole, String> {
     }
 }
 
-fn build_provider(context: &CliContext, record: &StorageRecord) -> Result<Arc<dyn StorageProvider>, String> {
+fn build_provider(
+    context: &CliContext,
+    record: &StorageRecord,
+) -> Result<Arc<dyn StorageProvider>, String> {
     let credential_ref = record
         .credential_ref
         .as_deref()
@@ -721,8 +1014,16 @@ fn build_provider(context: &CliContext, record: &StorageRecord) -> Result<Arc<dy
                 .get_json(credential_ref)
                 .map_err(|error| error.to_string())?;
             Ok(Arc::new(
-                OpenDalStorage::s3(if record.provider_key == "r2" { "r2" } else { "s3" }, &config, &credentials)
-                    .map_err(|error| error.to_string())?,
+                OpenDalStorage::s3(
+                    if record.provider_key == "r2" {
+                        "r2"
+                    } else {
+                        "s3"
+                    },
+                    &config,
+                    &credentials,
+                )
+                .map_err(|error| error.to_string())?,
             ))
         }
         "oss" => {
@@ -776,6 +1077,9 @@ fn build_provider(context: &CliContext, record: &StorageRecord) -> Result<Arc<dy
                 .map_err(|error| error.to_string())?;
             Ok(Arc::new(GiteeStorage::new(config, credentials)))
         }
-        _ => Err(format!("Provider {} is not supported by the Typora bridge", record.provider_key)),
+        _ => Err(format!(
+            "Provider {} is not supported by the Typora bridge",
+            record.provider_key
+        )),
     }
 }

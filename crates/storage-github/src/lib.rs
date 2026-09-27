@@ -1,12 +1,12 @@
 use async_trait::async_trait;
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use domain::StorageCapabilities;
 use reqwest::{
-    header::{ACCEPT, USER_AGENT},
     Client, Response, StatusCode, Url,
+    header::{ACCEPT, USER_AGENT},
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use storage_core::{
     ConnectionReport, StorageEntry, StorageError, StorageProvider, UploadRequest, UploadResult,
 };
@@ -58,12 +58,8 @@ impl GitHubStorage {
     }
 
     fn contents_url(&self, path: &str) -> Result<Url, StorageError> {
-        let mut url = self.api_url(&[
-            "repos",
-            &self.config.owner,
-            &self.config.repo,
-            "contents",
-        ])?;
+        let mut url =
+            self.api_url(&["repos", &self.config.owner, &self.config.repo, "contents"])?;
         {
             let mut segments = url
                 .path_segments_mut()
@@ -200,7 +196,8 @@ impl GitHubStorage {
             )
         } else if status == StatusCode::NOT_FOUND && context.contains("branch check") {
             StorageError::Provider(
-                "找不到指定 GitHub 分支。请检查分支名（例如 main），并确认 Token 可以访问该仓库。".into(),
+                "找不到指定 GitHub 分支。请检查分支名（例如 main），并确认 Token 可以访问该仓库。"
+                    .into(),
             )
         } else if status == StatusCode::CONFLICT && context.contains("upload") {
             StorageError::Provider(format!(
@@ -222,9 +219,7 @@ impl GitHubStorage {
             return Ok(None);
         }
         if !response.status().is_success() {
-            return Err(
-                Self::response_error(response, "GitHub content lookup failed").await,
-            );
+            return Err(Self::response_error(response, "GitHub content lookup failed").await);
         }
         let payload: Value = response
             .json()
@@ -255,9 +250,7 @@ impl GitHubStorage {
             ));
         }
         if !response.status().is_success() {
-            return Err(
-                Self::response_error(response, "GitHub root browse check failed").await,
-            );
+            return Err(Self::response_error(response, "GitHub root browse check failed").await);
         }
         Ok(format!("configured root '{root}' is readable"))
     }
@@ -358,9 +351,7 @@ impl StorageProvider for GitHubStorage {
             .await
             .map_err(|e| StorageError::Network(e.to_string()))?;
         if !branch_response.status().is_success() {
-            return Err(
-                Self::response_error(branch_response, "GitHub branch check failed").await,
-            );
+            return Err(Self::response_error(branch_response, "GitHub branch check failed").await);
         }
 
         let root_note = self.root_status_note().await?;
@@ -413,7 +404,8 @@ impl StorageProvider for GitHubStorage {
                 .map(ToOwned::to_owned)
                 .ok_or_else(|| {
                     StorageError::Provider(
-                        "GitHub 上传响应没有返回已提交文件的 SHA，因此本次上传不会被标记为成功。".into(),
+                        "GitHub 上传响应没有返回已提交文件的 SHA，因此本次上传不会被标记为成功。"
+                            .into(),
                     )
                 })?;
 
@@ -471,9 +463,9 @@ impl StorageProvider for GitHubStorage {
                 .chars()
                 .filter(|ch| !ch.is_whitespace())
                 .collect::<String>();
-            let decoded = STANDARD
-                .decode(compact.as_bytes())
-                .map_err(|e| StorageError::Provider(format!("GitHub content decode failed: {e}")))?;
+            let decoded = STANDARD.decode(compact.as_bytes()).map_err(|e| {
+                StorageError::Provider(format!("GitHub content decode failed: {e}"))
+            })?;
             return Ok(bytes::Bytes::from(decoded));
         }
 
@@ -492,9 +484,7 @@ impl StorageProvider for GitHubStorage {
             .await
             .map_err(|e| StorageError::Network(e.to_string()))?;
         if !response.status().is_success() {
-            return Err(
-                Self::response_error(response, "GitHub raw download failed").await,
-            );
+            return Err(Self::response_error(response, "GitHub raw download failed").await);
         }
         response
             .bytes()
@@ -594,10 +584,7 @@ mod tests {
             storage.repository_path("2026/a.png"),
             "assets/blog/2026/a.png"
         );
-        assert_eq!(
-            storage.logical_path("assets/blog/2026/a.png"),
-            "2026/a.png"
-        );
+        assert_eq!(storage.logical_path("assets/blog/2026/a.png"), "2026/a.png");
         assert_eq!(storage.repository_path(""), "assets/blog");
     }
 

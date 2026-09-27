@@ -60,9 +60,7 @@ pub async fn delete_storage_entry(
             .update_deployment_status(*deployment_id, DeploymentStatus::Deleted)
             .await
             .map_err(|error| {
-                format!(
-                    "远端文件已删除，但本地 Deployment {deployment_id} 状态同步失败：{error}"
-                )
+                format!("远端文件已删除，但本地 Deployment {deployment_id} 状态同步失败：{error}")
             })?;
     }
     run_gallery_delete_plugins(state.inner(), id, remote_path).await;
@@ -131,7 +129,9 @@ fn normalize_remote_dir(value: &str) -> CmdResult<String> {
 }
 
 fn parent_remote_path(path: &str) -> &str {
-    path.rsplit_once('/').map(|(parent, _)| parent).unwrap_or("")
+    path.rsplit_once('/')
+        .map(|(parent, _)| parent)
+        .unwrap_or("")
 }
 
 fn remote_file_name(path: &str) -> &str {
@@ -150,7 +150,12 @@ fn render_batch_name(template: &str, source: &str, index: usize) -> CmdResult<St
         .replace("{ext}", &ext)
         .replace("{index}", &(index + 1).to_string());
     let rendered = rendered.trim();
-    if rendered.is_empty() || rendered == "." || rendered == ".." || rendered.contains('/') || rendered.contains('\\') {
+    if rendered.is_empty()
+        || rendered == "."
+        || rendered == ".."
+        || rendered.contains('/')
+        || rendered.contains('\\')
+    {
         return Err(format!("批量重命名生成了无效文件名：{rendered}"));
     }
     Ok(rendered.to_string())
@@ -174,9 +179,7 @@ async fn move_storage_entry_with_provider(
         .update_deployments_remote_location(storage_id, source, destination, result.public_url)
         .await
         .map_err(|error| {
-            format!(
-                "远端文件已经移动到 {destination}，但本地 Deployment 路径同步失败：{error}"
-            )
+            format!("远端文件已经移动到 {destination}，但本地 Deployment 路径同步失败：{error}")
         })
         .map(|count| count as usize)
 }
@@ -201,7 +204,8 @@ pub async fn move_storage_entry(
         .map_err(|error| error.to_string())?
         .ok_or("Storage not found")?;
     let provider = build_provider(&state, &record)?;
-    move_storage_entry_with_provider(state.inner(), id, provider.as_ref(), &source, &destination).await
+    move_storage_entry_with_provider(state.inner(), id, provider.as_ref(), &source, &destination)
+        .await
 }
 
 #[tauri::command]
@@ -239,13 +243,28 @@ async fn report_batch_task_progress(
     completed: usize,
     total: usize,
 ) -> CmdResult<bool> {
-    let Some(task) = task else { return Ok(false); };
-    if state.tasks.is_cancelled(task.task_id).await.map_err(|error| error.to_string())? {
+    let Some(task) = task else {
+        return Ok(false);
+    };
+    if state
+        .tasks
+        .is_cancelled(task.task_id)
+        .await
+        .map_err(|error| error.to_string())?
+    {
         return Ok(true);
     }
-    let span = if total == 0 { 0 } else { ((completed.min(total) * 80) / total) as u8 };
+    let span = if total == 0 {
+        0
+    } else {
+        ((completed.min(total) * 80) / total) as u8
+    };
     let progress = 10u8.saturating_add(span).min(90);
-    let active = state.tasks.mark_running_if_active(task.task_id, progress).await.map_err(|error| error.to_string())?;
+    let active = state
+        .tasks
+        .mark_running_if_active(task.task_id, progress)
+        .await
+        .map_err(|error| error.to_string())?;
     if !active {
         return Ok(true);
     }
@@ -277,7 +296,9 @@ async fn batch_delete_storage_entries_impl(
     let mut failures = Vec::new();
     let total = paths.len();
     for (index, raw) in paths.into_iter().enumerate() {
-        if report_batch_task_progress(state, task, index, total).await? { break; }
+        if report_batch_task_progress(state, task, index, total).await? {
+            break;
+        }
         let remote_path = match normalize_remote_path(&raw) {
             Ok(path) => path,
             Err(error) => {
@@ -289,7 +310,11 @@ async fn batch_delete_storage_entries_impl(
         match provider.delete(&remote_path).await {
             Ok(()) => {
                 succeeded += 1;
-                match state.assets.deployment_ids_for_remote(id, &remote_path).await {
+                match state
+                    .assets
+                    .deployment_ids_for_remote(id, &remote_path)
+                    .await
+                {
                     Ok(ids) => {
                         for deployment_id in ids {
                             match state
@@ -300,7 +325,9 @@ async fn batch_delete_storage_entries_impl(
                                 Ok(()) => deployments_updated += 1,
                                 Err(error) => failures.push(BatchStorageFailureView {
                                     path: remote_path.clone(),
-                                    error: format!("远端已删除，但本地 Deployment 状态同步失败：{error}"),
+                                    error: format!(
+                                        "远端已删除，但本地 Deployment 状态同步失败：{error}"
+                                    ),
                                 }),
                             }
                         }
@@ -317,9 +344,15 @@ async fn batch_delete_storage_entries_impl(
                 error: error.to_string(),
             }),
         }
-        if report_batch_task_progress(state, task, index + 1, total).await? { break; }
+        if report_batch_task_progress(state, task, index + 1, total).await? {
+            break;
+        }
     }
-    Ok(BatchStorageOperationView { succeeded, deployments_updated, failures })
+    Ok(BatchStorageOperationView {
+        succeeded,
+        deployments_updated,
+        failures,
+    })
 }
 
 async fn batch_move_storage_entries_impl(
@@ -329,17 +362,28 @@ async fn batch_move_storage_entries_impl(
     destination_dir: String,
     task: Option<&BatchTaskProgress>,
 ) -> CmdResult<BatchStorageOperationView> {
-    if paths.is_empty() { return Err("没有选择要移动的远端文件".into()); }
-    if paths.len() > 100 { return Err("一次最多批量移动 100 个远端文件".into()); }
+    if paths.is_empty() {
+        return Err("没有选择要移动的远端文件".into());
+    }
+    if paths.len() > 100 {
+        return Err("一次最多批量移动 100 个远端文件".into());
+    }
     let destination_dir = normalize_remote_dir(&destination_dir)?;
-    let record = state.storages.get(id).await.map_err(|error| error.to_string())?.ok_or("Storage not found")?;
+    let record = state
+        .storages
+        .get(id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or("Storage not found")?;
     let provider = build_provider(state, &record)?;
     let mut succeeded = 0usize;
     let mut deployments_updated = 0usize;
     let mut failures = Vec::new();
     let total = paths.len();
     for (index, raw) in paths.into_iter().enumerate() {
-        if report_batch_task_progress(state, task, index, total).await? { break; }
+        if report_batch_task_progress(state, task, index, total).await? {
+            break;
+        }
         let source = match normalize_remote_path(&raw) {
             Ok(path) => path,
             Err(error) => {
@@ -349,14 +393,32 @@ async fn batch_move_storage_entries_impl(
             }
         };
         let name = remote_file_name(&source);
-        let destination = if destination_dir.is_empty() { name.to_string() } else { format!("{destination_dir}/{name}") };
-        match move_storage_entry_with_provider(state, id, provider.as_ref(), &source, &destination).await {
-            Ok(updated) => { succeeded += 1; deployments_updated += updated; }
-            Err(error) => failures.push(BatchStorageFailureView { path: source, error }),
+        let destination = if destination_dir.is_empty() {
+            name.to_string()
+        } else {
+            format!("{destination_dir}/{name}")
+        };
+        match move_storage_entry_with_provider(state, id, provider.as_ref(), &source, &destination)
+            .await
+        {
+            Ok(updated) => {
+                succeeded += 1;
+                deployments_updated += updated;
+            }
+            Err(error) => failures.push(BatchStorageFailureView {
+                path: source,
+                error,
+            }),
         }
-        if report_batch_task_progress(state, task, index + 1, total).await? { break; }
+        if report_batch_task_progress(state, task, index + 1, total).await? {
+            break;
+        }
     }
-    Ok(BatchStorageOperationView { succeeded, deployments_updated, failures })
+    Ok(BatchStorageOperationView {
+        succeeded,
+        deployments_updated,
+        failures,
+    })
 }
 
 async fn batch_rename_storage_entries_impl(
@@ -366,17 +428,30 @@ async fn batch_rename_storage_entries_impl(
     template: String,
     task: Option<&BatchTaskProgress>,
 ) -> CmdResult<BatchStorageOperationView> {
-    if paths.is_empty() { return Err("没有选择要重命名的远端文件".into()); }
-    if paths.len() > 100 { return Err("一次最多批量重命名 100 个远端文件".into()); }
-    if template.trim().is_empty() { return Err("重命名模板不能为空".into()); }
-    let record = state.storages.get(id).await.map_err(|error| error.to_string())?.ok_or("Storage not found")?;
+    if paths.is_empty() {
+        return Err("没有选择要重命名的远端文件".into());
+    }
+    if paths.len() > 100 {
+        return Err("一次最多批量重命名 100 个远端文件".into());
+    }
+    if template.trim().is_empty() {
+        return Err("重命名模板不能为空".into());
+    }
+    let record = state
+        .storages
+        .get(id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or("Storage not found")?;
     let provider = build_provider(state, &record)?;
     let mut succeeded = 0usize;
     let mut deployments_updated = 0usize;
     let mut failures = Vec::new();
     let total = paths.len();
     for (index, raw) in paths.into_iter().enumerate() {
-        if report_batch_task_progress(state, task, index, total).await? { break; }
+        if report_batch_task_progress(state, task, index, total).await? {
+            break;
+        }
         let source = match normalize_remote_path(&raw) {
             Ok(path) => path,
             Err(error) => {
@@ -388,20 +463,41 @@ async fn batch_rename_storage_entries_impl(
         let new_name = match render_batch_name(template.trim(), &source, index) {
             Ok(name) => name,
             Err(error) => {
-                failures.push(BatchStorageFailureView { path: source, error });
+                failures.push(BatchStorageFailureView {
+                    path: source,
+                    error,
+                });
                 let _ = report_batch_task_progress(state, task, index + 1, total).await?;
                 continue;
             }
         };
         let parent = parent_remote_path(&source);
-        let destination = if parent.is_empty() { new_name } else { format!("{parent}/{new_name}") };
-        match move_storage_entry_with_provider(state, id, provider.as_ref(), &source, &destination).await {
-            Ok(updated) => { succeeded += 1; deployments_updated += updated; }
-            Err(error) => failures.push(BatchStorageFailureView { path: source, error }),
+        let destination = if parent.is_empty() {
+            new_name
+        } else {
+            format!("{parent}/{new_name}")
+        };
+        match move_storage_entry_with_provider(state, id, provider.as_ref(), &source, &destination)
+            .await
+        {
+            Ok(updated) => {
+                succeeded += 1;
+                deployments_updated += updated;
+            }
+            Err(error) => failures.push(BatchStorageFailureView {
+                path: source,
+                error,
+            }),
         }
-        if report_batch_task_progress(state, task, index + 1, total).await? { break; }
+        if report_batch_task_progress(state, task, index + 1, total).await? {
+            break;
+        }
     }
-    Ok(BatchStorageOperationView { succeeded, deployments_updated, failures })
+    Ok(BatchStorageOperationView {
+        succeeded,
+        deployments_updated,
+        failures,
+    })
 }
 
 #[tauri::command]
@@ -438,10 +534,25 @@ pub async fn batch_rename_storage_entries(
 
 fn batch_note(action: &str, report: &BatchStorageOperationView) -> String {
     if report.failures.is_empty() {
-        format!("{action}完成：{} 项；同步 Deployment {} 条", report.succeeded, report.deployments_updated)
+        format!(
+            "{action}完成：{} 项；同步 Deployment {} 条",
+            report.succeeded, report.deployments_updated
+        )
     } else {
-        let details = report.failures.iter().take(3).map(|item| format!("{}: {}", item.path, item.error)).collect::<Vec<_>>().join(" | ");
-        format!("{action}完成：{} 项成功，{} 项失败；同步 Deployment {} 条；{}", report.succeeded, report.failures.len(), report.deployments_updated, details)
+        let details = report
+            .failures
+            .iter()
+            .take(3)
+            .map(|item| format!("{}: {}", item.path, item.error))
+            .collect::<Vec<_>>()
+            .join(" | ");
+        format!(
+            "{action}完成：{} 项成功，{} 项失败；同步 Deployment {} 条；{}",
+            report.succeeded,
+            report.failures.len(),
+            report.deployments_updated,
+            details
+        )
     }
 }
 
@@ -475,7 +586,17 @@ async fn finish_cloud_batch_task(
                 emit_task(app, task_id, "failed", 100, Some(text));
                 return;
             }
-            emit_task(app, task_id, "completed", 100, if report.failures.is_empty() { None } else { Some(note) });
+            emit_task(
+                app,
+                task_id,
+                "completed",
+                100,
+                if report.failures.is_empty() {
+                    None
+                } else {
+                    Some(note)
+                },
+            );
         }
         Err(error) => {
             let _ = state.tasks.fail(task_id, error.clone()).await;
@@ -490,7 +611,12 @@ fn cloud_batch_payload_paths(payload: &Value) -> CmdResult<Vec<String>> {
         .and_then(Value::as_array)
         .ok_or("后台任务缺少 paths")?
         .iter()
-        .map(|value| value.as_str().map(str::to_string).ok_or_else(|| "后台任务 paths 包含无效值".to_string()))
+        .map(|value| {
+            value
+                .as_str()
+                .map(str::to_string)
+                .ok_or_else(|| "后台任务 paths 包含无效值".to_string())
+        })
         .collect::<Result<Vec<_>, _>>()?;
     if paths.is_empty() || paths.len() > 100 {
         return Err("后台批量任务需要包含 1-100 个路径".into());
@@ -498,7 +624,13 @@ fn cloud_batch_payload_paths(payload: &Value) -> CmdResult<Vec<String>> {
     Ok(paths)
 }
 
-fn spawn_cloud_batch_task(app: AppHandle, state: AppState, task_id: Uuid, kind: String, payload: Value) {
+fn spawn_cloud_batch_task(
+    app: AppHandle,
+    state: AppState,
+    task_id: Uuid,
+    kind: String,
+    payload: Value,
+) {
     tauri::async_runtime::spawn(async move {
         let active = match state.tasks.mark_running_if_active(task_id, 10).await {
             Ok(active) => active,
@@ -516,24 +648,56 @@ fn spawn_cloud_batch_task(app: AppHandle, state: AppState, task_id: Uuid, kind: 
             return;
         }
         emit_task(&app, task_id, "running", 10, None);
-        let progress = BatchTaskProgress { app: app.clone(), task_id };
+        let progress = BatchTaskProgress {
+            app: app.clone(),
+            task_id,
+        };
         let result = async {
-            let storage_id = payload.get("storageId").and_then(Value::as_str).ok_or("后台任务缺少 storageId")?;
+            let storage_id = payload
+                .get("storageId")
+                .and_then(Value::as_str)
+                .ok_or("后台任务缺少 storageId")?;
             let storage_id = Uuid::parse_str(storage_id).map_err(|error| error.to_string())?;
             let paths = cloud_batch_payload_paths(&payload)?;
             match kind.as_str() {
-                "cloud_batch_delete" => batch_delete_storage_entries_impl(&state, storage_id, paths, Some(&progress)).await,
+                "cloud_batch_delete" => {
+                    batch_delete_storage_entries_impl(&state, storage_id, paths, Some(&progress))
+                        .await
+                }
                 "cloud_batch_move" => {
-                    let destination = payload.get("destinationDir").and_then(Value::as_str).unwrap_or("").to_string();
-                    batch_move_storage_entries_impl(&state, storage_id, paths, destination, Some(&progress)).await
+                    let destination = payload
+                        .get("destinationDir")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string();
+                    batch_move_storage_entries_impl(
+                        &state,
+                        storage_id,
+                        paths,
+                        destination,
+                        Some(&progress),
+                    )
+                    .await
                 }
                 "cloud_batch_rename" => {
-                    let template = payload.get("template").and_then(Value::as_str).ok_or("后台任务缺少 template")?.to_string();
-                    batch_rename_storage_entries_impl(&state, storage_id, paths, template, Some(&progress)).await
+                    let template = payload
+                        .get("template")
+                        .and_then(Value::as_str)
+                        .ok_or("后台任务缺少 template")?
+                        .to_string();
+                    batch_rename_storage_entries_impl(
+                        &state,
+                        storage_id,
+                        paths,
+                        template,
+                        Some(&progress),
+                    )
+                    .await
                 }
                 _ => Err(format!("不支持重跑的任务类型：{kind}")),
             }
-        }.await;
+        }
+        .await;
         let action = match kind.as_str() {
             "cloud_batch_delete" => "批量删除",
             "cloud_batch_move" => "批量移动",
@@ -550,7 +714,11 @@ async fn queue_cloud_batch_task(
     kind: &str,
     payload: Value,
 ) -> CmdResult<String> {
-    let task = state.tasks.create(kind, payload.clone()).await.map_err(|error| error.to_string())?;
+    let task = state
+        .tasks
+        .create(kind, payload.clone())
+        .await
+        .map_err(|error| error.to_string())?;
     let task_id = task.id;
     spawn_cloud_batch_task(app, state.clone(), task_id, kind.to_string(), payload);
     Ok(task_id.to_string())
@@ -564,9 +732,17 @@ pub async fn queue_batch_delete_storage_entries(
     paths: Vec<String>,
 ) -> CmdResult<String> {
     Uuid::parse_str(&storage_id).map_err(|error| error.to_string())?;
-    if paths.is_empty() || paths.len() > 100 { return Err("批量删除需要选择 1-100 个远端文件".into()); }
+    if paths.is_empty() || paths.len() > 100 {
+        return Err("批量删除需要选择 1-100 个远端文件".into());
+    }
     let count = paths.len();
-    queue_cloud_batch_task(app, state.inner(), "cloud_batch_delete", json!({"storageId":storage_id,"count":count,"paths":paths})).await
+    queue_cloud_batch_task(
+        app,
+        state.inner(),
+        "cloud_batch_delete",
+        json!({"storageId":storage_id,"count":count,"paths":paths}),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -578,7 +754,9 @@ pub async fn queue_batch_move_storage_entries(
     destination_dir: String,
 ) -> CmdResult<String> {
     Uuid::parse_str(&storage_id).map_err(|error| error.to_string())?;
-    if paths.is_empty() || paths.len() > 100 { return Err("批量移动需要选择 1-100 个远端文件".into()); }
+    if paths.is_empty() || paths.len() > 100 {
+        return Err("批量移动需要选择 1-100 个远端文件".into());
+    }
     let count = paths.len();
     queue_cloud_batch_task(app, state.inner(), "cloud_batch_move", json!({"storageId":storage_id,"count":count,"paths":paths,"destinationDir":destination_dir})).await
 }
@@ -592,10 +770,20 @@ pub async fn queue_batch_rename_storage_entries(
     template: String,
 ) -> CmdResult<String> {
     Uuid::parse_str(&storage_id).map_err(|error| error.to_string())?;
-    if paths.is_empty() || paths.len() > 100 { return Err("批量重命名需要选择 1-100 个远端文件".into()); }
-    if template.trim().is_empty() { return Err("重命名模板不能为空".into()); }
+    if paths.is_empty() || paths.len() > 100 {
+        return Err("批量重命名需要选择 1-100 个远端文件".into());
+    }
+    if template.trim().is_empty() {
+        return Err("重命名模板不能为空".into());
+    }
     let count = paths.len();
-    queue_cloud_batch_task(app, state.inner(), "cloud_batch_rename", json!({"storageId":storage_id,"count":count,"paths":paths,"template":template})).await
+    queue_cloud_batch_task(
+        app,
+        state.inner(),
+        "cloud_batch_rename",
+        json!({"storageId":storage_id,"count":count,"paths":paths,"template":template}),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -605,11 +793,21 @@ pub async fn cancel_task(
     task_id: String,
 ) -> CmdResult<()> {
     let id = Uuid::parse_str(&task_id).map_err(|error| error.to_string())?;
-    let record = state.tasks.get(id).await.map_err(|error| error.to_string())?.ok_or("Task not found")?;
+    let record = state
+        .tasks
+        .get(id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or("Task not found")?;
     if !record.kind.starts_with("cloud_batch_") {
         return Err("当前版本只允许取消 Cloud Manager 批量任务，避免对尚未支持 cooperative cancellation 的上传任务造成状态不一致。".into());
     }
-    if !state.tasks.cancel(id).await.map_err(|error| error.to_string())? {
+    if !state
+        .tasks
+        .cancel(id)
+        .await
+        .map_err(|error| error.to_string())?
+    {
         return Err("任务已结束，无法取消".into());
     }
     emit_task(&app, id, "cancelled", 100, Some("用户取消任务".into()));
@@ -623,7 +821,12 @@ pub async fn retry_task(
     task_id: String,
 ) -> CmdResult<String> {
     let id = Uuid::parse_str(&task_id).map_err(|error| error.to_string())?;
-    let record = state.tasks.get(id).await.map_err(|error| error.to_string())?.ok_or("Task not found")?;
+    let record = state
+        .tasks
+        .get(id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or("Task not found")?;
     if !record.kind.starts_with("cloud_batch_") {
         return Err("当前版本只支持重试 Cloud Manager 批量任务".into());
     }
@@ -633,9 +836,20 @@ pub async fn retry_task(
     if record.attempt >= record.max_attempts {
         return Err(format!("已达到最大重试次数 {}", record.max_attempts));
     }
-    if !state.tasks.requeue_for_retry(id).await.map_err(|error| error.to_string())? {
+    if !state
+        .tasks
+        .requeue_for_retry(id)
+        .await
+        .map_err(|error| error.to_string())?
+    {
         return Err("任务状态已变化，无法重试".into());
     }
-    spawn_cloud_batch_task(app, state.inner().clone(), id, record.kind, record.payload_json);
+    spawn_cloud_batch_task(
+        app,
+        state.inner().clone(),
+        id,
+        record.kind,
+        record.payload_json,
+    );
     Ok(id.to_string())
 }

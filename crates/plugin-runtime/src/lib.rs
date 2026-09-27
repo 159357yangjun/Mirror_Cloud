@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -105,7 +105,6 @@ fn http_endpoint<'a>(config: &'a Value, key: &str) -> Result<&'a str, PluginErro
     }
 }
 
-
 fn ai_request_body(model: &str, prompt: &str, image_url: &str) -> Value {
     json!({
         "model": model,
@@ -158,7 +157,11 @@ pub async fn execute_for_hook(
         }
         PluginKind::Webhook => {
             require_permission(manifest, granted_permissions, PluginPermission::Network)?;
-            require_permission(manifest, granted_permissions, PluginPermission::ExternalWrite)?;
+            require_permission(
+                manifest,
+                granted_permissions,
+                PluginPermission::ExternalWrite,
+            )?;
             let endpoint = http_endpoint(config, "endpoint")?;
             let response = reqwest::Client::new()
                 .post(endpoint)
@@ -199,7 +202,10 @@ pub async fn execute_for_hook(
                 .replace("{url}", &ctx.public_url);
 
             let mut request = reqwest::Client::new()
-                .post(format!("{}/chat/completions", base_url.trim_end_matches('/')))
+                .post(format!(
+                    "{}/chat/completions",
+                    base_url.trim_end_matches('/')
+                ))
                 .json(&ai_request_body(model, &prompt, &ctx.public_url));
             if let Some(key) = config
                 .get("apiKey")
@@ -257,11 +263,15 @@ mod tests {
             "https://example.com/image.png",
         );
         assert_eq!(
-            payload.pointer("/messages/0/content/1/type").and_then(Value::as_str),
+            payload
+                .pointer("/messages/0/content/1/type")
+                .and_then(Value::as_str),
             Some("image_url")
         );
         assert_eq!(
-            payload.pointer("/messages/0/content/1/image_url/url").and_then(Value::as_str),
+            payload
+                .pointer("/messages/0/content/1/image_url/url")
+                .and_then(Value::as_str),
             Some("https://example.com/image.png")
         );
     }

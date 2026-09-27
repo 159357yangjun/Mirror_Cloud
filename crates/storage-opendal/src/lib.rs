@@ -1,11 +1,11 @@
 use async_trait::async_trait;
 use domain::StorageCapabilities;
-use opendal::{services, Operator};
+use opendal::{Operator, services};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use storage_core::{
     ConnectionReport, StorageEntry, StorageError, StorageProvider, UploadRequest, UploadResult,
 };
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct S3StorageConfig {
@@ -252,7 +252,12 @@ impl StorageProvider for OpenDalStorage {
         self.operator
             .write(&probe_path, probe_body)
             .await
-            .map_err(|error| StorageError::Provider(format!("write permission check failed: {}", map_error(error))))?;
+            .map_err(|error| {
+                StorageError::Provider(format!(
+                    "write permission check failed: {}",
+                    map_error(error)
+                ))
+            })?;
 
         let verified = match self.operator.stat(&probe_path).await {
             Ok(metadata) => metadata,
@@ -271,14 +276,17 @@ impl StorageProvider for OpenDalStorage {
                 verified.content_length()
             )));
         }
-        self.operator
-            .delete(&probe_path)
-            .await
-            .map_err(|error| StorageError::Provider(format!("delete permission check failed: {}", map_error(error))))?;
+        self.operator.delete(&probe_path).await.map_err(|error| {
+            StorageError::Provider(format!(
+                "delete permission check failed: {}",
+                map_error(error)
+            ))
+        })?;
 
         Ok(ConnectionReport {
             reachable: true,
-            detail: "Storage endpoint reachable; write, verify and delete permissions confirmed".into(),
+            detail: "Storage endpoint reachable; write, verify and delete permissions confirmed"
+                .into(),
         })
     }
 

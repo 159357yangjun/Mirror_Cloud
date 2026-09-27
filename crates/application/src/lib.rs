@@ -191,7 +191,6 @@ impl PublisherCore {
     }
 }
 
-
 /// Provider-agnostic cloud file mutation orchestration.
 ///
 /// Tauri/UI code owns persistence and confirmation, while this core owns
@@ -204,7 +203,10 @@ impl CloudMutationCore {
         provider: &dyn StorageProvider,
         path: &str,
     ) -> Result<bool, StorageError> {
-        let parent = path.rsplit_once('/').map(|(parent, _)| parent).unwrap_or("");
+        let parent = path
+            .rsplit_once('/')
+            .map(|(parent, _)| parent)
+            .unwrap_or("");
         let entries = provider.list(parent).await?;
         Ok(entries
             .iter()

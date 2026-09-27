@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use chrono::{Datelike, Utc};
 use domain::{PublishTarget, Workflow, WorkflowStep};
-use image_processing::{process_image, ImageTransformSpec, OutputImageFormat};
+use image_processing::{ImageTransformSpec, OutputImageFormat, process_image};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
@@ -65,7 +65,9 @@ pub fn prepare_asset(
                 quality = *target_quality;
             }
             WorkflowStep::Rename { template } => rename_template = template.clone(),
-            WorkflowStep::Publish { target: publish_target } => target = Some(publish_target.clone()),
+            WorkflowStep::Publish {
+                target: publish_target,
+            } => target = Some(publish_target.clone()),
             WorkflowStep::Output { template } => output_template = Some(template.clone()),
         }
     }

@@ -8,8 +8,8 @@ use domain::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{
-    sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
     Row, SqlitePool,
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
 };
 use uuid::Uuid;
 
@@ -93,18 +93,21 @@ impl StorageRepository {
 
     pub async fn usage_counts(&self, id: Uuid) -> Result<(i64, i64, i64), sqlx::Error> {
         let id_text = id.to_string();
-        let deployments: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM deployments WHERE storage_id=?")
-            .bind(&id_text)
-            .fetch_one(&self.pool)
-            .await?;
-        let groups: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM storage_group_members WHERE storage_id=?")
-            .bind(&id_text)
-            .fetch_one(&self.pool)
-            .await?;
-        let workflows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workflows WHERE steps_json LIKE ?")
-            .bind(format!("%{id_text}%"))
-            .fetch_one(&self.pool)
-            .await?;
+        let deployments: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM deployments WHERE storage_id=?")
+                .bind(&id_text)
+                .fetch_one(&self.pool)
+                .await?;
+        let groups: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM storage_group_members WHERE storage_id=?")
+                .bind(&id_text)
+                .fetch_one(&self.pool)
+                .await?;
+        let workflows: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM workflows WHERE steps_json LIKE ?")
+                .bind(format!("%{id_text}%"))
+                .fetch_one(&self.pool)
+                .await?;
         Ok((deployments, groups, workflows))
     }
 
@@ -241,7 +244,11 @@ impl TaskRepository {
         Ok(matches!(status.as_deref(), Some("cancelled")))
     }
 
-    pub async fn update_running_progress_if_active(&self, id: Uuid, progress: u8) -> Result<bool, sqlx::Error> {
+    pub async fn update_running_progress_if_active(
+        &self,
+        id: Uuid,
+        progress: u8,
+    ) -> Result<bool, sqlx::Error> {
         let now = Utc::now().to_rfc3339();
         let result = sqlx::query("UPDATE tasks SET status='running', progress=?, started_at=COALESCE(started_at, ?) WHERE id=? AND status IN ('queued','preparing','running')")
             .bind(progress.min(99) as i64)
@@ -289,8 +296,6 @@ fn parse_task_record(row: SqliteRow) -> Result<TaskRecord, sqlx::Error> {
         finished_at: finished.as_deref().map(parse_dt).transpose()?,
     })
 }
-
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowRecord {
@@ -350,7 +355,9 @@ impl WorkflowRepository {
         source_recipe: &str,
     ) -> Result<(), sqlx::Error> {
         let mut tx = self.pool.begin().await?;
-        sqlx::query("UPDATE workflows SET is_default=0").execute(&mut *tx).await?;
+        sqlx::query("UPDATE workflows SET is_default=0")
+            .execute(&mut *tx)
+            .await?;
         let now = Utc::now().to_rfc3339();
         let steps = serde_json::to_string(&workflow.steps)
             .map_err(|error| sqlx::Error::Decode(Box::new(error)))?;
@@ -428,8 +435,8 @@ fn parse_workflow_row(row: SqliteRow) -> Result<WorkflowRecord, sqlx::Error> {
     let steps_raw: String = row.try_get("steps_json")?;
     let created_at: String = row.try_get("created_at")?;
     let updated_at: String = row.try_get("updated_at")?;
-    let steps = serde_json::from_str(&steps_raw)
-        .map_err(|error| sqlx::Error::Decode(Box::new(error)))?;
+    let steps =
+        serde_json::from_str(&steps_raw).map_err(|error| sqlx::Error::Decode(Box::new(error)))?;
     Ok(WorkflowRecord {
         workflow: Workflow {
             id: parse_uuid(&id)?,
@@ -544,10 +551,12 @@ impl StorageGroupRepository {
     }
 
     pub async fn get(&self, id: Uuid) -> Result<Option<StorageGroupRecord>, sqlx::Error> {
-        let row = sqlx::query("SELECT id,name,strategy,created_at,updated_at FROM storage_groups WHERE id=?")
-            .bind(id.to_string())
-            .fetch_optional(&self.pool)
-            .await?;
+        let row = sqlx::query(
+            "SELECT id,name,strategy,created_at,updated_at FROM storage_groups WHERE id=?",
+        )
+        .bind(id.to_string())
+        .fetch_optional(&self.pool)
+        .await?;
         let Some(row) = row else { return Ok(None) };
         Ok(Some(self.group_from_row(row).await?))
     }
@@ -658,7 +667,6 @@ pub struct AssetRepairRecord {
     pub content_hash: String,
     pub deployments: Vec<DeploymentLocationRecord>,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssetPluginOutputRecord {
@@ -781,26 +789,33 @@ impl AssetRepository {
                 .bind(&id_raw)
                 .fetch_all(&self.pool)
                 .await?;
-            let plugin_outputs = output_rows.into_iter().map(|output| {
-                let data_raw: String = output.try_get("data_json")?;
-                let created_raw: String = output.try_get("created_at")?;
-                Ok(AssetPluginOutputRecord {
-                    plugin_id: output.try_get("plugin_id")?,
-                    plugin_name: output.try_get("plugin_name")?,
-                    plugin_kind: output.try_get("plugin_kind")?,
-                    text: output.try_get("text")?,
-                    data_json: parse_json(&data_raw)?,
-                    created_at: parse_dt(&created_raw)?,
+            let plugin_outputs = output_rows
+                .into_iter()
+                .map(|output| {
+                    let data_raw: String = output.try_get("data_json")?;
+                    let created_raw: String = output.try_get("created_at")?;
+                    Ok(AssetPluginOutputRecord {
+                        plugin_id: output.try_get("plugin_id")?,
+                        plugin_name: output.try_get("plugin_name")?,
+                        plugin_kind: output.try_get("plugin_kind")?,
+                        text: output.try_get("text")?,
+                        data_json: parse_json(&data_raw)?,
+                        created_at: parse_dt(&created_raw)?,
+                    })
                 })
-            }).collect::<Result<Vec<_>, sqlx::Error>>()?;
+                .collect::<Result<Vec<_>, sqlx::Error>>()?;
             out.push(PublishedAssetRecord {
                 id: parse_uuid(&id_raw)?,
                 name: row.try_get("name")?,
                 variant_id,
                 mime_type: row.try_get("mime_type")?,
                 size_bytes: row.try_get::<i64, _>("size_bytes")? as u64,
-                width: row.try_get::<Option<i64>, _>("width")?.map(|value| value as u32),
-                height: row.try_get::<Option<i64>, _>("height")?.map(|value| value as u32),
+                width: row
+                    .try_get::<Option<i64>, _>("width")?
+                    .map(|value| value as u32),
+                height: row
+                    .try_get::<Option<i64>, _>("height")?
+                    .map(|value| value as u32),
                 content_hash: row.try_get("content_hash")?,
                 created_at: parse_dt(&created)?,
                 deployments,
@@ -810,7 +825,11 @@ impl AssetRepository {
         Ok(out)
     }
 
-    pub async fn replace_plugin_outputs(&self, asset_id: Uuid, outputs: &[AssetPluginOutputRecord]) -> Result<(), sqlx::Error> {
+    pub async fn replace_plugin_outputs(
+        &self,
+        asset_id: Uuid,
+        outputs: &[AssetPluginOutputRecord],
+    ) -> Result<(), sqlx::Error> {
         let mut tx = self.pool.begin().await?;
         sqlx::query("DELETE FROM asset_plugin_outputs WHERE asset_id=?")
             .bind(asset_id.to_string())
@@ -1026,7 +1045,6 @@ fn parse_json(value: &str) -> Result<Value, sqlx::Error> {
     serde_json::from_str(value).map_err(|error| sqlx::Error::Decode(Box::new(error)))
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginRecord {
     pub id: String,
@@ -1055,39 +1073,149 @@ pub struct PluginExecutionLogRecord {
 }
 
 #[derive(Clone)]
-pub struct PluginRepository { pool: SqlitePool }
+pub struct PluginRepository {
+    pool: SqlitePool,
+}
 impl PluginRepository {
-    pub fn new(pool: SqlitePool) -> Self { Self { pool } }
+    pub fn new(pool: SqlitePool) -> Self {
+        Self { pool }
+    }
     pub async fn list(&self) -> Result<Vec<PluginRecord>, sqlx::Error> {
         let rows = sqlx::query("SELECT id,name,version,manifest_json,config_json,granted_permissions_json,enabled_hooks_json,enabled,source,created_at,updated_at FROM plugins ORDER BY created_at DESC").fetch_all(&self.pool).await?;
-        rows.into_iter().map(|row| {
-            let manifest: String=row.try_get("manifest_json")?; let config:String=row.try_get("config_json")?; let grants:String=row.try_get("granted_permissions_json")?; let hooks:String=row.try_get("enabled_hooks_json")?; let created:String=row.try_get("created_at")?; let updated:String=row.try_get("updated_at")?;
-            Ok(PluginRecord { id:row.try_get("id")?, name:row.try_get("name")?, version:row.try_get("version")?, manifest_json:parse_json(&manifest)?, config_json:parse_json(&config)?, granted_permissions_json:parse_json(&grants)?, enabled_hooks_json:parse_json(&hooks)?, enabled:row.try_get::<i64,_>("enabled")? != 0, source:row.try_get("source")?, created_at:parse_dt(&created)?, updated_at:parse_dt(&updated)? })
-        }).collect()
+        rows.into_iter()
+            .map(|row| {
+                let manifest: String = row.try_get("manifest_json")?;
+                let config: String = row.try_get("config_json")?;
+                let grants: String = row.try_get("granted_permissions_json")?;
+                let hooks: String = row.try_get("enabled_hooks_json")?;
+                let created: String = row.try_get("created_at")?;
+                let updated: String = row.try_get("updated_at")?;
+                Ok(PluginRecord {
+                    id: row.try_get("id")?,
+                    name: row.try_get("name")?,
+                    version: row.try_get("version")?,
+                    manifest_json: parse_json(&manifest)?,
+                    config_json: parse_json(&config)?,
+                    granted_permissions_json: parse_json(&grants)?,
+                    enabled_hooks_json: parse_json(&hooks)?,
+                    enabled: row.try_get::<i64, _>("enabled")? != 0,
+                    source: row.try_get("source")?,
+                    created_at: parse_dt(&created)?,
+                    updated_at: parse_dt(&updated)?,
+                })
+            })
+            .collect()
     }
-    pub async fn get(&self, id:&str) -> Result<Option<PluginRecord>, sqlx::Error> {
+    pub async fn get(&self, id: &str) -> Result<Option<PluginRecord>, sqlx::Error> {
         let row=sqlx::query("SELECT id,name,version,manifest_json,config_json,granted_permissions_json,enabled_hooks_json,enabled,source,created_at,updated_at FROM plugins WHERE id=?").bind(id).fetch_optional(&self.pool).await?;
-        row.map(|row| { let manifest:String=row.try_get("manifest_json")?; let config:String=row.try_get("config_json")?; let grants:String=row.try_get("granted_permissions_json")?; let hooks:String=row.try_get("enabled_hooks_json")?; let created:String=row.try_get("created_at")?; let updated:String=row.try_get("updated_at")?; Ok(PluginRecord { id:row.try_get("id")?, name:row.try_get("name")?, version:row.try_get("version")?, manifest_json:parse_json(&manifest)?, config_json:parse_json(&config)?, granted_permissions_json:parse_json(&grants)?, enabled_hooks_json:parse_json(&hooks)?, enabled:row.try_get::<i64,_>("enabled")? != 0, source:row.try_get("source")?, created_at:parse_dt(&created)?, updated_at:parse_dt(&updated)? }) }).transpose()
+        row.map(|row| {
+            let manifest: String = row.try_get("manifest_json")?;
+            let config: String = row.try_get("config_json")?;
+            let grants: String = row.try_get("granted_permissions_json")?;
+            let hooks: String = row.try_get("enabled_hooks_json")?;
+            let created: String = row.try_get("created_at")?;
+            let updated: String = row.try_get("updated_at")?;
+            Ok(PluginRecord {
+                id: row.try_get("id")?,
+                name: row.try_get("name")?,
+                version: row.try_get("version")?,
+                manifest_json: parse_json(&manifest)?,
+                config_json: parse_json(&config)?,
+                granted_permissions_json: parse_json(&grants)?,
+                enabled_hooks_json: parse_json(&hooks)?,
+                enabled: row.try_get::<i64, _>("enabled")? != 0,
+                source: row.try_get("source")?,
+                created_at: parse_dt(&created)?,
+                updated_at: parse_dt(&updated)?,
+            })
+        })
+        .transpose()
     }
-    pub async fn upsert(&self, record:&PluginRecord) -> Result<(), sqlx::Error> {
+    pub async fn upsert(&self, record: &PluginRecord) -> Result<(), sqlx::Error> {
         sqlx::query("INSERT INTO plugins (id,name,version,manifest_json,config_json,granted_permissions_json,enabled_hooks_json,enabled,source,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,version=excluded.version,manifest_json=excluded.manifest_json,config_json=excluded.config_json,granted_permissions_json=excluded.granted_permissions_json,enabled_hooks_json=excluded.enabled_hooks_json,enabled=excluded.enabled,source=excluded.source,updated_at=excluded.updated_at")
-          .bind(&record.id).bind(&record.name).bind(&record.version).bind(record.manifest_json.to_string()).bind(record.config_json.to_string()).bind(record.granted_permissions_json.to_string()).bind(record.enabled_hooks_json.to_string()).bind(if record.enabled {1}else{0}).bind(&record.source).bind(record.created_at.to_rfc3339()).bind(record.updated_at.to_rfc3339()).execute(&self.pool).await?; Ok(())
+          .bind(&record.id).bind(&record.name).bind(&record.version).bind(record.manifest_json.to_string()).bind(record.config_json.to_string()).bind(record.granted_permissions_json.to_string()).bind(record.enabled_hooks_json.to_string()).bind(if record.enabled {1}else{0}).bind(&record.source).bind(record.created_at.to_rfc3339()).bind(record.updated_at.to_rfc3339()).execute(&self.pool).await?;
+        Ok(())
     }
-    pub async fn set_enabled(&self,id:&str,enabled:bool)->Result<(),sqlx::Error>{ sqlx::query("UPDATE plugins SET enabled=?, updated_at=? WHERE id=?").bind(if enabled{1}else{0}).bind(Utc::now().to_rfc3339()).bind(id).execute(&self.pool).await?; Ok(()) }
-    pub async fn set_granted_permissions(&self,id:&str,permissions:&Value)->Result<(),sqlx::Error>{ sqlx::query("UPDATE plugins SET granted_permissions_json=?, updated_at=? WHERE id=?").bind(permissions.to_string()).bind(Utc::now().to_rfc3339()).bind(id).execute(&self.pool).await?; Ok(()) }
-    pub async fn set_config(&self,id:&str,config:&Value)->Result<(),sqlx::Error>{ sqlx::query("UPDATE plugins SET config_json=?, updated_at=? WHERE id=?").bind(config.to_string()).bind(Utc::now().to_rfc3339()).bind(id).execute(&self.pool).await?; Ok(()) }
-    pub async fn set_enabled_hooks(&self,id:&str,hooks:&Value)->Result<(),sqlx::Error>{ sqlx::query("UPDATE plugins SET enabled_hooks_json=?, updated_at=? WHERE id=?").bind(hooks.to_string()).bind(Utc::now().to_rfc3339()).bind(id).execute(&self.pool).await?; Ok(()) }
-    pub async fn delete(&self,id:&str)->Result<(),sqlx::Error>{ sqlx::query("DELETE FROM plugins WHERE id=?").bind(id).execute(&self.pool).await?; Ok(()) }
-    pub async fn record_execution(&self, plugin_id:&str, plugin_name:&str, hook:&str, status:&str, duration_ms:i64, message:Option<&str>) -> Result<(),sqlx::Error> {
+    pub async fn set_enabled(&self, id: &str, enabled: bool) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE plugins SET enabled=?, updated_at=? WHERE id=?")
+            .bind(if enabled { 1 } else { 0 })
+            .bind(Utc::now().to_rfc3339())
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+    pub async fn set_granted_permissions(
+        &self,
+        id: &str,
+        permissions: &Value,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE plugins SET granted_permissions_json=?, updated_at=? WHERE id=?")
+            .bind(permissions.to_string())
+            .bind(Utc::now().to_rfc3339())
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+    pub async fn set_config(&self, id: &str, config: &Value) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE plugins SET config_json=?, updated_at=? WHERE id=?")
+            .bind(config.to_string())
+            .bind(Utc::now().to_rfc3339())
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+    pub async fn set_enabled_hooks(&self, id: &str, hooks: &Value) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE plugins SET enabled_hooks_json=?, updated_at=? WHERE id=?")
+            .bind(hooks.to_string())
+            .bind(Utc::now().to_rfc3339())
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+    pub async fn delete(&self, id: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM plugins WHERE id=?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+    pub async fn record_execution(
+        &self,
+        plugin_id: &str,
+        plugin_name: &str,
+        hook: &str,
+        status: &str,
+        duration_ms: i64,
+        message: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query("INSERT INTO plugin_execution_logs (id,plugin_id,plugin_name,hook,status,duration_ms,message,created_at) VALUES (?,?,?,?,?,?,?,?)")
             .bind(Uuid::new_v4().to_string()).bind(plugin_id).bind(plugin_name).bind(hook).bind(status).bind(duration_ms.max(0)).bind(message).bind(Utc::now().to_rfc3339()).execute(&self.pool).await?;
         Ok(())
     }
-    pub async fn list_execution_logs(&self, limit:i64) -> Result<Vec<PluginExecutionLogRecord>,sqlx::Error> {
+    pub async fn list_execution_logs(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<PluginExecutionLogRecord>, sqlx::Error> {
         let rows=sqlx::query("SELECT id,plugin_id,plugin_name,hook,status,duration_ms,message,created_at FROM plugin_execution_logs ORDER BY created_at DESC LIMIT ?").bind(limit.clamp(1,500)).fetch_all(&self.pool).await?;
-        rows.into_iter().map(|row| {
-            let id:String=row.try_get("id")?; let created:String=row.try_get("created_at")?;
-            Ok(PluginExecutionLogRecord { id:parse_uuid(&id)?, plugin_id:row.try_get("plugin_id")?, plugin_name:row.try_get("plugin_name")?, hook:row.try_get("hook")?, status:row.try_get("status")?, duration_ms:row.try_get("duration_ms")?, message:row.try_get("message")?, created_at:parse_dt(&created)? })
-        }).collect()
+        rows.into_iter()
+            .map(|row| {
+                let id: String = row.try_get("id")?;
+                let created: String = row.try_get("created_at")?;
+                Ok(PluginExecutionLogRecord {
+                    id: parse_uuid(&id)?,
+                    plugin_id: row.try_get("plugin_id")?,
+                    plugin_name: row.try_get("plugin_name")?,
+                    hook: row.try_get("hook")?,
+                    status: row.try_get("status")?,
+                    duration_ms: row.try_get("duration_ms")?,
+                    message: row.try_get("message")?,
+                    created_at: parse_dt(&created)?,
+                })
+            })
+            .collect()
     }
 }

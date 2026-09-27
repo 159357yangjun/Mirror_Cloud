@@ -1,6 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::{env, ffi::OsString, io::Write, path::PathBuf, process::{Command, ExitCode, Stdio}};
+use std::{
+    env,
+    ffi::OsString,
+    io::Write,
+    path::PathBuf,
+    process::{Command, ExitCode, Stdio},
+};
 
 fn main() -> ExitCode {
     let args = env::args_os().skip(1).collect::<Vec<_>>();
@@ -38,7 +44,9 @@ fn run_upload_mode(args: &[OsString], copy_to_clipboard: bool) -> ExitCode {
     }
 
     let Some(data_dir) = data_dir else {
-        eprintln!("Publisher integration is missing --data-dir. Reinstall the integration from Publisher > Settings.");
+        eprintln!(
+            "Publisher integration is missing --data-dir. Reinstall the integration from Publisher > Settings."
+        );
         return ExitCode::from(2);
     };
     if paths.is_empty() {
@@ -46,7 +54,10 @@ fn run_upload_mode(args: &[OsString], copy_to_clipboard: bool) -> ExitCode {
         return ExitCode::from(2);
     }
 
-    let runtime = match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
         Ok(runtime) => runtime,
         Err(error) => {
             eprintln!("Cannot start Publisher runtime: {error}");
@@ -54,7 +65,9 @@ fn run_upload_mode(args: &[OsString], copy_to_clipboard: bool) -> ExitCode {
         }
     };
 
-    match runtime.block_on(multicloud_publisher_desktop_lib::cli::upload_with_default_workflow(&data_dir, &paths)) {
+    match runtime.block_on(
+        multicloud_publisher_desktop_lib::cli::upload_with_default_workflow(&data_dir, &paths),
+    ) {
         Ok(urls) => {
             if copy_to_clipboard {
                 let text = urls.join("\r\n");
@@ -75,7 +88,6 @@ fn run_upload_mode(args: &[OsString], copy_to_clipboard: bool) -> ExitCode {
         }
     }
 }
-
 
 fn write_windows_clipboard(text: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]

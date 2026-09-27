@@ -1,19 +1,19 @@
-mod commands;
 pub mod cli;
+mod commands;
 
 use std::{
     path::PathBuf,
-    sync::{
-        Arc,
-        atomic::AtomicBool,
-    },
+    sync::{Arc, atomic::AtomicBool},
 };
 
 use credential_store::CredentialStore;
-use persistence_sqlite::{AssetRepository, SettingsRepository, StorageGroupRepository, StorageRepository, PluginRepository, TaskRepository, WorkflowRepository};
+use persistence_sqlite::{
+    AssetRepository, PluginRepository, SettingsRepository, StorageGroupRepository,
+    StorageRepository, TaskRepository, WorkflowRepository,
+};
+use task_engine::TaskEngine;
 use tauri::Manager;
 use tokio::sync::RwLock;
-use task_engine::TaskEngine;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -57,8 +57,9 @@ pub fn run() {
             tauri::async_runtime::block_on(task_repo.recover_interrupted())
                 .map_err(|error| std::io::Error::other(error.to_string()))?;
             let credentials = CredentialStore::new("com.multicloud.publisher");
-            let local_api_token = commands::integrations::load_or_create_local_api_token(&credentials)
-                .map_err(std::io::Error::other)?;
+            let local_api_token =
+                commands::integrations::load_or_create_local_api_token(&credentials)
+                    .map_err(std::io::Error::other)?;
             let local_api_token = Arc::new(RwLock::new(local_api_token));
             let local_api_running = Arc::new(AtomicBool::new(false));
             let state = AppState {

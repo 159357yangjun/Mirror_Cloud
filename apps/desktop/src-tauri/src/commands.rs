@@ -11,12 +11,12 @@ use domain::{
     StorageGroupStrategy, Workflow, WorkflowStep,
 };
 use persistence_sqlite::{
-    AssetPluginOutputRecord, PluginRecord,
-    DeploymentWriteRecord, NewStorageGroupMember, PublishedAssetRecord, StorageGroupRecord, StorageRecord, TaskRecord, WorkflowRecord,
+    AssetPluginOutputRecord, DeploymentWriteRecord, NewStorageGroupMember, PluginRecord,
+    PublishedAssetRecord, StorageGroupRecord, StorageRecord, TaskRecord, WorkflowRecord,
 };
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 use plugin_runtime::{PluginContext, PluginHook, PluginManifest, PluginPermission};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use storage_core::{StorageEntry, StorageError, StorageProvider, UploadRequest};
 use storage_gitee::{GiteeCredentials, GiteeStorage, GiteeStorageConfig};
@@ -33,10 +33,10 @@ use workflow_engine::prepare_asset;
 use crate::AppState;
 
 pub(crate) mod integrations;
-pub(crate) mod storage_entries;
 pub(crate) mod plugins;
-pub use storage_entries::*;
+pub(crate) mod storage_entries;
 pub use plugins::*;
+pub use storage_entries::*;
 
 type CmdResult<T> = Result<T, String>;
 const OUTPUT_PREFERENCES_KEY: &str = "output.preferences";
@@ -220,7 +220,6 @@ pub struct TaskView {
     pub error: Option<String>,
 }
 
-
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateStorageGroupMemberInput {
@@ -291,7 +290,6 @@ pub struct AssetView {
     pub deployments: Vec<AssetDeploymentView>,
     pub plugin_outputs: Vec<PluginExecutionView>,
 }
-
 
 #[derive(Debug, Clone)]
 struct RecipeDefinition {
@@ -418,11 +416,14 @@ fn builtin_recipes() -> Vec<RecipeDefinition> {
     ]
 }
 
-
 fn publish_target_to_setting(target: &PublishTarget) -> Value {
     match target {
-        PublishTarget::Storage { storage_id } => json!({"kind":"storage","id":storage_id.to_string()}),
-        PublishTarget::StorageGroup { storage_group_id } => json!({"kind":"group","id":storage_group_id.to_string()}),
+        PublishTarget::Storage { storage_id } => {
+            json!({"kind":"storage","id":storage_id.to_string()})
+        }
+        PublishTarget::StorageGroup { storage_group_id } => {
+            json!({"kind":"group","id":storage_group_id.to_string()})
+        }
     }
 }
 
@@ -435,10 +436,16 @@ fn workflow_publish_target(workflow: &Workflow) -> Option<PublishTarget> {
 
 fn publish_target_matches(left: &PublishTarget, right: &PublishTarget) -> bool {
     match (left, right) {
-        (PublishTarget::Storage { storage_id: a }, PublishTarget::Storage { storage_id: b }) => a == b,
+        (PublishTarget::Storage { storage_id: a }, PublishTarget::Storage { storage_id: b }) => {
+            a == b
+        }
         (
-            PublishTarget::StorageGroup { storage_group_id: a },
-            PublishTarget::StorageGroup { storage_group_id: b },
+            PublishTarget::StorageGroup {
+                storage_group_id: a,
+            },
+            PublishTarget::StorageGroup {
+                storage_group_id: b,
+            },
         ) => a == b,
         _ => false,
     }
@@ -448,7 +455,11 @@ async fn cleanup_legacy_workflows_referencing_target(
     state: &AppState,
     target: &PublishTarget,
 ) -> CmdResult<usize> {
-    let workflows = state.workflows.list().await.map_err(|error| error.to_string())?;
+    let workflows = state
+        .workflows
+        .list()
+        .await
+        .map_err(|error| error.to_string())?;
     let mut removed = 0usize;
     for record in workflows {
         if record.source_recipe.as_deref() == Some(SYSTEM_PIPELINE_SOURCE) {
@@ -471,65 +482,147 @@ async fn cleanup_legacy_workflows_referencing_target(
 
 async fn validate_target_exists(state: &AppState, target: &PublishTarget) -> CmdResult<String> {
     match target {
-        PublishTarget::Storage { storage_id } => state.storages.get(*storage_id).await.map_err(|e|e.to_string())?.map(|v|v.name).ok_or_else(|| "默认上传存储已不存在".into()),
-        PublishTarget::StorageGroup { storage_group_id } => state.groups.get(*storage_group_id).await.map_err(|e|e.to_string())?.map(|v|v.name).ok_or_else(|| "默认多云组已不存在".into()),
+        PublishTarget::Storage { storage_id } => state
+            .storages
+            .get(*storage_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .map(|v| v.name)
+            .ok_or_else(|| "默认上传存储已不存在".into()),
+        PublishTarget::StorageGroup { storage_group_id } => state
+            .groups
+            .get(*storage_group_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .map(|v| v.name)
+            .ok_or_else(|| "默认多云组已不存在".into()),
     }
 }
 
-async fn resolve_default_publish_target(state: &AppState) -> CmdResult<Option<(PublishTarget,String)>> {
-    if let Some(setting) = state.settings.get(DEFAULT_TARGET_KEY).await.map_err(|e|e.to_string())? {
+async fn resolve_default_publish_target(
+    state: &AppState,
+) -> CmdResult<Option<(PublishTarget, String)>> {
+    if let Some(setting) = state
+        .settings
+        .get(DEFAULT_TARGET_KEY)
+        .await
+        .map_err(|e| e.to_string())?
+    {
         let kind = setting.get("kind").and_then(Value::as_str).unwrap_or("");
         let id = setting.get("id").and_then(Value::as_str).unwrap_or("");
         if let Ok(uuid) = Uuid::parse_str(id) {
             let target = match kind {
                 "storage" => Some(PublishTarget::Storage { storage_id: uuid }),
-                "group" => Some(PublishTarget::StorageGroup { storage_group_id: uuid }),
+                "group" => Some(PublishTarget::StorageGroup {
+                    storage_group_id: uuid,
+                }),
                 _ => None,
             };
             if let Some(target) = target {
-                if let Ok(name) = validate_target_exists(state, &target).await { return Ok(Some((target,name))); }
+                if let Ok(name) = validate_target_exists(state, &target).await {
+                    return Ok(Some((target, name)));
+                }
             }
         }
     }
 
-    if let Some(default) = state.workflows.list().await.map_err(|e|e.to_string())?.into_iter().find(|row| row.is_default) {
+    if let Some(default) = state
+        .workflows
+        .list()
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|row| row.is_default)
+    {
         if let Some(target) = workflow_publish_target(&default.workflow) {
             if let Ok(name) = validate_target_exists(state, &target).await {
-                state.settings.set(DEFAULT_TARGET_KEY, &publish_target_to_setting(&target)).await.map_err(|e|e.to_string())?;
-                return Ok(Some((target,name)));
+                state
+                    .settings
+                    .set(DEFAULT_TARGET_KEY, &publish_target_to_setting(&target))
+                    .await
+                    .map_err(|e| e.to_string())?;
+                return Ok(Some((target, name)));
             }
         }
     }
 
-    if let Some(storage) = state.storages.list().await.map_err(|e|e.to_string())?.into_iter().find(|s| s.enabled) {
-        let target = PublishTarget::Storage { storage_id: storage.id };
-        state.settings.set(DEFAULT_TARGET_KEY, &publish_target_to_setting(&target)).await.map_err(|e|e.to_string())?;
-        return Ok(Some((target,storage.name)));
+    if let Some(storage) = state
+        .storages
+        .list()
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|s| s.enabled)
+    {
+        let target = PublishTarget::Storage {
+            storage_id: storage.id,
+        };
+        state
+            .settings
+            .set(DEFAULT_TARGET_KEY, &publish_target_to_setting(&target))
+            .await
+            .map_err(|e| e.to_string())?;
+        return Ok(Some((target, storage.name)));
     }
     Ok(None)
 }
 
-async fn sync_system_default_pipeline(state: &AppState, preferred: Option<PublishTarget>) -> CmdResult<WorkflowRecord> {
+async fn sync_system_default_pipeline(
+    state: &AppState,
+    preferred: Option<PublishTarget>,
+) -> CmdResult<WorkflowRecord> {
     let (target, _) = if let Some(target) = preferred {
         let name = validate_target_exists(state, &target).await?;
-        state.settings.set(DEFAULT_TARGET_KEY, &publish_target_to_setting(&target)).await.map_err(|e|e.to_string())?;
-        (target,name)
+        state
+            .settings
+            .set(DEFAULT_TARGET_KEY, &publish_target_to_setting(&target))
+            .await
+            .map_err(|e| e.to_string())?;
+        (target, name)
     } else {
-        resolve_default_publish_target(state).await?.ok_or("请先连接至少一个云端存储")?
+        resolve_default_publish_target(state)
+            .await?
+            .ok_or("请先连接至少一个云端存储")?
     };
     let workflow = workflow_from_fields(
-        "自动上传链".into(), "webp", 90, Some(1920), Some(1920),
-        "uploads/{year}/{month}/{hash:12}-u{uuid}-{stem}.{ext}", target,
+        "自动上传链".into(),
+        "webp",
+        90,
+        Some(1920),
+        Some(1920),
+        "uploads/{year}/{month}/{hash:12}-u{uuid}-{stem}.{ext}",
+        target,
     )?;
-    state.workflows.upsert_system_default(&workflow, "由 Publisher 自动维护；用户只需要选择默认云端并开关插件。", SYSTEM_PIPELINE_SOURCE).await.map_err(|e|e.to_string())?;
-    state.workflows.list().await.map_err(|e|e.to_string())?.into_iter().find(|row| row.is_default).ok_or_else(|| "默认上传链创建失败".into())
+    state
+        .workflows
+        .upsert_system_default(
+            &workflow,
+            "由 Publisher 自动维护；用户只需要选择默认云端并开关插件。",
+            SYSTEM_PIPELINE_SOURCE,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    state
+        .workflows
+        .list()
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|row| row.is_default)
+        .ok_or_else(|| "默认上传链创建失败".into())
 }
 
-async fn ensure_default_pipeline_after_storage(state: &AppState, storage_id: Uuid) -> CmdResult<()> {
+async fn ensure_default_pipeline_after_storage(
+    state: &AppState,
+    storage_id: Uuid,
+) -> CmdResult<()> {
     match resolve_default_publish_target(state).await {
-        Ok(Some(_)) => { sync_system_default_pipeline(state, None).await?; }
+        Ok(Some(_)) => {
+            sync_system_default_pipeline(state, None).await?;
+        }
         Ok(None) | Err(_) => {
-            sync_system_default_pipeline(state, Some(PublishTarget::Storage { storage_id })).await?;
+            sync_system_default_pipeline(state, Some(PublishTarget::Storage { storage_id }))
+                .await?;
         }
     }
     Ok(())
@@ -543,7 +636,12 @@ async fn persist_new_storage(state: &AppState, record: &StorageRecord) -> CmdRes
         return Err(error.to_string());
     }
     if let Err(error) = ensure_default_pipeline_after_storage(state, record.id).await {
-        let storage_rollback = state.storages.delete(record.id).await.err().map(|value| value.to_string());
+        let storage_rollback = state
+            .storages
+            .delete(record.id)
+            .await
+            .err()
+            .map(|value| value.to_string());
         if let Some(key) = record.credential_ref.as_deref() {
             let _ = state.credentials.delete(key);
         }
@@ -558,21 +656,37 @@ async fn persist_new_storage(state: &AppState, record: &StorageRecord) -> CmdRes
 }
 
 #[tauri::command]
-pub async fn get_default_publish_target(state: State<'_, AppState>) -> CmdResult<Option<DefaultPublishTargetView>> {
-    let Some((target,name)) = resolve_default_publish_target(state.inner()).await? else { return Ok(None) };
-    let (kind,id) = match target {
-        PublishTarget::Storage { storage_id } => ("storage",storage_id.to_string()),
-        PublishTarget::StorageGroup { storage_group_id } => ("group",storage_group_id.to_string()),
+pub async fn get_default_publish_target(
+    state: State<'_, AppState>,
+) -> CmdResult<Option<DefaultPublishTargetView>> {
+    let Some((target, name)) = resolve_default_publish_target(state.inner()).await? else {
+        return Ok(None);
     };
-    Ok(Some(DefaultPublishTargetView { kind: kind.into(), id, name }))
+    let (kind, id) = match target {
+        PublishTarget::Storage { storage_id } => ("storage", storage_id.to_string()),
+        PublishTarget::StorageGroup { storage_group_id } => ("group", storage_group_id.to_string()),
+    };
+    Ok(Some(DefaultPublishTargetView {
+        kind: kind.into(),
+        id,
+        name,
+    }))
 }
 
 #[tauri::command]
-pub async fn set_default_publish_target(state: State<'_, AppState>, target_kind:String, target_id:String) -> CmdResult<DefaultPublishTargetView> {
+pub async fn set_default_publish_target(
+    state: State<'_, AppState>,
+    target_kind: String,
+    target_id: String,
+) -> CmdResult<DefaultPublishTargetView> {
     let target = validate_publish_target(state.inner(), &target_kind, &target_id).await?;
     let name = validate_target_exists(state.inner(), &target).await?;
     sync_system_default_pipeline(state.inner(), Some(target.clone())).await?;
-    Ok(DefaultPublishTargetView { kind: target_kind, id: target_id, name })
+    Ok(DefaultPublishTargetView {
+        kind: target_kind,
+        id: target_id,
+        name,
+    })
 }
 
 #[tauri::command]
@@ -714,10 +828,19 @@ fn normalize_public_base_url(value: Option<&str>) -> CmdResult<String> {
     let value = value
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| "Public URL is required so uploaded images can be viewed by other people".to_string())?;
-    let url = reqwest::Url::parse(value).map_err(|_| "Public URL must be a valid http:// or https:// URL".to_string())?;
-    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() || url.query().is_some() || url.fragment().is_some() {
-        return Err("Public URL must be an http:// or https:// base URL without query or fragment".into());
+        .ok_or_else(|| {
+            "Public URL is required so uploaded images can be viewed by other people".to_string()
+        })?;
+    let url = reqwest::Url::parse(value)
+        .map_err(|_| "Public URL must be a valid http:// or https:// URL".to_string())?;
+    if !matches!(url.scheme(), "http" | "https")
+        || url.host_str().is_none()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(
+            "Public URL must be an http:// or https:// base URL without query or fragment".into(),
+        );
     }
     Ok(value.trim_end_matches('/').to_string())
 }
@@ -749,7 +872,13 @@ pub async fn create_object_storage(
         return Err("Endpoint must start with http:// or https://".into());
     }
     let public_base_url = normalize_public_base_url(input.public_base_url.as_deref())?;
-    let root = input.root.as_deref().unwrap_or_default().trim().trim_matches('/').to_string();
+    let root = input
+        .root
+        .as_deref()
+        .unwrap_or_default()
+        .trim()
+        .trim_matches('/')
+        .to_string();
 
     let (config_json, credential_json, capabilities_json) = match input.provider_key.as_str() {
         "oss" => {
@@ -763,8 +892,12 @@ pub async fn create_object_storage(
                 access_key_id: input.access_key_id.trim().into(),
                 access_key_secret: input.secret_access_key.clone(),
             };
-            let provider = OpenDalStorage::oss(&config, &credentials).map_err(|error| error.to_string())?;
-            provider.test_connection().await.map_err(|error| error.to_string())?;
+            let provider =
+                OpenDalStorage::oss(&config, &credentials).map_err(|error| error.to_string())?;
+            provider
+                .test_connection()
+                .await
+                .map_err(|error| error.to_string())?;
             (
                 serde_json::to_value(config).map_err(|error| error.to_string())?,
                 serde_json::to_value(credentials).map_err(|error| error.to_string())?,
@@ -782,8 +915,12 @@ pub async fn create_object_storage(
                 secret_id: input.access_key_id.trim().into(),
                 secret_key: input.secret_access_key.clone(),
             };
-            let provider = OpenDalStorage::cos(&config, &credentials).map_err(|error| error.to_string())?;
-            provider.test_connection().await.map_err(|error| error.to_string())?;
+            let provider =
+                OpenDalStorage::cos(&config, &credentials).map_err(|error| error.to_string())?;
+            provider
+                .test_connection()
+                .await
+                .map_err(|error| error.to_string())?;
             (
                 serde_json::to_value(config).map_err(|error| error.to_string())?,
                 serde_json::to_value(credentials).map_err(|error| error.to_string())?,
@@ -795,7 +932,10 @@ pub async fn create_object_storage(
 
     let id = Uuid::new_v4();
     let credential_ref = format!("storage:{id}");
-    state.credentials.set_json(&credential_ref, &credential_json).map_err(|error| error.to_string())?;
+    state
+        .credentials
+        .set_json(&credential_ref, &credential_json)
+        .map_err(|error| error.to_string())?;
     let now = Utc::now();
     let record = StorageRecord {
         id,
@@ -826,19 +966,32 @@ pub async fn create_webdav_storage(
     }
     let config = WebDavStorageConfig {
         endpoint: input.endpoint.trim().trim_end_matches('/').into(),
-        root: input.root.as_deref().unwrap_or_default().trim().trim_matches('/').into(),
+        root: input
+            .root
+            .as_deref()
+            .unwrap_or_default()
+            .trim()
+            .trim_matches('/')
+            .into(),
         public_base_url: Some(normalize_public_base_url(input.public_base_url.as_deref())?),
     };
     let credentials = WebDavCredentials {
         username: input.username.trim().into(),
         password: input.password.clone(),
     };
-    let provider = OpenDalStorage::webdav(&config, &credentials).map_err(|error| error.to_string())?;
-    provider.test_connection().await.map_err(|error| error.to_string())?;
+    let provider =
+        OpenDalStorage::webdav(&config, &credentials).map_err(|error| error.to_string())?;
+    provider
+        .test_connection()
+        .await
+        .map_err(|error| error.to_string())?;
 
     let id = Uuid::new_v4();
     let credential_ref = format!("storage:{id}");
-    state.credentials.set_json(&credential_ref, &credentials).map_err(|error| error.to_string())?;
+    state
+        .credentials
+        .set_json(&credential_ref, &credentials)
+        .map_err(|error| error.to_string())?;
     let now = Utc::now();
     let record = StorageRecord {
         id,
@@ -847,7 +1000,8 @@ pub async fn create_webdav_storage(
         category: "protocol".into(),
         credential_ref: Some(credential_ref),
         config_json: serde_json::to_value(&config).map_err(|error| error.to_string())?,
-        capabilities_json: serde_json::to_value(provider.capabilities()).map_err(|error| error.to_string())?,
+        capabilities_json: serde_json::to_value(provider.capabilities())
+            .map_err(|error| error.to_string())?,
         enabled: true,
         created_at: now,
         updated_at: now,
@@ -887,7 +1041,10 @@ fn validate_repository_input(input: &CreateRepositoryStorageInput) -> CmdResult<
         || token.contains("BEGIN OPENSSH")
         || token.contains("BEGIN RSA PRIVATE KEY")
     {
-        return Err("访问令牌填写错误：这里需要 Personal Access Token，不是 SSH 密钥、SSH 指纹或私钥。".into());
+        return Err(
+            "访问令牌填写错误：这里需要 Personal Access Token，不是 SSH 密钥、SSH 指纹或私钥。"
+                .into(),
+        );
     }
     Ok(())
 }
@@ -936,7 +1093,13 @@ pub async fn create_repository_storage(
 ) -> CmdResult<StorageView> {
     validate_repository_input(&input)?;
 
-    let root = input.root.as_deref().unwrap_or_default().trim().trim_matches('/').to_string();
+    let root = input
+        .root
+        .as_deref()
+        .unwrap_or_default()
+        .trim()
+        .trim_matches('/')
+        .to_string();
     let public_base_url = normalize_optional_public_base_url(input.public_base_url.as_deref())?;
 
     let (config_json, credential_json, capabilities_json) = match input.provider_key.as_str() {
@@ -1023,10 +1186,7 @@ pub async fn list_storages(state: State<'_, AppState>) -> CmdResult<Vec<StorageV
 }
 
 #[tauri::command]
-pub async fn delete_storage(
-    state: State<'_, AppState>,
-    storage_id: String,
-) -> CmdResult<()> {
+pub async fn delete_storage(state: State<'_, AppState>, storage_id: String) -> CmdResult<()> {
     let id = Uuid::parse_str(&storage_id).map_err(|error| error.to_string())?;
     let record = state
         .storages
@@ -1053,7 +1213,10 @@ pub async fn delete_storage(
     // Workflows are no longer a user-facing concept. Remove invisible legacy
     // workflows that reference this non-default target instead of leaving
     // dangling JSON references that can fail later through compatibility APIs.
-    if resolve_default_publish_target(state.inner()).await?.is_some() {
+    if resolve_default_publish_target(state.inner())
+        .await?
+        .is_some()
+    {
         sync_system_default_pipeline(state.inner(), None).await?;
     }
     cleanup_legacy_workflows_referencing_target(
@@ -1105,7 +1268,10 @@ pub async fn create_storage_group(
     if name.is_empty() {
         return Err("Storage Group name cannot be empty".into());
     }
-    if !matches!(input.strategy.as_str(), "mirror_all" | "primary_with_backups") {
+    if !matches!(
+        input.strategy.as_str(),
+        "mirror_all" | "primary_with_backups"
+    ) {
         return Err("Unsupported storage group strategy".into());
     }
     if input.members.len() < 2 {
@@ -1176,27 +1342,33 @@ pub async fn list_storage_groups(state: State<'_, AppState>) -> CmdResult<Vec<St
 }
 
 #[tauri::command]
-pub async fn delete_storage_group(
-    state: State<'_, AppState>,
-    group_id: String,
-) -> CmdResult<()> {
+pub async fn delete_storage_group(state: State<'_, AppState>, group_id: String) -> CmdResult<()> {
     let id = Uuid::parse_str(&group_id).map_err(|error| error.to_string())?;
     if let Some((target, _)) = resolve_default_publish_target(state.inner()).await? {
-        if matches!(target, PublishTarget::StorageGroup { storage_group_id } if storage_group_id == id) {
+        if matches!(target, PublishTarget::StorageGroup { storage_group_id } if storage_group_id == id)
+        {
             return Err("该多云组当前是默认上传目标，请先把其他云端设为默认后再删除。".into());
         }
     }
-    if resolve_default_publish_target(state.inner()).await?.is_some() {
+    if resolve_default_publish_target(state.inner())
+        .await?
+        .is_some()
+    {
         sync_system_default_pipeline(state.inner(), None).await?;
     }
     cleanup_legacy_workflows_referencing_target(
         state.inner(),
-        &PublishTarget::StorageGroup { storage_group_id: id },
+        &PublishTarget::StorageGroup {
+            storage_group_id: id,
+        },
     )
     .await?;
-    state.groups.delete(id).await.map_err(|error| error.to_string())
+    state
+        .groups
+        .delete(id)
+        .await
+        .map_err(|error| error.to_string())
 }
-
 
 #[tauri::command]
 pub fn list_recipes() -> Vec<RecipeView> {
@@ -1310,7 +1482,10 @@ pub async fn create_custom_workflow(
 
 #[tauri::command]
 pub async fn list_workflows(state: State<'_, AppState>) -> CmdResult<Vec<WorkflowView>> {
-    if resolve_default_publish_target(state.inner()).await?.is_some() {
+    if resolve_default_publish_target(state.inner())
+        .await?
+        .is_some()
+    {
         sync_system_default_pipeline(state.inner(), None).await?;
     }
     let records = state
@@ -1348,10 +1523,7 @@ pub async fn set_default_workflow(
 }
 
 #[tauri::command]
-pub async fn delete_workflow(
-    state: State<'_, AppState>,
-    workflow_id: String,
-) -> CmdResult<()> {
+pub async fn delete_workflow(state: State<'_, AppState>, workflow_id: String) -> CmdResult<()> {
     let id = Uuid::parse_str(&workflow_id).map_err(|error| error.to_string())?;
     state
         .workflows
@@ -1442,7 +1614,8 @@ pub async fn publish_urls_with_workflow(
     // invalid URL could make the command return Err after earlier uploads have
     // already started, leaving the UI unaware of those background tasks.
     for url in &urls {
-        let parsed = reqwest::Url::parse(url).map_err(|error| format!("无效 URL {url}: {error}"))?;
+        let parsed =
+            reqwest::Url::parse(url).map_err(|error| format!("无效 URL {url}: {error}"))?;
         if !matches!(parsed.scheme(), "http" | "https") {
             return Err("URL 仅支持 http:// 或 https://".into());
         }
@@ -1499,15 +1672,16 @@ pub async fn publish_clipboard_image_with_workflow(
     // on Linux if it is accessed from the UI/main thread. Only the owned RGBA bytes
     // cross back into the async task; no large pixel array crosses Tauri IPC.
     let clipboard_app = app.clone();
-    let (rgba, width, height) = tokio::task::spawn_blocking(move || -> CmdResult<(Vec<u8>, u32, u32)> {
-        let image = clipboard_app
-            .clipboard()
-            .read_image()
-            .map_err(|_| "剪贴板中没有可读取的图片".to_string())?;
-        Ok((image.rgba().to_vec(), image.width(), image.height()))
-    })
-    .await
-    .map_err(|error| format!("读取剪贴板任务失败: {error}"))??;
+    let (rgba, width, height) =
+        tokio::task::spawn_blocking(move || -> CmdResult<(Vec<u8>, u32, u32)> {
+            let image = clipboard_app
+                .clipboard()
+                .read_image()
+                .map_err(|_| "剪贴板中没有可读取的图片".to_string())?;
+            Ok((image.rgba().to_vec(), image.width(), image.height()))
+        })
+        .await
+        .map_err(|error| format!("读取剪贴板任务失败: {error}"))??;
 
     if width == 0 || height == 0 {
         return Err("剪贴板图片尺寸无效".into());
@@ -1516,9 +1690,7 @@ pub async fn publish_clipboard_image_with_workflow(
     if pixel_count > 32_000_000 {
         return Err("剪贴板图片超过 3200 万像素限制".into());
     }
-    let expected = pixel_count
-        .checked_mul(4)
-        .ok_or("剪贴板图片尺寸过大")? as usize;
+    let expected = pixel_count.checked_mul(4).ok_or("剪贴板图片尺寸过大")? as usize;
     if rgba.len() != expected {
         return Err("剪贴板图片数据长度与尺寸不匹配".into());
     }
@@ -1547,16 +1719,8 @@ pub async fn publish_clipboard_image_with_workflow(
             emit_task(&app, task_id, "failed", 100, Some(error));
             return;
         };
-        run_clipboard_workflow_publish_task(
-            app,
-            app_state,
-            workflow,
-            rgba,
-            width,
-            height,
-            task_id,
-        )
-        .await;
+        run_clipboard_workflow_publish_task(app, app_state, workflow, rgba, width, height, task_id)
+            .await;
     });
     Ok(task_id.to_string())
 }
@@ -1641,7 +1805,10 @@ async fn run_url_workflow_publish_task(
             .error_for_status()
             .map_err(|error| format!("远端服务器拒绝请求: {error}"))?;
         const MAX_REMOTE_BYTES: u64 = 32 * 1024 * 1024;
-        if response.content_length().is_some_and(|size| size > MAX_REMOTE_BYTES) {
+        if response
+            .content_length()
+            .is_some_and(|size| size > MAX_REMOTE_BYTES)
+        {
             return Err("远端图片超过 32 MB 限制".into());
         }
         let content_type = response
@@ -1953,23 +2120,47 @@ pub async fn publish_files(
     Ok(task_ids)
 }
 
-
 async fn load_ai_settings(state: &AppState) -> CmdResult<Value> {
-    let mut settings = state.settings.get(AI_SETTINGS_KEY).await.map_err(|e|e.to_string())?
+    let mut settings = state
+        .settings
+        .get(AI_SETTINGS_KEY)
+        .await
+        .map_err(|e| e.to_string())?
         .unwrap_or(json!({"baseUrl":"https://api.openai.com/v1","model":""}));
-    let legacy_key = settings.get("apiKey").and_then(Value::as_str).filter(|v| !v.is_empty()).map(str::to_string);
+    let legacy_key = settings
+        .get("apiKey")
+        .and_then(Value::as_str)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string);
     if let Some(legacy_key) = legacy_key {
-        state.credentials.set_json(AI_CREDENTIAL_KEY, &legacy_key).map_err(|e|e.to_string())?;
-        if let Some(obj) = settings.as_object_mut() { obj.remove("apiKey"); }
-        state.settings.set(AI_SETTINGS_KEY, &settings).await.map_err(|e|e.to_string())?;
+        state
+            .credentials
+            .set_json(AI_CREDENTIAL_KEY, &legacy_key)
+            .map_err(|e| e.to_string())?;
+        if let Some(obj) = settings.as_object_mut() {
+            obj.remove("apiKey");
+        }
+        state
+            .settings
+            .set(AI_SETTINGS_KEY, &settings)
+            .await
+            .map_err(|e| e.to_string())?;
     }
-    let key = state.credentials.get_json::<String>(AI_CREDENTIAL_KEY).unwrap_or_default();
-    if let Some(obj) = settings.as_object_mut() { obj.insert("apiKey".into(), Value::String(key)); }
+    let key = state
+        .credentials
+        .get_json::<String>(AI_CREDENTIAL_KEY)
+        .unwrap_or_default();
+    if let Some(obj) = settings.as_object_mut() {
+        obj.insert("apiKey".into(), Value::String(key));
+    }
     Ok(settings)
 }
 
 #[derive(Default)]
-struct PluginRunSummary { outputs: Vec<PluginExecutionView>, failures: Vec<String> }
+struct PluginRunSummary {
+    outputs: Vec<PluginExecutionView>,
+    failures: Vec<String>,
+}
 
 fn plugin_hook_key(hook: PluginHook) -> String {
     serde_json::to_value(hook)
@@ -1992,7 +2183,12 @@ async fn run_enabled_plugins_for_hook(
 ) -> PluginRunSummary {
     let rows = match state.plugins.list().await {
         Ok(rows) => rows,
-        Err(error) => return PluginRunSummary { outputs: Vec::new(), failures: vec![format!("插件列表读取失败: {error}")] },
+        Err(error) => {
+            return PluginRunSummary {
+                outputs: Vec::new(),
+                failures: vec![format!("插件列表读取失败: {error}")],
+            };
+        }
     };
     let ai_settings = load_ai_settings(state).await.ok();
     let mut summary = PluginRunSummary::default();
@@ -2000,7 +2196,9 @@ async fn run_enabled_plugins_for_hook(
         let manifest = match plugins::effective_manifest(&row) {
             Ok(manifest) => manifest,
             Err(error) => {
-                summary.failures.push(format!("{}: Manifest 无效 ({error})", row.name));
+                summary
+                    .failures
+                    .push(format!("{}: Manifest 无效 ({error})", row.name));
                 continue;
             }
         };
@@ -2008,13 +2206,21 @@ async fn run_enabled_plugins_for_hook(
         if !enabled_hooks.contains(&hook) {
             continue;
         }
-        let granted_permissions: Vec<PluginPermission> = serde_json::from_value(row.granted_permissions_json.clone()).unwrap_or_default();
+        let granted_permissions: Vec<PluginPermission> =
+            serde_json::from_value(row.granted_permissions_json.clone()).unwrap_or_default();
         let mut config = row.config_json.clone();
         if matches!(manifest.kind, plugin_runtime::PluginKind::AiPrompt) {
             if let (Some(ai), Some(obj)) = (ai_settings.as_ref(), config.as_object_mut()) {
                 for key in ["baseUrl", "model", "apiKey"] {
-                    if obj.get(key).and_then(Value::as_str).unwrap_or("").is_empty() {
-                        if let Some(value) = ai.get(key) { obj.insert(key.into(), value.clone()); }
+                    if obj
+                        .get(key)
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .is_empty()
+                    {
+                        if let Some(value) = ai.get(key) {
+                            obj.insert(key.into(), value.clone());
+                        }
                     }
                 }
             }
@@ -2026,10 +2232,28 @@ async fn run_enabled_plugins_for_hook(
             metadata: metadata.clone(),
         };
         let started = std::time::Instant::now();
-        match plugin_runtime::execute_for_hook(&manifest, &granted_permissions, &config, &context, hook).await {
+        match plugin_runtime::execute_for_hook(
+            &manifest,
+            &granted_permissions,
+            &config,
+            &context,
+            hook,
+        )
+        .await
+        {
             Ok(output) => {
                 let duration_ms = started.elapsed().as_millis().min(i64::MAX as u128) as i64;
-                let _ = state.plugins.record_execution(&manifest.id, &manifest.name, &plugin_hook_key(hook), "success", duration_ms, None).await;
+                let _ = state
+                    .plugins
+                    .record_execution(
+                        &manifest.id,
+                        &manifest.name,
+                        &plugin_hook_key(hook),
+                        "success",
+                        duration_ms,
+                        None,
+                    )
+                    .await;
                 summary.outputs.push(PluginExecutionView {
                     plugin_id: manifest.id.clone(),
                     plugin_name: manifest.name.clone(),
@@ -2042,8 +2266,20 @@ async fn run_enabled_plugins_for_hook(
                 let message = error.to_string();
                 let audit_message = truncate_plugin_log_message(&message);
                 let duration_ms = started.elapsed().as_millis().min(i64::MAX as u128) as i64;
-                let _ = state.plugins.record_execution(&manifest.id, &manifest.name, &plugin_hook_key(hook), "failed", duration_ms, Some(&audit_message)).await;
-                summary.failures.push(format!("{}: {message}", manifest.name));
+                let _ = state
+                    .plugins
+                    .record_execution(
+                        &manifest.id,
+                        &manifest.name,
+                        &plugin_hook_key(hook),
+                        "failed",
+                        duration_ms,
+                        Some(&audit_message),
+                    )
+                    .await;
+                summary
+                    .failures
+                    .push(format!("{}: {message}", manifest.name));
             }
         }
     }
@@ -2070,7 +2306,6 @@ async fn run_enabled_plugins_for_asset(
     .await
 }
 
-
 async fn run_gallery_delete_plugins(state: &AppState, storage_id: Uuid, remote_path: &str) {
     let name = remote_path.rsplit('/').next().unwrap_or(remote_path);
     let summary = run_enabled_plugins_for_hook(
@@ -2087,18 +2322,28 @@ async fn run_gallery_delete_plugins(state: &AppState, storage_id: Uuid, remote_p
     }
 }
 
-async fn persist_plugin_outputs(state: &AppState, asset_id: Uuid, outputs: &[PluginExecutionView]) -> CmdResult<()> {
-    let records = outputs.iter().map(|output| AssetPluginOutputRecord {
-        plugin_id: output.plugin_id.clone(),
-        plugin_name: output.plugin_name.clone(),
-        plugin_kind: output.plugin_kind.clone(),
-        text: output.text.clone(),
-        data_json: output.data.clone(),
-        created_at: Utc::now(),
-    }).collect::<Vec<_>>();
-    state.assets.replace_plugin_outputs(asset_id, &records).await.map_err(|e|e.to_string())
+async fn persist_plugin_outputs(
+    state: &AppState,
+    asset_id: Uuid,
+    outputs: &[PluginExecutionView],
+) -> CmdResult<()> {
+    let records = outputs
+        .iter()
+        .map(|output| AssetPluginOutputRecord {
+            plugin_id: output.plugin_id.clone(),
+            plugin_name: output.plugin_name.clone(),
+            plugin_kind: output.plugin_kind.clone(),
+            text: output.text.clone(),
+            data_json: output.data.clone(),
+            created_at: Utc::now(),
+        })
+        .collect::<Vec<_>>();
+    state
+        .assets
+        .replace_plugin_outputs(asset_id, &records)
+        .await
+        .map_err(|e| e.to_string())
 }
-
 
 async fn run_workflow_publish_task(
     app: AppHandle,
@@ -2145,7 +2390,8 @@ async fn run_workflow_publish_task(
             None,
             &mime_type,
             json!({"source":"publish","path":path.to_string_lossy(),"taskId":task_id.to_string()}),
-        ).await;
+        )
+        .await;
 
         let processing_workflow = workflow.clone();
         let processing_file_name = file_name.clone();
@@ -2183,7 +2429,8 @@ async fn run_workflow_publish_task(
                 "height":prepared.height,
                 "sizeBytes":prepared.body.len()
             }),
-        ).await;
+        )
+        .await;
 
         let outcomes = match prepared.target.clone() {
             PublishTarget::Storage { storage_id } => {
@@ -2235,7 +2482,10 @@ async fn run_workflow_publish_task(
             .map_err(|error| error.to_string())?;
         emit_task(&app, task_id, "running", 82, None);
 
-        let success_count = outcomes.iter().filter(|outcome| outcome.error.is_none()).count();
+        let success_count = outcomes
+            .iter()
+            .filter(|outcome| outcome.error.is_none())
+            .count();
         if success_count == 0 {
             let errors = outcomes
                 .iter()
@@ -2300,7 +2550,10 @@ async fn run_workflow_publish_task(
             if rollback_failures.is_empty() {
                 message.push_str("；已回滚本次成功上传的远端文件");
             } else {
-                message.push_str(&format!("；部分远端回滚失败，可能存在孤儿文件：{}", rollback_failures.join(" | ")));
+                message.push_str(&format!(
+                    "；部分远端回滚失败，可能存在孤儿文件：{}",
+                    rollback_failures.join(" | ")
+                ));
             }
             return Err(message);
         }
@@ -2314,14 +2567,13 @@ async fn run_workflow_publish_task(
                     .find(|outcome| outcome.error.is_none())
                     .and_then(|outcome| outcome.public_url.as_deref())
             });
-        let mut plugin_run = run_enabled_plugins_for_asset(
-            &state,
-            &asset.name,
-            published_url,
-            &variant.mime_type,
-        ).await;
+        let mut plugin_run =
+            run_enabled_plugins_for_asset(&state, &asset.name, published_url, &variant.mime_type)
+                .await;
         if let Err(error) = persist_plugin_outputs(&state, asset.id, &plugin_run.outputs).await {
-            plugin_run.failures.push(format!("插件结果保存失败：{error}"));
+            plugin_run
+                .failures
+                .push(format!("插件结果保存失败：{error}"));
         }
         emit_asset_published(&app, &asset.name, published_url, &plugin_run.outputs);
         let mut plugin_failures = plugin_run.failures;
@@ -2345,8 +2597,12 @@ async fn run_workflow_publish_task(
                 .map_err(|error| error.to_string())?;
         } else {
             let mut notes = Vec::new();
-            if !failures.is_empty() { notes.push(format!("部分云端失败：{}", failures.join(" | "))); }
-            if !plugin_failures.is_empty() { notes.push(format!("插件执行失败：{}", plugin_failures.join(" | "))); }
+            if !failures.is_empty() {
+                notes.push(format!("部分云端失败：{}", failures.join(" | ")));
+            }
+            if !plugin_failures.is_empty() {
+                notes.push(format!("插件执行失败：{}", plugin_failures.join(" | ")));
+            }
             state
                 .tasks
                 .complete_with_note(task_id, notes.join("；"))
@@ -2548,7 +2804,6 @@ async fn run_publish_task(
     }
 }
 
-
 type GroupUploadOutcome = application::PublishOutcome;
 
 fn is_safe_compensation_path(path: &str) -> bool {
@@ -2556,11 +2811,16 @@ fn is_safe_compensation_path(path: &str) -> bool {
         .any(|segment| {
             segment.len() == 33
                 && segment.starts_with('u')
-                && segment[1..].chars().all(|character| character.is_ascii_hexdigit())
+                && segment[1..]
+                    .chars()
+                    .all(|character| character.is_ascii_hexdigit())
         })
 }
 
-async fn rollback_successful_uploads(state: &AppState, outcomes: &[GroupUploadOutcome]) -> Vec<String> {
+async fn rollback_successful_uploads(
+    state: &AppState,
+    outcomes: &[GroupUploadOutcome],
+) -> Vec<String> {
     let mut failures = Vec::new();
     for outcome in outcomes.iter().filter(|outcome| outcome.error.is_none()) {
         if !is_safe_compensation_path(&outcome.remote_path) {
@@ -2573,23 +2833,35 @@ async fn rollback_successful_uploads(state: &AppState, outcomes: &[GroupUploadOu
         let storage = match state.storages.get(outcome.storage_id).await {
             Ok(Some(storage)) => storage,
             Ok(None) => {
-                failures.push(format!("{}: storage no longer exists", outcome.storage_name));
+                failures.push(format!(
+                    "{}: storage no longer exists",
+                    outcome.storage_name
+                ));
                 continue;
             }
             Err(error) => {
-                failures.push(format!("{}: cannot reload storage for rollback: {error}", outcome.storage_name));
+                failures.push(format!(
+                    "{}: cannot reload storage for rollback: {error}",
+                    outcome.storage_name
+                ));
                 continue;
             }
         };
         let provider = match build_provider(state, &storage) {
             Ok(provider) => provider,
             Err(error) => {
-                failures.push(format!("{}: cannot rebuild provider for rollback: {error}", outcome.storage_name));
+                failures.push(format!(
+                    "{}: cannot rebuild provider for rollback: {error}",
+                    outcome.storage_name
+                ));
                 continue;
             }
         };
         if let Err(error) = provider.delete(&outcome.remote_path).await {
-            failures.push(format!("{}: rollback delete failed: {error}", outcome.storage_name));
+            failures.push(format!(
+                "{}: rollback delete failed: {error}",
+                outcome.storage_name
+            ));
         }
     }
     failures
@@ -2617,9 +2889,8 @@ async fn publish_group_bytes(
             .await
             .map_err(|error| error.to_string())?
         {
-            Some(storage) => build_provider(state, &storage).map_err(|error| {
-                format!("Cannot initialize {}: {error}", member.storage_name)
-            }),
+            Some(storage) => build_provider(state, &storage)
+                .map_err(|error| format!("Cannot initialize {}: {error}", member.storage_name)),
             None => Err("Storage no longer exists".to_string()),
         };
         members.push(PublishMember {
@@ -2671,10 +2942,7 @@ async fn run_group_publish_task(
         let content_hash = hex::encode(Sha256::digest(bytes.as_ref()));
         let safe_name = sanitize_filename(&file_name);
         let date = Utc::now().format("%Y/%m");
-        let remote_path = format!(
-            "uploads/{date}/u{}-{safe_name}",
-            Uuid::new_v4().simple()
-        );
+        let remote_path = format!("uploads/{date}/u{}-{safe_name}", Uuid::new_v4().simple());
 
         state
             .tasks
@@ -2699,7 +2967,10 @@ async fn run_group_publish_task(
             .map_err(|error| error.to_string())?;
         emit_task(&app, task_id, "running", 82, None);
 
-        let success_count = outcomes.iter().filter(|outcome| outcome.error.is_none()).count();
+        let success_count = outcomes
+            .iter()
+            .filter(|outcome| outcome.error.is_none())
+            .count();
         if success_count == 0 {
             let errors = outcomes
                 .iter()
@@ -2764,7 +3035,10 @@ async fn run_group_publish_task(
             if rollback_failures.is_empty() {
                 message.push_str("；已回滚本次成功上传的远端文件");
             } else {
-                message.push_str(&format!("；部分远端回滚失败，可能存在孤儿文件：{}", rollback_failures.join(" | ")));
+                message.push_str(&format!(
+                    "；部分远端回滚失败，可能存在孤儿文件：{}",
+                    rollback_failures.join(" | ")
+                ));
             }
             return Err(message);
         }
@@ -2778,14 +3052,13 @@ async fn run_group_publish_task(
                     .find(|outcome| outcome.error.is_none())
                     .and_then(|outcome| outcome.public_url.as_deref())
             });
-        let mut plugin_run = run_enabled_plugins_for_asset(
-            &state,
-            &asset.name,
-            published_url,
-            &variant.mime_type,
-        ).await;
+        let mut plugin_run =
+            run_enabled_plugins_for_asset(&state, &asset.name, published_url, &variant.mime_type)
+                .await;
         if let Err(error) = persist_plugin_outputs(&state, asset.id, &plugin_run.outputs).await {
-            plugin_run.failures.push(format!("插件结果保存失败：{error}"));
+            plugin_run
+                .failures
+                .push(format!("插件结果保存失败：{error}"));
         }
         emit_asset_published(&app, &asset.name, published_url, &plugin_run.outputs);
         let plugin_failures = plugin_run.failures;
@@ -2807,8 +3080,15 @@ async fn run_group_publish_task(
                 .map_err(|error| error.to_string())?;
         } else {
             let mut notes = Vec::new();
-            if !failures.is_empty() { notes.push(format!("部分云端失败，可在资源页一键修复：{}", failures.join(" | "))); }
-            if !plugin_failures.is_empty() { notes.push(format!("插件执行失败：{}", plugin_failures.join(" | "))); }
+            if !failures.is_empty() {
+                notes.push(format!(
+                    "部分云端失败，可在资源页一键修复：{}",
+                    failures.join(" | ")
+                ));
+            }
+            if !plugin_failures.is_empty() {
+                notes.push(format!("插件执行失败：{}", plugin_failures.join(" | ")));
+            }
             state
                 .tasks
                 .complete_with_note(task_id, notes.join("；"))
@@ -3139,7 +3419,11 @@ async fn run_delete_task(app: AppHandle, state: AppState, asset_id: Uuid, task_i
                     .await
                     .map_err(|error| error.to_string())?;
                 let progress = 10 + (((index + 1) * 80) / total) as u8;
-                state.tasks.mark_running(task_id, progress).await.map_err(|error| error.to_string())?;
+                state
+                    .tasks
+                    .mark_running(task_id, progress)
+                    .await
+                    .map_err(|error| error.to_string())?;
                 emit_task(&app, task_id, "running", progress, None);
                 continue;
             }
@@ -3152,10 +3436,16 @@ async fn run_delete_task(app: AppHandle, state: AppState, asset_id: Uuid, task_i
             {
                 Some(storage) => storage,
                 None => {
-                    failures.push(format!("Storage {} no longer exists", deployment.storage_id));
+                    failures.push(format!(
+                        "Storage {} no longer exists",
+                        deployment.storage_id
+                    ));
                     state
                         .assets
-                        .update_deployment_status(deployment.deployment_id, DeploymentStatus::Failed)
+                        .update_deployment_status(
+                            deployment.deployment_id,
+                            DeploymentStatus::Failed,
+                        )
                         .await
                         .map_err(|error| error.to_string())?;
                     continue;
@@ -3168,7 +3458,10 @@ async fn run_delete_task(app: AppHandle, state: AppState, asset_id: Uuid, task_i
                     failures.push(format!("{}: {error}", storage.name));
                     state
                         .assets
-                        .update_deployment_status(deployment.deployment_id, DeploymentStatus::Failed)
+                        .update_deployment_status(
+                            deployment.deployment_id,
+                            DeploymentStatus::Failed,
+                        )
                         .await
                         .map_err(|db_error| db_error.to_string())?;
                     continue;
@@ -3237,7 +3530,10 @@ async fn run_delete_task(app: AppHandle, state: AppState, asset_id: Uuid, task_i
 }
 
 #[tauri::command]
-pub async fn list_tasks(state: State<'_, AppState>, limit: Option<i64>) -> CmdResult<Vec<TaskView>> {
+pub async fn list_tasks(
+    state: State<'_, AppState>,
+    limit: Option<i64>,
+) -> CmdResult<Vec<TaskView>> {
     let limit = limit.unwrap_or(100).clamp(20, 10_000);
     Ok(state
         .tasks
@@ -3250,7 +3546,10 @@ pub async fn list_tasks(state: State<'_, AppState>, limit: Option<i64>) -> CmdRe
 }
 
 #[tauri::command]
-pub async fn list_assets(state: State<'_, AppState>, limit: Option<i64>) -> CmdResult<Vec<AssetView>> {
+pub async fn list_assets(
+    state: State<'_, AppState>,
+    limit: Option<i64>,
+) -> CmdResult<Vec<AssetView>> {
     let limit = limit.unwrap_or(200).clamp(20, 10_000);
     Ok(state
         .assets
@@ -3293,7 +3592,14 @@ async fn preflight_workflow_target(state: &AppState, workflow: &Workflow) -> Cmd
                 .ok_or("Workflow Storage Group no longer exists")?;
             let mut viable = 0usize;
             for member in &group.members {
-                let Some(storage) = state.storages.get(member.storage_id).await.map_err(|e| e.to_string())? else { continue; };
+                let Some(storage) = state
+                    .storages
+                    .get(member.storage_id)
+                    .await
+                    .map_err(|e| e.to_string())?
+                else {
+                    continue;
+                };
                 if build_provider(state, &storage).is_ok() {
                     viable += 1;
                 }
@@ -3483,22 +3789,26 @@ fn storage_entry_view(entry: StorageEntry) -> StorageEntryView {
     }
 }
 
-fn emit_asset_published(app: &AppHandle, name: &str, public_url: Option<&str>, plugin_outputs: &[PluginExecutionView]) {
-    let Some(public_url) = public_url.filter(|value| !value.trim().is_empty()) else { return; };
-    let _ = app.emit("asset://published", json!({
-        "name": name,
-        "publicUrl": public_url,
-        "pluginOutputs": plugin_outputs
-    }));
+fn emit_asset_published(
+    app: &AppHandle,
+    name: &str,
+    public_url: Option<&str>,
+    plugin_outputs: &[PluginExecutionView],
+) {
+    let Some(public_url) = public_url.filter(|value| !value.trim().is_empty()) else {
+        return;
+    };
+    let _ = app.emit(
+        "asset://published",
+        json!({
+            "name": name,
+            "publicUrl": public_url,
+            "pluginOutputs": plugin_outputs
+        }),
+    );
 }
 
-fn emit_task(
-    app: &AppHandle,
-    id: Uuid,
-    status: &str,
-    progress: u8,
-    error: Option<String>,
-) {
+fn emit_task(app: &AppHandle, id: Uuid, status: &str, progress: u8, error: Option<String>) {
     let _ = app.emit(
         "task://updated",
         json!({
@@ -3559,8 +3869,16 @@ fn task_view(record: TaskRecord) -> TaskView {
                 .get("workflowName")
                 .and_then(Value::as_str)
                 .unwrap_or("方案");
-            let width = record.payload_json.get("width").and_then(Value::as_u64).unwrap_or(0);
-            let height = record.payload_json.get("height").and_then(Value::as_u64).unwrap_or(0);
+            let width = record
+                .payload_json
+                .get("width")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            let height = record
+                .payload_json
+                .get("height")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
             (format!("剪贴板发布 {width}×{height}"), workflow.into())
         }
         "workflow_publish" => {
@@ -3581,18 +3899,51 @@ fn task_view(record: TaskRecord) -> TaskView {
             (format!("方案发布 {name}"), workflow.into())
         }
         "cloud_batch_delete" => {
-            let count = record.payload_json.get("count").and_then(Value::as_u64).unwrap_or(0);
-            (format!("批量删除 {count} 个云端文件"), "Cloud Manager 后台任务".into())
+            let count = record
+                .payload_json
+                .get("count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            (
+                format!("批量删除 {count} 个云端文件"),
+                "Cloud Manager 后台任务".into(),
+            )
         }
         "cloud_batch_move" => {
-            let count = record.payload_json.get("count").and_then(Value::as_u64).unwrap_or(0);
-            let destination = record.payload_json.get("destinationDir").and_then(Value::as_str).unwrap_or("");
-            (format!("批量移动 {count} 个云端文件"), if destination.is_empty() { "移动到根目录".into() } else { format!("目标目录：{destination}") })
+            let count = record
+                .payload_json
+                .get("count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            let destination = record
+                .payload_json
+                .get("destinationDir")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            (
+                format!("批量移动 {count} 个云端文件"),
+                if destination.is_empty() {
+                    "移动到根目录".into()
+                } else {
+                    format!("目标目录：{destination}")
+                },
+            )
         }
         "cloud_batch_rename" => {
-            let count = record.payload_json.get("count").and_then(Value::as_u64).unwrap_or(0);
-            let template = record.payload_json.get("template").and_then(Value::as_str).unwrap_or("");
-            (format!("批量重命名 {count} 个云端文件"), format!("模板：{template}"))
+            let count = record
+                .payload_json
+                .get("count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            let template = record
+                .payload_json
+                .get("template")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            (
+                format!("批量重命名 {count} 个云端文件"),
+                format!("模板：{template}"),
+            )
         }
         "typora_publish" => {
             let path = record
@@ -3647,7 +3998,11 @@ fn task_view(record: TaskRecord) -> TaskView {
         }
     };
     let supports_control = record.kind.starts_with("cloud_batch_");
-    let can_cancel = supports_control && matches!(record.status.as_str(), "queued" | "preparing" | "running" | "paused");
+    let can_cancel = supports_control
+        && matches!(
+            record.status.as_str(),
+            "queued" | "preparing" | "running" | "paused"
+        );
     let can_retry = supports_control
         && matches!(record.status.as_str(), "failed" | "cancelled")
         && record.attempt < record.max_attempts;
@@ -3717,12 +4072,16 @@ fn asset_view(record: PublishedAssetRecord) -> AssetView {
                 error: deployment.last_error,
             })
             .collect(),
-        plugin_outputs: record.plugin_outputs.into_iter().map(|output| PluginExecutionView {
-            plugin_id: output.plugin_id,
-            plugin_name: output.plugin_name,
-            plugin_kind: output.plugin_kind,
-            text: output.text,
-            data: output.data_json,
-        }).collect(),
+        plugin_outputs: record
+            .plugin_outputs
+            .into_iter()
+            .map(|output| PluginExecutionView {
+                plugin_id: output.plugin_id,
+                plugin_name: output.plugin_name,
+                plugin_kind: output.plugin_kind,
+                text: output.text,
+                data: output.data_json,
+            })
+            .collect(),
     }
 }

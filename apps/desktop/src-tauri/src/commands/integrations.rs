@@ -16,13 +16,13 @@ use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
+use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
     sync::RwLock,
 };
-use tauri_plugin_clipboard_manager::ClipboardExt;
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use uuid::Uuid;
 
 use super::{
@@ -34,7 +34,8 @@ use crate::{AppState, cli};
 pub const LOCAL_API_PORT: u16 = 36677;
 pub const GLOBAL_SHORTCUT: &str = "CommandOrControl+Shift+U";
 const GLOBAL_SHORTCUT_ENABLED_KEY: &str = "integration.global_shortcut_enabled";
-const WINDOWS_CONTEXT_MENU_KEY: &str = r"HKCU\Software\Classes\SystemFileAssociations\image\shell\MultiCloudPublisher";
+const WINDOWS_CONTEXT_MENU_KEY: &str =
+    r"HKCU\Software\Classes\SystemFileAssociations\image\shell\MultiCloudPublisher";
 const LOCAL_API_CREDENTIAL_KEY: &str = "integration:local-api-token";
 const MAX_HEADER_BYTES: usize = 64 * 1024;
 const MAX_BODY_BYTES: usize = 32 * 1024 * 1024;
@@ -197,10 +198,19 @@ async fn handle_http_connection(
                 )
                 .await;
             }
-            let paths = payload.paths.into_iter().map(PathBuf::from).collect::<Vec<_>>();
+            let paths = payload
+                .paths
+                .into_iter()
+                .map(PathBuf::from)
+                .collect::<Vec<_>>();
             match cli::upload_with_default_workflow(&data_dir, &paths).await {
-                Ok(urls) => write_json_response(&mut stream, 200, json!({"ok": true, "urls": urls})).await,
-                Err(error) => write_json_response(&mut stream, 422, json!({"ok": false, "error": error})).await,
+                Ok(urls) => {
+                    write_json_response(&mut stream, 200, json!({"ok": true, "urls": urls})).await
+                }
+                Err(error) => {
+                    write_json_response(&mut stream, 422, json!({"ok": false, "error": error}))
+                        .await
+                }
             }
         }
         "/v1/upload" => {
@@ -218,11 +228,18 @@ async fn handle_http_connection(
             tokio::fs::write(&temp_path, &request.body)
                 .await
                 .map_err(|error| format!("Cannot stage local API upload: {error}"))?;
-            let publish_result = cli::upload_with_default_workflow(&data_dir, std::slice::from_ref(&temp_path)).await;
+            let publish_result =
+                cli::upload_with_default_workflow(&data_dir, std::slice::from_ref(&temp_path))
+                    .await;
             let _ = tokio::fs::remove_file(&temp_path).await;
             match publish_result {
-                Ok(urls) => write_json_response(&mut stream, 200, json!({"ok": true, "urls": urls})).await,
-                Err(error) => write_json_response(&mut stream, 422, json!({"ok": false, "error": error})).await,
+                Ok(urls) => {
+                    write_json_response(&mut stream, 200, json!({"ok": true, "urls": urls})).await
+                }
+                Err(error) => {
+                    write_json_response(&mut stream, 422, json!({"ok": false, "error": error}))
+                        .await
+                }
             }
         }
         _ => write_json_response(&mut stream, 404, json!({"error": "not_found"})).await,
@@ -260,7 +277,10 @@ async fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String
             break index;
         }
         let mut chunk = [0u8; 8192];
-        let read = stream.read(&mut chunk).await.map_err(|error| error.to_string())?;
+        let read = stream
+            .read(&mut chunk)
+            .await
+            .map_err(|error| error.to_string())?;
         if read == 0 {
             return Err("HTTP client closed before headers completed".into());
         }
@@ -270,20 +290,28 @@ async fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String
     let header_text = std::str::from_utf8(&buffer[..header_end])
         .map_err(|_| "HTTP headers must be UTF-8/ASCII".to_string())?;
     let mut lines = header_text.split("\r\n");
-    let request_line = lines.next().ok_or_else(|| "Missing HTTP request line".to_string())?;
+    let request_line = lines
+        .next()
+        .ok_or_else(|| "Missing HTTP request line".to_string())?;
     let mut request_parts = request_line.split_whitespace();
     let method = request_parts.next().unwrap_or_default().to_string();
     let raw_path = request_parts.next().unwrap_or_default();
     let path = raw_path.split('?').next().unwrap_or(raw_path).to_string();
     let mut headers = HashMap::new();
     for line in lines {
-        let Some((name, value)) = line.split_once(':') else { continue; };
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
         headers.insert(name.trim().to_ascii_lowercase(), value.trim().to_string());
     }
 
     let content_length = headers
         .get("content-length")
-        .map(|value| value.parse::<usize>().map_err(|_| "Invalid Content-Length".to_string()))
+        .map(|value| {
+            value
+                .parse::<usize>()
+                .map_err(|_| "Invalid Content-Length".to_string())
+        })
         .transpose()?
         .unwrap_or(0);
     if content_length > MAX_BODY_BYTES {
@@ -299,7 +327,10 @@ async fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String
     while body.len() < content_length {
         let remaining = content_length - body.len();
         let mut chunk = vec![0u8; remaining.min(8192)];
-        let read = stream.read(&mut chunk).await.map_err(|error| error.to_string())?;
+        let read = stream
+            .read(&mut chunk)
+            .await
+            .map_err(|error| error.to_string())?;
         if read == 0 {
             return Err("HTTP client closed before body completed".into());
         }
@@ -307,7 +338,12 @@ async fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String
     }
     body.truncate(content_length);
 
-    Ok(HttpRequest { method, path, headers, body })
+    Ok(HttpRequest {
+        method,
+        path,
+        headers,
+        body,
+    })
 }
 
 fn find_header_end(buffer: &[u8]) -> Option<usize> {
@@ -333,8 +369,14 @@ async fn write_json_response(
         "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n",
         body.len()
     );
-    stream.write_all(header.as_bytes()).await.map_err(|error| error.to_string())?;
-    stream.write_all(&body).await.map_err(|error| error.to_string())?;
+    stream
+        .write_all(header.as_bytes())
+        .await
+        .map_err(|error| error.to_string())?;
+    stream
+        .write_all(&body)
+        .await
+        .map_err(|error| error.to_string())?;
     stream.shutdown().await.map_err(|error| error.to_string())
 }
 
@@ -347,7 +389,9 @@ pub fn setup_global_shortcut(app: &mut App) -> Result<(), Box<dyn std::error::Er
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
                 let state = app.state::<AppState>();
-                if let Err(error) = publish_clipboard_from_shortcut(&app, state.inner().clone()).await {
+                if let Err(error) =
+                    publish_clipboard_from_shortcut(&app, state.inner().clone()).await
+                {
                     tracing::warn!(%error, "global shortcut upload failed");
                     let _ = app.emit("integration://shortcut-error", error.clone());
                     show_main_window(&app);
@@ -372,7 +416,10 @@ pub fn setup_global_shortcut(app: &mut App) -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
-async fn publish_clipboard_from_shortcut(app: &AppHandle, state: AppState) -> Result<Vec<String>, String> {
+async fn publish_clipboard_from_shortcut(
+    app: &AppHandle,
+    state: AppState,
+) -> Result<Vec<String>, String> {
     let permit = state
         .upload_semaphore
         .clone()
@@ -382,15 +429,16 @@ async fn publish_clipboard_from_shortcut(app: &AppHandle, state: AppState) -> Re
     let _permit = permit;
 
     let clipboard_app = app.clone();
-    let (rgba, width, height) = tokio::task::spawn_blocking(move || -> Result<(Vec<u8>, u32, u32), String> {
-        let image = clipboard_app
-            .clipboard()
-            .read_image()
-            .map_err(|_| "剪贴板中没有可读取的图片".to_string())?;
-        Ok((image.rgba().to_vec(), image.width(), image.height()))
-    })
-    .await
-    .map_err(|error| format!("读取剪贴板任务失败: {error}"))??;
+    let (rgba, width, height) =
+        tokio::task::spawn_blocking(move || -> Result<(Vec<u8>, u32, u32), String> {
+            let image = clipboard_app
+                .clipboard()
+                .read_image()
+                .map_err(|_| "剪贴板中没有可读取的图片".to_string())?;
+            Ok((image.rgba().to_vec(), image.width(), image.height()))
+        })
+        .await
+        .map_err(|error| format!("读取剪贴板任务失败: {error}"))??;
 
     let png = tokio::task::spawn_blocking(move || {
         image_processing::encode_rgba_png(&rgba, width, height).map_err(|error| error.to_string())
@@ -406,7 +454,8 @@ async fn publish_clipboard_from_shortcut(app: &AppHandle, state: AppState) -> Re
     tokio::fs::write(&temp_path, png)
         .await
         .map_err(|error| format!("无法写入快捷上传临时图片: {error}"))?;
-    let result = cli::upload_with_default_workflow(&state.data_dir, std::slice::from_ref(&temp_path)).await;
+    let result =
+        cli::upload_with_default_workflow(&state.data_dir, std::slice::from_ref(&temp_path)).await;
     let _ = tokio::fs::remove_file(&temp_path).await;
     let urls = result?;
     if urls.is_empty() {
@@ -416,7 +465,10 @@ async fn publish_clipboard_from_shortcut(app: &AppHandle, state: AppState) -> Re
     app.clipboard()
         .write_text(text.clone())
         .map_err(|error| format!("图片已上传，但复制链接失败: {error}"))?;
-    let _ = app.emit("integration://shortcut-uploaded", json!({"urls": urls, "clipboard": text}));
+    let _ = app.emit(
+        "integration://shortcut-uploaded",
+        json!({"urls": urls, "clipboard": text}),
+    );
     Ok(urls)
 }
 
@@ -500,7 +552,10 @@ fn context_menu_installed() -> bool {
 #[tauri::command]
 pub fn get_windows_context_menu_info(app: AppHandle) -> CmdResult<WindowsContextMenuInfo> {
     let executable = std::env::current_exe().map_err(|error| error.to_string())?;
-    let data_dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
     Ok(WindowsContextMenuInfo {
         supported: cfg!(target_os = "windows"),
         installed: context_menu_installed(),
@@ -519,18 +574,36 @@ pub fn install_windows_context_menu(app: AppHandle) -> CmdResult<WindowsContextM
     #[cfg(target_os = "windows")]
     {
         let executable = std::env::current_exe().map_err(|error| error.to_string())?;
-        let data_dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
+        let data_dir = app
+            .path()
+            .app_data_dir()
+            .map_err(|error| error.to_string())?;
         let command = windows_context_menu_command(&executable, &data_dir);
         let command_key = format!(r"{}\command", WINDOWS_CONTEXT_MENU_KEY);
         let status = reg_command()
-            .args(["add", WINDOWS_CONTEXT_MENU_KEY, "/ve", "/d", "使用 Multi-cloud Publisher 上传", "/f"])
+            .args([
+                "add",
+                WINDOWS_CONTEXT_MENU_KEY,
+                "/ve",
+                "/d",
+                "使用 Multi-cloud Publisher 上传",
+                "/f",
+            ])
             .status()
             .map_err(|error| format!("无法写入 Windows 右键菜单: {error}"))?;
         if !status.success() {
             return Err("Windows 拒绝写入当前用户右键菜单".into());
         }
         let _ = reg_command()
-            .args(["add", WINDOWS_CONTEXT_MENU_KEY, "/v", "Icon", "/d", executable.to_string_lossy().as_ref(), "/f"])
+            .args([
+                "add",
+                WINDOWS_CONTEXT_MENU_KEY,
+                "/v",
+                "Icon",
+                "/d",
+                executable.to_string_lossy().as_ref(),
+                "/f",
+            ])
             .status();
         let status = reg_command()
             .args(["add", &command_key, "/ve", "/d", &command, "/f"])
@@ -609,24 +682,67 @@ fn show_main_window(app: &AppHandle) {
 }
 
 #[tauri::command]
-pub async fn get_system_diagnostics(state: State<'_, AppState>) -> CmdResult<SystemDiagnosticsView> {
-    let storages = state.storages.list().await.map_err(|error| error.to_string())?;
-    let plugins = state.plugins.list().await.map_err(|error| error.to_string())?;
-    let tasks = state.tasks.list(10_000).await.map_err(|error| error.to_string())?;
-    let workflows = state.workflows.list().await.map_err(|error| error.to_string())?;
-    let default_workflow = workflows.iter().find(|workflow| workflow.is_default).map(|workflow| workflow.workflow.name.clone());
-    let active_task_count = tasks.iter().filter(|task| matches!(task.status.as_str(), "queued" | "preparing" | "running" | "paused")).count();
+pub async fn get_system_diagnostics(
+    state: State<'_, AppState>,
+) -> CmdResult<SystemDiagnosticsView> {
+    let storages = state
+        .storages
+        .list()
+        .await
+        .map_err(|error| error.to_string())?;
+    let plugins = state
+        .plugins
+        .list()
+        .await
+        .map_err(|error| error.to_string())?;
+    let tasks = state
+        .tasks
+        .list(10_000)
+        .await
+        .map_err(|error| error.to_string())?;
+    let workflows = state
+        .workflows
+        .list()
+        .await
+        .map_err(|error| error.to_string())?;
+    let default_workflow = workflows
+        .iter()
+        .find(|workflow| workflow.is_default)
+        .map(|workflow| workflow.workflow.name.clone());
+    let active_task_count = tasks
+        .iter()
+        .filter(|task| {
+            matches!(
+                task.status.as_str(),
+                "queued" | "preparing" | "running" | "paused"
+            )
+        })
+        .count();
     let failed_task_count = tasks.iter().filter(|task| task.status == "failed").count();
     let enabled_storage_count = storages.iter().filter(|storage| storage.enabled).count();
     let enabled_plugin_count = plugins.iter().filter(|plugin| plugin.enabled).count();
     let local_api_running = state.local_api_running.load(Ordering::Acquire);
     let mut warnings = Vec::new();
-    if enabled_storage_count == 0 { warnings.push("没有已启用的 Storage，发布入口将不可用".into()); }
-    if default_workflow.is_none() { warnings.push("没有默认 Workflow，Typora / 快捷键 / Local API 无法自动发布".into()); }
-    if !local_api_running { warnings.push("Local HTTP API 未运行，ShareX/脚本集成将不可用".into()); }
-    if failed_task_count > 0 { warnings.push(format!("任务中心存在 {failed_task_count} 个失败任务，请检查最近错误")); }
+    if enabled_storage_count == 0 {
+        warnings.push("没有已启用的 Storage，发布入口将不可用".into());
+    }
+    if default_workflow.is_none() {
+        warnings.push("没有默认 Workflow，Typora / 快捷键 / Local API 无法自动发布".into());
+    }
+    if !local_api_running {
+        warnings.push("Local HTTP API 未运行，ShareX/脚本集成将不可用".into());
+    }
+    if failed_task_count > 0 {
+        warnings.push(format!(
+            "任务中心存在 {failed_task_count} 个失败任务，请检查最近错误"
+        ));
+    }
     Ok(SystemDiagnosticsView {
-        status: if warnings.is_empty() { "healthy".into() } else { "attention".into() },
+        status: if warnings.is_empty() {
+            "healthy".into()
+        } else {
+            "attention".into()
+        },
         app_version: env!("CARGO_PKG_VERSION").into(),
         data_dir: state.data_dir.to_string_lossy().into_owned(),
         database_ready: true,
@@ -675,9 +791,15 @@ pub async fn get_typora_integration_info(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> CmdResult<TyporaIntegrationInfo> {
-    let data_dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
     let executable = std::env::current_exe().map_err(|error| error.to_string())?;
-    if resolve_default_publish_target(state.inner()).await?.is_some() {
+    if resolve_default_publish_target(state.inner())
+        .await?
+        .is_some()
+    {
         sync_system_default_pipeline(state.inner(), None).await?;
     }
     let workflows = state
@@ -693,11 +815,20 @@ pub async fn get_typora_integration_info(
     );
     let (ready, message) = if let Some(workflow) = default {
         match preflight_workflow_target(state.inner(), &workflow.workflow).await {
-            Ok(()) => (true, format!("默认上传链“{}”已就绪，Typora 可直接调用。", workflow.workflow.name)),
+            Ok(()) => (
+                true,
+                format!(
+                    "默认上传链“{}”已就绪，Typora 可直接调用。",
+                    workflow.workflow.name
+                ),
+            ),
             Err(error) => (false, format!("默认上传链尚未就绪：{error}")),
         }
     } else {
-        (false, "还没有可用的默认上传链。请先连接一个云端存储。".into())
+        (
+            false,
+            "还没有可用的默认上传链。请先连接一个云端存储。".into(),
+        )
     };
     Ok(TyporaIntegrationInfo {
         command,
@@ -724,13 +855,17 @@ pub fn open_typora() -> CmdResult<String> {
             candidates.push(PathBuf::from(program_files_x86).join("Typora/Typora.exe"));
         }
         if let Some(path) = candidates.into_iter().find(|path| path.is_file()) {
-            Command::new(&path).spawn().map_err(|error| error.to_string())?;
+            Command::new(&path)
+                .spawn()
+                .map_err(|error| error.to_string())?;
             return Ok(path.to_string_lossy().into_owned());
         }
         Command::new("cmd")
             .args(["/C", "start", "", "typora"])
             .spawn()
-            .map_err(|error| format!("未找到 Typora。请先安装 Typora，或把 Typora.exe 加入 PATH：{error}"))?;
+            .map_err(|error| {
+                format!("未找到 Typora。请先安装 Typora，或把 Typora.exe 加入 PATH：{error}")
+            })?;
         Ok("typora".into())
     }
     #[cfg(target_os = "macos")]
@@ -752,7 +887,10 @@ pub fn open_typora() -> CmdResult<String> {
 
 #[tauri::command]
 pub fn open_app_data_dir(app: AppHandle) -> CmdResult<String> {
-    let data_dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
     std::fs::create_dir_all(&data_dir).map_err(|error| error.to_string())?;
     #[cfg(target_os = "windows")]
     Command::new("explorer")
@@ -773,9 +911,7 @@ pub fn open_app_data_dir(app: AppHandle) -> CmdResult<String> {
 }
 
 #[tauri::command]
-pub async fn get_output_preferences(
-    state: State<'_, AppState>,
-) -> CmdResult<OutputPreferences> {
+pub async fn get_output_preferences(state: State<'_, AppState>) -> CmdResult<OutputPreferences> {
     let value = state
         .settings
         .get(OUTPUT_PREFERENCES_KEY)
@@ -798,9 +934,7 @@ pub async fn save_output_preferences(
     ) {
         return Err("Unsupported output format".into());
     }
-    if preferences.default_format == "custom"
-        && !preferences.custom_template.contains("{url}")
-    {
+    if preferences.default_format == "custom" && !preferences.custom_template.contains("{url}") {
         return Err("Custom output template must contain {url}".into());
     }
     let value = serde_json::to_value(&preferences).map_err(|error| error.to_string())?;
