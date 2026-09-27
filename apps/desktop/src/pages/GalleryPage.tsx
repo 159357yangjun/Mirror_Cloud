@@ -17,6 +17,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
+import { GalleryMediaCard } from '../components/GalleryMediaCard'
 import { browseStorage, chooseDownloadPath, copyText, createStorageDirectory, deleteStorageEntry, downloadStorageEntry, listStorages, moveStorageEntry, openExternalUrl, queueBatchDeleteStorageEntries, queueBatchMoveStorageEntries, queueBatchRenameStorageEntries } from '../lib/desktop'
 import type { StorageEntryView } from '../types'
 
@@ -280,33 +281,32 @@ export function GalleryPage() {
             {!isLoading && !error && !filtered.length && <div className="grid min-h-[480px] place-items-center text-sm text-slate-400">当前目录没有匹配文件</div>}
 
             {!isLoading && !error && view === 'grid' && filtered.length > 0 && (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4">
-                {filtered.map((entry) => {
-                  const image = isImage(entry)
-                  return <article key={entry.path} className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white transition hover:-translate-y-0.5 hover:shadow-md">
-                    {!entry.isDir && <label className="absolute left-2 top-2 z-10 grid size-7 place-items-center rounded-lg bg-white/95 shadow-sm" onClick={(event) => event.stopPropagation()}>
-                      <input type="checkbox" checked={selectedPaths.has(entry.path)} onChange={() => toggleSelected(entry)} aria-label={`选择 ${entry.name}`} className="size-4 accent-indigo-600" />
-                    </label>}
-                    <button onClick={() => entry.isDir ? setPath(entry.path) : image && entry.publicUrl ? setPreview(entry) : undefined} className="block w-full text-left">
-                      <div className="grid aspect-[4/3] place-items-center overflow-hidden bg-slate-50">
-                        {entry.isDir ? <Folder size={36} className="text-slate-300" /> : image && entry.publicUrl ? <img src={entry.publicUrl} alt={entry.name} loading="lazy" className="h-full w-full object-contain" /> : image ? <ImageIcon size={34} className="text-slate-300" /> : <File size={32} className="text-slate-300" />}
-                      </div>
-                      <div className="p-3"><div className="truncate text-xs font-medium" title={entry.name}>{entry.name}</div><div className="mt-1 text-[10px] text-slate-400">{entry.isDir ? '目录' : sizeLabel(entry.sizeBytes) || '远端文件'}</div></div>
-                    </button>
-                    {!entry.isDir && <div className="flex items-center gap-1 border-t border-slate-100 p-2">
-                      {entry.publicUrl && <button onClick={() => void copyUrl(entry)} className="flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[10px] text-slate-500 hover:bg-slate-50"><Copy size={12} />{copied === entry.path ? '已复制' : '复制'}</button>}
-                      {entry.publicUrl && <button onClick={() => void openExternalUrl(entry.publicUrl || '')} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50" title="浏览器打开"><ExternalLink size={12} /></button>}
-                      <button disabled={busyPath === entry.path || operationBusy} onClick={() => setPathDialog({ mode: 'rename', entry, value: entry.name })} className="rounded-lg px-1.5 py-1 text-[10px] text-slate-400 hover:bg-slate-50" title="重命名">改名</button>
-                      <button disabled={busyPath === entry.path || operationBusy} onClick={() => setPathDialog({ mode: 'move', entry, value: parentPath(entry.path) })} className="rounded-lg px-1.5 py-1 text-[10px] text-slate-400 hover:bg-slate-50" title="移动">移动</button>
-                      <button disabled={busyPath === entry.path} onClick={() => void downloadEntry(entry)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 disabled:opacity-30" title="下载"><Download size={12} /></button>
-                      <button disabled={busyPath === entry.path} onClick={() => void deleteEntry(entry)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30" title="永久删除"><Trash2 size={12} /></button>
-                    </div>}
-                  </article>
-                })}
-              </div>
-            )}
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-5">
+      {filtered.map((entry) => (
+        <GalleryMediaCard
+          key={entry.path}
+          entry={entry}
+          selected={selectedPaths.has(entry.path)}
+          copied={copied === entry.path}
+          busy={busyPath === entry.path}
+          operationBusy={operationBusy}
+          onSelect={() => toggleSelected(entry)}
+          onOpen={() => {
+            if (entry.isDir) setPath(entry.path)
+            else if (isImage(entry) && entry.publicUrl) setPreview(entry)
+          }}
+          onCopy={() => void copyUrl(entry)}
+          onOpenExternal={() => entry.publicUrl && void openExternalUrl(entry.publicUrl)}
+          onRename={() => setPathDialog({ mode: 'rename', entry, value: entry.name })}
+          onMove={() => setPathDialog({ mode: 'move', entry, value: parentPath(entry.path) })}
+          onDownload={() => void downloadEntry(entry)}
+          onDelete={() => void deleteEntry(entry)}
+        />
+      ))}
+    </div>
+  )}
 
-            {!isLoading && !error && view === 'list' && filtered.map((entry) => (
+  {!isLoading && !error && view === 'list' && filtered.map((entry) => (
               <div key={entry.path} className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-slate-50">
                 <div className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-xl bg-slate-100 text-slate-500">
                   {entry.isDir ? <Folder size={17} /> : isImage(entry) && entry.publicUrl ? <img src={entry.publicUrl} alt="" className="h-full w-full object-cover" /> : <File size={17} />}
