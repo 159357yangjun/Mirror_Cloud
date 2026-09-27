@@ -79,6 +79,7 @@ jobs:
       - name: Build desktop frontend
         working-directory: apps/desktop
         run: |
+          npm install --package-lock-only --ignore-scripts
           npm ci
           npm run build
       - name: Commit Gallery wiring only after build passes
