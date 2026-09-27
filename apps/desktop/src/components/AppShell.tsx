@@ -24,6 +24,7 @@ const themes: Array<{ key: ThemeKey; label: string; icon: typeof Sun }> = [
 ]
 
 const THEME_STORAGE_KEY = 'image-hosting-platform.theme'
+const FIRST_RUN_HELP_KEY = 'image-hosting-platform.help.seen-v1'
 
 function applyTheme(theme: ThemeKey) {
   if (theme === 'mist') delete document.documentElement.dataset.theme
@@ -33,7 +34,7 @@ function applyTheme(theme: ThemeKey) {
 export function AppShell({ children }: { children: ReactNode }) {
   const { page, setPage, openUpload } = useAppStore()
   const docsUrl = getDocsBaseUrl()
-  const [showHelp, setShowHelp] = useState(false)
+  const [showHelp, setShowHelp] = useState(() => window.localStorage.getItem(FIRST_RUN_HELP_KEY) !== '1')
   const [theme, setTheme] = useState<ThemeKey>(() => {
     const saved = window.localStorage.getItem(THEME_STORAGE_KEY)
     return saved === 'midnight' || saved === 'sakura' ? saved : 'mist'
@@ -47,6 +48,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   function cycleTheme() {
     const currentIndex = themes.findIndex((item) => item.key === theme)
     setTheme(themes[(currentIndex + 1) % themes.length].key)
+  }
+
+  function closeHelp() {
+    window.localStorage.setItem(FIRST_RUN_HELP_KEY, '1')
+    setShowHelp(false)
   }
 
   const activeTheme = themes.find((item) => item.key === theme) || themes[0]
@@ -114,7 +120,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <main className="app-main ml-[220px] min-h-screen">{children}</main>
       {showHelp && (
         <HelpCenterDialog
-          onClose={() => setShowHelp(false)}
+          onClose={closeHelp}
           onNavigate={setPage}
           onlineDocsUrl={docsUrl}
           openExternalUrl={openExternalUrl}
