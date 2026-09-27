@@ -3,6 +3,7 @@ import { BookOpen, Boxes, Cloud, Images, ListTodo, Moon, Palette, Plug, Settings
 import { getDocsBaseUrl, openExternalUrl } from '../lib/desktop'
 import { useAppStore } from '../store/useAppStore'
 import type { PageKey } from '../types'
+import { HelpCenterDialog } from './HelpCenterDialog'
 
 const items: Array<{ key: PageKey; label: string; icon: typeof Boxes }> = [
   { key: 'publish', label: '发布', icon: Upload },
@@ -32,6 +33,7 @@ function applyTheme(theme: ThemeKey) {
 export function AppShell({ children }: { children: ReactNode }) {
   const { page, setPage, openUpload } = useAppStore()
   const docsUrl = getDocsBaseUrl()
+  const [showHelp, setShowHelp] = useState(false)
   const [theme, setTheme] = useState<ThemeKey>(() => {
     const saved = window.localStorage.getItem(THEME_STORAGE_KEY)
     return saved === 'midnight' || saved === 'sakura' ? saved : 'mist'
@@ -94,11 +96,13 @@ export function AppShell({ children }: { children: ReactNode }) {
             >
               <ThemeIcon size={14} /> <span className="app-docs-label">皮肤 · {activeTheme.label}</span>
             </button>
-            {docsUrl && (
-              <button onClick={() => void openExternalUrl(docsUrl)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-soft)] hover:text-[var(--text-primary)]">
-                <BookOpen size={14} /> <span className="app-docs-label">教程与帮助</span>
-              </button>
-            )}
+            <button
+              onClick={() => setShowHelp(true)}
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-soft)] hover:text-[var(--text-primary)]"
+              title="打开应用内新手教程"
+            >
+              <BookOpen size={14} /> <span className="app-docs-label">教程与帮助</span>
+            </button>
             <div className="app-sidebar-footer theme-surface rounded-2xl border p-3">
               <div className="text-xs font-medium text-[var(--text-secondary)]">v1.4 Preview · Image Hosting Platform</div>
               <div className="mt-1 text-[11px] leading-5 text-[var(--text-muted)]">托管 · 管理 · 发布 · 多云可靠性</div>
@@ -108,6 +112,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
       <main className="app-main ml-[220px] min-h-screen">{children}</main>
+      {showHelp && (
+        <HelpCenterDialog
+          onClose={() => setShowHelp(false)}
+          onNavigate={setPage}
+          onlineDocsUrl={docsUrl}
+          openExternalUrl={openExternalUrl}
+        />
+      )}
     </div>
   )
 }
