@@ -8,15 +8,17 @@ on:
       - '.github/workflows/build-preview-windows.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   preview:
+    if: github.actor != 'github-actions[bot]'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: dev
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -24,13 +26,35 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Verify committed dependency locks
+      - name: Pin Rust Tauri dependencies to published JS minor lines
         shell: pwsh
         run: |
-          $locks = @('Cargo.lock', 'apps/desktop/package-lock.json', 'website/package-lock.json')
-          foreach ($lock in $locks) {
-            if (-not (Test-Path $lock)) { throw "Missing committed dependency lock: $lock" }
+          $ErrorActionPreference = 'Stop'
+          @'
+          from pathlib import Path
+
+          path = Path('apps/desktop/src-tauri/Cargo.toml')
+          text = path.read_text(encoding='utf-8')
+          replacements = {
+              'tauri = { version = "2.11.5", features = ["tray-icon"] }': 'tauri = { version = "=2.11.5", features = ["tray-icon"] }',
+              'tauri-plugin-dialog = "2"': 'tauri-plugin-dialog = "=2.7.3"',
+              'tauri-plugin-opener = "2"': 'tauri-plugin-opener = "=2.5.5"',
+              'tauri-plugin-clipboard-manager = "2.3.3"': 'tauri-plugin-clipboard-manager = "=2.3.3"',
           }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'expected dependency declaration not found: {old}')
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+          '@ | python -
+          cargo update -p tauri --precise 2.11.5
+          if ($LASTEXITCODE -ne 0) { throw 'tauri pin failed' }
+          cargo update -p tauri-plugin-dialog --precise 2.7.3
+          if ($LASTEXITCODE -ne 0) { throw 'dialog pin failed' }
+          cargo update -p tauri-plugin-opener --precise 2.5.5
+          if ($LASTEXITCODE -ne 0) { throw 'opener pin failed' }
+          cargo update -p tauri-plugin-clipboard-manager --precise 2.3.3
+          if ($LASTEXITCODE -ne 0) { throw 'clipboard pin failed' }
 
       - name: Install desktop dependencies
         working-directory: apps/desktop
@@ -39,6 +63,22 @@ jobs:
       - name: Build Windows preview bundles
         working-directory: apps/desktop
         run: npm run tauri build
+
+      - name: Commit verified Tauri alignment
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git add apps/desktop/src-tauri/Cargo.toml Cargo.lock
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { throw 'git diff check failed' }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'build: align Tauri Rust and JS minor versions'
+          if ($LASTEXITCODE -ne 0) { throw 'git commit failed' }
+          git pull --rebase origin dev
+          if ($LASTEXITCODE -ne 0) { throw 'git pull --rebase failed; reconcile concurrent changes' }
+          git push origin HEAD:dev
+          if ($LASTEXITCODE -ne 0) { throw 'git push failed' }
 
       - name: Upload preview installers
         uses: actions/upload-artifact@v4
