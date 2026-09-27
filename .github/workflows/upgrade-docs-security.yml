@@ -29,8 +29,13 @@ jobs:
         working-directory: website
         run: |
           $ErrorActionPreference = 'Stop'
-          npm install astro@7.3.5 @astrojs/starlight@0.42.4 --save-exact
-          if ($LASTEXITCODE -ne 0) { throw 'Astro/Starlight upgrade failed' }
+          $package = Get-Content package.json -Raw | ConvertFrom-Json
+          $package.dependencies.astro = '7.3.5'
+          $package.dependencies.'@astrojs/starlight' = '0.42.4'
+          $package | ConvertTo-Json -Depth 32 | Set-Content -Encoding utf8 package.json
+          Remove-Item package-lock.json -Force
+          npm install --package-lock-only --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { throw 'Astro/Starlight lock regeneration failed' }
 
       - name: Validate upgraded docs
         shell: pwsh
