@@ -1,48 +1,70 @@
 ---
-title: Typora 一键工作流
-summary: 让 Typora 直接调用 Publisher 默认 Workflow 上传图片。
+title: Typora 配置向导
+summary: 用 Custom Command 调用 Image Hosting Platform 默认上传链。
 ---
 
 import { Steps } from '@astrojs/starlight/components'
 
-Publisher 可以作为 Typora 的 **Custom Command / 自定义命令** 上传器。Typora 只负责把本地图片路径交给 Publisher；压缩、改名、GitHub / R2 / 多云发布都继续使用 Publisher 的默认 Workflow。
+Typora 可以把本地图片路径交给 **Image Hosting Platform** 的 Custom Command 上传桥接。处理、重命名、默认云端、多云策略和已启用插件都继续由图床统一维护。
 
 ## 开始之前
 
-- 已连接至少一个 Storage；
-- 已创建至少一个 Workflow；
-- 希望 Typora 使用的 Workflow 已设为 **默认**；
-- 默认目标在“云端”页面可以通过连接测试。
+- 已连接至少一个可写 Storage；
+- 已设置默认上传目标；
+- 建议先在图床“发布”页手动上传一张测试图片，确认 Provider 本身正常。
 
-## 一键开始配置
+普通用户**不需要手动创建 Workflow**。应用会维护默认上传链。
+
+## 配置向导
 
 <Steps>
-1. 打开 **Publisher → 设置 → Typora 集成**。
-2. 确认“桥接已就绪”，点击 **一键开始配置**。Publisher 会复制完整 Custom Command 并打开 Typora。
-3. 在 Typora 打开 **偏好设置 → 图像**，上传服务选择 **Custom Command / 自定义命令**。
-4. 粘贴刚才复制的命令，然后点击 Typora 的上传器验证按钮。
+1. 打开 **图床 → 设置 → Typora 集成**。
+2. 点击“重新检测”，确认桥接命令已生成。
+3. 点击 **复制命令并打开 Typora**。图床只会复制命令并启动 Typora，不会修改 Typora 偏好设置。
+4. 在 Typora 打开 **偏好设置 → 图像**。
+5. 上传服务选择 **Custom Command / 自定义命令**。
+6. 粘贴命令，然后点击 Typora 的 **Test Uploader / 验证图片上传选项**。
+7. 回到图床查看“任务”和“资源”，确认测试图片真实上传并产生公网 URL。
 </Steps>
 
-配置完成后，Typora 插入、粘贴、拖入图片，或执行“上传所有本地图片”时，可以直接调用 Publisher。桌面主窗口不需要一直打开。
+如果 Typora 仍显示 **PicGo(app)**，说明上传服务还没有切换到 Custom Command。
 
-## 为什么用默认 Workflow
+## 为什么只维护一个默认上传链
 
-Typora 不再保存另一套 GitHub / R2 参数。例如把默认 Workflow 从：
-
-```text
-WebP Q90 → GitHub
-```
-
-切换成：
+Typora 不再保存另一套 GitHub / R2 参数。你在图床里切换默认 Storage / Storage Group，或开启/关闭插件后，下一次 Typora 上传会读取最新配置，通常不需要重新修改命令。
 
 ```text
-WebP Q82 → R2 + Gitee Storage Group
+Typora 图片
+  ↓
+Image Hosting Platform --typora-upload
+  ↓
+默认上传链
+  ↓
+Primary / Mirror / Backup
+  ↓
+已启用插件
+  ↓
+Asset / Deployment / Task
+  ↓
+公网 URL 输出给 Typora
 ```
 
-Typora 不需要重新填写 Token，也不用修改上传命令。
+## 验证上传结果
 
-## 上传结果
+不要只看 Typora 是否显示“成功”。建议同时确认：
 
-Publisher 只有在云端 Provider 返回成功后才会返回 URL。GitHub Provider 还会再次读取远端文件 SHA 做确认，因此 Typora 收到 URL 时，文件应已经真实存在于仓库。
+1. 图床“任务”出现 Typora 发布记录；
+2. Provider 远端真的出现文件；
+3. “资源”出现 Asset / Deployment；
+4. Typora Markdown 中本地图片地址被替换为公网 URL；
+5. 浏览器直接打开 URL 可以显示图片。
 
-如果失败，可打开 Publisher 的 **任务** 页面查看原因；例如 GitHub `401 Bad credentials` 表示 Token 无效、过期或被撤销。
+## 常见错误
+
+- GitHub `401 Bad credentials`：Token 无效、过期或撤销；
+- GitHub `403`：仓库权限不足；
+- fine-grained PAT：目标仓库至少授权 **Contents: Read and write**；
+- GitHub `409 Conflict`：分支写入竞争，当前 Provider 会刷新远端状态后重试；
+- 插件警告：到插件页检查权限、配置和执行记录。
+
+桌面主窗口不需要一直显示；Typora 上传桥接、系统托盘和后台能力共用同一份配置与凭据。

@@ -24,11 +24,15 @@ export default defineConfig({
           label: '使用',
           items: [
             { label: '文件 / URL / 剪贴板', slug: 'use/publish' },
+            { label: 'Typora 配置向导', slug: 'use/typora' },
             { label: '多云组与修复', slug: 'use/multicloud' },
             { label: '凭据与安全', slug: 'use/security' }
           ]
         },
-        { label: 'Recipe', items: [{ label: '怎么选择方案', slug: 'recipes/choose' }] }
+        {
+          label: '进阶',
+          items: [{ label: '处理策略怎么选', slug: 'recipes/choose' }]
+        }
       ]
     })
   ]
