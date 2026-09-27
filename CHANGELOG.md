@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.4.0 Preview - UX / Sync / Theme consolidation
+
+- Rebrand the active development line as **图床 | Image Hosting Platform** and align desktop/docs package metadata on v1.4.0.
+- Add metadata-only cloud asset index sync so existing images in GitHub / Gitee / R2 / S3 / OSS / COS / WebDAV can appear in the Asset Index without downloading image bodies.
+- Keep **资源** and **图库** as separate concepts: Asset Index for metadata/output/multi-cloud state, remote Gallery for live Provider browsing.
+- Harden GitHub browsing when the configured root does not exist yet and retry upload conflicts after refreshing remote state.
+- Add the v1.4 Theme Engine foundation with design tokens, presets, accent color, wallpaper URL, glass strength and blur controls.
+- Add first-run Help Center onboarding while keeping it reopenable from the sidebar.
+- Replace misleading Typora “one-click configuration” wording with an explicit Custom Command configuration guide; the app copies the command and opens Typora but does not silently rewrite Typora settings.
+- Upgrade Gallery presentation toward a photo-album layout and make copy actions explicit.
+- Make the main application content area independently scrollable so long Settings / Plugins / AI sections remain reachable.
+- Clean temporary cloud-index wiring scripts/workflows after the guarded implementation landed.
+- Upgrade Release Bundle so `v*` tags can publish Windows installers, tracked-source archive and SHA256 checksums to GitHub Releases; manual dispatch remains a build-only preview path.
+- Keep the legacy Tauri application identifier and Rust library crate name for upgrade/source compatibility while public product/package naming moves to Image Hosting Platform.
+
 ## 1.3.5 - Task Control, Plugin Observability & Diagnostics
 
 - Added cooperative cancellation for persistent Cloud Manager batch delete/move/rename tasks.
@@ -21,7 +36,6 @@
 - Added persistent Task Center jobs for batch cloud delete, move and template rename.
 - Updated Cloud Manager to enqueue long-running batch mutations instead of blocking the page.
 - Fixed CLI `PluginContext` construction to include lifecycle metadata.
-
 
 ## 1.3.3 - Lifecycle Hooks & Batch Cloud Operations
 
@@ -101,7 +115,6 @@
 - Expand user-flow regression checks from 22 to 33 contracts.
 - Retain plugin output persistence, post-plugin `asset://published`, OS credential storage for AI keys and automatic default target repair.
 
-
 ## 1.2.1 - Plugin Switches
 
 - Replace the primary “方案” navigation entry with a single plugin control surface.
@@ -110,7 +123,6 @@
 - Keep workflow records as an internal processing compatibility layer instead of exposing them as a primary product concept.
 - Update Typora and upload copy so users think in terms of upload target + enabled plugins.
 
-
 ## 1.2.0 - Plugin Runtime + AI Planner
 
 - Add manifest-based plugin runtime and plugin marketplace UI.
@@ -118,116 +130,3 @@
 - Add template, webhook and OpenAI-compatible AI prompt host runtimes.
 - Add AI provider settings and natural-language workflow planner.
 - Keep third-party native code disabled; WASM sandbox remains future work.
-
-
-## 1.1.0 — Typora workflow bridge & interaction overhaul
-
-- Added GitHub post-upload SHA verification so a task cannot report success before the uploaded path is visible remotely.
-- Added one-click Typora setup that copies the Custom Command and launches Typora in one action.
-- Added a real Typora custom-command bridge that reuses the current default Workflow and existing system credential store.
-- Typora uploads now run through the same Resize / Convert / Rename / Storage or Storage Group pipeline and return one public URL per image on stdout.
-- Added in-app Typora setup card with readiness check, one-click command copy, one-click Typora launch and default-workflow shortcut.
-- Added publish-target preflight before workflow tasks are queued, so invalid/expired credentials fail visibly before the dialog disappears.
-- Reworked the upload dialog into a persistent task panel with per-file progress, aggregate progress, failure details, retry, continue-publishing, task and resource shortcuts.
-- Added a first-class “图库” page plus PicList-inspired storage browser with grid/list views, thumbnails, search, directory navigation, refresh, image preview, copy link and open-in-browser actions.
-- Removed decorative settings rows that looked interactive but performed no action; settings now expose only real controls and navigation actions.
-- Added Typora-originated uploads to task history and resource index so they appear in the desktop application after launch.
-
-## 1.0.3 — Window resize & GitHub credential diagnostics
-
-- Lower Windows minimum window size from 1024×680 to 640×480 and make the desktop shell responsive.
-- Collapse the sidebar automatically on narrow windows and make storage setup forms single-column when needed.
-- Normalize repository tokens by trimming whitespace and accidental `Bearer ` prefixes.
-- Detect SSH keys/fingerprints pasted into the repository token field.
-- Add actionable Chinese diagnostics for GitHub 401/403/repository/branch failures.
-- Add a direct GitHub Personal Access Token creation shortcut in the setup dialog.
-
-## 1.0.2 — Windows release polish
-
-- Hide the extra Windows console window in production builds with `windows_subsystem = "windows"`.
-- Keep the console visible in debug builds for development diagnostics.
-- Update the in-app stable version badge to v1.0.2.
-- Expand first-use instructions for GitHub/Gitee/object-storage configuration and publish flow.
-
-## 1.0.1 — GitHub image-link reliability
-
-- GitHub uploads and remote browsing now canonicalize public URLs before persisting them.
-- GitHub public links use raw content URLs instead of `github.com/.../blob/...` HTML pages.
-- Unicode paths, including Chinese filenames, are percent-encoded consistently to prevent mixed/invalid URLs.
-- Clipboard output adds a compatibility normalization layer so legacy GitHub blob links are converted to `raw.githubusercontent.com` when copied as URL, Markdown, HTML, BBCode, or custom output.
-- Added regression coverage using the real-world Chinese filenames `02_实现层_三维城市沙盘.png` and `04_算法层_算法对比.png`.
-
-## 1.0.0 — Stable feature baseline
-
-- Added production Content Security Policy for the Tauri webview while retaining remote asset previews.
-- Added external tutorial-site integration through `VITE_DOCS_BASE_URL` and safe system-browser opening.
-- Added Provider-specific “配置教程” entry points and a global “教程与帮助” entry point.
-- Standardized copy operations on the Tauri clipboard plugin instead of relying on WebView clipboard behavior.
-- Hardened capability declarations for clipboard and external URL operations.
-- Added formal Provider matrix and end-user quick-start documentation.
-- Promoted the project from milestone builds to the v1.0 stable source baseline.
-- Added real Aliyun OSS, Tencent COS and WebDAV storage providers through the StoragePort/OpenDAL boundary.
-- Added URL batch publishing with protocol, timeout, MIME and 32 MB safety checks.
-- Added system clipboard image publishing through the Tauri clipboard manager and local Rust PNG encoding.
-- Added controlled publish concurrency with a four-task semaphore.
-- Added automatic recovery of interrupted queued/preparing/running tasks on next startup.
-- Added safe Storage deletion that refuses to remove providers still referenced by deployments, groups or workflows.
-- Added automatic post-publish clipboard output using URL / Markdown / HTML / BBCode / custom templates.
-- Added `asset://published` event flow and explicit clipboard read/write permissions.
-- Added OSS/COS/S3/WebDAV and multi-cloud/security tutorial pages to the Astro/Starlight site.
-- Added release validation/build scripts, CI workflow, release documentation and MIT license.
-- Added release-focused SQLite indexes and bumped all desktop/workspace versions to 1.0.0.
-
-## 0.5.0 — M4
-
-- Added `image-processing` Rust crate with resize, JPEG quality encoding, PNG output, lossy WebP quality encoding and original pass-through.
-- Added `workflow-engine` crate that executes ordered Resize → Convert → Rename → Publish → Output steps.
-- Added single-storage and Storage-Group publish targets to the Workflow domain model.
-- Added persistent Workflow repository and `0005_workflow_recipes.sql` migration.
-- Added four built-in Recipe presets: Blog Balanced, Docs Crisp, Small/Fast and Original.
-- Added custom Workflow creation, default Workflow selection and deletion.
-- Added Workflow publishing tasks that persist processed Variant metadata and reuse M3 multi-cloud/Repair semantics.
-- Added rename templates with date, stem, extension, UUID and content-hash placeholders.
-- Added first-class Workflow/Recipe page and Recipe-first upload selection.
-- Added three-step first-run onboarding on the Assets page.
-- Added Astro + Starlight tutorial-site scaffold with R2, GitHub, Gitee and Recipe guides.
-
-## 0.4.0 — M3
-
-- Added persistent Storage Groups with Primary, Mirror and Backup roles.
-- Added `mirror_all` and `primary_with_backups` publishing strategies.
-- Added multi-cloud group publishing with one Asset and multiple Deployment records.
-- Added partial-success semantics so a healthy public copy remains usable when another cloud fails.
-- Added `last_error` persistence per Deployment for repair diagnostics.
-- Added StorageProvider download support for OpenDAL S3/R2, GitHub and Gitee.
-- Added cross-cloud Repair that downloads from a healthy deployment and rebuilds failed/degraded copies.
-- Added multi-cloud destination selection to the upload dialog.
-- Added Storage Group creation/deletion UI and role editor.
-- Added completed-with-warning task presentation for partial multi-cloud operations.
-- Added `0004_multicloud_groups.sql` migration and group/deployment status indexes.
-
-## 0.3.0 — M2
-
-- Added real GitHub repository storage adapter using the repository contents API.
-- Added real Gitee repository storage adapter using API v5.
-- Added repository upload/update, delete and directory browsing.
-- Added public Raw URL generation with optional custom public base URL.
-- Added repository onboarding UI for owner/repository/branch/root/token.
-- Added provider picker for R2, S3, GitHub and Gitee.
-- Added storage browser UI for repository providers.
-- Added persistent URL / Markdown / HTML / BBCode / custom output preferences.
-- Added background remote asset deletion across every recorded deployment.
-- Added `app_settings` SQLite migration for application-level preferences.
-- Updated provider capabilities so repository storage exposes list/delete/versioning semantics.
-
-## 0.2.0 — M1
-
-- Added OS-native credential storage for cloud secrets.
-- Added persistent SQLite repositories for storage, tasks and published assets.
-- Added real Cloudflare R2 / S3-compatible connectivity and uploads through Apache OpenDAL.
-- Added required public base URL so successful uploads produce externally viewable URLs.
-- Added Tauri system file picker and native file drag/drop.
-- Added background task lifecycle, progress persistence and `task://updated` events.
-- Added Asset → Variant → Deployment persistence after successful publish.
-- Added real assets/tasks/storage UI data instead of M0-only mock content.
-- Added storage connection testing.

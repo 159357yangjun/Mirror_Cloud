@@ -7,7 +7,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   windows-bundle:
@@ -56,11 +56,34 @@ jobs:
         working-directory: apps/desktop
         run: npm run tauri build
 
-      - name: Upload Windows installers
+      - name: Stage release files and checksums
+        shell: pwsh
+        run: |
+          $releaseDir = Join-Path $env:GITHUB_WORKSPACE 'release'
+          New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
+
+          Get-ChildItem (Join-Path $env:GITHUB_WORKSPACE 'target\release\bundle') -Recurse -File |
+            Where-Object { $_.Extension -in '.exe', '.msi' } |
+            ForEach-Object { Copy-Item $_.FullName -Destination $releaseDir }
+
+          $sourceName = "image-hosting-platform-${{ github.ref_name }}-source.zip"
+          git archive --format=zip -o (Join-Path $releaseDir $sourceName) HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'git archive failed' }
+
+          $checksumPath = Join-Path $releaseDir 'SHA256SUMS.txt'
+          Get-ChildItem $releaseDir -File |
+            Where-Object { $_.Name -ne 'SHA256SUMS.txt' } |
+            Sort-Object Name |
+            ForEach-Object {
+              $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$hash  $($_.Name)"
+            } | Set-Content -Encoding utf8 $checksumPath
+
+      - name: Upload Windows release files
         uses: actions/upload-artifact@v4
         with:
-          name: image-hosting-platform-windows
-          path: target/release/bundle/**
+          name: image-hosting-platform-release-files
+          path: release/*
           if-no-files-found: error
 
       - name: Upload dependency locks used by this release
@@ -71,17 +94,6 @@ jobs:
             Cargo.lock
             apps/desktop/package-lock.json
             website/package-lock.json
-          if-no-files-found: error
-
-      - name: Create clean tracked-source archive
-        shell: pwsh
-        run: git archive --format=zip -o image-hosting-platform-source.zip HEAD
-
-      - name: Upload clean source archive
-        uses: actions/upload-artifact@v4
-        with:
-          name: image-hosting-platform-source
-          path: image-hosting-platform-source.zip
           if-no-files-found: error
 
   docs-bundle:
@@ -106,3 +118,24 @@ jobs:
           name: image-hosting-platform-docs
           path: website/dist/**
           if-no-files-found: error
+
+  publish-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - windows-bundle
+      - docs-bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download staged release files
+        uses: actions/download-artifact@v4
+        with:
+          name: image-hosting-platform-release-files
+          path: release
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Image Hosting Platform ${{ github.ref_name }}
+          generate_release_notes: true
+          files: release/*
+          fail_on_unmatched_files: true

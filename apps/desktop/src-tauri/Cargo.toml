@@ -1,10 +1,11 @@
 [package]
-name = "multicloud-publisher-desktop"
+name = "image-hosting-platform-desktop"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [lib]
+# Keep the legacy library crate name for source compatibility with main.rs and existing integrations.
 name = "multicloud_publisher_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 

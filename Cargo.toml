@@ -17,10 +17,10 @@ members = [
 ]
 
 [workspace.package]
-version = "1.3.12"
+version = "1.4.0"
 edition = "2024"
 license = "MIT"
-authors = ["Multi-cloud Publisher Contributors"]
+authors = ["Image Hosting Platform Contributors"]
 
 [workspace.dependencies]
 base64 = "0.22"
