@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[lib]
+path = "src/lib_with_queue.rs"
+
 [dependencies]
 bytes.workspace = true
 base64.workspace = true
@@ -13,3 +16,4 @@ async-trait.workspace = true
 domain = { path = "../domain" }
 reqwest.workspace = true
 storage-core = { path = "../storage-core" }
+tokio.workspace = true
