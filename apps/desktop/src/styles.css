@@ -26,6 +26,7 @@
   --radius-control: 12px;
   --shadow-card: 0 8px 30px rgba(15, 23, 42, .04);
   --backdrop-blur: 18px;
+  --glass-strength: 88%;
   --wallpaper: none;
 }
 
@@ -65,10 +66,6 @@ body {
   overflow: hidden;
   color: var(--text-primary);
   background-color: var(--app-bg);
-  background-image: var(--wallpaper);
-  background-size: cover;
-  background-position: center;
-  background-attachment: fixed;
   transition: background-color .2s ease, color .2s ease;
 }
 button, input, select, textarea { font: inherit; }
@@ -79,14 +76,37 @@ button { cursor: pointer; }
 ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--text-muted) 28%, transparent); border-radius: 999px; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* Shared primitives for the upcoming skin system. */
+.app-shell-root {
+  background-color: var(--app-bg);
+  background-image:
+    linear-gradient(
+      color-mix(in srgb, var(--app-bg) 90%, transparent),
+      color-mix(in srgb, var(--app-bg) 90%, transparent)
+    ),
+    var(--wallpaper);
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  transition: background-color .2s ease, background-image .2s ease;
+}
+
+:root[data-wallpaper="true"] .app-shell-root {
+  background-image:
+    linear-gradient(
+      color-mix(in srgb, var(--app-bg) 76%, transparent),
+      color-mix(in srgb, var(--app-bg) 84%, transparent)
+    ),
+    var(--wallpaper);
+}
+
+/* Shared primitives for the skin system. */
 .theme-surface {
   background: var(--surface);
   border-color: var(--border);
   box-shadow: var(--shadow-card);
 }
 .theme-glass {
-  background: var(--surface-glass);
+  background: color-mix(in srgb, var(--surface-glass) var(--glass-strength), transparent);
   border-color: var(--border);
   backdrop-filter: blur(var(--backdrop-blur));
 }

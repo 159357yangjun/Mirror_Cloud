@@ -1,9 +1,17 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { BookOpen, Boxes, Cloud, Images, ListTodo, Moon, Palette, Plug, Settings, Sun, Upload, Zap } from 'lucide-react'
+import { BookOpen, Boxes, Cloud, Images, ListTodo, Palette, Plug, Settings, Upload, Zap } from 'lucide-react'
 import { getDocsBaseUrl, openExternalUrl } from '../lib/desktop'
+import {
+  applyThemePreferences,
+  loadThemePreferences,
+  persistThemePreferences,
+  themeLabel,
+  type ThemePreferences,
+} from '../lib/theme'
 import { useAppStore } from '../store/useAppStore'
 import type { PageKey } from '../types'
 import { HelpCenterDialog } from './HelpCenterDialog'
+import { ThemePanel } from './ThemePanel'
 
 const items: Array<{ key: PageKey; label: string; icon: typeof Boxes }> = [
   { key: 'publish', label: '发布', icon: Upload },
@@ -15,39 +23,22 @@ const items: Array<{ key: PageKey; label: string; icon: typeof Boxes }> = [
   { key: 'settings', label: '设置', icon: Settings },
 ]
 
-type ThemeKey = 'mist' | 'midnight' | 'sakura'
-
-const themes: Array<{ key: ThemeKey; label: string; icon: typeof Sun }> = [
-  { key: 'mist', label: '雾白', icon: Sun },
-  { key: 'midnight', label: '深夜', icon: Moon },
-  { key: 'sakura', label: '樱粉', icon: Palette },
-]
-
-const THEME_STORAGE_KEY = 'image-hosting-platform.theme'
 const FIRST_RUN_HELP_KEY = 'image-hosting-platform.help.seen-v1'
-
-function applyTheme(theme: ThemeKey) {
-  if (theme === 'mist') delete document.documentElement.dataset.theme
-  else document.documentElement.dataset.theme = theme
-}
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { page, setPage, openUpload } = useAppStore()
   const docsUrl = getDocsBaseUrl()
   const [showHelp, setShowHelp] = useState(() => window.localStorage.getItem(FIRST_RUN_HELP_KEY) !== '1')
-  const [theme, setTheme] = useState<ThemeKey>(() => {
-    const saved = window.localStorage.getItem(THEME_STORAGE_KEY)
-    return saved === 'midnight' || saved === 'sakura' ? saved : 'mist'
-  })
+  const [showTheme, setShowTheme] = useState(false)
+  const [appearance, setAppearance] = useState<ThemePreferences>(() => loadThemePreferences())
 
   useEffect(() => {
-    applyTheme(theme)
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme)
-  }, [theme])
+    applyThemePreferences(appearance)
+  }, [appearance])
 
-  function cycleTheme() {
-    const currentIndex = themes.findIndex((item) => item.key === theme)
-    setTheme(themes[(currentIndex + 1) % themes.length].key)
+  function updateAppearance(next: ThemePreferences) {
+    setAppearance(next)
+    persistThemePreferences(next)
   }
 
   function closeHelp() {
@@ -55,11 +46,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     setShowHelp(false)
   }
 
-  const activeTheme = themes.find((item) => item.key === theme) || themes[0]
-  const ThemeIcon = activeTheme.icon
-
   return (
-    <div className="min-h-screen bg-[var(--app-bg)] text-[var(--text-primary)]">
+    <div className="app-shell-root min-h-screen text-[var(--text-primary)]">
       <aside className="app-sidebar theme-glass fixed inset-y-0 left-0 z-30 w-[220px] border-r">
         <div className="flex h-full flex-col p-4">
           <div className="flex items-center gap-3 px-2 py-3">
@@ -96,11 +84,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 
           <div className="mt-auto space-y-2">
             <button
-              onClick={cycleTheme}
+              onClick={() => setShowTheme(true)}
               className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-soft)] hover:text-[var(--text-primary)]"
-              title="切换界面皮肤；后续设置页会提供壁纸、强调色、透明度等完整选项"
+              title="打开皮肤面板：主题、强调色、壁纸、玻璃透明度与模糊"
             >
-              <ThemeIcon size={14} /> <span className="app-docs-label">皮肤 · {activeTheme.label}</span>
+              <Palette size={14} /> <span className="app-docs-label">皮肤 · {themeLabel(appearance.theme)}</span>
             </button>
             <button
               onClick={() => setShowHelp(true)}
@@ -124,6 +112,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           onNavigate={setPage}
           onlineDocsUrl={docsUrl}
           openExternalUrl={openExternalUrl}
+        />
+      )}
+      {showTheme && (
+        <ThemePanel
+          value={appearance}
+          onChange={updateAppearance}
+          onClose={() => setShowTheme(false)}
         />
       )}
     </div>
