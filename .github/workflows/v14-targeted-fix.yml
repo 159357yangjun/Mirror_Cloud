@@ -45,6 +45,12 @@ jobs:
               "require('AI_CREDENTIAL_KEY' in commands and re.search(r'credentials\\s*\\.\\s*set_json\\(\\s*AI_CREDENTIAL_KEY', commands) is not None, 'AI API key uses credential store')",
               'AI credential check',
           )
+          contract = replace_once(
+              contract,
+              "require('execute_for_hook(&manifest, &granted_permissions' in cli, 'Typora plugin runtime uses persisted user grants')",
+              "require(re.search(r'execute_for_hook\\(\\s*&manifest,\\s*&granted_permissions', cli) is not None, 'Typora plugin runtime uses persisted user grants')",
+              'Typora granted permissions check',
+          )
           contract_path.write_text(contract, encoding='utf-8', newline='\n')
 
           settings_path = Path('apps/desktop/src/pages/SettingsPage.tsx')
