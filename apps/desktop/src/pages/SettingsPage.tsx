@@ -210,7 +210,7 @@ export function SettingsPage() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-sm font-semibold text-indigo-950"><Workflow size={17} /> Typora 集成</div>
-            <p className="mt-1 max-w-2xl text-xs leading-6 text-indigo-700/70">Typora 的“自定义命令”会调用 Publisher 自动维护的上传链，并在上传成功后依次执行当前已启用插件，再把最终公网 URL 返回给 Typora。</p>
+            <p className="mt-1 max-w-2xl text-xs leading-6 text-indigo-700/70">Typora 的“自定义命令”会调用 图床自动维护的上传链，并在上传成功后依次执行当前已启用插件，再把最终公网 URL 返回给 Typora。</p>
           </div>
           <button onClick={() => void refreshTypora()} className="flex items-center gap-1.5 rounded-xl border border-indigo-100 bg-white px-3 py-2 text-xs font-medium text-indigo-700">
             {typoraChecking ? <LoaderCircle size={13} className="animate-spin" /> : <RefreshCw size={13} />}重新检测
@@ -235,7 +235,7 @@ export function SettingsPage() {
           <div className="mt-2 break-all rounded-xl bg-slate-950 px-3 py-3 font-mono text-[11px] leading-5 text-slate-200">{typora?.command || '正在生成…'}</div>
           <div className="mt-3 flex flex-wrap gap-2">
             <button disabled={!typora?.command || startingTypora} onClick={() => void startTyporaSetup()} className="flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-medium text-white disabled:opacity-40">
-              {startingTypora ? <LoaderCircle size={14} className="animate-spin" /> : <Sparkles size={14} />}一键开始配置
+              {startingTypora ? <LoaderCircle size={14} className="animate-spin" /> : <Sparkles size={14} />}复制命令并打开 Typora
             </button>
             <button disabled={!typora?.command} onClick={() => void copyTyporaCommand()} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-medium disabled:opacity-40">
               {copiedCommand ? <Check size={14} /> : <ClipboardCopy size={14} />}{copiedCommand ? '命令已复制' : '只复制命令'}
@@ -243,16 +243,16 @@ export function SettingsPage() {
             <button onClick={() => void launchTypora()} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-medium"><ExternalLink size={14} />只打开 Typora</button>
             <button onClick={() => setPage('plugins')} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-medium"><Workflow size={14} />管理上传插件</button>
           </div>
-          <div className="mt-2 text-[11px] leading-5 text-slate-400">“一键开始配置”会先把 Custom Command 放进剪贴板，再启动 Typora；随后只需在 Typora 的图像设置里粘贴并执行一次验证。</div>
+          <div className="mt-2 text-[11px] leading-5 text-slate-400">“复制命令并打开 Typora”只会把 Custom Command 放进剪贴板并启动 Typora，不会自动修改 Typora 设置。请继续在 Typora → 偏好设置 → 图像中手动选择“自定义命令”、粘贴并执行一次验证。</div>
         </div>
 
         <div className="mt-4 grid grid-cols-4 gap-2 text-[11px] text-slate-500 max-lg:grid-cols-2">
-          <div className="rounded-xl bg-white/80 p-3"><div className="font-semibold text-slate-700">1</div><div className="mt-1">点击“一键开始配置”（命令已复制并打开 Typora）</div></div>
+          <div className="rounded-xl bg-white/80 p-3"><div className="font-semibold text-slate-700">1</div><div className="mt-1">点击“复制命令并打开 Typora”（命令会复制到剪贴板）</div></div>
           <div className="rounded-xl bg-white/80 p-3"><div className="font-semibold text-slate-700">2</div><div className="mt-1">Typora → 偏好设置 → 图像</div></div>
           <div className="rounded-xl bg-white/80 p-3"><div className="font-semibold text-slate-700">3</div><div className="mt-1">上传服务选“自定义命令”并粘贴</div></div>
           <div className="rounded-xl bg-white/80 p-3"><div className="font-semibold text-slate-700">4</div><div className="mt-1">点击“验证图片上传选项”</div></div>
         </div>
-        <p className="mt-3 text-[11px] leading-5 text-slate-400">之后在 Typora 粘贴、拖入图片，或使用“上传所有本地图片”，都会调用 Publisher 默认上传链，并执行当前开启的插件。Publisher GUI 不需要保持打开。</p>
+        <p className="mt-3 text-[11px] leading-5 text-slate-400">之后在 Typora 粘贴、拖入图片，或使用“上传所有本地图片”，都会调用 图床默认上传链，并执行当前开启的插件。图床界面不需要保持打开。</p>
       </section>
 
       <section className="mt-6 grid grid-cols-2 gap-4 max-lg:grid-cols-1">

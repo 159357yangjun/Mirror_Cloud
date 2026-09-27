@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 checks = []
@@ -57,12 +58,12 @@ require('asset.pluginOutputs' in assets, 'resource UI renders plugin outputs')
 require('pluginOutputs' in commands[commands.find('fn emit_asset_published'):], 'final publish event carries plugin outputs')
 
 # Plugin onboarding defaults safely off and validates before enable.
-require('enabled:false' in commands, 'marketplace plugins install disabled')
+require(re.search(r'enabled\s*:\s*false', commands) is not None, 'marketplace plugins install disabled')
 require('validate_plugin_ready' in commands, 'plugin enable readiness validation exists')
 require('setPluginEnabled' in plugins, 'plugin UI controls real backend switch')
 
 # AI credentials are not persisted in normal SQLite settings.
-require('AI_CREDENTIAL_KEY' in commands and 'credentials.set_json(AI_CREDENTIAL_KEY' in commands, 'AI API key uses credential store')
+require('AI_CREDENTIAL_KEY' in commands and re.search(r'credentials\s*\.\s*set_json\(\s*AI_CREDENTIAL_KEY', commands) is not None, 'AI API key uses credential store')
 require('obj.remove("apiKey")' in commands, 'AI API key removed before settings persistence')
 
 failed = [label for ok, label in checks if not ok]
@@ -99,7 +100,7 @@ require('granted_permissions_json' in migration10 and 'read_asset' in migration1
 require('set_plugin_permissions' in commands and 'commands::set_plugin_permissions' in lib, 'plugin permission grant command is registered')
 require('grantedPermissions' in plugins and 'setPluginPermissions' in plugins and 'window.confirm' in plugins, 'plugin UI requests user approval before sensitive permission use')
 require('permissions: plugin.permissions.filter' in plugins and 'revokeSensitivePermissions' in plugins, 'plugin UI can revoke sensitive grants')
-require('execute_for_hook(&manifest, &granted_permissions' in cli, 'Typora plugin runtime uses persisted user grants')
+require(re.search(r'execute_for_hook\(\s*&manifest,\s*&granted_permissions', cli) is not None, 'Typora plugin runtime uses persisted user grants')
 
 failed = [label for ok, label in checks if not ok]
 for ok, label in checks[-18:]:
@@ -126,7 +127,7 @@ require('active_deployment_reference_count' in persistence and 'reference_count 
 require('actual_hash == context.content_hash' in commands and 'DeploymentStatus::Degraded' in commands, 'repair source is hash-verified before propagation')
 require('complete_with_note(task.id' in cli and 'Publisher warning:' in cli, 'Typora persists partial publish/plugin warnings')
 require('warningTasks' in upload and 'TriangleAlert' in upload, 'upload dialog surfaces completed-with-warning state')
-require('API Key 不能写入插件 JSON' in commands and 'config.get("apiKey")' in commands, 'generic plugin JSON cannot persist AI API keys')
+require('API Key 不能写入插件 JSON' in commands and re.search(r'config\s*\.\s*get\(\s*"apiKey"\s*\)', commands) is not None, 'generic plugin JSON cannot persist AI API keys')
 require('let verified_sha = self.existing_sha(&repository_path).await?' in gitee and 'remote SHA verification failed' in gitee, 'Gitee upload verifies remote object after write')
 require('self.operator.stat(&remote_path)' in opendal and 'content_length() != expected_len' in opendal, 'OpenDAL upload verifies remote size after write')
 require('reqwest::Url::parse(value)' in commands and 'url.host_str().is_none()' in commands, 'public base URLs are structurally validated')
@@ -281,8 +282,8 @@ require('pub async fn cancel_task' in storage_entries_commands and 'pub async fn
 require('cancelTask' in tasks_page and 'retryTask' in tasks_page and 'task.canCancel' in tasks_page and 'task.canRetry' in tasks_page, 'Task Center exposes real cancel and bounded retry controls')
 require('CREATE TABLE IF NOT EXISTS plugin_execution_logs' in migration13 and 'duration_ms' in migration13 and 'plugin_id' in migration13, 'plugin execution audit migration exists')
 require('record_execution' in persistence and 'list_execution_logs' in persistence, 'plugin execution audit repository persists and reads logs')
-require('record_execution(&manifest.id' in commands_main and 'record_execution(&manifest.id' in cli, 'desktop and Typora/Local API plugin lifecycle executions are audited')
-require('manual_trigger","success"' in plugin_commands and 'manual_trigger","failed"' in plugin_commands, 'manual plugin runs are audited')
+require(re.search(r'record_execution\(\s*&manifest\.id', commands_main) is not None and re.search(r'record_execution\(\s*&manifest\.id', cli) is not None, 'desktop and Typora/Local API plugin lifecycle executions are audited')
+require(re.search(r'"manual_trigger"\s*,\s*"success"', plugin_commands) is not None and re.search(r'"manual_trigger"\s*,\s*"failed"', plugin_commands) is not None, 'manual plugin runs are audited')
 require('list_plugin_execution_logs' in plugin_commands and 'commands::list_plugin_execution_logs' in lib and 'listPluginExecutionLogs' in plugins and '插件执行记录' in plugins, 'plugin UI exposes recent execution success failure and duration')
 require('get_system_diagnostics' in integrations and 'enabled_storage_count' in integrations and 'failed_task_count' in integrations and 'commands::integrations::get_system_diagnostics' in lib, 'system diagnostics aggregate core runtime health')
 require('getSystemDiagnostics' in settings_page and '系统诊断' in settings_page and 'diagnostics.warnings' in settings_page, 'Settings exposes actionable runtime diagnostics')
