@@ -12,11 +12,14 @@ permissions:
 jobs:
   windows-bundle:
     runs-on: windows-latest
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -115,11 +118,14 @@ jobs:
 
   docs-bundle:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
+          cache: npm
+          cache-dependency-path: website/package-lock.json
       - name: Validate release version consistency
         run: python scripts/check_release_version.py
       - name: Install docs dependencies from lock
@@ -142,6 +148,7 @@ jobs:
       - windows-bundle
       - docs-bundle
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Download staged release files
         uses: actions/download-artifact@v8
@@ -150,7 +157,7 @@ jobs:
           path: release
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: Image Hosting Platform ${{ github.ref_name }}
           generate_release_notes: true
