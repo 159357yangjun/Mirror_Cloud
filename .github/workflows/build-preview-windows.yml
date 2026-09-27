@@ -26,7 +26,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Pin Rust Tauri dependencies to published JS minor lines
+      - name: Align complete Rust Tauri dependency family
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -36,6 +36,7 @@ jobs:
           path = Path('apps/desktop/src-tauri/Cargo.toml')
           text = path.read_text(encoding='utf-8')
           replacements = {
+              'tauri-build = { version = "2.5" }': 'tauri-build = { version = "=2.6.3" }',
               'tauri = { version = "2.11.5", features = ["tray-icon"] }': 'tauri = { version = "=2.11.5", features = ["tray-icon"] }',
               'tauri-plugin-dialog = "2"': 'tauri-plugin-dialog = "=2.7.3"',
               'tauri-plugin-opener = "2"': 'tauri-plugin-opener = "=2.5.5"',
@@ -47,14 +48,26 @@ jobs:
               text = text.replace(old, new, 1)
           path.write_text(text, encoding='utf-8')
           '@ | python -
-          cargo update -p tauri --precise 2.11.5
-          if ($LASTEXITCODE -ne 0) { throw 'tauri pin failed' }
-          cargo update -p tauri-plugin-dialog --precise 2.7.3
-          if ($LASTEXITCODE -ne 0) { throw 'dialog pin failed' }
-          cargo update -p tauri-plugin-opener --precise 2.5.5
-          if ($LASTEXITCODE -ne 0) { throw 'opener pin failed' }
-          cargo update -p tauri-plugin-clipboard-manager --precise 2.3.3
-          if ($LASTEXITCODE -ne 0) { throw 'clipboard pin failed' }
+
+          $pins = @(
+            @('tauri', '2.11.5'),
+            @('tauri-runtime', '2.11.3'),
+            @('tauri-runtime-wry', '2.11.4'),
+            @('tauri-macros', '2.6.3'),
+            @('tauri-build', '2.6.3'),
+            @('tauri-codegen', '2.6.3'),
+            @('tauri-utils', '2.9.3'),
+            @('tauri-plugin-dialog', '2.7.3'),
+            @('tauri-plugin-opener', '2.5.5'),
+            @('tauri-plugin-clipboard-manager', '2.3.3')
+          )
+          foreach ($pin in $pins) {
+            cargo update -p $pin[0] --precise $pin[1]
+            if ($LASTEXITCODE -ne 0) { throw "failed to pin $($pin[0]) to $($pin[1])" }
+          }
+
+          Write-Host 'Resolved Tauri family:'
+          cargo tree -p image-hosting-platform-desktop | Select-String 'tauri|wry|webview2-com|windows '
 
       - name: Install desktop dependencies
         working-directory: apps/desktop
@@ -73,7 +86,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'git diff check failed' }
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'build: align Tauri Rust and JS minor versions'
+          git commit -m 'build: align Tauri Rust and JS dependency families'
           if ($LASTEXITCODE -ne 0) { throw 'git commit failed' }
           git pull --rebase origin dev
           if ($LASTEXITCODE -ne 0) { throw 'git pull --rebase failed; reconcile concurrent changes' }
