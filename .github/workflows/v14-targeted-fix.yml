@@ -51,6 +51,12 @@ jobs:
               "require(re.search(r'execute_for_hook\\(\\s*&manifest,\\s*&granted_permissions', cli) is not None, 'Typora plugin runtime uses persisted user grants')",
               'Typora granted permissions check',
           )
+          contract = replace_once(
+              contract,
+              "require('API Key 不能写入插件 JSON' in commands and 'config.get(\"apiKey\")' in commands, 'generic plugin JSON cannot persist AI API keys')",
+              "require('API Key 不能写入插件 JSON' in commands and re.search(r'config\\s*\\.\\s*get\\(\\s*\"apiKey\"\\s*\\)', commands) is not None, 'generic plugin JSON cannot persist AI API keys')",
+              'generic plugin API key check',
+          )
           contract_path.write_text(contract, encoding='utf-8', newline='\n')
 
           settings_path = Path('apps/desktop/src/pages/SettingsPage.tsx')
