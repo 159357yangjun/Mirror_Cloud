@@ -1,0 +1,56 @@
+name: Commit Dependency Locks
+
+on:
+  push:
+    branches:
+      - dev
+
+permissions:
+  contents: write
+
+jobs:
+  commit-locks:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Generate dependency locks
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile
+          (cd apps/desktop && npm install --package-lock-only --ignore-scripts)
+          (cd website && npm install --package-lock-only --ignore-scripts)
+
+      - name: Validate generated locks
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check --workspace --locked
+          (cd apps/desktop && npm ci --ignore-scripts)
+          (cd website && npm ci --ignore-scripts)
+
+      - name: Commit lockfiles to dev
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add Cargo.lock apps/desktop/package-lock.json website/package-lock.json
+          if git diff --cached --quiet; then
+            echo 'Dependency lockfiles are already committed.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'build: commit resolved dependency locks'
+          git pull --rebase origin dev
+          git push origin HEAD:dev
