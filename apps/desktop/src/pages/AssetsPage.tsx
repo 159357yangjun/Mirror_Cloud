@@ -2,6 +2,7 @@ import { Check, Cloud, Copy, RefreshCw, Search, Sparkles, Trash2, Upload, WifiOf
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
+import { CloudIndexSyncBanner } from '../components/CloudIndexSyncBanner'
 import {
   copyText,
   deleteAsset,
@@ -137,11 +138,7 @@ export function AssetsPage() {
         }
       />
 
-      <div className="mt-6 flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-xs leading-6 text-blue-800">
-        <Cloud size={16} className="mt-1 shrink-0" />
-        <div className="flex-1"><span className="font-semibold">资源 ≠ 云端文件浏览器。</span> 这里主要显示通过图床发布并写入本地索引的记录。你以前就在 GitHub / R2 / OSS 里的文件，请到“云端图库”查看真实远端内容。</div>
-        <button onClick={() => setPage('gallery')} className="shrink-0 rounded-lg bg-white px-3 py-1.5 font-medium text-blue-700 shadow-sm">查看图库 →</button>
-      </div>
+      <CloudIndexSyncBanner onOpenGallery={() => setPage('gallery')} />
 
       <div className="mt-6 flex items-center gap-3">
         <div className="flex h-10 flex-1 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3">

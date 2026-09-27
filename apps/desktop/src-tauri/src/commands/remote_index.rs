@@ -47,12 +47,14 @@ pub async fn sync_storage_asset_index(
 ) -> CmdResult<RemoteIndexSyncView> {
     let storages = if let Some(storage_id) = storage_id {
         let id = Uuid::parse_str(&storage_id).map_err(|error| error.to_string())?;
-        vec![state
-            .storages
-            .get(id)
-            .await
-            .map_err(|error| error.to_string())?
-            .ok_or("Storage not found")?]
+        vec![
+            state
+                .storages
+                .get(id)
+                .await
+                .map_err(|error| error.to_string())?
+                .ok_or("Storage not found")?,
+        ]
     } else {
         state
             .storages
@@ -83,9 +85,10 @@ pub async fn sync_storage_asset_index(
             }
         };
         if !provider.capabilities().list {
-            summary
-                .errors
-                .push(format!("{}：当前 Provider 不支持列出远端文件", storage.name));
+            summary.errors.push(format!(
+                "{}：当前 Provider 不支持列出远端文件",
+                storage.name
+            ));
             continue;
         }
 

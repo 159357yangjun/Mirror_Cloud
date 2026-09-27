@@ -34,8 +34,10 @@ use crate::AppState;
 
 pub(crate) mod integrations;
 pub(crate) mod plugins;
+pub(crate) mod remote_index;
 pub(crate) mod storage_entries;
 pub use plugins::*;
+pub use remote_index::*;
 pub use storage_entries::*;
 
 type CmdResult<T> = Result<T, String>;

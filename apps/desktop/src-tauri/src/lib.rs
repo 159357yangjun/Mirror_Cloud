@@ -98,6 +98,7 @@ pub fn run() {
             commands::delete_storage,
             commands::test_storage,
             commands::browse_storage,
+            commands::sync_storage_asset_index,
             commands::delete_storage_entry,
             commands::download_storage_entry,
             commands::move_storage_entry,

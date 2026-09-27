@@ -30,6 +30,15 @@ import type {
 } from '../types'
 
 
+export interface RemoteIndexSyncResult {
+  storagesScanned: number
+  filesScanned: number
+  imported: number
+  skippedExisting: number
+  skippedNonImages: number
+  errors: string[]
+}
+
 const docsBaseUrl = (import.meta.env.VITE_DOCS_BASE_URL || '').trim().replace(/\/+$/, '')
 
 export function getDocsBaseUrl(): string | null {
@@ -134,6 +143,10 @@ export async function testStorage(storageId: string): Promise<{ reachable: boole
 
 export async function browseStorage(storageId: string, path: string): Promise<StorageEntryView[]> {
   return invoke('browse_storage', { storageId, path })
+}
+
+export async function syncStorageAssetIndex(storageId?: string): Promise<RemoteIndexSyncResult> {
+  return invoke('sync_storage_asset_index', { storageId: storageId || null })
 }
 
 export async function deleteStorageEntry(storageId: string, path: string): Promise<number> {
