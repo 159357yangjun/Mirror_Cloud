@@ -222,7 +222,9 @@ impl GitHubStorage {
             return Ok(None);
         }
         if !response.status().is_success() {
-            return Err(Self::response_error(response, "GitHub content lookup failed").await);
+            return Err(
+                Self::response_error(response, "GitHub content lookup failed").await,
+            );
         }
         let payload: Value = response
             .json()
@@ -253,7 +255,9 @@ impl GitHubStorage {
             ));
         }
         if !response.status().is_success() {
-            return Err(Self::response_error(response, "GitHub root browse check failed").await);
+            return Err(
+                Self::response_error(response, "GitHub root browse check failed").await,
+            );
         }
         Ok(format!("configured root '{root}' is readable"))
     }
@@ -310,7 +314,9 @@ impl StorageProvider for GitHubStorage {
             .await
             .map_err(|e| StorageError::Network(e.to_string()))?;
         if !repo_response.status().is_success() {
-            return Err(Self::response_error(repo_response, "GitHub repository check failed").await);
+            return Err(
+                Self::response_error(repo_response, "GitHub repository check failed").await,
+            );
         }
 
         let repo: Value = repo_response
@@ -352,7 +358,9 @@ impl StorageProvider for GitHubStorage {
             .await
             .map_err(|e| StorageError::Network(e.to_string()))?;
         if !branch_response.status().is_success() {
-            return Err(Self::response_error(branch_response, "GitHub branch check failed").await);
+            return Err(
+                Self::response_error(branch_response, "GitHub branch check failed").await,
+            );
         }
 
         let root_note = self.root_status_note().await?;
@@ -374,7 +382,7 @@ impl StorageProvider for GitHubStorage {
             let existing_sha = self.existing_sha(&repository_path).await?;
             let mut payload = json!({
                 "message": format!("chore(assets): publish {}", repository_path),
-                "content": encoded_content,
+                "content": &encoded_content,
                 "branch": self.config.branch.clone(),
             });
             if let Some(sha) = existing_sha {
@@ -459,7 +467,10 @@ impl StorageProvider for GitHubStorage {
             .await
             .map_err(|e| StorageError::Provider(e.to_string()))?;
         if let Some(content) = payload.get("content").and_then(Value::as_str) {
-            let compact = content.chars().filter(|ch| !ch.is_whitespace()).collect::<String>();
+            let compact = content
+                .chars()
+                .filter(|ch| !ch.is_whitespace())
+                .collect::<String>();
             let decoded = STANDARD
                 .decode(compact.as_bytes())
                 .map_err(|e| StorageError::Provider(format!("GitHub content decode failed: {e}")))?;
@@ -481,7 +492,9 @@ impl StorageProvider for GitHubStorage {
             .await
             .map_err(|e| StorageError::Network(e.to_string()))?;
         if !response.status().is_success() {
-            return Err(Self::response_error(response, "GitHub raw download failed").await);
+            return Err(
+                Self::response_error(response, "GitHub raw download failed").await,
+            );
         }
         response
             .bytes()
@@ -568,15 +581,23 @@ mod tests {
                 root: "assets/blog".into(),
                 public_base_url: Some("https://img.example.com".into()),
             },
-            GitHubCredentials { token: "test".into() },
+            GitHubCredentials {
+                token: "test".into(),
+            },
         )
     }
 
     #[test]
     fn repository_paths_stay_relative_to_storage_root() {
         let storage = storage();
-        assert_eq!(storage.repository_path("2026/a.png"), "assets/blog/2026/a.png");
-        assert_eq!(storage.logical_path("assets/blog/2026/a.png"), "2026/a.png");
+        assert_eq!(
+            storage.repository_path("2026/a.png"),
+            "assets/blog/2026/a.png"
+        );
+        assert_eq!(
+            storage.logical_path("assets/blog/2026/a.png"),
+            "2026/a.png"
+        );
         assert_eq!(storage.repository_path(""), "assets/blog");
     }
 
@@ -605,7 +626,9 @@ mod tests {
         storage.config.branch = "main".into();
         storage.config.root.clear();
         storage.config.public_base_url = None;
-        let url = storage.raw_public_url("02_实现层_三维城市沙盘.png").unwrap();
+        let url = storage
+            .raw_public_url("02_实现层_三维城市沙盘.png")
+            .unwrap();
         assert_eq!(
             url,
             "https://raw.githubusercontent.com/159357yangjun/PicList/main/02_%E5%AE%9E%E7%8E%B0%E5%B1%82_%E4%B8%89%E7%BB%B4%E5%9F%8E%E5%B8%82%E6%B2%99%E7%9B%98.png"
