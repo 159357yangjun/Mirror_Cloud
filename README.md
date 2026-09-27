@@ -66,7 +66,7 @@ Desktop / Typora / Clipboard / URL / Tray / Shortcut / HTTP API / Shell Upload
 
 多人或多 Agent 协作时，任何写操作前都应重新读取远端最新 `dev` SHA 和目标文件，发生并发修改时先 reconcile；禁止 force push 覆盖别人工作。
 
-> 当前仓库的 `main` 与 `dev` 历史仍需在正式 v1.4.0 发布前做一次安全 lineage bridge。正式发布前不要假设普通 `dev → main` merge 一定可用。
+`main` 与 `dev` 的独立历史已经通过一个内容不变的双父提交完成安全桥接：`main` 现在是 `dev` 的祖先，后续可以正常 compare / PR；桥接过程没有改写 `main`，也没有 force push。
 
 ## 本地开发
 
