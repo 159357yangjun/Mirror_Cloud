@@ -57,6 +57,18 @@ jobs:
               "require('API Key 不能写入插件 JSON' in commands and re.search(r'config\\s*\\.\\s*get\\(\\s*\"apiKey\"\\s*\\)', commands) is not None, 'generic plugin JSON cannot persist AI API keys')",
               'generic plugin API key check',
           )
+          contract = replace_once(
+              contract,
+              "require('record_execution(&manifest.id' in commands_main and 'record_execution(&manifest.id' in cli, 'desktop and Typora/Local API plugin lifecycle executions are audited')",
+              "require(re.search(r'record_execution\\(\\s*&manifest\\.id', commands_main) is not None and re.search(r'record_execution\\(\\s*&manifest\\.id', cli) is not None, 'desktop and Typora/Local API plugin lifecycle executions are audited')",
+              'plugin lifecycle audit check',
+          )
+          contract = replace_once(
+              contract,
+              "require('manual_trigger\",\"success\"' in plugin_commands and 'manual_trigger\",\"failed\"' in plugin_commands, 'manual plugin runs are audited')",
+              "require(re.search(r'\"manual_trigger\"\\s*,\\s*\"success\"', plugin_commands) is not None and re.search(r'\"manual_trigger\"\\s*,\\s*\"failed\"', plugin_commands) is not None, 'manual plugin runs are audited')",
+              'manual plugin audit check',
+          )
           contract_path.write_text(contract, encoding='utf-8', newline='\n')
 
           settings_path = Path('apps/desktop/src/pages/SettingsPage.tsx')
