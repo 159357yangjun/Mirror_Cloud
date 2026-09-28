@@ -3,12 +3,13 @@ use std::{
     sync::Arc,
 };
 
+use application::{PublishMember, PublishOutcome, PublisherCore};
 use bytes::Bytes;
 use chrono::Utc;
 use credential_store::CredentialStore;
 use domain::{
     Asset, AssetKind, AssetVariant, Deployment, DeploymentRole, DeploymentStatus, PublishTarget,
-    Workflow, WorkflowStep,
+    StorageGroupStrategy, Workflow, WorkflowStep,
 };
 use persistence_sqlite::{
     AssetPluginOutputRecord, AssetRepository, DeploymentWriteRecord, PluginRepository,
@@ -16,7 +17,7 @@ use persistence_sqlite::{
     StorageRepository, TaskRepository, WorkflowRepository,
 };
 use plugin_runtime::{PluginContext, PluginHook, PluginManifest, PluginPermission};
-use storage_core::{StorageProvider, UploadRequest};
+use storage_core::StorageProvider;
 use storage_gitee::{GiteeCredentials, GiteeStorage, GiteeStorageConfig};
 use storage_github::{GitHubCredentials, GitHubStorage, GitHubStorageConfig};
 use storage_opendal::{
@@ -32,16 +33,6 @@ const SYSTEM_PIPELINE_SOURCE: &str = "__system_default__";
 const AI_SETTINGS_KEY: &str = "ai.provider";
 const AI_CREDENTIAL_KEY: &str = "ai:provider";
 
-#[derive(Debug)]
-struct UploadOutcome {
-    storage_id: Uuid,
-    storage_name: String,
-    role: DeploymentRole,
-    remote_path: String,
-    public_url: Option<String>,
-    error: Option<String>,
-}
-
 fn is_safe_compensation_path(path: &str) -> bool {
     path.split(|character: char| !character.is_ascii_alphanumeric())
         .any(|segment| {
@@ -55,7 +46,7 @@ fn is_safe_compensation_path(path: &str) -> bool {
 
 async fn rollback_successful_uploads(
     context: &CliContext,
-    outcomes: &[UploadOutcome],
+    outcomes: &[PublishOutcome],
 ) -> Vec<String> {
     let mut failures = Vec::new();
     for outcome in outcomes.iter().filter(|outcome| outcome.error.is_none()) {
@@ -539,18 +530,21 @@ async fn publish_one(
                 .map_err(|error| error.to_string())?
                 .ok_or_else(|| "Workflow storage no longer exists".to_string())?;
             let provider = build_provider(context, &storage)?;
-            vec![
-                upload_target(
-                    storage.id,
-                    storage.name.clone(),
-                    DeploymentRole::Primary,
-                    provider,
-                    prepared.body.clone(),
-                    prepared.remote_path.clone(),
-                    prepared.mime_type.clone(),
-                )
-                .await,
-            ]
+            PublisherCore::publish_group(
+                StorageGroupStrategy::MirrorAll,
+                vec![PublishMember {
+                    storage_id: storage.id,
+                    storage_name: storage.name,
+                    role: DeploymentRole::Primary,
+                    priority: 0,
+                    provider: Ok(provider),
+                }],
+                prepared.body.clone(),
+                prepared.remote_path.clone(),
+                prepared.mime_type.clone(),
+            )
+            .await
+            .map_err(|error| error.to_string())?
         }
         PublishTarget::StorageGroup { storage_group_id } => {
             let group = context
@@ -824,49 +818,21 @@ async fn run_enabled_plugins_for_hook(
 async fn upload_group_member(
     context: &CliContext,
     member: &persistence_sqlite::StorageGroupMemberRecord,
-    body: Bytes,
-    remote_path: String,
-    mime_type: String,
-) -> Result<UploadOutcome, String> {
+) -> Result<PublishMember, String> {
     let role = role_from_str(&member.role)?;
-    let Some(storage) = context
-        .storages
-        .get(member.storage_id)
-        .await
-        .map_err(|e| e.to_string())?
-    else {
-        return Ok(UploadOutcome {
-            storage_id: member.storage_id,
-            storage_name: member.storage_name.clone(),
-            role,
-            remote_path,
-            public_url: None,
-            error: Some(format!("Storage {} no longer exists", member.storage_name)),
-        });
+    let provider = match context.storages.get(member.storage_id).await {
+        Ok(Some(storage)) => build_provider(context, &storage)
+            .map_err(|error| format!("Cannot initialize {}: {error}", member.storage_name)),
+        Ok(None) => Err(format!("Storage {} no longer exists", member.storage_name)),
+        Err(error) => Err(error.to_string()),
     };
-    let provider = match build_provider(context, &storage) {
-        Ok(provider) => provider,
-        Err(error) => {
-            return Ok(UploadOutcome {
-                storage_id: storage.id,
-                storage_name: storage.name,
-                role,
-                remote_path,
-                public_url: None,
-                error: Some(error),
-            });
-        }
-    };
-    Ok(upload_target(
-        storage.id,
-        storage.name,
+    Ok(PublishMember {
+        storage_id: member.storage_id,
+        storage_name: member.storage_name.clone(),
         role,
+        priority: member.priority,
         provider,
-        body,
-        remote_path,
-        mime_type,
-    )
-    .await)
+    })
 }
 
 async fn upload_group(
@@ -875,117 +841,21 @@ async fn upload_group(
     body: Bytes,
     remote_path: String,
     mime_type: String,
-) -> Result<Vec<UploadOutcome>, String> {
-    if group.strategy != "primary_with_backups" {
-        let mut outcomes = Vec::with_capacity(group.members.len());
-        for member in &group.members {
-            outcomes.push(
-                upload_group_member(
-                    context,
-                    member,
-                    body.clone(),
-                    remote_path.clone(),
-                    mime_type.clone(),
-                )
-                .await?,
-            );
-        }
-        return Ok(outcomes);
+) -> Result<Vec<PublishOutcome>, String> {
+    let strategy = match group.strategy.as_str() {
+        "mirror_all" => StorageGroupStrategy::MirrorAll,
+        "primary_with_backups" => StorageGroupStrategy::PrimaryWithBackups,
+        other => return Err(format!("Unsupported Storage Group strategy: {other}")),
+    };
+
+    let mut members = Vec::with_capacity(group.members.len());
+    for member in &group.members {
+        members.push(upload_group_member(context, member).await?);
     }
 
-    let primary = group
-        .members
-        .iter()
-        .find(|member| member.role == "primary")
-        .ok_or_else(|| "The storage group has no primary storage".to_string())?;
-    let primary_outcome = upload_group_member(
-        context,
-        primary,
-        body.clone(),
-        remote_path.clone(),
-        mime_type.clone(),
-    )
-    .await?;
-    let primary_succeeded = primary_outcome.error.is_none();
-    let mut outcomes = vec![primary_outcome];
-
-    for mirror in group
-        .members
-        .iter()
-        .filter(|member| member.role == "mirror")
-    {
-        outcomes.push(
-            upload_group_member(
-                context,
-                mirror,
-                body.clone(),
-                remote_path.clone(),
-                mime_type.clone(),
-            )
-            .await?,
-        );
-    }
-
-    if !primary_succeeded {
-        let mut backups = group
-            .members
-            .iter()
-            .filter(|member| member.role == "backup")
-            .collect::<Vec<_>>();
-        backups.sort_by_key(|member| member.priority);
-        for backup in backups {
-            let outcome = upload_group_member(
-                context,
-                backup,
-                body.clone(),
-                remote_path.clone(),
-                mime_type.clone(),
-            )
-            .await?;
-            let succeeded = outcome.error.is_none();
-            outcomes.push(outcome);
-            if succeeded {
-                break;
-            }
-        }
-    }
-    Ok(outcomes)
-}
-
-async fn upload_target(
-    storage_id: Uuid,
-    storage_name: String,
-    role: DeploymentRole,
-    provider: Arc<dyn StorageProvider>,
-    body: Bytes,
-    remote_path: String,
-    mime_type: String,
-) -> UploadOutcome {
-    match provider
-        .upload(UploadRequest {
-            path: remote_path.clone(),
-            content_type: Some(mime_type),
-            body,
-        })
+    PublisherCore::publish_group(strategy, members, body, remote_path, mime_type)
         .await
-    {
-        Ok(upload) => UploadOutcome {
-            storage_id,
-            storage_name: storage_name.clone(),
-            role,
-            remote_path: upload.remote_path,
-            public_url: upload.public_url,
-            error: None,
-        },
-        Err(error) => UploadOutcome {
-            storage_id,
-            storage_name,
-            role,
-            remote_path,
-            public_url: None,
-            error: Some(error.to_string()),
-        },
-    }
+        .map_err(|error| error.to_string())
 }
 
 fn role_from_str(value: &str) -> Result<DeploymentRole, String> {

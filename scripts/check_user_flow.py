@@ -84,7 +84,7 @@ migration10 = text('crates/persistence-sqlite/migrations/0010_plugin_permission_
 
 require('permissions/push' in github and 'Contents: Read and write' in github, 'GitHub connection test checks repository write access')
 require('PublisherCore::publish_group' in commands and 'backups.sort_by_key(|member| member.priority)' in application and 'if !primary_succeeded {' in application, 'desktop group publish delegates ordered first-success backup failover to PublisherCore')
-require('backups.sort_by_key(|member| member.priority)' in cli and 'if !primary_succeeded {' in cli and 'upload_group_member' in cli, 'Typora group publish uses ordered first-success backup failover')
+require('PublisherCore::publish_group' in cli and 'UploadRequest' not in cli and 'if !primary_succeeded {' not in cli and 'backups.sort_by_key(' not in cli, 'Typora/CLI publish delegates multi-cloud strategy to PublisherCore instead of keeping a second implementation')
 require('Backup 仅在 Primary 失败时接管' in group_dialog, 'Storage Group UI explains failover semantics')
 require('PermissionDenied' in plugin_runtime and 'require_permission' in plugin_runtime, 'plugin runtime enforces manifest permissions')
 require('PluginPermission::ExternalWrite' in plugin_runtime, 'webhook requires external_write permission at runtime')
