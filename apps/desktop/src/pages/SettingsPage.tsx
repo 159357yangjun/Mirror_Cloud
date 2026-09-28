@@ -40,7 +40,7 @@ export function SettingsPage() {
   const queryClient = useQueryClient()
   const setPage = useAppStore((state) => state.setPage)
   const { data } = useQuery({ queryKey: ['output-preferences'], queryFn: getOutputPreferences })
-  const { data: typora, isFetching: typoraChecking, refetch: refreshTypora } = useQuery({
+  const { data: typora, error: typoraError, isFetching: typoraChecking, refetch: refreshTypora } = useQuery({
     queryKey: ['typora-integration'],
     queryFn: getTyporaIntegrationInfo,
     refetchOnWindowFocus: false,
@@ -50,7 +50,7 @@ export function SettingsPage() {
     queryFn: getLocalApiInfo,
     refetchOnWindowFocus: false,
   })
-  const { data: diagnostics, isFetching: diagnosticsChecking, refetch: refreshDiagnostics } = useQuery({
+  const { data: diagnostics, error: diagnosticsError, isFetching: diagnosticsChecking, refetch: refreshDiagnostics } = useQuery({
     queryKey: ['system-diagnostics'],
     queryFn: getSystemDiagnostics,
     refetchOnWindowFocus: false,
@@ -219,6 +219,14 @@ export function SettingsPage() {
           </button>
         </div>
 
+        {typoraError && (
+          <div className="mt-4 rounded-2xl border border-red-100 bg-red-50/70 px-4 py-3">
+            <div className="text-xs font-medium text-red-700">无法检查 Typora 桥接状态</div>
+            <div className="mt-1 text-[11px] leading-5 text-red-600">{String(typoraError).replace(/^Error:\s*/i, '')}</div>
+            <button onClick={() => void refreshTypora()} className="mt-2 rounded-lg border border-red-200 px-3 py-1.5 text-[11px] font-medium text-red-700">重新检查</button>
+          </div>
+        )}
+        {!typoraError && (
         <div className={`mt-4 rounded-2xl border px-4 py-3 ${typora?.ready ? 'border-emerald-100 bg-emerald-50/70' : 'border-amber-100 bg-amber-50/70'}`}>
           <div className="flex items-start gap-3">
             <div className={`mt-0.5 grid size-7 place-items-center rounded-lg ${typora?.ready ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
@@ -231,10 +239,11 @@ export function SettingsPage() {
             </div>
           </div>
         </div>
+        )}
 
         <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
           <div className="text-xs font-medium text-slate-700">Typora 自定义上传命令</div>
-          <div className="mt-2 break-all rounded-xl bg-slate-950 px-3 py-3 font-mono text-[11px] leading-5 text-slate-200">{typora?.command || '正在生成…'}</div>
+          <div className="mt-2 break-all rounded-xl bg-slate-950 px-3 py-3 font-mono text-[11px] leading-5 text-slate-200">{typora?.command || (typoraError ? '命令暂不可用：桥接状态读取失败' : '正在生成…')}</div>
           <div className="mt-3 flex flex-wrap gap-2">
             <button disabled={!typora?.command || startingTypora} onClick={() => void startTyporaSetup()} className="flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-medium text-white disabled:opacity-40">
               {startingTypora ? <LoaderCircle size={14} className="animate-spin" /> : <Sparkles size={14} />}复制命令并打开 Typora
@@ -370,17 +379,24 @@ export function SettingsPage() {
         </div>
         <div className="mt-4 grid grid-cols-4 gap-3 max-lg:grid-cols-2">
           {[
-            ['Storage', `${diagnostics?.enabledStorageCount ?? 0}/${diagnostics?.storageCount ?? 0} 启用`],
-            ['插件', `${diagnostics?.enabledPluginCount ?? 0}/${diagnostics?.pluginCount ?? 0} 启用`],
-            ['任务', `${diagnostics?.activeTaskCount ?? 0} 运行 · ${diagnostics?.failedTaskCount ?? 0} 失败`],
-            ['Local API', diagnostics?.localApiRunning ? '运行中' : '未运行'],
+            ['Storage', diagnostics ? `${diagnostics.enabledStorageCount}/${diagnostics.storageCount} 启用` : '—'],
+            ['插件', diagnostics ? `${diagnostics.enabledPluginCount}/${diagnostics.pluginCount} 启用` : '—'],
+            ['任务', diagnostics ? `${diagnostics.activeTaskCount} 运行 · ${diagnostics.failedTaskCount} 失败` : '—'],
+            ['Local API', diagnostics ? (diagnostics.localApiRunning ? '运行中' : '未运行') : '—'],
           ].map(([label, value]) => <div key={label} className="rounded-2xl bg-slate-50 p-3"><div className="text-[10px] uppercase tracking-wide text-slate-400">{label}</div><div className="mt-1 text-xs font-semibold text-slate-700">{value}</div></div>)}
         </div>
+        {diagnosticsError ? (
+          <div className="mt-4 rounded-2xl border border-red-100 bg-red-50/60 px-4 py-3">
+            <div className="text-xs font-medium text-red-700">系统诊断读取失败</div>
+            <div className="mt-1 text-[11px] leading-5 text-red-600">{String(diagnosticsError).replace(/^Error:\s*/i, '')}</div>
+          </div>
+        ) : (
         <div className={`mt-4 rounded-2xl border px-4 py-3 ${diagnostics?.status === 'healthy' ? 'border-emerald-100 bg-emerald-50/60' : 'border-amber-100 bg-amber-50/60'}`}>
-          <div className="text-xs font-medium text-slate-700">{diagnostics?.status === 'healthy' ? '核心状态正常' : '有项目需要处理'}</div>
-          <div className="mt-1 text-[11px] text-slate-500">版本 {diagnostics?.appVersion || '—'} · 默认上传链：{diagnostics?.defaultWorkflow || '未配置'}</div>
+          <div className="text-xs font-medium text-slate-700">{!diagnostics ? '正在检查核心状态…' : diagnostics.status === 'healthy' ? '核心状态正常' : '有项目需要处理'}</div>
+          <div className="mt-1 text-[11px] text-slate-500">版本 {diagnostics?.appVersion || '—'} · 默认上传链：{diagnostics ? diagnostics.defaultWorkflow || '未配置' : '—'}</div>
           {!!diagnostics?.warnings.length && <div className="mt-2 space-y-1">{diagnostics.warnings.map((warning) => <div key={warning} className="text-[11px] text-amber-700">• {warning}</div>)}</div>}
         </div>
+        )}
       </section>
 
       <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50/70 p-5">
