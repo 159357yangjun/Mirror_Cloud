@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use bytes::Bytes;
 use domain::{DeploymentRole, StorageGroupStrategy, StorageId};
-use storage_core::{StorageError, StorageProvider, UploadRequest, UploadResult};
+use storage_core::{StorageEntry, StorageError, StorageProvider, UploadRequest, UploadResult};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -203,14 +203,21 @@ impl CloudMutationCore {
         provider: &dyn StorageProvider,
         path: &str,
     ) -> Result<bool, StorageError> {
+        Ok(Self::find_entry(provider, path).await?.is_some())
+    }
+
+    async fn find_entry(
+        provider: &dyn StorageProvider,
+        path: &str,
+    ) -> Result<Option<StorageEntry>, StorageError> {
         let parent = path
             .rsplit_once('/')
             .map(|(parent, _)| parent)
             .unwrap_or("");
         let entries = provider.list(parent).await?;
         Ok(entries
-            .iter()
-            .any(|entry| entry.path.trim_matches('/') == path.trim_matches('/')))
+            .into_iter()
+            .find(|entry| entry.path.trim_matches('/') == path.trim_matches('/')))
     }
 
     pub async fn move_object(
@@ -218,7 +225,19 @@ impl CloudMutationCore {
         source: &str,
         destination: &str,
     ) -> Result<UploadResult, StorageError> {
-        if Self::path_exists(provider, destination).await? {
+        if let Some(existing) = Self::find_entry(provider, destination).await? {
+            // Retrying a move whose remote half already landed finds its own destination here.
+            // A still-present source means a real collision; a vanished source means the earlier
+            // attempt succeeded remotely and only the local Deployment index write failed, so the
+            // caller must be able to finish syncing instead of being locked out forever.
+            if !Self::path_exists(provider, source).await? {
+                return Ok(UploadResult {
+                    remote_path: existing.path,
+                    public_url: existing.public_url,
+                    etag: None,
+                });
+            }
+
             return Err(StorageError::Provider(format!(
                 "destination already exists: {destination}"
             )));
