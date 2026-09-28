@@ -72,6 +72,28 @@ impl PublisherCore {
         remote_path: String,
         mime_type: String,
     ) -> Result<Vec<PublishOutcome>, ApplicationError> {
+        Self::publish_group_reported(
+            strategy,
+            members,
+            bytes,
+            remote_path,
+            mime_type,
+            &|_: &PublishOutcome| {},
+        )
+        .await
+    }
+
+    /// Same strategy semantics as [`Self::publish_group`], but reports every member as soon as
+    /// its own upload settles so callers can show real multi-cloud progress instead of a single
+    /// stage jump. The hook is synchronous on purpose: it runs inside concurrent futures.
+    pub async fn publish_group_reported(
+        strategy: StorageGroupStrategy,
+        members: Vec<PublishMember>,
+        bytes: Bytes,
+        remote_path: String,
+        mime_type: String,
+        on_member: &(dyn Fn(&PublishOutcome) + Send + Sync),
+    ) -> Result<Vec<PublishOutcome>, ApplicationError> {
         match strategy {
             StorageGroupStrategy::MirrorAll => {
                 let uploads = members.into_iter().map(|member| {
@@ -80,6 +102,7 @@ impl PublisherCore {
                         bytes.clone(),
                         remote_path.clone(),
                         mime_type.clone(),
+                        on_member,
                     )
                 });
                 Ok(futures::future::join_all(uploads).await)
@@ -96,6 +119,7 @@ impl PublisherCore {
                     bytes.clone(),
                     remote_path.clone(),
                     mime_type.clone(),
+                    on_member,
                 )
                 .await;
                 let primary_succeeded = primary_outcome.error.is_none();
@@ -112,6 +136,7 @@ impl PublisherCore {
                             bytes.clone(),
                             remote_path.clone(),
                             mime_type.clone(),
+                            on_member,
                         )
                     });
                 outcomes.extend(futures::future::join_all(mirror_uploads).await);
@@ -128,6 +153,7 @@ impl PublisherCore {
                             bytes.clone(),
                             remote_path.clone(),
                             mime_type.clone(),
+                            on_member,
                         )
                         .await;
                         let succeeded = outcome.error.is_none();
@@ -148,11 +174,12 @@ impl PublisherCore {
         bytes: Bytes,
         remote_path: String,
         mime_type: String,
+        on_member: &(dyn Fn(&PublishOutcome) + Send + Sync),
     ) -> PublishOutcome {
         let provider = match member.provider {
             Ok(provider) => provider,
             Err(error) => {
-                return PublishOutcome {
+                let outcome = PublishOutcome {
                     storage_id: member.storage_id,
                     storage_name: member.storage_name,
                     role: member.role,
@@ -160,6 +187,8 @@ impl PublisherCore {
                     public_url: None,
                     error: Some(error),
                 };
+                on_member(&outcome);
+                return outcome;
             }
         };
         let result = provider
@@ -170,7 +199,7 @@ impl PublisherCore {
             })
             .await;
 
-        match result {
+        let outcome = match result {
             Ok(upload) => PublishOutcome {
                 storage_id: member.storage_id,
                 storage_name: member.storage_name,
@@ -187,7 +216,9 @@ impl PublisherCore {
                 public_url: None,
                 error: Some(error.to_string()),
             },
-        }
+        };
+        on_member(&outcome);
+        outcome
     }
 }
 

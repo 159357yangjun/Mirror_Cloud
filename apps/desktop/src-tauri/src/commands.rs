@@ -2366,12 +2366,22 @@ async fn run_workflow_publish_task(
                     .await
                     .map_err(|error| error.to_string())?
                     .ok_or("Workflow Storage Group no longer exists")?;
+                let member_total = group.members.len().max(1);
+                let finished_members = std::sync::atomic::AtomicUsize::new(0);
+                let progress_app = app.clone();
                 publish_group_bytes(
                     &state,
                     &group,
                     prepared.body.clone(),
                     prepared.remote_path.clone(),
                     prepared.mime_type.clone(),
+                    &|_: &GroupUploadOutcome| {
+                        let finished = finished_members
+                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                            + 1;
+                        let percent = (38 + (finished * 44 / member_total)).min(81) as u8;
+                        emit_task(&progress_app, task_id, "running", percent, None);
+                    },
                 )
                 .await?
             }
@@ -2602,6 +2612,7 @@ async fn publish_group_bytes(
     bytes: Bytes,
     remote_path: String,
     mime_type: String,
+    on_member: &(dyn Fn(&GroupUploadOutcome) + Send + Sync),
 ) -> CmdResult<Vec<GroupUploadOutcome>> {
     let strategy = match group.strategy.as_str() {
         "mirror_all" => StorageGroupStrategy::MirrorAll,
@@ -2631,9 +2642,16 @@ async fn publish_group_bytes(
         });
     }
 
-    PublisherCore::publish_group(strategy, members, bytes, remote_path, mime_type)
-        .await
-        .map_err(|error| error.to_string())
+    PublisherCore::publish_group_reported(
+        strategy,
+        members,
+        bytes,
+        remote_path,
+        mime_type,
+        on_member,
+    )
+    .await
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
