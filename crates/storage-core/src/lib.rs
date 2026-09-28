@@ -60,7 +60,10 @@ pub trait StorageProvider: Send + Sync {
     /// safe when that listing is complete; repository contents APIs truncate directories, so
     /// GitHub and Gitee override this with an exact-path lookup.
     async fn exists(&self, path: &str) -> Result<bool, StorageError> {
-        let parent = path.rsplit_once('/').map(|(parent, _)| parent).unwrap_or("");
+        let parent = path
+            .rsplit_once('/')
+            .map(|(parent, _)| parent)
+            .unwrap_or("");
         let entries = self.list(parent).await?;
         Ok(entries
             .iter()

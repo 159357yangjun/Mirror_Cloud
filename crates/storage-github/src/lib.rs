@@ -443,7 +443,10 @@ impl StorageProvider for GitHubStorage {
     }
 
     async fn exists(&self, path: &str) -> Result<bool, StorageError> {
-        Ok(self.existing_sha(&self.repository_path(path)).await?.is_some())
+        Ok(self
+            .existing_sha(&self.repository_path(path))
+            .await?
+            .is_some())
     }
 
     async fn download(&self, path: &str) -> Result<bytes::Bytes, StorageError> {
