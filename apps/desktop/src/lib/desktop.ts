@@ -276,14 +276,6 @@ export async function chooseImageFiles(): Promise<string[]> {
   return Array.isArray(result) ? result : [result]
 }
 
-export async function publishFiles(storageId: string, paths: string[]): Promise<string[]> {
-  return invoke('publish_files', { storageId, paths })
-}
-
-export async function publishFilesToGroup(groupId: string, paths: string[]): Promise<string[]> {
-  return invoke('publish_files_to_group', { groupId, paths })
-}
-
 export async function repairAsset(assetId: string): Promise<string> {
   return invoke('repair_asset', { assetId })
 }

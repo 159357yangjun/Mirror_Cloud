@@ -123,8 +123,6 @@ pub fn run() {
             commands::publish_files_with_workflow,
             commands::publish_urls_with_workflow,
             commands::publish_clipboard_image_with_workflow,
-            commands::publish_files_to_group,
-            commands::publish_files,
             commands::repair_asset,
             commands::delete_asset,
             commands::integrations::get_typora_integration_info,

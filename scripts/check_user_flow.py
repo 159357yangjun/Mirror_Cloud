@@ -10,6 +10,19 @@ def text(rel: str) -> str:
 def require(ok: bool, label: str):
     checks.append((ok, label))
 
+def slice_between(source: str, start_marker: str, end_marker: str, label: str) -> str:
+    """A missing marker has to fail loudly. str.find() returns -1, which otherwise turns the
+    slice into "everything up to the last character" and makes checks built on it pass while
+    examining nothing."""
+    start = source.find(start_marker)
+    end = source.find(end_marker, start + 1) if start != -1 else -1
+    if start == -1 or end == -1:
+        raise SystemExit(
+            f'User-flow check boundary is broken for {label}: '
+            f'{start_marker!r} .. {end_marker!r} not found in order'
+        )
+    return source[start:end]
+
 commands_main = text('apps/desktop/src-tauri/src/commands.rs')
 storage_entries_commands = text('apps/desktop/src-tauri/src/commands/storage_entries.rs')
 plugin_commands = text('apps/desktop/src-tauri/src/commands/plugins.rs')
@@ -179,7 +192,7 @@ require('get_local_api_info' in integrations and 'regenerate_local_api_token' in
 require('TrayIconBuilder' in integrations and 'setup_tray(app)?' in lib and 'CloseRequested' in lib and 'api.prevent_close()' in lib, 'tray background mode keeps integrations available when the main window closes')
 require('features = ["tray-icon"]' in cargo_desktop and '"net", "io-util"' in cargo_root, 'Tauri tray and Tokio local networking features are enabled')
 require('Local HTTP API' in settings_page and 'copyApiToken' in settings_page and 'regenerateApiToken' in settings_page, 'Settings exposes real Local API status and token controls')
-require('tokio::task::spawn_blocking' in commands[commands.find('async fn run_workflow_publish_task'):commands.find('async fn run_publish_task')] and 'tokio::task::spawn_blocking' in cli[cli.find('async fn publish_one'):], 'CPU-heavy workflow image processing leaves async IO workers')
+require('tokio::task::spawn_blocking' in slice_between(commands_main, 'async fn run_workflow_publish_task', 'fn is_safe_compensation_path', 'workflow publish worker') and 'tokio::task::spawn_blocking' in cli[cli.find('async fn publish_one'):], 'CPU-heavy workflow image processing leaves async IO workers')
 
 failed = [label for ok, label in checks if not ok]
 for ok, label in checks[-10:]:
@@ -242,10 +255,8 @@ print(f'User-flow v1.3.3 lifecycle/batch architecture: OK | total checks: {len(c
 require('BeforeProcess' in plugin_runtime and 'AfterProcess' in plugin_runtime and 'OnPublishFailure' in plugin_runtime, 'plugin runtime exposes pre/post-process and publish-failure hooks')
 require('PluginHook::BeforeProcess' in plugin_commands and 'PluginHook::AfterProcess' in plugin_commands and 'PluginHook::OnPublishFailure' in plugin_commands, 'official webhook manifest advertises the expanded lifecycle')
 require("before_process: '处理前'" in plugins and "after_process: '处理后'" in plugins and "on_publish_failure: '发布失败'" in plugins, 'plugin UI exposes expanded lifecycle controls')
-workflow_publish = commands_main[commands_main.find('async fn run_workflow_publish_task'):commands_main.find('async fn run_publish_task')]
-direct_publish = commands_main[commands_main.find('async fn run_publish_task'):commands_main.find('type GroupUploadOutcome')]
+workflow_publish = slice_between(commands_main, 'async fn run_workflow_publish_task', 'fn is_safe_compensation_path', 'workflow publish body')
 require('PluginHook::BeforeProcess' in workflow_publish and 'PluginHook::AfterProcess' in workflow_publish and 'PluginHook::OnPublishFailure' in workflow_publish, 'workflow publish fires expanded lifecycle hooks')
-require('PluginHook::BeforeProcess' in direct_publish and 'PluginHook::AfterProcess' in direct_publish and 'PluginHook::OnPublishFailure' in direct_publish, 'direct publish fires expanded lifecycle hooks')
 require('pub struct CloudMutationCore' in application and 'destination already exists' in application and 'provider.move_object' in application, 'application core owns overwrite prevention and native cloud move')
 require('provider.download(source)' in application and '.upload(UploadRequest' in application and 'provider.delete(destination)' in application, 'application core owns safe download-upload-delete fallback with rollback')
 require('queue_batch_delete_storage_entries' in storage_entries_commands and 'cloud_batch_delete' in storage_entries_commands, 'batch cloud delete can run as a persistent task')
