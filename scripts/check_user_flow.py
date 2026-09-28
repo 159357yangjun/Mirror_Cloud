@@ -275,7 +275,7 @@ settings_page = text('apps/desktop/src/pages/SettingsPage.tsx')
 integrations = text('apps/desktop/src-tauri/src/commands/integrations.rs')
 
 require("status='cancelled'" in persistence and "status IN ('queued','preparing','running','paused')" in persistence, 'task cancellation is persisted only for active states')
-require('update_running_progress_if_active' in persistence and "status IN ('queued','preparing','running')" in persistence, 'task progress updates cannot revive cancelled work')
+require('update_running_progress_if_active' in persistence and "status IN ('queued','preparing','running')" in persistence and "status <> 'cancelled'" in persistence, 'task status and progress updates cannot revive cancelled work')
 require('requeue_for_retry' in persistence and 'attempt=attempt+1' in persistence and 'attempt < max_attempts' in persistence, 'task retry is bounded and persisted')
 require('report_batch_task_progress' in storage_entries_commands and 'mark_running_if_active' in storage_entries_commands and 'is_cancelled' in storage_entries_commands, 'cloud batch workers cooperatively stop between items and persist item progress')
 require('pub async fn cancel_task' in storage_entries_commands and 'pub async fn retry_task' in storage_entries_commands and 'commands::cancel_task' in lib and 'commands::retry_task' in lib, 'Task Center control commands are implemented and registered')

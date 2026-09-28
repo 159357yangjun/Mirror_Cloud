@@ -196,7 +196,10 @@ impl TaskRepository {
             status,
             TaskStatus::Completed | TaskStatus::Failed | TaskStatus::Cancelled
         );
-        sqlx::query("UPDATE tasks SET status=?, progress=?, error=?, started_at=COALESCE(started_at, CASE WHEN ? THEN ? ELSE NULL END), finished_at=CASE WHEN ? THEN ? ELSE finished_at END WHERE id=?")
+        // Cancellation is user intent, so a worker that finishes after a cancel must not rewrite
+        // the row back to running/completed/failed. Without this clause every mark_running,
+        // complete and fail call below revives a cancelled task.
+        sqlx::query("UPDATE tasks SET status=?, progress=?, error=?, started_at=COALESCE(started_at, CASE WHEN ? THEN ? ELSE NULL END), finished_at=CASE WHEN ? THEN ? ELSE finished_at END WHERE id=? AND status <> 'cancelled'")
             .bind(task_status_str(&status))
             .bind(progress.min(100) as i64)
             .bind(error)
