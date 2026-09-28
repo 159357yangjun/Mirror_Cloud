@@ -14,6 +14,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import { notifySuccess } from '../store/useToastStore'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
@@ -165,12 +166,12 @@ export function GalleryPage() {
       } else if (pathDialog.mode === 'batch_move') {
         const taskId = await queueBatchMoveStorageEntries(storageId, Array.from(selectedPaths), value)
         setSelectedPaths(new Set())
-        setActionError(`批量移动已进入任务中心：${taskId.slice(0, 8)}…`)
+        notifySuccess(`批量移动已进入任务中心：${taskId.slice(0, 8)}…`)
         void queryClient.invalidateQueries({ queryKey: ['tasks'] })
       } else if (pathDialog.mode === 'batch_rename') {
         const taskId = await queueBatchRenameStorageEntries(storageId, Array.from(selectedPaths), value)
         setSelectedPaths(new Set())
-        setActionError(`批量重命名已进入任务中心：${taskId.slice(0, 8)}…`)
+        notifySuccess(`批量重命名已进入任务中心：${taskId.slice(0, 8)}…`)
         void queryClient.invalidateQueries({ queryKey: ['tasks'] })
       } else if (pathDialog.entry) {
         const entry = pathDialog.entry
@@ -205,7 +206,7 @@ export function GalleryPage() {
       const taskId = await queueBatchDeleteStorageEntries(storageId, paths)
       setSelectedPaths(new Set())
       if (preview && paths.includes(preview.path)) setPreview(null)
-      setActionError(`批量删除已进入任务中心：${taskId.slice(0, 8)}…`)
+      notifySuccess(`批量删除已进入任务中心：${taskId.slice(0, 8)}…`)
       void queryClient.invalidateQueries({ queryKey: ['tasks'] })
     } catch (error) {
       setActionError(`批量删除失败：${String(error)}`)

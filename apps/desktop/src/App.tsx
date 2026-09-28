@@ -10,7 +10,9 @@ import { GalleryPage } from './pages/GalleryPage'
 import { StoragesPage } from './pages/StoragesPage'
 import { TasksPage } from './pages/TasksPage'
 import { PluginsPage } from './pages/PluginsPage'
+import { ToastViewport } from './components/ToastViewport'
 import { useAppStore } from './store/useAppStore'
+import { notifyError } from './store/useToastStore'
 
 type PublishedEvent = { name: string; publicUrl: string; pluginOutputs?: Array<{ pluginId: string; pluginName: string; pluginKind: string; text: string; data: unknown }> }
 
@@ -26,7 +28,11 @@ export default function App() {
         if (!publicUrl) return
         const preferences = await getOutputPreferences()
         if (!preferences.autoCopyAfterPublish) return
-        await copyText(formatPublishedAsset(name, publicUrl, preferences))
+        try {
+          await copyText(formatPublishedAsset(name, publicUrl, preferences))
+        } catch {
+          notifyError('发布成功，但自动复制失败，请到资源页手动复制')
+        }
       }).then((cleanup) => { unlisten = cleanup }),
     )
     return () => unlisten?.()
@@ -42,6 +48,7 @@ export default function App() {
       {page === 'tasks' && <TasksPage />}
       {page === 'settings' && <SettingsPage />}
       <UploadDialog />
+      <ToastViewport />
     </AppShell>
   )
 }

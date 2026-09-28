@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Trash2,
 } from 'lucide-react'
+import { notifyError, notifySuccess } from '../store/useToastStore'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
@@ -53,6 +54,7 @@ export function StoragesPage() {
   const [setup, setSetup] = useState<SupportedProviderKey | null>(null)
   const [browser, setBrowser] = useState<StorageView | null>(null)
   const [testing, setTesting] = useState<string | null>(null)
+  const [testResults, setTestResults] = useState<Record<string, boolean>>({})
 
   const removeGroupMutation = useMutation({
     mutationFn: deleteStorageGroup,
@@ -86,9 +88,12 @@ export function StoragesPage() {
     setTesting(id)
     try {
       const report = await testStorage(id)
-      window.alert(report.detail)
+      setTestResults((previous) => ({ ...previous, [id]: report.reachable }))
+      if (report.reachable) notifySuccess(report.detail)
+      else notifyError(`连接失败：${report.detail}`)
     } catch (error) {
-      window.alert(String(error))
+      setTestResults((previous) => ({ ...previous, [id]: false }))
+      notifyError(`连接失败：${String(error)}`)
     } finally {
       setTesting(null)
     }
@@ -182,7 +187,7 @@ export function StoragesPage() {
                   <div className="truncate text-sm font-medium">{storage.name}</div>
                   <div className="truncate text-[11px] text-slate-400">{storage.providerKey.toUpperCase()} · {storage.detail}</div>
                 </div>
-                <div className="ml-auto flex shrink-0 items-center gap-2">{defaultTarget?.kind === 'storage' && defaultTarget.id === storage.id && <span className="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-medium text-indigo-600">默认</span>}<span className="flex items-center gap-1 text-[10px] text-emerald-600"><CheckCircle2 size={12} /> Ready</span></div>
+                <div className="ml-auto flex shrink-0 items-center gap-2">{defaultTarget?.kind === 'storage' && defaultTarget.id === storage.id && <span className="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-medium text-indigo-600">默认</span>}{testResults[storage.id] === true && <span className="flex items-center gap-1 text-[10px] text-emerald-600"><CheckCircle2 size={12} /> 已验证</span>}{testResults[storage.id] === false && <span className="text-[10px] text-red-500">连接失败</span>}</div>
                 <button onClick={() => removeStorage(storage.id, storage.name)} className="rounded-lg p-2 text-slate-300 transition hover:bg-red-50 hover:text-red-500" title="删除连接"><Trash2 size={14} /></button>
               </div>
               <div className="mt-4 truncate text-[11px] text-slate-400">{storage.publicBaseUrl || storage.publicHint}</div>

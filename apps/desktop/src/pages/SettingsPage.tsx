@@ -161,7 +161,7 @@ export function SettingsPage() {
 
   async function copyApiExample() {
     if (!localApi?.token) return
-    const command = `curl.exe -X POST "${localApi.pathUploadEndpoint}" -H "Authorization: Bearer ${localApi.token}" -H "Content-Type: application/json" -d "{\"paths\":[\"C:\\path\\image.png\"]}"`
+    const command = `curl.exe -X POST "${localApi.pathUploadEndpoint}" -H "Authorization: Bearer ${localApi.token}" -H "Content-Type: application/json" -d "{\\"paths\\":[\\"C:/path/image.png\\"]}"`
     try {
       await copyText(command)
       setCopiedApiExample(true)
@@ -205,6 +205,8 @@ export function SettingsPage() {
   return (
     <div className="mx-auto max-w-[1040px] px-10 py-9">
       <PageHeader title="设置" description="只保留真正可操作的应用设置；云端账号和密钥继续归属于对应 Storage。" />
+
+      {actionError && <div className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{actionError}</div>}
 
       <section className="mt-8 rounded-[24px] border border-indigo-100 bg-gradient-to-br from-indigo-50/80 via-white to-white p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -385,8 +387,6 @@ export function SettingsPage() {
         <div className="flex items-center gap-2 text-sm font-medium"><Shield size={16} /> 安全说明</div>
         <p className="mt-2 text-xs leading-6 text-slate-500">Token 与 Secret 仍然保存在系统凭据库，Typora 命令本身不包含 Token。Typora 只把本地图片路径交给 Publisher，Publisher 再读取同一套上传配置、插件开关和凭据完成上传。</p>
       </div>
-
-      {actionError && <div className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{actionError}</div>}
 
       <div className="mt-6 rounded-[24px] border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-5"><div className="flex items-center gap-2 text-sm font-medium text-indigo-900"><Sparkles size={16} /> 现在的交互原则</div><p className="mt-2 max-w-2xl text-xs leading-6 text-indigo-700/70">不再放看起来可以点、实际却没有行为的“装饰设置”。页面上出现的按钮都对应真实操作；纯状态信息会明确以说明文本展示。</p></div>
     </div>
