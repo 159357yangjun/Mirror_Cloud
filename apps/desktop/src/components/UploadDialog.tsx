@@ -24,10 +24,12 @@ import {
   publishUrlsWithWorkflow,
 } from '../lib/desktop'
 import { useAppStore } from '../store/useAppStore'
-import type { PageKey, UploadMode } from '../types'
+import type { PageKey, TaskView, UploadMode } from '../types'
 
 const IMAGE_EXTENSIONS = new Set(['bmp', 'gif', 'jpeg', 'jpg', 'png', 'webp'])
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
+
+type TaskProgressEvent = { id: string; status: TaskView['status']; progress: number; error?: string | null }
 
 
 function isImagePath(path: string) {
@@ -66,8 +68,27 @@ export function UploadDialog() {
     queryKey: ['tasks'],
     queryFn: () => listTasks(),
     enabled: uploadOpen && taskIds.length > 0,
-    refetchInterval: taskIds.length > 0 ? 450 : false,
+    // Progress normally arrives through task://updated; this slower interval only backstops a
+    // missed event so a stalled bar cannot hide a finished upload.
+    refetchInterval: taskIds.length > 0 ? 2000 : false,
   })
+
+  useEffect(() => {
+    if (!uploadOpen || taskIds.length === 0 || !isTauriRuntime()) return
+    let unlisten: (() => void) | undefined
+    void import('@tauri-apps/api/event').then(({ listen }) =>
+      listen<TaskProgressEvent>('task://updated', (event) => {
+        const payload = event.payload
+        if (!taskIds.includes(payload.id)) return
+        queryClient.setQueryData<TaskView[]>(['tasks'], (current) =>
+          current?.map((task) => task.id === payload.id
+            ? { ...task, status: payload.status, progress: payload.progress, error: payload.error ?? task.error }
+            : task),
+        )
+      }).then((cleanup) => { unlisten = cleanup }),
+    )
+    return () => unlisten?.()
+  }, [uploadOpen, taskIds, queryClient])
 
   const defaultWorkflow = useMemo(
     () => workflows.find((workflow) => workflow.isDefault),
