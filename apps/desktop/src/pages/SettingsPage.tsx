@@ -45,7 +45,7 @@ export function SettingsPage() {
     queryFn: getTyporaIntegrationInfo,
     refetchOnWindowFocus: false,
   })
-  const { data: localApi, refetch: refreshLocalApi } = useQuery({
+  const { data: localApi, error: localApiError, refetch: refreshLocalApi } = useQuery({
     queryKey: ['local-api-integration'],
     queryFn: getLocalApiInfo,
     refetchOnWindowFocus: false,
@@ -55,7 +55,7 @@ export function SettingsPage() {
     queryFn: getSystemDiagnostics,
     refetchOnWindowFocus: false,
   })
-  const { data: globalShortcut } = useQuery({
+  const { data: globalShortcut, error: shortcutError } = useQuery({
     queryKey: ['global-shortcut-integration'],
     queryFn: getGlobalShortcutInfo,
     refetchOnWindowFocus: false,
@@ -276,8 +276,8 @@ export function SettingsPage() {
             <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
               <input
                 type="checkbox"
-                checked={globalShortcut?.enabled ?? true}
-                disabled={shortcutMutation.isPending}
+                checked={globalShortcut?.enabled ?? false}
+                disabled={shortcutMutation.isPending || !globalShortcut}
                 onChange={(event) => void toggleGlobalShortcut(event.target.checked)}
                 className="size-4 accent-violet-700"
               />启用
@@ -285,7 +285,7 @@ export function SettingsPage() {
           </div>
           <div className="mt-4 rounded-2xl border border-violet-100 bg-white p-4">
             <div className="text-[11px] font-medium text-slate-500">快捷键</div>
-            <div className="mt-1 flex items-center justify-between gap-3"><span className="font-mono text-sm font-semibold text-slate-900">{globalShortcut?.shortcut || 'CommandOrControl+Shift+U'}</span><span className={`rounded-full px-2 py-1 text-[10px] font-medium ${globalShortcut?.registered ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{globalShortcut?.registered ? '系统已注册' : '未占用系统快捷键'}</span></div>
+            <div className="mt-1 flex items-center justify-between gap-3"><span className="font-mono text-sm font-semibold text-slate-900">{globalShortcut?.shortcut || (shortcutError ? '读取失败' : '读取中…')}</span><span className={`rounded-full px-2 py-1 text-[10px] font-medium ${!globalShortcut ? 'bg-slate-100 text-slate-500' : globalShortcut.registered ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{!globalShortcut ? (shortcutError ? '注册状态读取失败' : '正在检查…') : globalShortcut.registered ? '系统已注册' : '未占用系统快捷键'}</span></div>
             <div className="mt-2 text-[11px] leading-5 text-slate-400">{globalShortcut?.action || '上传剪贴板图片并复制最终 URL'}</div>
           </div>
           <p className="mt-3 text-[11px] leading-5 text-violet-800/70">{globalShortcut?.note || '复用默认 Workflow、多云策略与插件链。'}</p>
@@ -321,15 +321,15 @@ export function SettingsPage() {
             <div className="flex items-center gap-2 text-sm font-semibold text-sky-950"><Network size={17} /> Local HTTP API</div>
             <p className="mt-1 max-w-2xl text-xs leading-6 text-sky-800/70">给 ShareX、脚本、Obsidian 插件和未来 Agent 使用的本机上传入口。它复用与 Typora 相同的默认 Workflow、插件和多云策略，不维护第二套上传逻辑。</p>
           </div>
-          <div className={`rounded-full px-3 py-1 text-[11px] font-medium ${localApi?.running ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{localApi?.running ? '127.0.0.1 服务运行中' : '服务未监听'}</div>
+          <div className={`rounded-full px-3 py-1 text-[11px] font-medium ${!localApi ? 'bg-slate-100 text-slate-500' : localApi.running ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{!localApi ? (localApiError ? '状态读取失败' : '正在检查服务…') : localApi.running ? '127.0.0.1 服务运行中' : '服务未监听'}</div>
         </div>
 
         <div className="mt-4 grid grid-cols-[1fr_auto] gap-2 max-md:grid-cols-1">
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
             <div className="text-[11px] font-medium text-slate-500">Base URL</div>
-            <div className="mt-1 font-mono text-xs text-slate-800">{localApi?.baseUrl || 'http://127.0.0.1:36677'}</div>
+            <div className="mt-1 font-mono text-xs text-slate-800">{localApi ? localApi.baseUrl : localApiError ? '读取失败' : '正在读取本机服务信息…'}</div>
             <div className="mt-3 text-[11px] font-medium text-slate-500">Bearer Token</div>
-            <div className="mt-1 break-all rounded-xl bg-slate-950 px-3 py-2 font-mono text-[11px] text-slate-200">{localApi?.token ? '••••••••••••••••••••••••••••••••' : '正在读取系统凭据库…'}</div>
+            <div className="mt-1 break-all rounded-xl bg-slate-950 px-3 py-2 font-mono text-[11px] text-slate-200">{localApi?.token ? '••••••••••••••••••••••••••••••••' : localApiError ? 'Token 读取失败' : '正在读取系统凭据库…'}</div>
           </div>
           <div className="flex min-w-44 flex-col gap-2">
             <button disabled={!localApi?.token} onClick={() => void copyApiToken()} className="flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-medium text-white disabled:opacity-40">{copiedApiToken ? <Check size={14} /> : <ClipboardCopy size={14} />}{copiedApiToken ? 'Token 已复制' : '复制 Token'}</button>
