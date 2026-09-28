@@ -158,7 +158,7 @@ export function AssetsPage() {
       </div>
 
       <section className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(290px,1fr))] gap-5">
-        {assetsError && <div className="col-span-full rounded-[26px] border border-dashed border-red-200 bg-red-50 p-10 text-center text-sm text-red-600">资源读取失败：{String(assetsError)}</div>}
+        {assetsError && !assets.length && <div className="col-span-full rounded-[26px] border border-dashed border-red-200 bg-red-50 p-10 text-center text-sm text-red-600">资源读取失败：{String(assetsError)}</div>}
         {!assetsError && !filtered.length && (
           <div className="col-span-full rounded-[26px] border border-dashed border-[var(--border)] bg-[var(--surface)] p-10">
             {search ? <div className="text-center text-sm font-medium">没有匹配的资源</div> : (

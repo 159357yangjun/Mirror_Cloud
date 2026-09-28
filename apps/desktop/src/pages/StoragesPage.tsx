@@ -201,7 +201,7 @@ export function StoragesPage() {
             </article>
           )
         })}
-        {storagesError && (
+        {storagesError && !storages.length && (
           <div className="col-span-3 rounded-[24px] border border-dashed border-red-200 bg-red-50 p-10 text-center text-sm text-red-600">云端列表读取失败：{String(storagesError)}</div>
         )}
         {!isLoading && !storages.length && !storagesError && (

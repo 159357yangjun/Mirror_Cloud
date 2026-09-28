@@ -107,7 +107,7 @@ export function PluginsPage() {
               onSaved={refresh}
             />
           ))}
-          {pluginsError && (
+          {pluginsError && !installed.length && (
             <div className="rounded-2xl border border-dashed border-red-200 bg-red-50 px-5 py-10 text-center text-sm text-red-600">插件列表读取失败：{String(pluginsError)}</div>
           )}
           {!pluginsError && !filtered.length && (
