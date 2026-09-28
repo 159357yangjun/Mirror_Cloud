@@ -48,10 +48,15 @@ jobs:
         run: python scripts/check_release_version.py
       - name: Tauri dependency family validation
         run: python scripts/check_tauri_dependency_family.py
-      - name: Report pinned toolchain versions
+      - name: Verify Node matches .node-version
         shell: pwsh
         run: |
-          Write-Host "node=$(node --version) npm=$(npm --version) rustc=$(rustc --version)"
+          $expectedNode = (Get-Content '.node-version').Trim()
+          $actualNode = (node --version).Substring(1)
+          Write-Host "node=$actualNode npm=$(npm --version)"
+          if ($actualNode -ne $expectedNode) {
+            throw "CI resolved Node $actualNode but .node-version pins $expectedNode; setup-node is not honoring node-version-file."
+          }
       - name: Verify committed dependency locks
         shell: pwsh
         run: |
