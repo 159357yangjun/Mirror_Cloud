@@ -1,4 +1,4 @@
-import { Check, Cloud, Copy, RefreshCw, Search, Sparkles, Trash2, Upload, WifiOff, Plug, Images } from 'lucide-react'
+import { Check, Cloud, Copy, LoaderCircle, RefreshCw, Search, Sparkles, Trash2, Upload, WifiOff, Plug, Images } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
@@ -35,7 +35,7 @@ export function AssetsPage() {
   const setPage = useAppStore((state) => state.setPage)
   const queryClient = useQueryClient()
   const [assetLimit, setAssetLimit] = useState(200)
-  const { data: assets = [], error: assetsError } = useQuery({
+  const { data: assets = [], error: assetsError, isLoading: assetsLoading } = useQuery({
     queryKey: ['assets', assetLimit],
     queryFn: () => listAssets(assetLimit),
     refetchInterval: 2500,
@@ -159,7 +159,8 @@ export function AssetsPage() {
 
       <section className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(290px,1fr))] gap-5">
         {assetsError && !assets.length && <div className="col-span-full rounded-[26px] border border-dashed border-red-200 bg-red-50 p-10 text-center text-sm text-red-600">资源读取失败：{String(assetsError)}</div>}
-        {!assetsError && !filtered.length && (
+        {assetsLoading && <div className="col-span-full grid min-h-[240px] place-items-center text-slate-300"><LoaderCircle size={22} className="animate-spin" /></div>}
+        {!assetsError && !assetsLoading && !filtered.length && (
           <div className="col-span-full rounded-[26px] border border-dashed border-[var(--border)] bg-[var(--surface)] p-10">
             {search ? <div className="text-center text-sm font-medium">没有匹配的资源</div> : (
               <div>

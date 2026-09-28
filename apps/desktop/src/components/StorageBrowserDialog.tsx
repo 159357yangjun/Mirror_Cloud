@@ -157,7 +157,7 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
           {!isLoading && !error && view === 'list' && filtered.map((entry) => (
             <div key={entry.path} className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-slate-50">
               <div className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-xl bg-slate-100 text-slate-500">
-                {entry.isDir ? <Folder size={16} /> : isImage(entry) && entry.publicUrl ? <img src={entry.publicUrl} alt="" className="h-full w-full object-cover" /> : <File size={16} />}
+                {entry.isDir ? <Folder size={16} /> : isImage(entry) && entry.publicUrl ? <img src={entry.publicUrl} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" /> : <File size={16} />}
               </div>
               <button disabled={!entry.isDir && !(isImage(entry) && entry.publicUrl)} onClick={() => entry.isDir ? setPath(entry.path) : setPreview(entry)} className="min-w-0 flex-1 text-left disabled:cursor-default">
                 <div className="truncate text-sm font-medium">{entry.name}</div>

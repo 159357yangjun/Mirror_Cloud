@@ -64,8 +64,8 @@ export function PublishPage() {
   const { data: storages = [] } = useQuery({ queryKey: ['storages'], queryFn: listStorages })
   const { data: groups = [] } = useQuery({ queryKey: ['storage-groups'], queryFn: listStorageGroups })
   const { data: target } = useQuery({ queryKey: ['default-publish-target'], queryFn: getDefaultPublishTarget })
-  const { data: assets = [] } = useQuery({ queryKey: ['assets', 'publish-recent'], queryFn: () => listAssets(6) })
-  const { data: tasks = [], error: tasksError } = useQuery({ queryKey: ['tasks', 'publish-recent'], queryFn: () => listTasks(6), refetchInterval: 1500 })
+  const { data: assets = [], isLoading: assetsLoading } = useQuery({ queryKey: ['assets', 'publish-recent'], queryFn: () => listAssets(6) })
+  const { data: tasks = [], error: tasksError, isLoading: tasksLoading } = useQuery({ queryKey: ['tasks', 'publish-recent'], queryFn: () => listTasks(6), refetchInterval: 1500 })
   const { data: preferences } = useQuery({ queryKey: ['output-preferences'], queryFn: getOutputPreferences })
 
   const targets = useMemo(() => [
@@ -232,7 +232,7 @@ export function PublishPage() {
               <button onClick={() => setPage('assets')} className="text-[11px] font-medium text-indigo-600">全部资源</button>
             </div>
             <div className="mt-3 space-y-2">
-              {!assets.length && <div className="rounded-xl bg-slate-50 px-3 py-6 text-center text-xs text-slate-400">发布第一张图片后会显示在这里</div>}
+              {!assetsLoading && !assets.length && <div className="rounded-xl bg-slate-50 px-3 py-6 text-center text-xs text-slate-400">发布第一张图片后会显示在这里</div>}
               {assets.slice(0, 4).map((asset) => (
                 <div key={asset.id} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-slate-50">
                   <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-400"><FileImage size={15} /></div>
@@ -247,7 +247,7 @@ export function PublishPage() {
           <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,.03)]">
             <div className="flex items-center justify-between"><div className="text-sm font-semibold">最近任务</div><button onClick={() => setPage('tasks')} className="text-[11px] font-medium text-indigo-600">任务中心</button></div>
             <div className="mt-3 space-y-2">
-              {!tasks.length && (tasksError ? <div className="text-xs text-red-600">最近任务读取失败</div> : <div className="text-xs text-slate-400">暂无任务</div>)}
+              {!tasksLoading && !tasks.length && (tasksError ? <div className="text-xs text-red-600">最近任务读取失败</div> : <div className="text-xs text-slate-400">暂无任务</div>)}
               {tasks.slice(0, 4).map((task) => (
                 <div key={task.id} className="flex items-start gap-2 rounded-xl border border-slate-100 p-3">
                   {task.status === 'running' || task.status === 'preparing' || task.status === 'queued'

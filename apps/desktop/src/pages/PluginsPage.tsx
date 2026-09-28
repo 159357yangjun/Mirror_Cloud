@@ -8,7 +8,7 @@ import type { AiSettings, PluginView } from '../types'
 export function PluginsPage() {
   const qc = useQueryClient()
   const { data: market = [] } = useQuery({ queryKey: ['plugin-market'], queryFn: listMarketplacePlugins })
-  const { data: installed = [], error: pluginsError } = useQuery({ queryKey: ['plugins'], queryFn: listPlugins })
+  const { data: installed = [], error: pluginsError, isLoading: pluginsLoading } = useQuery({ queryKey: ['plugins'], queryFn: listPlugins })
   const { data: executionLogs = [] } = useQuery({ queryKey: ['plugin-execution-logs'], queryFn: () => listPluginExecutionLogs(40), refetchInterval: 2500 })
   const { data: ai } = useQuery({ queryKey: ['ai-settings'], queryFn: getAiSettings })
   const [settings, setSettings] = useState<AiSettings>({ baseUrl: 'https://api.openai.com/v1', model: '', apiKey: '' })
@@ -110,7 +110,8 @@ export function PluginsPage() {
           {pluginsError && !installed.length && (
             <div className="rounded-2xl border border-dashed border-red-200 bg-red-50 px-5 py-10 text-center text-sm text-red-600">插件列表读取失败：{String(pluginsError)}</div>
           )}
-          {!pluginsError && !filtered.length && (
+          {pluginsLoading && <div className="grid min-h-[160px] place-items-center rounded-2xl bg-slate-50/60 text-slate-300"><LoaderCircle size={20} className="animate-spin" /></div>}
+          {!pluginsError && !pluginsLoading && !filtered.length && (
             <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-5 py-10 text-center">
               <Plug size={22} className="mx-auto text-slate-300" />
               <div className="mt-3 text-sm font-medium">还没有可切换的插件</div>

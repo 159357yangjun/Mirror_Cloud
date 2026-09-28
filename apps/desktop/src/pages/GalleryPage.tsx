@@ -48,6 +48,8 @@ function isImage(entry: StorageEntryView) {
   )
 }
 
+const GALLERY_PAGE_SIZE = 120
+
 export function GalleryPage() {
   const queryClient = useQueryClient()
   const { data: storages = [], isLoading: loadingStorages } = useQuery({ queryKey: ['storages'], queryFn: listStorages })
@@ -55,6 +57,7 @@ export function GalleryPage() {
   const [path, setPath] = useState('')
   const [search, setSearch] = useState('')
   const [view, setView] = useState<'grid' | 'list'>('grid')
+  const [visibleCount, setVisibleCount] = useState(GALLERY_PAGE_SIZE)
   const [preview, setPreview] = useState<StorageEntryView | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
   const [busyPath, setBusyPath] = useState<string | null>(null)
@@ -89,6 +92,15 @@ export function GalleryPage() {
   }, [entries, search])
 
   const imageCount = filtered.filter(isImage).length
+
+  // A cloud directory can hold thousands of entries; rendering all of them at once makes the
+  // gallery unscrollable on slow machines, so each batch is revealed on demand.
+  useEffect(() => {
+    setVisibleCount(GALLERY_PAGE_SIZE)
+  }, [path, search, storageId])
+
+  const visibleEntries = filtered.length > visibleCount ? filtered.slice(0, visibleCount) : filtered
+  const hiddenCount = filtered.length - visibleEntries.length
 
   async function copyUrl(entry: StorageEntryView) {
     if (!entry.publicUrl) return
@@ -143,7 +155,9 @@ export function GalleryPage() {
   }
 
   function selectVisibleFiles() {
-    setSelectedPaths(new Set(filtered.filter((entry) => !entry.isDir).map((entry) => entry.path)))
+    // Batch operations are irreversible on the remote, so "全选" only ever covers entries that
+    // are actually rendered; hidden items must be revealed before they can be selected.
+    setSelectedPaths(new Set(visibleEntries.filter((entry) => !entry.isDir).map((entry) => entry.path)))
   }
 
   async function refreshAfterRemoteMutation() {
@@ -264,7 +278,7 @@ export function GalleryPage() {
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2 text-[11px] text-slate-400">
             <span>{storage ? `${storage.name} · ${storage.detail}` : '未选择存储'} · {filtered.length} 项 · {imageCount} 张图片</span>
             <div className="flex items-center gap-2">
-              <button disabled={!filtered.some((entry) => !entry.isDir)} onClick={selectVisibleFiles} className="rounded-lg px-2 py-1 font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-30">全选文件</button>
+              <button disabled={!visibleEntries.some((entry) => !entry.isDir)} onClick={selectVisibleFiles} className="rounded-lg px-2 py-1 font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-30">全选本页文件</button>
               {selectedPaths.size > 0 && <>
                 <span className="rounded-full bg-indigo-50 px-2 py-1 font-medium text-indigo-700">已选 {selectedPaths.size}</span>
                 <button onClick={() => setSelectedPaths(new Set())} className="rounded-lg px-2 py-1 font-medium text-slate-500 hover:bg-slate-100">清空</button>
@@ -281,9 +295,9 @@ export function GalleryPage() {
             {actionError && <div className="mb-3 rounded-2xl bg-red-50 p-4 text-xs leading-6 text-red-600">{actionError}</div>}
             {!isLoading && !error && !filtered.length && <div className="grid min-h-[480px] place-items-center text-sm text-slate-400">当前目录没有匹配文件</div>}
 
-            {!isLoading && !error && view === 'grid' && filtered.length > 0 && (
+            {!isLoading && !error && view === 'grid' && visibleEntries.length > 0 && (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-5">
-      {filtered.map((entry) => (
+      {visibleEntries.map((entry) => (
         <GalleryMediaCard
           key={entry.path}
           entry={entry}
@@ -307,10 +321,10 @@ export function GalleryPage() {
     </div>
   )}
 
-  {!isLoading && !error && view === 'list' && filtered.map((entry) => (
+  {!isLoading && !error && view === 'list' && visibleEntries.map((entry) => (
               <div key={entry.path} className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-slate-50">
                 <div className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-xl bg-slate-100 text-slate-500">
-                  {entry.isDir ? <Folder size={17} /> : isImage(entry) && entry.publicUrl ? <img src={entry.publicUrl} alt="" className="h-full w-full object-cover" /> : <File size={17} />}
+                  {entry.isDir ? <Folder size={17} /> : isImage(entry) && entry.publicUrl ? <img src={entry.publicUrl} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" /> : <File size={17} />}
                 </div>
                 <button disabled={!entry.isDir && !(isImage(entry) && entry.publicUrl)} onClick={() => entry.isDir ? setPath(entry.path) : setPreview(entry)} className="min-w-0 flex-1 text-left disabled:cursor-default">
                   <div className="truncate text-sm font-medium">{entry.name}</div>
@@ -326,6 +340,11 @@ export function GalleryPage() {
                 </>}
               </div>
             ))}
+            {hiddenCount > 0 && (
+              <button onClick={() => setVisibleCount((current) => current + GALLERY_PAGE_SIZE)} className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                继续显示 {Math.min(GALLERY_PAGE_SIZE, hiddenCount)} 项（还有 {hiddenCount} 项未渲染）
+              </button>
+            )}
           </div>
         </section>
       )}
