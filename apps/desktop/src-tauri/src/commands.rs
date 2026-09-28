@@ -2533,6 +2533,8 @@ async fn run_workflow_publish_task(
     }
 }
 
+type GroupUploadOutcome = application::PublishOutcome;
+
 fn is_safe_compensation_path(path: &str) -> bool {
     path.split(|character: char| !character.is_ascii_alphanumeric())
         .any(|segment| {
