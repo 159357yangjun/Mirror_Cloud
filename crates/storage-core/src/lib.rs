@@ -56,6 +56,16 @@ pub trait StorageProvider: Send + Sync {
     async fn download(&self, _path: &str) -> Result<Bytes, StorageError> {
         Err(StorageError::Unsupported)
     }
+    /// Existence probe for one object path. The default walks the parent listing, which is only
+    /// safe when that listing is complete; repository contents APIs truncate directories, so
+    /// GitHub and Gitee override this with an exact-path lookup.
+    async fn exists(&self, path: &str) -> Result<bool, StorageError> {
+        let parent = path.rsplit_once('/').map(|(parent, _)| parent).unwrap_or("");
+        let entries = self.list(parent).await?;
+        Ok(entries
+            .iter()
+            .any(|entry| entry.path.trim_matches('/') == path.trim_matches('/')))
+    }
     async fn delete(&self, path: &str) -> Result<(), StorageError>;
     async fn move_object(&self, _from: &str, _to: &str) -> Result<UploadResult, StorageError> {
         Err(StorageError::Unsupported)

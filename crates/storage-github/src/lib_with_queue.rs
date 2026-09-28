@@ -79,6 +79,10 @@ impl StorageProvider for GitHubStorage {
         self.inner.upload(request).await
     }
 
+    async fn exists(&self, path: &str) -> Result<bool, StorageError> {
+        self.inner.exists(path).await
+    }
+
     async fn download(&self, path: &str) -> Result<bytes::Bytes, StorageError> {
         self.inner.download(path).await
     }

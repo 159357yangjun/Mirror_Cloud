@@ -199,13 +199,6 @@ impl PublisherCore {
 pub struct CloudMutationCore;
 
 impl CloudMutationCore {
-    pub async fn path_exists(
-        provider: &dyn StorageProvider,
-        path: &str,
-    ) -> Result<bool, StorageError> {
-        Ok(Self::find_entry(provider, path).await?.is_some())
-    }
-
     async fn find_entry(
         provider: &dyn StorageProvider,
         path: &str,
@@ -225,22 +218,25 @@ impl CloudMutationCore {
         source: &str,
         destination: &str,
     ) -> Result<UploadResult, StorageError> {
-        if let Some(existing) = Self::find_entry(provider, destination).await? {
-            // Retrying a move whose remote half already landed finds its own destination here.
-            // A still-present source means a real collision; a vanished source means the earlier
-            // attempt succeeded remotely and only the local Deployment index write failed, so the
-            // caller must be able to finish syncing instead of being locked out forever.
-            if !Self::path_exists(provider, source).await? {
-                return Ok(UploadResult {
-                    remote_path: existing.path,
-                    public_url: existing.public_url,
-                    etag: None,
-                });
+        if provider.exists(destination).await? {
+            if provider.exists(source).await? {
+                return Err(StorageError::Provider(format!(
+                    "destination already exists: {destination}"
+                )));
             }
 
-            return Err(StorageError::Provider(format!(
-                "destination already exists: {destination}"
-            )));
+            // The remote move already landed and only the local index write failed. Rebuild the
+            // destination metadata so the caller can finish syncing instead of being locked out.
+            let Some(entry) = Self::find_entry(provider, destination).await? else {
+                return Err(StorageError::Provider(format!(
+                    "{destination} exists remotely but could not be listed to repair the local index; sync the cloud index, then retry"
+                )));
+            };
+            return Ok(UploadResult {
+                remote_path: destination.to_string(),
+                public_url: entry.public_url,
+                etag: None,
+            });
         }
 
         if provider.capabilities().move_object {

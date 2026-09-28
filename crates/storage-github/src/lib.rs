@@ -442,6 +442,10 @@ impl StorageProvider for GitHubStorage {
         ))
     }
 
+    async fn exists(&self, path: &str) -> Result<bool, StorageError> {
+        Ok(self.existing_sha(&self.repository_path(path)).await?.is_some())
+    }
+
     async fn download(&self, path: &str) -> Result<bytes::Bytes, StorageError> {
         let repository_path = self.repository_path(path);
         let response = self
