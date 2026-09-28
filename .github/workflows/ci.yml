@@ -48,6 +48,10 @@ jobs:
         run: python scripts/check_release_version.py
       - name: Tauri dependency family validation
         run: python scripts/check_tauri_dependency_family.py
+      - name: Report pinned toolchain versions
+        shell: pwsh
+        run: |
+          Write-Host "node=$(node --version) npm=$(npm --version) rustc=$(rustc --version)"
       - name: Verify committed dependency locks
         shell: pwsh
         run: |
