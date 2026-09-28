@@ -65,7 +65,7 @@ export function PublishPage() {
   const { data: groups = [] } = useQuery({ queryKey: ['storage-groups'], queryFn: listStorageGroups })
   const { data: target } = useQuery({ queryKey: ['default-publish-target'], queryFn: getDefaultPublishTarget })
   const { data: assets = [] } = useQuery({ queryKey: ['assets', 'publish-recent'], queryFn: () => listAssets(6) })
-  const { data: tasks = [] } = useQuery({ queryKey: ['tasks', 'publish-recent'], queryFn: () => listTasks(6), refetchInterval: 1500 })
+  const { data: tasks = [], error: tasksError } = useQuery({ queryKey: ['tasks', 'publish-recent'], queryFn: () => listTasks(6), refetchInterval: 1500 })
   const { data: preferences } = useQuery({ queryKey: ['output-preferences'], queryFn: getOutputPreferences })
 
   const targets = useMemo(() => [
@@ -247,7 +247,7 @@ export function PublishPage() {
           <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,.03)]">
             <div className="flex items-center justify-between"><div className="text-sm font-semibold">最近任务</div><button onClick={() => setPage('tasks')} className="text-[11px] font-medium text-indigo-600">任务中心</button></div>
             <div className="mt-3 space-y-2">
-              {!tasks.length && <div className="text-xs text-slate-400">暂无任务</div>}
+              {!tasks.length && (tasksError ? <div className="text-xs text-red-600">最近任务读取失败</div> : <div className="text-xs text-slate-400">暂无任务</div>)}
               {tasks.slice(0, 4).map((task) => (
                 <div key={task.id} className="flex items-start gap-2 rounded-xl border border-slate-100 p-3">
                   {task.status === 'running' || task.status === 'preparing' || task.status === 'queued'

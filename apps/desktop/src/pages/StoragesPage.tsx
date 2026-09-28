@@ -46,7 +46,7 @@ const strategyLabel = (strategy: string) =>
 export function StoragesPage() {
   const queryClient = useQueryClient()
   const { data } = useQuery({ queryKey: ['bootstrap'], queryFn: getBootstrapSnapshot })
-  const { data: storages = [], isLoading, refetch } = useQuery({ queryKey: ['storages'], queryFn: listStorages })
+  const { data: storages = [], isLoading, error: storagesError, refetch } = useQuery({ queryKey: ['storages'], queryFn: listStorages })
   const { data: groups = [] } = useQuery({ queryKey: ['storage-groups'], queryFn: listStorageGroups })
   const { data: defaultTarget = null } = useQuery({ queryKey: ['default-publish-target'], queryFn: getDefaultPublishTarget })
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -201,7 +201,10 @@ export function StoragesPage() {
             </article>
           )
         })}
-        {!isLoading && !storages.length && (
+        {storagesError && (
+          <div className="col-span-3 rounded-[24px] border border-dashed border-red-200 bg-red-50 p-10 text-center text-sm text-red-600">云端列表读取失败：{String(storagesError)}</div>
+        )}
+        {!isLoading && !storages.length && !storagesError && (
           <div className="col-span-3 rounded-[24px] border border-dashed border-slate-200 bg-white p-10 text-center">
             <div className="text-sm font-medium">还没有云端存储</div>
             <div className="mt-1 text-xs text-slate-400">可以从 R2、GitHub 或 Gitee 开始，第一次连接只保留必要字段。</div>
