@@ -2643,12 +2643,7 @@ async fn publish_group_bytes(
     }
 
     PublisherCore::publish_group_reported(
-        strategy,
-        members,
-        bytes,
-        remote_path,
-        mime_type,
-        on_member,
+        strategy, members, bytes, remote_path, mime_type, on_member,
     )
     .await
     .map_err(|error| error.to_string())
