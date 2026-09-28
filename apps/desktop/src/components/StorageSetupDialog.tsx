@@ -177,6 +177,35 @@ export function StorageSetupDialog({
   const setWebDav = (key: keyof CreateWebDavStorageInput, value: string) =>
     setWebdavForm((current) => ({ ...current, [key]: value }))
 
+  // Mirrors exactly the fields the Rust create_* commands reject as empty, so the form blocks a
+  // doomed submit without inventing requirements the backend does not enforce.
+  const missingFields: string[] = []
+  const blank = (value: string | undefined | null) => !value || !value.trim()
+  const notHttp = (value: string | undefined | null) => !/^https?:\/\//i.test((value ?? '').trim())
+  if (isRepository) {
+    if (blank(repoForm.name)) missingFields.push('显示名称')
+    if (blank(repoForm.owner)) missingFields.push('Owner')
+    if (blank(repoForm.repo)) missingFields.push('仓库名')
+    if (blank(repoForm.branch)) missingFields.push('分支')
+    if (blank(repoForm.token)) missingFields.push('访问令牌')
+  } else if (isGenericS3) {
+    if (blank(s3Form.name)) missingFields.push('显示名称')
+    if (blank(s3Form.bucket)) missingFields.push('Bucket')
+    if (blank(s3Form.accessKeyId)) missingFields.push('Access Key ID')
+    if (blank(s3Form.secretAccessKey)) missingFields.push('Secret Access Key')
+    if (s3Form.providerKey === 'r2' && blank(s3Form.accountId)) missingFields.push('Account ID')
+    if (s3Form.providerKey === 's3' && notHttp(s3Form.endpoint)) missingFields.push('Endpoint（需 http/https 开头）')
+  } else if (isObject) {
+    if (blank(objectForm.name)) missingFields.push('显示名称')
+    if (blank(objectForm.bucket)) missingFields.push('Bucket')
+    if (blank(objectForm.accessKeyId)) missingFields.push('Access Key ID')
+    if (blank(objectForm.secretAccessKey)) missingFields.push('Secret Access Key')
+    if (notHttp(objectForm.endpoint)) missingFields.push('Endpoint（需 http/https 开头）')
+  } else if (isWebDav) {
+    if (blank(webdavForm.name)) missingFields.push('显示名称')
+    if (notHttp(webdavForm.endpoint)) missingFields.push('WebDAV Endpoint（需 http/https 开头）')
+  }
+
   async function openGitHubTokenPage() {
     const url = 'https://github.com/settings/personal-access-tokens/new'
     setTokenStatus('正在打开 GitHub Token 页面…')
@@ -320,12 +349,17 @@ export function StorageSetupDialog({
         )}
 
         {mutation.error && <div className="mt-4 rounded-xl border border-red-100 bg-red-50 px-3 py-2.5 text-xs leading-5 text-red-600">{String(mutation.error).replace(/^Error:\s*/i, '')}</div>}
-        <div className="mt-6 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm">取消</button>
-          <button disabled={mutation.isPending} onClick={() => mutation.mutate()} className="flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">
-            {mutation.isPending && <LoaderCircle size={15} className="animate-spin" />}
-            测试并保存
-          </button>
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+          {missingFields.length > 0 ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-700">还需填写：{missingFields.join('、')}</div>
+          ) : <span />}
+          <div className="flex gap-2">
+            <button onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm">取消</button>
+            <button disabled={mutation.isPending || missingFields.length > 0} onClick={() => mutation.mutate()} className="flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">
+              {mutation.isPending && <LoaderCircle size={15} className="animate-spin" />}
+              测试并保存
+            </button>
+          </div>
         </div>
       </section>
     </div>
