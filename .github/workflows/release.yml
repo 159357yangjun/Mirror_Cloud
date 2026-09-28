@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '22'
+          node-version-file: '.node-version'
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable, 2026-09-03
@@ -67,6 +67,20 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw 'Release build modified a committed dependency lock. Update dependencies explicitly before releasing.'
           }
+
+      - name: Smoke-test NSIS and MSI installers
+        id: installer-smoke
+        shell: pwsh
+        run: ./scripts/smoke_windows_installers.ps1
+
+      - name: Upload installer smoke logs on failure
+        if: failure() && steps.installer-smoke.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-installer-smoke-logs
+          path: ${{ runner.temp }}/image-hosting-platform-installer-smoke/**
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Stage release files and checksums
         shell: pwsh
@@ -125,7 +139,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '22'
+          node-version-file: '.node-version'
           cache: npm
           cache-dependency-path: website/package-lock.json
       - name: Validate release version consistency

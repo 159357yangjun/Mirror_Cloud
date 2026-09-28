@@ -80,7 +80,7 @@ npm install
 npm run tauri dev
 ```
 
-项目要求 Node.js `>= 22.12`、Rust `1.98.1` / Cargo、Windows Tauri 所需的 WebView2 和 Visual Studio C++ Build Tools。`rust-toolchain.toml` 会把仓库内 Rust 命令固定到当前验证过的工具链版本。
+项目要求 Node.js `>= 22.12`、Rust `1.98.1` / Cargo、Windows Tauri 所需的 WebView2 和 Visual Studio C++ Build Tools。`rust-toolchain.toml` 会把仓库内 Rust 命令固定到当前验证过的工具链版本，`.node-version` 把 CI 与 Release 的 Node 固定到已验证的 `22.23.2` 补丁版本。
 
 ## 验证
 
@@ -100,6 +100,8 @@ python scripts/check_tauri_dependency_family.py
 ```
 
 GitHub Actions 的 `CI` 会继续执行 Rust format/check/test、桌面前端 build 和文档 build，并在耗时编译前检查版本同步、Tauri Rust/JS 依赖族兼容性以及外部 Actions 的不可变 SHA pin。`Release Bundle` 在手动触发时只生成构建产物；推送与项目版本一致的 `v*` tag 时才会创建对应 GitHub Release。
+
+`Release Bundle` 在 Windows bundle 生成且依赖锁未被改写之后、暂存发布文件之前，会在真实 Windows runner 上执行 `scripts/smoke_windows_installers.ps1`，对 NSIS 与 MSI 完成静默安装、注册表卸载项校验和静默卸载；smoke 失败时上传 MSI 安装/卸载日志且不产出任何发布文件。本地跑完 `./scripts/release.ps1` 后可用同一脚本单独复现该检查（会真的在当前机器安装并卸载应用，已安装时会直接拒绝执行）。
 
 ## 发布产物
 

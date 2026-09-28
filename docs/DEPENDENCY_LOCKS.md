@@ -22,6 +22,12 @@ This makes a given source revision resolve to the same dependency graph across d
 
 Compiler upgrades are intentional dependency changes: update `rust-toolchain.toml` and CI/Release toolchain inputs together, then rerun the complete validation and a real Windows bundle before accepting the new compiler.
 
+## Node runtime
+
+`.node-version` pins the Node.js release used by CI and the release workflow to the exact patch version that produced the verified Windows bundle. Both workflows read it through `node-version-file` instead of declaring a moving major version, so a Node upgrade is a single reviewed file change rather than a per-workflow edit.
+
+`apps/desktop/package.json` keeps the broader `engines.node` floor for developer machines; CI and release builds do not rely on that floor.
+
 ## Tauri cross-language compatibility
 
 Tauri is a cross-language dependency family: the Rust crates in `apps/desktop/src-tauri/Cargo.toml` and the `@tauri-apps/*` JavaScript packages in `apps/desktop/package.json` must stay on compatible release lines.
