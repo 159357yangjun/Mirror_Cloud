@@ -3,6 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { cancelTask, isTauriRuntime, listTasks, retryTask } from '../lib/desktop'
+import type { TaskView } from '../types'
+
+type TaskProgressEvent = { id: string; status: TaskView['status']; progress: number; error?: string | null }
+
+const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
 
 export function TasksPage() {
   const queryClient = useQueryClient()
@@ -26,7 +31,16 @@ export function TasksPage() {
     if (!isTauriRuntime()) return
     let unlisten: (() => void) | undefined
     import('@tauri-apps/api/event').then(({ listen }) =>
-      listen('task://updated', () => {
+      listen<TaskProgressEvent>('task://updated', (event) => {
+        const payload = event.payload
+        // Progress ticks only patch the visible row; refetching the whole list (and every asset)
+        // once per item made batch operations a refetch storm.
+        queryClient.setQueryData<TaskView[]>(['tasks', taskLimit], (current) =>
+          current?.map((task) => task.id === payload.id
+            ? { ...task, status: payload.status, progress: payload.progress, error: payload.error ?? task.error }
+            : task),
+        )
+        if (!TERMINAL_STATUSES.has(payload.status)) return
         void queryClient.invalidateQueries({ queryKey: ['tasks'] })
         void queryClient.invalidateQueries({ queryKey: ['assets'] })
       }).then((cleanup) => {
@@ -34,7 +48,7 @@ export function TasksPage() {
       }),
     )
     return () => unlisten?.()
-  }, [queryClient])
+  }, [queryClient, taskLimit])
 
   return (
     <div className="mx-auto max-w-[1180px] px-10 py-9">
