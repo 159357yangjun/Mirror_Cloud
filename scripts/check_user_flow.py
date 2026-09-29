@@ -396,6 +396,14 @@ require('verify_dialog_interactions.mjs' in json.dumps(desktop_pkg.get('scripts'
 require('async function assertProjectIdentity' in harness, 'the harness verifies it is measuring this project')
 require('error.identityFault = true' in harness and 'e.identityFault ? 2 : 1' in harness, 'an identity mismatch exits as a harness fault, not a pass or a regression')
 require('exportNames' in harness and "function|const|class|enum" in harness, 'the export comparison ignores type exports that the TS transform erases')
+# A red demonstration that lives only in a chat log is not evidence. The impostor fixture and the
+# mutation runner have to stay in the repo and stay reachable from the same entry point.
+require("MODE === 'red-demo'" in harness and "__fixtures__/impostor_dev_server.mjs" in harness, 'the identity gate keeps a re-runnable red demonstration')
+require("MODE === 'mutate'" in harness and "refuses to run" in harness, 'the guard mutations are re-runnable and refuse to touch a dirty tree')
+fixture_path = ROOT / 'scripts' / '__fixtures__' / 'impostor_dev_server.mjs'
+require(fixture_path.exists(), 'the impostor dev server fixture is version controlled')
+fixture_imports = re.findall(r"from '([^']+)'", fixture_path.read_text(encoding='utf-8')) if fixture_path.exists() else []
+require(all(i.startswith('node:') for i in fixture_imports), f'the fixture adds no third-party dependency ({fixture_imports})')
 
 # Encoding integrity for the change record. A latin1 read + utf8 write turns every CJK character
 # into a two-byte mojibake sequence; the result still decodes as UTF-8, so "it parsed" proves

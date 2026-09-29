@@ -19,6 +19,10 @@
  *   pages    visit every route in a plain browser and report whether anything crashes
  *   external the red/green pair: discarding the open promise vs reporting it, plus the primitive's
  *            rejection behaviour for a malformed value and a non-http scheme
+ *   red-demo  starts scripts/__fixtures__/impostor_dev_server.mjs and asserts the identity gate
+ *             refuses to measure it (exit 2 from the child is the expected outcome)
+ *   mutate    applies each guard-mutation to a tracked file, shows the guard alarm, restores the
+ *             bytes; refuses to start if a target file is already dirty
  *
  * Options
  *   --out DIR   default %TEMP%/image-hosting-probes/<date>; screenshots and JSON land there, never
@@ -44,8 +48,9 @@
  * No third-party imports: node:child_process and node:fs, plus the fetch / WebSocket globals that
  * Node 22+ ships. Requires Node >= 22 for the global WebSocket.
  */
-import { execFileSync, spawn } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 const argv = process.argv.slice(2)
 const MODE = argv[0] && !argv[0].startsWith('--') ? argv[0] : ''
@@ -55,7 +60,7 @@ const opt = (name, fallback) => {
 }
 if (!MODE || MODE === 'help') {
   console.log(readFileSync(new URL(import.meta.url), 'utf8').split('*/')[0].replace(/^\/\*\*/, ''))
-  console.log(`modes: confirm | ab | gate | gate-unit | links | pages | external`)
+  console.log(`modes: confirm | ab | gate | gate-unit | links | pages | external | red-demo | mutate`)
   process.exit(MODE === 'help' ? 0 : 2)
 }
 
@@ -109,22 +114,28 @@ if (MODE === 'gate-unit') {
   process.exit(failed.length ? 1 : 0)
 }
 
-// The dev server is the only thing this tool needs from the project; refuse early with the exact
-// command rather than reporting a mysterious "no page target" after a 30s timeout.
-try {
-  const probe = await fetch(APP, { signal: AbortSignal.timeout(4000) })
-  if (!probe.ok) throw new Error(`HTTP ${probe.status}`)
-} catch (error) {
-  console.error(`Frontend dev server is not reachable at ${APP} (${error.message}).\nStart it first:  cd apps/desktop && npm run dev`)
-  process.exit(4)
+const profile = `${OUT.replace(/\/+$/, '')}/.profile-${Date.now()}`
+// The browser and the dev-server preflight are lazy: red-demo and mutate orchestrate child
+// processes and must not fail (or burn a browser launch) because the parent's default --app is down.
+let browser = null
+function launchBrowser() {
+  if (browser) return
+  browser = spawn(BROWSER, [
+    '--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`,
+    '--no-first-run', '--no-default-browser-check', '--disable-extensions', '--disable-sync',
+    '--window-size=1440,900', APP,
+  ], { stdio: 'ignore' })
 }
 
-const profile = `${OUT.replace(/\/+$/, '')}/.profile-${Date.now()}`
-const browser = spawn(BROWSER, [
-  '--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`,
-  '--no-first-run', '--no-default-browser-check', '--disable-extensions', '--disable-sync',
-  '--window-size=1440,900', APP,
-], { stdio: 'ignore' })
+async function requireDevServer() {
+  try {
+    const probe = await fetch(APP, { signal: AbortSignal.timeout(4000) })
+    if (!probe.ok) throw new Error(`HTTP ${probe.status}`)
+  } catch (error) {
+    console.error(`Frontend dev server is not reachable at ${APP} (${error.message}).\nStart it first:  cd apps/desktop && npm run dev`)
+    process.exit(4)
+  }
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -135,7 +146,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 //   L2 the served /package.json must be byte-identical to the on-disk one
 //   L3 every export name in the on-disk desktop.ts must appear in the module the server returns
 // A mismatch exits 2: harness fault. It is never counted as a pass and never as an app regression.
-const REPO = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1').replace(/\/+$/, '')
+// Forward slashes everywhere: these paths reach child_process.spawn as argv, and a Windows path with
+// backslashes has already eaten a whole run here once (spawn reported "C:Program Files...").
+const SELF = fileURLToPath(import.meta.url).replace(/\\/g, '/').replace(/\/+$/, '')
+const REPO = fileURLToPath(new URL('..', import.meta.url)).replace(/\\/g, '/').replace(/\/+$/, '')
 const readRepoFile = (rel) => readFileSync(`${REPO}/${rel}`, 'utf8')
 
 function exportNames(source) {
@@ -192,7 +206,7 @@ function buildProvenance() {
 // Windows, so give both a moment to shut down first.
 function finish(code) {
   try { ws.close() } catch {}
-  try { browser.kill() } catch {}
+  try { browser?.kill() } catch {}
   setTimeout(() => process.exit(code), 300)
 }
 
@@ -346,7 +360,121 @@ window.__H = {
 true
 `
 
+if (MODE === 'red-demo') {
+  // Re-runnable proof that the identity gate alarms. Both impostor servers are deliberately wrong;
+  // a red here is the expected outcome, and the demo only passes if the gate refuses to measure.
+  // If either child exits 0, the gate has stopped biting - that is reported as exit 2, not as a pass.
+  const cases = [
+    {
+      fixture: 'other-app', port: 14571, expectClause: 'L1 document.title',
+      why: 'a different project owns the port; measuring it would produce confident PASSes about code that is not ours',
+    },
+    {
+      fixture: 'stale-source', port: 14572, expectClause: 'L3 served /src/lib/desktop.ts',
+      why: 'right title and byte-identical /package.json, but the served module predates one current export - the only way to catch "same app, older checkout"',
+    },
+  ]
+  const results = []
+  for (const c of cases) {
+    const fixture = spawn(process.execPath, [`${REPO}/scripts/__fixtures__/impostor_dev_server.mjs`, c.fixture, String(c.port)], { stdio: ['ignore', 'pipe', 'pipe'] })
+    let fixtureErr = ''
+    fixture.stderr.on('data', (d) => { fixtureErr += d })
+    await sleep(900)
+    const child = spawnSync(process.execPath, [SELF, 'ab', '--app', `http://127.0.0.1:${c.port}/`, '--port', String(PORT + c.port - 14570)], { encoding: 'utf8', timeout: 180_000 })
+    const output = `${child.stdout || ''}${child.stderr || ''}`
+    const rejected = child.status === 2 && output.includes('PROJECT IDENTITY GATE FAILED')
+    const namedClause = output.includes(c.expectClause)
+    results.push({
+      case: c.fixture, url: `http://127.0.0.1:${c.port}/`, expectedExit: 2, actualExit: child.status,
+      gateRejected: rejected, namedExpectedClause: namedClause, whyThisRedIsExpected: c.why,
+      evidence: output.split('\n').filter((l) => /PROJECT IDENTITY|^  L\d|identity gate rejected/.test(l)).slice(0, 4),
+    })
+    fixture.kill()
+    if (fixtureErr) console.error(`fixture ${c.fixture} stderr: ${fixtureErr.trim()}`)
+  }
+  writeFileSync(`${OUT}/report-red-demo.json`, JSON.stringify(results, null, 2))
+  for (const r of results) {
+    console.log(`${r.gateRejected && r.namedExpectedClause ? 'OK  ' : 'FAIL'} ${r.case.padEnd(13)} exit=${r.actualExit} (want 2) rejected=${r.gateRejected} named=${r.namedExpectedClause}`)
+    for (const line of r.evidence) console.log(`      ${line.trim()}`)
+    console.log(`      why this red is expected: ${r.whyThisRedIsExpected}`)
+  }
+  const broken = results.filter((r) => !r.gateRejected || !r.namedExpectedClause)
+  console.log(`identity gate red demo: ${results.length - broken.length}/${results.length} alarms reproduced | reports: ${OUT}`)
+  if (broken.length) console.error('The gate did NOT alarm. Treat this as a harness fault, not as a passing test.')
+  process.exit(broken.length ? 2 : 0)
+}
+
+if (MODE === 'mutate') {
+  // Re-runnable proof that each guard actually bites, replacing the hand-edits these were first
+  // demonstrated with. Every mutation is applied to a tracked file, observed, then restored from the
+  // bytes held in memory; the run refuses to start if any target file is already dirty.
+  const G = 'scripts/verify_dialog_interactions.mjs'
+  const mutations = [
+    { id: 'M1', file: G, from: "  if (!(reading.innerWidth > 0)) problems.push(`innerWidth=${reading.innerWidth} (needs > 0)`)", to: '', oracle: 'gate-unit', expect: 'innerWidth 0, everything else healthy -> accepted' },
+    { id: 'M2', file: G, from: "  if (reading.visibility !== 'visible') problems.push(`visibilityState=${reading.visibility} (needs \"visible\")`)", to: '', oracle: 'gate-unit', expect: 'hidden, sizes healthy -> accepted' },
+    { id: 'M3', file: G, from: "  if (!(reading.innerHeight > 0)) problems.push(`innerHeight=${reading.innerHeight} (needs > 0)`)", to: '', oracle: 'gate-unit', expect: 'innerHeight 0, everything else healthy -> accepted' },
+    { id: 'M4', file: G, from: '  if (!(reading.clientWidth > 0) || !(reading.clientHeight > 0)) problems.push(`client=${reading.clientWidth}x${reading.clientHeight}`)', to: '', oracle: 'gate-unit', expect: 'clientWidth 0, everything else healthy -> accepted' },
+    { id: 'M5', file: G, from: '  return { ok: problems.length === 0, problems }', to: '  return { ok: true, problems }', oracle: 'gate-unit', expect: 'hidden, sizes healthy -> accepted' },
+    { id: 'M6', file: 'apps/desktop/package.json', from: ',\n    "verify:dialog": "node ../../scripts/verify_dialog_interactions.mjs"', to: '', oracle: 'guard', expect: 'the harness is reachable from an npm script entry' },
+    { id: 'M7', file: 'CHANGELOG.md', corrupt: 'double-encode', oracle: 'guard', expect: 'CHANGELOG.md still holds real CJK code points' },
+    { id: 'M8', file: G, from: 'async function assertProjectIdentity()', to: 'async function gateRemoved()', oracle: 'guard', expect: 'the harness verifies it is measuring this project' },
+    { id: 'M9', file: G, from: '    error.identityFault = true\n    throw error', to: '    finish(2)', oracle: 'guard', expect: 'an identity mismatch exits as a harness fault, not a pass or a regression' },
+    { id: 'M10', file: G, from: 'function|const|class|enum', to: 'function|const|class|type|interface|enum', oracle: 'guard', expect: 'the export comparison ignores type exports that the TS transform erases' },
+  ]
+  const touched = [...new Set(mutations.map((m) => m.file))]
+  const dirty = touched.filter((rel) => execFileSync('git', ['status', '--porcelain', '--', rel], { cwd: REPO, encoding: 'utf8' }).trim())
+  if (dirty.length) {
+    console.error(`mutate refuses to run: these files are already modified, and restoring them would destroy that work:\n  ${dirty.join('\n  ')}`)
+    process.exit(2)
+  }
+  const runOracle = (oracle) => {
+    if (oracle === 'gate-unit') {
+      const r = spawnSync(process.execPath, [SELF, 'gate-unit'], { cwd: REPO, encoding: 'utf8', timeout: 60_000 })
+      return { status: r.status, output: `${r.stdout || ''}${r.stderr || ''}` }
+    }
+    try {
+      const r = spawnSync('python', ['scripts/check_user_flow.py'], { cwd: REPO, encoding: 'utf8', timeout: 180_000 })
+      return { status: r.status, output: `${r.stdout || ''}${r.stderr || ''}` }
+    } catch (e) {
+      if (e.code === 'ENOENT') { console.error('python is not on PATH; the guard oracle cannot run.'); process.exit(2) }
+      throw e
+    }
+  }
+  const results = []
+  for (const m of mutations) {
+    const path = `${REPO}/${m.file}`
+    const original = readFileSync(path)
+    try {
+      const text = original.toString('utf8')
+      // The real corruption this guard exists for: read as latin1, write back as utf8. Every CJK
+      // character becomes two Latin-1 characters, and the file still decodes as UTF-8 afterwards.
+      let mutated
+      if (m.corrupt === 'double-encode') mutated = Buffer.from(text, 'latin1').toString('utf8')
+      else if (text.includes(m.from)) mutated = text.replace(m.from, m.to)
+      if (mutated === undefined || mutated === text) { results.push({ id: m.id, file: m.file, applied: false, note: 'anchor missing - mutation definition is stale' }); continue }
+      writeFileSync(path, mutated)
+      const run = runOracle(m.oracle)
+      results.push({
+        id: m.id, file: m.file, oracle: m.oracle, applied: true,
+        guardAlarmed: run.status !== 0, namedExpectedFailure: run.output.includes(m.expect),
+        observedExit: run.status,
+        evidence: run.output.split('\n').filter((l) => l.startsWith('FAIL') || l.includes('-> accepted')).slice(0, 2).map((l) => l.trim().slice(0, 120)),
+      })
+    } finally {
+      writeFileSync(path, original)
+    }
+  }
+  const unrestored = touched.filter((rel) => execFileSync('git', ['status', '--porcelain', '--', rel], { cwd: REPO, encoding: 'utf8' }).trim())
+  const bad = results.filter((r) => !r.applied || !r.guardAlarmed || !r.namedExpectedFailure)
+  writeFileSync(`${OUT}/report-mutate.json`, JSON.stringify({ results, unrestored }, null, 2))
+  for (const r of results) console.log(`${r.applied && r.guardAlarmed && r.namedExpectedFailure ? 'OK  ' : 'FAIL'} ${r.id} ${r.file}${r.note ? ` (${r.note})` : ` -> oracle exit ${r.observedExit}, named expected failure: ${r.namedExpectedFailure}`}${r.evidence && r.evidence.length ? `\n      ${r.evidence.join('\n      ')}` : ''}`)
+  console.log(`guard mutations: ${results.length - bad.length}/${mutations.length} alarms reproduced | tree restored: ${unrestored.length === 0 ? 'clean' : `DIRTY ${unrestored.join(', ')}`}`)
+  process.exit(bad.length || unrestored.length ? 2 : 0)
+}
+
 async function main() {
+  await requireDevServer()
+  launchBrowser()
   const page = await waitForTarget()
   ws = new WebSocket(page.webSocketDebuggerUrl)
   await new Promise((r) => { ws.onopen = r })
@@ -370,6 +498,20 @@ async function main() {
   await send('Log.enable')
   await send('Target.setDiscoverTargets', { discover: true })
 
+  const report = { mode: MODE, steps: [] }
+  const record = (name, data) => report.steps.push({ name, ...data })
+  // Gates run before anything is measured, and before waiting for the app to mount: an impostor
+  // server never mounts it, so a gate placed after the mount wait spends 20s timing out first.
+  for (let i = 0; i < 20; i++) {
+    if (await evaluate(`document.title !== '' || document.body.children.length > 0`)) break
+    await sleep(250)
+  }
+  console.log('VIEWPORT', JSON.stringify(await assertRealViewport('after-navigation')))
+  report.identity = await assertProjectIdentity()
+  report.provenance = buildProvenance()
+  console.log('IDENTITY', JSON.stringify(report.identity))
+  console.log('PROVENANCE', JSON.stringify(report.provenance))
+
   // wait for the React app to mount
   for (let i = 0; i < 40; i++) {
     const ready = await evaluate(`!!document.querySelector('nav button')`)
@@ -377,13 +519,7 @@ async function main() {
     await sleep(500)
   }
   await evaluate(HELPERS)
-  const report = { mode: MODE, steps: [] }
-  const record = (name, data) => report.steps.push({ name, ...data })
-  console.log('VIEWPORT', JSON.stringify(await assertRealViewport('after-mount')))
-  report.identity = await assertProjectIdentity()
-  report.provenance = buildProvenance()
-  console.log('IDENTITY', JSON.stringify(report.identity))
-  console.log('PROVENANCE', JSON.stringify(report.provenance))
+  await assertRealViewport('after-mount')
   await evaluate(`(function(){const c=Array.from(document.querySelectorAll('button')).find(b=>b.getAttribute('aria-label')==='关闭教程');if(c)c.click();return true;})()`)
   await sleep(300)
 
@@ -959,7 +1095,7 @@ async function main() {
 
 main().catch((e) => {
   console.error('FAILED', e)
-  try { browser.kill() } catch {}
+  try { browser?.kill() } catch {}
   // 2 = the harness could not establish what it was pointed at. Never a pass, never an app regression.
   process.exit(e && e.identityFault ? 2 : 1)
 })
