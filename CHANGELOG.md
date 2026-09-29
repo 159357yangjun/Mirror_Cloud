@@ -199,7 +199,7 @@ M7 把 CHANGELOG 双重编码 → rc=1  FAIL CHANGELOG.md still holds real CJK c
  M scripts/verify_dialog_interactions.mjs
 ```
 
-  本批两笔提交之后应为 `## dev...origin/dev [ahead 5]` 且工作区无输出。`[ahead 3]` 是 `8f8d1e3`、`f387a66`、`0bb8dfe` 三笔未推提交——**本轮指令是不 push**，所以远端仍停在 `fe57911`；推送状态以 `git status -sb` 为准，不以本文件为准。
+  上面是**捕获时刻**的快照，不是最终态。本批实际落了 5 笔提交（测具+入口+断言 `30ae300`、指纹记录 `3d0fb67`、编码守卫 `c688261`、本文件恢复 `582fddc`，以及上一批的 `8f8d1e3`/`f387a66`/`0bb8dfe`），最终 `git status -sb` 是 `## dev...origin/dev [ahead 7]` 且工作区无输出。**本轮指令是不 push**，所以远端仍停在 `fe57911`；推送状态以 `git status -sb` 为准，不以本文件为准。
 - **"没改 version"要说得可比对**（逐文件核 `git diff v1.4.4..HEAD`）：`Cargo.lock` 与 `apps/desktop/package-lock.json` **不在差异列表里**；`Cargo.toml`、`tauri.conf.json` 的 blob 哈希与 v1.4.4 逐字节相同（`d8e893409a791dbf…` / `0d502d74a3f6bffa…`）；`apps/desktop/package.json` 的 blob 哈希**变了**（`d9cf163d…` → `eff85f02…`），但整个文件的差异只有两行——给 `"tauri": "tauri"` 补逗号、加一行 `"verify:dialog"`——`version` 两端同为 `1.4.4`，`check_release_version.py` 仍报 `Release version consistent: 1.4.4`。所以准确说法是"**version 字段没动，但五个 version 声明文件之一被 scripts 键碰过**"，不是"五个文件零改动"。
 - 完整链路实输出（`cd apps/desktop && npx vite --port 1420` 起前端后逐条跑，取真实退出码）：
 
