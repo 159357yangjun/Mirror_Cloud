@@ -299,6 +299,25 @@ require('list_plugin_execution_logs' in plugin_commands and 'commands::list_plug
 require('get_system_diagnostics' in integrations and 'enabled_storage_count' in integrations and 'failed_task_count' in integrations and 'commands::integrations::get_system_diagnostics' in lib, 'system diagnostics aggregate core runtime health')
 require('getSystemDiagnostics' in settings_page and '系统诊断' in settings_page and 'diagnostics.warnings' in settings_page, 'Settings exposes actionable runtime diagnostics')
 
+# A decorative duplicate <img> that points at the same remote original as the lazy main image
+# silently cancels the laziness: eager images start downloading at parse time, so opening the
+# gallery fires one full-size request per mounted card. Both attributes are therefore required
+# on every list/grid image, not just the primary one.
+media_card = text('apps/desktop/src/components/GalleryMediaCard.tsx')
+storage_browser = text('apps/desktop/src/components/StorageBrowserDialog.tsx')
+grid_sources = (('GalleryMediaCard', media_card), ('StorageBrowserDialog', storage_browser), ('GalleryPage', gallery), ('AssetsPage', assets))
+grid_imgs = [
+    (label, tag)
+    for label, source in grid_sources
+    for tag in re.findall(r'<img\b[^>]*>', source, re.DOTALL)
+    if 'entry.publicUrl' in tag or 'asset.publicUrl' in tag
+]
+require(len(grid_imgs) >= 6, f'list/grid remote images are enumerated for lazy-load checks (found {len(grid_imgs)})')
+eager = [f'{label}:{tag.split("publicUrl")[0][-24:]}' for label, tag in grid_imgs if 'loading="lazy"' not in tag]
+blocking = [label for label, tag in grid_imgs if 'decoding="async"' not in tag]
+require(not eager, f'every list/grid remote image defers its network fetch (eager: {eager})')
+require(not blocking, f'every list/grid remote image decodes off the main thread (blocking: {blocking})')
+
 failed = [label for ok, label in checks if not ok]
 for ok, label in checks[-13:]:
     print(('OK   ' if ok else 'FAIL ') + label)

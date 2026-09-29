@@ -104,12 +104,15 @@ export function GalleryMediaCard({
                   src={entry.publicUrl}
                   alt=""
                   aria-hidden="true"
+                  loading="lazy"
+                  decoding="async"
                   className="absolute inset-0 h-full w-full scale-110 object-cover opacity-20 blur-xl"
                 />
                 <img
                   src={entry.publicUrl}
                   alt={entry.name}
                   loading="lazy"
+                  decoding="async"
                   className="relative z-10 h-full w-full object-contain transition duration-300 group-hover:scale-[1.015]"
                 />
               </>

@@ -139,7 +139,7 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
                     className="block w-full text-left"
                   >
                     <div className="grid aspect-[4/3] place-items-center overflow-hidden bg-slate-50">
-                      {entry.isDir ? <Folder size={34} className="text-slate-300" /> : image && entry.publicUrl ? <img src={entry.publicUrl} alt={entry.name} loading="lazy" className="h-full w-full object-contain" /> : image ? <ImageIcon size={32} className="text-slate-300" /> : <File size={30} className="text-slate-300" />}
+                      {entry.isDir ? <Folder size={34} className="text-slate-300" /> : image && entry.publicUrl ? <img src={entry.publicUrl} alt={entry.name} loading="lazy" decoding="async" className="h-full w-full object-contain" /> : image ? <ImageIcon size={32} className="text-slate-300" /> : <File size={30} className="text-slate-300" />}
                     </div>
                     <div className="p-3"><div className="truncate text-xs font-medium" title={entry.name}>{entry.name}</div><div className="mt-1 text-[10px] text-slate-400">{entry.isDir ? '目录' : sizeLabel(entry.sizeBytes) || '远端文件'}</div></div>
                   </button>
@@ -176,7 +176,7 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
 
       {preview?.publicUrl && <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/75 p-8" onMouseDown={(event) => { event.stopPropagation(); setPreview(null) }}>
         <div className="relative max-h-full max-w-full" onMouseDown={(event) => event.stopPropagation()}>
-          <img src={preview.publicUrl} alt={preview.name} className="max-h-[82vh] max-w-[88vw] rounded-2xl bg-white object-contain shadow-2xl" />
+          <img src={preview.publicUrl} alt={preview.name} decoding="async" className="max-h-[82vh] max-w-[88vw] rounded-2xl bg-white object-contain shadow-2xl" />
           <div className="mt-3 flex items-center justify-center gap-2">
             <button onClick={() => void copyText(preview.publicUrl || '')} className="rounded-xl bg-white px-4 py-2 text-xs font-medium"><Copy size={13} className="mr-1 inline" />复制链接</button>
             <button onClick={() => void openExternalUrl(preview.publicUrl || '')} className="rounded-xl bg-white px-4 py-2 text-xs font-medium"><ExternalLink size={13} className="mr-1 inline" />浏览器打开</button>

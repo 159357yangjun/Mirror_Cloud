@@ -370,7 +370,7 @@ export function GalleryPage() {
         <div className="fixed inset-0 z-[90] grid place-items-center bg-slate-950/75 p-8" onMouseDown={() => setPreview(null)}>
           <div className="relative max-h-full max-w-full" onMouseDown={(event) => event.stopPropagation()}>
             <button onClick={() => setPreview(null)} className="absolute -right-3 -top-3 z-10 grid size-9 place-items-center rounded-full bg-white text-slate-500 shadow-lg"><X size={16} /></button>
-            <img src={preview.publicUrl} alt={preview.name} className="max-h-[80vh] max-w-[88vw] rounded-2xl bg-white object-contain shadow-2xl" />
+            <img src={preview.publicUrl} alt={preview.name} decoding="async" className="max-h-[80vh] max-w-[88vw] rounded-2xl bg-white object-contain shadow-2xl" />
             <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
               <div className="max-w-[46vw] truncate rounded-xl bg-white/95 px-3 py-2 text-xs font-medium">{preview.name}</div>
               <button onClick={() => void copyUrl(preview)} className="rounded-xl bg-white px-4 py-2 text-xs font-medium"><Copy size={13} className="mr-1 inline" />复制链接</button>
