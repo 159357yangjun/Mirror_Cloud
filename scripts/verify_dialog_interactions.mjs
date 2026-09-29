@@ -427,14 +427,29 @@ if (MODE === 'mutate') {
     console.error(`mutate refuses to run: these files are already modified, and restoring them would destroy that work:\n  ${dirty.join('\n  ')}`)
     process.exit(2)
   }
+  // `python` is not launchable from node on this box (ENOENT without a shell, and cmd.exe resolves it
+  // to a dead WindowsApps stub that exits 1 with no output - which reads exactly like "the guard
+  // alarmed"). Probe for a real interpreter instead of trusting an exit code.
+  function resolvePython() {
+    for (const [exe, pre] of [[process.env.PYTHON, []], ['python', []], ['py', ['-3']], ['python3', []]]) {
+      if (!exe) continue
+      const probe = spawnSync(exe, [...pre, '-c', 'import sys; print(sys.version_info[0])'], { encoding: 'utf8', timeout: 30_000 })
+      if (probe.status === 0 && (probe.stdout || '').trim() === '3') return { exe, pre }
+    }
+    return null
+  }
+  const python = resolvePython()
+  if (!python) {
+    console.error('mutate cannot run: no Python 3 interpreter found (tried $PYTHON, python, py -3, python3).')
+    process.exit(2)
+  }
   const runOracle = (oracle) => {
-    // shell:true because `python` on this box is not directly CreateProcess-able; without it
-    // spawnSync returns status null, which would otherwise be reported as "the guard stayed silent".
-    const [cmd, opts] = oracle === 'gate-unit'
-      ? [`"${process.execPath}" "${SELF}" gate-unit`, { timeout: 60_000 }]
-      : ['python scripts/check_user_flow.py', { timeout: 180_000 }]
-    const r = spawnSync(cmd, { cwd: REPO, encoding: 'utf8', shell: true, ...opts })
-    return { status: r.status, spawnError: r.error ? String(r.error).slice(0, 120) : null, output: `${r.stdout || ''}${r.stderr || ''}` }
+    if (oracle === 'gate-unit') {
+      const r = spawnSync(process.execPath, [SELF, 'gate-unit'], { cwd: REPO, encoding: 'utf8', timeout: 60_000 })
+      return { status: r.status, spawnError: r.error ? String(r.error).slice(0, 120) : null, output: `${r.stdout || ''}${r.stderr || ''}`, marker: 'gate unit check' }
+    }
+    const r = spawnSync(python.exe, [...python.pre, 'scripts/check_user_flow.py'], { cwd: REPO, encoding: 'utf8', timeout: 180_000 })
+    return { status: r.status, spawnError: r.error ? String(r.error).slice(0, 120) : null, output: `${r.stdout || ''}${r.stderr || ''}`, marker: 'total checks:' }
   }
   // Files are checked out with CRLF under core.autocrlf=true, so a multi-line anchor written with
   // \n matches nothing - and "anchor missing" is reported, not silently skipped as a pass.
@@ -456,9 +471,10 @@ if (MODE === 'mutate') {
       if (mutated === undefined || mutated === text) { results.push({ id: m.id, file: m.file, applied: false, note: 'anchor missing - mutation definition is stale' }); continue }
       writeFileSync(path, mutated)
       const run = runOracle(m.oracle)
+      const oracleRan = run.output.includes(run.marker)
       results.push({
-        id: m.id, file: m.file, oracle: m.oracle, applied: true, spawnError: run.spawnError,
-        guardAlarmed: run.status !== 0 && run.status !== null, namedExpectedFailure: run.output.includes(m.expect),
+        id: m.id, file: m.file, oracle: m.oracle, applied: true, spawnError: run.spawnError, oracleRan,
+        guardAlarmed: oracleRan && run.status !== 0 && run.status !== null, namedExpectedFailure: run.output.includes(m.expect),
         observedExit: run.status,
         evidence: run.output.split('\n').filter((l) => l.startsWith('FAIL') || l.includes('-> accepted')).slice(0, 2).map((l) => l.trim().slice(0, 120)),
       })
@@ -469,7 +485,7 @@ if (MODE === 'mutate') {
   const unrestored = touched.filter((rel) => execFileSync('git', ['status', '--porcelain', '--', rel], { cwd: REPO, encoding: 'utf8' }).trim())
   const bad = results.filter((r) => !r.applied || !r.guardAlarmed || !r.namedExpectedFailure)
   writeFileSync(`${OUT}/report-mutate.json`, JSON.stringify({ results, unrestored }, null, 2))
-  for (const r of results) console.log(`${r.applied && r.guardAlarmed && r.namedExpectedFailure ? 'OK  ' : 'FAIL'} ${r.id} ${r.file}${r.note ? ` (${r.note})` : ` -> oracle exit ${r.observedExit}, named expected failure: ${r.namedExpectedFailure}${r.spawnError ? `, spawnError: ${r.spawnError}` : ''}`}${r.evidence && r.evidence.length ? `\n      ${r.evidence.join('\n      ')}` : ''}`)
+  for (const r of results) console.log(`${r.applied && r.guardAlarmed && r.namedExpectedFailure ? 'OK  ' : 'FAIL'} ${r.id} ${r.file}${r.note ? ` (${r.note})` : ` -> oracle ran: ${r.oracleRan}, exit ${r.observedExit}, named expected failure: ${r.namedExpectedFailure}${r.spawnError ? `, spawnError: ${r.spawnError}` : ''}`}${r.evidence && r.evidence.length ? `\n      ${r.evidence.join('\n      ')}` : ''}`)
   console.log(`guard mutations: ${results.length - bad.length}/${mutations.length} alarms reproduced | tree restored: ${unrestored.length === 0 ? 'clean' : `DIRTY ${unrestored.join(', ')}`}`)
   process.exit(bad.length || unrestored.length ? 2 : 0)
 }
