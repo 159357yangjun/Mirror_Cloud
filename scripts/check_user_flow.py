@@ -376,8 +376,19 @@ desktop_lib = text('apps/desktop/src/lib/desktop.ts')
 require('openExternalUrl(url).catch((error) => notifyError' in desktop_lib, 'a failed external-link open is reported through the toast channel')
 require("if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')" in desktop_lib, 'external links are still restricted to http/https')
 
+# The browser harness that produced the two measurements above lives in the repo, so the gate that
+# voids hidden-window geometry is itself under test: without it a future edit can quietly drop the
+# precondition and every width/rect/hit-test number recorded in CHANGELOG becomes unauditable.
+harness_path = ROOT / 'scripts' / 'verify_dialog_interactions.mjs'
+require(harness_path.exists(), 'the dialog interaction harness is version controlled')
+harness = harness_path.read_text(encoding='utf-8') if harness_path.exists() else ''
+require('function assertRealViewport' in harness, 'the harness defines the viewport gate')
+require(harness.count('assertRealViewport(') >= 8, 'the viewport gate guards every geometry sample, not just startup')
+harness_imports = re.findall(r"from '([^']+)'", harness)
+require(all(i.startswith('node:') for i in harness_imports), f'the harness adds no third-party dependency ({harness_imports})')
+
 failed = [label for ok, label in checks if not ok]
-for ok, label in checks[-16:]:
+for ok, label in checks[-20:]:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
     raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
