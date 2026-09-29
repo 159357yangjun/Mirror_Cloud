@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -386,6 +387,9 @@ require('function assertRealViewport' in harness, 'the harness defines the viewp
 require(harness.count('assertRealViewport(') >= 8, 'the viewport gate guards every geometry sample, not just startup')
 harness_imports = re.findall(r"from '([^']+)'", harness)
 require(all(i.startswith('node:') for i in harness_imports), f'the harness adds no third-party dependency ({harness_imports})')
+# Reachability: a tool nobody can discover is a tool that rots. It must stay wired to a real entry.
+desktop_pkg = json.loads(text('apps/desktop/package.json'))
+require('verify_dialog_interactions.mjs' in json.dumps(desktop_pkg.get('scripts', {})), 'the harness is reachable from an npm script entry')
 
 failed = [label for ok, label in checks if not ok]
 for ok, label in checks[-20:]:

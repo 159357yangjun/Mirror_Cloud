@@ -13,7 +13,8 @@
  * Modes
  *   confirm  the five dialog behaviours: initial focus, Escape, backdrop, long text, z-index
  *   ab       the same dialog with overflow-wrap toggled, for a paired before/after reading
- *   gate     self-test proving the viewport gate really rejects a hidden window
+ *   gate     self-test proving the viewport gate really rejects a hidden window (live browser)
+ *   gate-unit gate predicate exercised against the recorded readings, incl. innerWidth 0 (no browser)
  *   links    what each docs entry point shows, for whatever VITE_DOCS_BASE_URL the server has
  *   pages    visit every route in a plain browser and report whether anything crashes
  *   external the red/green pair: discarding the open promise vs reporting it, plus the primitive's
@@ -41,7 +42,7 @@ const opt = (name, fallback) => {
 }
 if (!MODE || MODE === 'help') {
   console.log(readFileSync(new URL(import.meta.url), 'utf8').split('*/')[0].replace(/^\/\*\*/, ''))
-  console.log(`modes: confirm | ab | gate | links | pages | external`)
+  console.log(`modes: confirm | ab | gate | gate-unit | links | pages | external`)
   process.exit(MODE === 'help' ? 0 : 2)
 }
 
@@ -64,6 +65,36 @@ const APP = opt('app', 'http://127.0.0.1:1420/')
 const TAG = opt('tag', MODE)
 const OUT = opt('out', `${(process.env.TEMP || '/tmp').replace(/\\/g, '/')}/image-hosting-probes/${new Date().toISOString().slice(0, 10)}`)
 mkdirSync(OUT, { recursive: true })
+
+if (MODE === 'gate-unit') {
+  // No browser, no dev server: this exercises the gate predicate against readings that were really
+  // observed on this machine, including the one that produced the bogus 186.796875px card width.
+  //
+  // Each rejection case breaks exactly ONE clause (everything else is healthy) and names the token
+  // it expects back. A case that only asserts "was rejected" proves nothing: an earlier draft had
+  // the zero-width case also carrying a zero clientWidth, so deleting the innerWidth clause from the
+  // predicate still passed 5/5.
+  const HEALTHY = { visibility: 'visible', innerWidth: 1406, innerHeight: 803, clientWidth: 1406, clientHeight: 803 }
+  const cases = [
+    { name: 'live headless viewport', reading: { ...HEALTHY }, expectReject: false, expectToken: null },
+    { name: 'hidden, sizes healthy', reading: { ...HEALTHY, visibility: 'hidden' }, expectReject: true, expectToken: 'visibilityState=hidden' },
+    { name: 'innerWidth 0, everything else healthy', reading: { ...HEALTHY, innerWidth: 0 }, expectReject: true, expectToken: 'innerWidth=0' },
+    { name: 'innerHeight 0, everything else healthy', reading: { ...HEALTHY, innerHeight: 0 }, expectReject: true, expectToken: 'innerHeight=0' },
+    { name: 'clientWidth 0, everything else healthy', reading: { ...HEALTHY, clientWidth: 0 }, expectReject: true, expectToken: 'client=0x803' },
+    { name: 'recorded connector reading (hidden + 0x0)', reading: { visibility: 'hidden', innerWidth: 0, innerHeight: 0, clientWidth: 0, clientHeight: 0 }, expectReject: true, expectToken: 'visibilityState=hidden' },
+  ]
+  const results = cases.map((c) => {
+    const verdict = gateVerdict(c.reading)
+    const namedTheClause = c.expectReject === !verdict.ok && (!c.expectToken || verdict.problems.some((p) => p.startsWith(c.expectToken)))
+    const extraClauses = c.expectToken ? verdict.problems.filter((p) => !p.startsWith(c.expectToken)) : []
+    return { name: c.name, expectedReject: c.expectReject, gateRejected: !verdict.ok, problems: verdict.problems, correct: namedTheClause, unexpectedOtherClauses: extraClauses }
+  })
+  const failed = results.filter((r) => !r.correct)
+  writeFileSync(`${OUT}/report-gate-unit.json`, JSON.stringify(results, null, 2))
+  for (const r of results) console.log(`${r.correct ? 'OK  ' : 'FAIL'} ${r.name} -> ${r.gateRejected ? 'rejected: ' + r.problems.join('; ') : 'accepted'}`)
+  console.log(`Viewport gate unit check: ${results.length - failed.length}/${results.length} correct | reports: ${OUT}`)
+  process.exit(failed.length ? 1 : 0)
+}
 
 // The dev server is the only thing this tool needs from the project; refuse early with the exact
 // command rather than reporting a mysterious "no page target" after a 30s timeout.
@@ -131,18 +162,28 @@ async function evaluate(expression) {
   return r.result.value
 }
 
-// HARD GATE. A hidden window or a 0x0 viewport silently changes the layout baseline itself: the
-// same max-w-[440px] card measured 186.796875px there and 440px in a real viewport, so every
-// geometry number taken without this check is an artefact, not a regression. Text and attribute
-// readings survive it; widths, rects, hit-tests and screenshots do not.
+// A hidden window or a 0x0 viewport silently changes the layout baseline itself: the same
+// max-w-[440px] card measured 186.796875px there and 440px in a real viewport, so every geometry
+// number taken without this check is an artefact, not a regression. Text and attribute readings
+// survive it; widths, rects, hit-tests and screenshots do not.
+//
+// The decision is a pure function so the 0-width branch stays testable: this machine cannot make a
+// live page report innerWidth 0 (setDeviceMetricsOverride ignores 0, and a minimized window keeps
+// reporting its last real size), so the only honest way to prove that branch is to feed the
+// predicate the readings that were actually observed - see the `gate-unit` mode.
+function gateVerdict(reading) {
+  const problems = []
+  if (reading.visibility !== 'visible') problems.push(`visibilityState=${reading.visibility} (needs "visible")`)
+  if (!(reading.innerWidth > 0)) problems.push(`innerWidth=${reading.innerWidth} (needs > 0)`)
+  if (!(reading.innerHeight > 0)) problems.push(`innerHeight=${reading.innerHeight} (needs > 0)`)
+  if (!(reading.clientWidth > 0) || !(reading.clientHeight > 0)) problems.push(`client=${reading.clientWidth}x${reading.clientHeight}`)
+  return { ok: problems.length === 0, problems }
+}
+
 async function assertRealViewport(stage) {
   const v = await evaluate(`({ visibility: document.visibilityState, hidden: document.hidden, innerWidth, innerHeight, clientWidth: document.documentElement.clientWidth, clientHeight: document.documentElement.clientHeight, hasFocus: document.hasFocus(), dpr: devicePixelRatio })`)
-  const problems = []
-  if (v.visibility !== 'visible') problems.push(`visibilityState=${v.visibility} (needs "visible")`)
-  if (!(v.innerWidth > 0)) problems.push(`innerWidth=${v.innerWidth} (needs > 0)`)
-  if (!(v.innerHeight > 0)) problems.push(`innerHeight=${v.innerHeight} (needs > 0)`)
-  if (!(v.clientWidth > 0) || !(v.clientHeight > 0)) problems.push(`client=${v.clientWidth}x${v.clientHeight}`)
-  if (problems.length) throw new Error(`VIEWPORT GATE FAILED at "${stage}": ${problems.join('; ')} | ${JSON.stringify(v)}`)
+  const verdict = gateVerdict(v)
+  if (!verdict.ok) throw new Error(`VIEWPORT GATE FAILED at "${stage}": ${verdict.problems.join('; ')} | ${JSON.stringify(v)}`)
   return v
 }
 
