@@ -63,11 +63,24 @@ if site_match and base_match:
         docs_base = origin_match.group(1) + base.rstrip('/')
         require(site == f'{docs_base}/', f'astro site {site} equals origin + base {docs_base}/')
 
-        declared = set(re.findall(r'^\s*VITE_DOCS_BASE_URL:\s*(\S+)\s*$', release, re.MULTILINE))
-        require(len(declared) == 1, f'release.yml pins exactly one docs base URL (got {sorted(declared)})')
+        declared = set(re.findall(r'^\s*DOCS_BASE_URL:\s*(\S+)\s*$', release, re.MULTILINE))
+        require(len(declared) == 1, f'release.yml declares exactly one docs candidate (got {sorted(declared)})')
         require(
             docs_base in declared,
-            f'release.yml VITE_DOCS_BASE_URL must equal {docs_base} so app links resolve',
+            f'release.yml DOCS_BASE_URL must equal {docs_base} so app links resolve',
+        )
+        hardcoded = re.findall(r'^\s*VITE_DOCS_BASE_URL:\s*\S+', release, re.MULTILINE)
+        require(
+            not hardcoded,
+            f'release.yml must resolve VITE_DOCS_BASE_URL from the probe, never hardcode it ({hardcoded})',
+        )
+        require(
+            'Add-Content -Path $env:GITHUB_ENV -Value "$baked$candidate"' in release,
+            'release.yml bakes the probed docs base URL into the bundle environment',
+        )
+        require(
+            '$env:DOCS_BASE_URL' in release,
+            'release.yml probes the configured candidate before baking it',
         )
         require(
             re.search(rf'^VITE_DOCS_BASE_URL={re.escape(docs_base)}$', env_example, re.MULTILINE)

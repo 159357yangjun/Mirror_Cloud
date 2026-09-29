@@ -14,7 +14,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 75
     env:
-      VITE_DOCS_BASE_URL: https://159357yangjun.github.io/image-hosting-platform
+      DOCS_BASE_URL: https://159357yangjun.github.io/image-hosting-platform
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -37,24 +37,29 @@ jobs:
           python scripts/check_release_version.py
           python scripts/check_tauri_dependency_family.py
 
-      - name: Verify the baked docs base URL is actually published
+      - name: Resolve the docs base URL to bake into the bundle
         shell: pwsh
         run: |
-          $docsBase = $env:VITE_DOCS_BASE_URL
-          if ([string]::IsNullOrWhiteSpace($docsBase)) {
-            throw 'VITE_DOCS_BASE_URL is empty. The bundle would hide every online tutorial link.'
+          $candidate = $env:DOCS_BASE_URL
+          $baked = 'VITE_DOCS_BASE_URL='
+          if ([string]::IsNullOrWhiteSpace($candidate)) {
+            Write-Host '::warning:: DOCS_BASE_URL is empty, so online tutorial links stay hidden in this bundle.'
+            Add-Content -Path $env:GITHUB_ENV -Value $baked -Encoding utf8NoBOM
+            exit 0
           }
-          $probe = "$docsBase/guides/github/"
+          $probe = "$candidate/guides/github/"
           try {
-            $response = Invoke-WebRequest -Uri $probe -UseBasicParsing -TimeoutSec 30
-            $code = [int]$response.StatusCode
+            $code = [int](Invoke-WebRequest -Uri $probe -UseBasicParsing -TimeoutSec 30).StatusCode
           } catch {
-            throw "Docs at $probe are not reachable ($($_.Exception.Message)). Enable GitHub Pages at Settings -> Pages -> Source: GitHub Actions, run the Docs Site workflow, then release again."
+            $code = 0
           }
-          if ($code -ne 200) {
-            throw "Docs at $probe returned HTTP $code. Publish the docs site before releasing."
+          if ($code -eq 200) {
+            Write-Host "docs reachable: HTTP $code $probe"
+            Add-Content -Path $env:GITHUB_ENV -Value "$baked$candidate" -Encoding utf8NoBOM
+          } else {
+            Write-Host "::warning:: Docs at $probe are not published (HTTP $code), so this bundle hides the online tutorial links instead of shipping dead ones. Enable GitHub Pages (Settings -> Pages -> Source: GitHub Actions) and run the Docs Site workflow to include them."
+            Add-Content -Path $env:GITHUB_ENV -Value $baked -Encoding utf8NoBOM
           }
-          Write-Host "docs reachable: HTTP $code $probe"
 
       - name: Verify committed dependency locks
         shell: pwsh
