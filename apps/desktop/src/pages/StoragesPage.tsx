@@ -76,7 +76,7 @@ export function StoragesPage() {
       await queryClient.invalidateQueries({ queryKey: ['default-publish-target'] })
       await queryClient.invalidateQueries({ queryKey: ['workflows'] })
     },
-    onError: (error) => window.alert(String(error)),
+    onError: (error) => notifyError(`操作失败：${String(error)}`),
   })
 
   const pickProvider = (provider: SupportedProviderKey) => {
@@ -108,7 +108,7 @@ export function StoragesPage() {
   const removeStorage = (id: string, name: string) => {
     if (window.confirm(`删除存储“${name}”的连接配置吗？\n\n如果它仍被资源、多云组或内部上传配置引用，系统会拒绝删除。`)) {
       removeStorageMutation.mutate(id, {
-        onError: (error) => window.alert(String(error)),
+        onError: (error) => notifyError(`操作失败：${String(error)}`),
       })
     }
   }

@@ -318,6 +318,15 @@ blocking = [label for label, tag in grid_imgs if 'decoding="async"' not in tag]
 require(not eager, f'every list/grid remote image defers its network fetch (eager: {eager})')
 require(not blocking, f'every list/grid remote image decodes off the main thread (blocking: {blocking})')
 
+# window.alert is a second, blocking channel for failures the global MutationCache already toasts.
+# window.confirm stays allowed: it gates a destructive decision synchronously and needs its own dialog.
+alerting = sorted(
+    str(path.relative_to(ROOT / 'apps' / 'desktop')).replace('\\', '/')
+    for path in (ROOT / 'apps' / 'desktop' / 'src').rglob('*.ts*')
+    if 'window.alert(' in path.read_text(encoding='utf-8')
+)
+require(not alerting, f'errors reach the user through toasts only, never a blocking native dialog ({alerting})')
+
 failed = [label for ok, label in checks if not ok]
 for ok, label in checks[-13:]:
     print(('OK   ' if ok else 'FAIL ') + label)

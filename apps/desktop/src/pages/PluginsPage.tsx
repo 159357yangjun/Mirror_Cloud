@@ -4,6 +4,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { aiPlanWorkflow, deletePlugin, getAiSettings, installMarketplacePlugin, listMarketplacePlugins, listPluginExecutionLogs, listPlugins, saveAiSettings, savePluginConfig, setPluginEnabled, setPluginHooks, setPluginPermissions } from '../lib/desktop'
 import { PageHeader } from '../components/PageHeader'
 import type { AiSettings, PluginView } from '../types'
+import { notifyError } from '../store/useToastStore'
+
+// The global MutationCache already turns a failed plugin mutation into a toast, so these catch
+// handlers exist only to stop an unhandled rejection — a second dialog would report it twice.
+const ignoreReportedFailure = () => undefined
 
 export function PluginsPage() {
   const qc = useQueryClient()
@@ -65,8 +70,8 @@ export function PluginsPage() {
     try {
       for (const plugin of installed) await setPluginState(plugin, enabled)
       await refresh()
-    } catch (error) {
-      window.alert(String(error))
+    } catch {
+      notifyError('批量操作已中断，未处理的插件保持原状态')
       await refresh()
     }
   }
@@ -99,9 +104,9 @@ export function PluginsPage() {
               key={plugin.id}
               plugin={plugin}
               busy={toggle.isPending || authorize.isPending || hooks.isPending || remove.isPending}
-              onToggle={(enabled) => { void setPluginState(plugin, enabled).then(refresh).catch((error) => window.alert(String(error))) }}
-              onRevokePermissions={() => { void revokeSensitivePermissions(plugin).catch((error) => window.alert(String(error))) }}
-              onToggleHook={(hook) => { const values = plugin.enabledHooks.includes(hook) ? plugin.enabledHooks.filter((item) => item !== hook) : [...plugin.enabledHooks, hook]; void hooks.mutateAsync({ id: plugin.id, values }).catch((error) => window.alert(String(error))) }}
+              onToggle={(enabled) => { void setPluginState(plugin, enabled).then(refresh).catch(ignoreReportedFailure) }}
+              onRevokePermissions={() => { void revokeSensitivePermissions(plugin).catch(ignoreReportedFailure) }}
+              onToggleHook={(hook) => { const values = plugin.enabledHooks.includes(hook) ? plugin.enabledHooks.filter((item) => item !== hook) : [...plugin.enabledHooks, hook]; void hooks.mutateAsync({ id: plugin.id, values }).catch(ignoreReportedFailure) }}
               hookLabel={hookLabel}
               onRemove={() => window.confirm(`卸载插件“${plugin.name}”吗？`) && remove.mutate(plugin.id)}
               onSaved={refresh}
