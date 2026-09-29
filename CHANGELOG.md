@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased - 2026-09-29（未发版：不改 version、不打 tag，等你批准）
+
+本轮提交：`a8eb977`、`502b25c`、`3c642af`（均在 `dev`，v1.4.4 之后）。
+
+- **发布产物校验器**（`scripts/verify_release_assets.py`）：前三版用一次性片段核对，其中一次正则没匹配上却报了"已验证"。现在三路对账——本机重算、发布的 `SHA256SUMS.txt`、GitHub API 自带的 `assets[].digest`——并校验 tag 版本出现在每个文件名与归档内 `Cargo.toml` / `package.json` / `tauri.conf.json`，以及 `source.zip` 是否恰等于该 tag 的受版本控制树（无构建产物、无凭据型文件名、169 个文本文件按 6 类高信号模式扫零命中）。
+- **删除发布链里没人消费的文档构建**：`release.yml` 的 `docs-bundle` 作业构建 `website/dist` 后上传的 artifact 无任何作业下载，它唯一的额外检查（版本一致性）在 `windows-bundle` 已跑；文档站现由 `docs.yml` 构建并发布、`ci.yml` 每次 push 重建。
+- **破坏性操作改用应用内确认框**：原先 10 处 `window.confirm`（删除资源、云端删除/移动/改名、批量删除、卸载插件、敏感权限授权、重置 Local API Token、删除存储与多云组）是浏览器外观的原生框，且在 WebView2 中会挂起绘制直到被关闭。`confirmAction` 失败即关闭：关闭、Escape、点遮罩、被新请求取代一律 resolve(false)，`ConfirmDialog` 未挂载时 promise 永不 resolve，因此闸门坏掉只会挡住操作、不会放行删除。
+
+### 本轮验证命令与实际输出
+
+```text
+$ for s in validate check_contracts check_user_flow check_workflow_action_pins \
+      check_docs_site check_release_version check_tauri_dependency_family; do python scripts/$s.py; done
+validate PASS  check_contracts PASS  check_user_flow PASS  check_workflow_action_pins PASS
+check_docs_site PASS  check_release_version PASS  check_tauri_dependency_family PASS
+
+$ python scripts/check_user_flow.py | tail -1
+User-flow v1.3.5 task/observability/diagnostics hardening: OK | total checks: 143
+
+$ python scripts/verify_release_assets.py --tag v1.4.4 --dir <下载目录> --api api_assets.json --repo .
+Release asset verification OK | total checks: 35
+      source archive is exactly the tracked tree of v1.4.4 (archive-only [], tree-only [])
+      227 tracked files in the archive
+      secret scan over 169 text files found nothing ([])
+
+$ npm run build          # apps/desktop，tsc -b && vite build
+✓ built in 1.13s
+```
+
+守卫做了变异验证：塞回一个 `window.confirm` → FAIL `destructive gates use the in-app dialog…`；摘掉 `<ConfirmDialog />` → FAIL `the confirm dialog is mounted at the app root`；在 release.yml 用 `npm install` → FAIL 锁消费断言。两条旧断言原本把 `window.confirm` 当作"存在确认步骤"的证据（Gallery 确认删除、插件敏感权限），已改为要求 `confirmAction`，插件那条额外要求"用户拒绝即 return"，因此保证强于改前。删除 `docs-bundle` 使旧的 `npm ci >= 2` 计数断言失效，已替换为直接断言三个工作流都不出现 `npm install` / `cargo generate-lockfile`。
+
+### 本轮仍然没有验证的东西
+
+1. **新确认框的视觉与交互**：焦点初始位置、Escape 与遮罩点击的实际行为、长文案换行、与其他弹层（上传对话框 / 图库预览）的 z-index 关系——只过了 `tsc`、`vite build` 和静态断言，没有运行时观察，也没装过应用。
+2. **教程基址是否真的进了 v1.4.3 / v1.4.4 的包**：NSIS 压缩使二进制搜索无效，解包或安装超出授权；只有间接证据链（Pages 10:47Z 返回 200 → CI 探测步 11:01:46 → 前端构建步 11:10:26）。
+3. **`openExternalUrl` 失败时用户零提示**：三处调用点都是 `onClick={() => void openExternalUrl(...)}`（`HelpCenterDialog.tsx:32`、`StorageSetupDialog.tsx:256`、`SettingsPage.tsx:328`），rejection 被吞；本轮只证明了调用点形态，没构造出 openUrl 真失败的场景。可修，未修。
+4. **`3c642af` 的 CI 结论**：推送成功（代理一度全断、直连重试成功），但记录本条时 API 不可达，尚未读到该次运行的最终结果。
+5. **默认分支 `main` 指向另一项目（`# depot`）**：按指令**未执行任何分支操作**，只交方案。关键事实是 `git merge-base --is-ancestor origin/main HEAD` 成立——main 是 dev 的祖先，因此 `git push origin dev:main` 是**纯快进、零提交丢失、不需要 force push**；推荐它而非"只改默认分支指针"（后者仍把 depot 的 README 留在仓库里）。影响面：Dependabot 已显式 `target-branch: dev` 故不受影响；`release.yml` 只认 `v*` tag 故推 main 不会误发版；`ci.yml` 无分支过滤故以后推 main 会跑 CI；外部已分享的 `blob/main/<老文件>` 链接在文件被改名/删除后会 404。
+
 ## 1.4.4 - Gallery Render Bound and Installer Publisher
 
 - Bound gallery rendering: past 600 revealed entries the page reports how many remain and asks you to narrow the directory or search instead of offering another batch forever. The cap is soft, so up to about 720 files stay fully reachable with no limit message. This also bounds what 全选本页文件 can select, which previously could reach every entry you had revealed.
