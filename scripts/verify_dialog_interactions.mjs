@@ -428,18 +428,17 @@ if (MODE === 'mutate') {
     process.exit(2)
   }
   const runOracle = (oracle) => {
-    if (oracle === 'gate-unit') {
-      const r = spawnSync(process.execPath, [SELF, 'gate-unit'], { cwd: REPO, encoding: 'utf8', timeout: 60_000 })
-      return { status: r.status, output: `${r.stdout || ''}${r.stderr || ''}` }
-    }
-    try {
-      const r = spawnSync('python', ['scripts/check_user_flow.py'], { cwd: REPO, encoding: 'utf8', timeout: 180_000 })
-      return { status: r.status, output: `${r.stdout || ''}${r.stderr || ''}` }
-    } catch (e) {
-      if (e.code === 'ENOENT') { console.error('python is not on PATH; the guard oracle cannot run.'); process.exit(2) }
-      throw e
-    }
+    // shell:true because `python` on this box is not directly CreateProcess-able; without it
+    // spawnSync returns status null, which would otherwise be reported as "the guard stayed silent".
+    const [cmd, opts] = oracle === 'gate-unit'
+      ? [`"${process.execPath}" "${SELF}" gate-unit`, { timeout: 60_000 }]
+      : ['python scripts/check_user_flow.py', { timeout: 180_000 }]
+    const r = spawnSync(cmd, { cwd: REPO, encoding: 'utf8', shell: true, ...opts })
+    return { status: r.status, spawnError: r.error ? String(r.error).slice(0, 120) : null, output: `${r.stdout || ''}${r.stderr || ''}` }
   }
+  // Files are checked out with CRLF under core.autocrlf=true, so a multi-line anchor written with
+  // \n matches nothing - and "anchor missing" is reported, not silently skipped as a pass.
+  const adapt = (text, needle) => (text.includes('\r\n') ? needle.replace(/\n/g, '\r\n') : needle)
   const results = []
   for (const m of mutations) {
     const path = `${REPO}/${m.file}`
@@ -450,13 +449,16 @@ if (MODE === 'mutate') {
       // character becomes two Latin-1 characters, and the file still decodes as UTF-8 afterwards.
       let mutated
       if (m.corrupt === 'double-encode') mutated = Buffer.from(text, 'latin1').toString('utf8')
-      else if (text.includes(m.from)) mutated = text.replace(m.from, m.to)
+      else {
+        const needle = adapt(text, m.from)
+        mutated = text.includes(needle) ? text.replace(needle, adapt(text, m.to)) : undefined
+      }
       if (mutated === undefined || mutated === text) { results.push({ id: m.id, file: m.file, applied: false, note: 'anchor missing - mutation definition is stale' }); continue }
       writeFileSync(path, mutated)
       const run = runOracle(m.oracle)
       results.push({
-        id: m.id, file: m.file, oracle: m.oracle, applied: true,
-        guardAlarmed: run.status !== 0, namedExpectedFailure: run.output.includes(m.expect),
+        id: m.id, file: m.file, oracle: m.oracle, applied: true, spawnError: run.spawnError,
+        guardAlarmed: run.status !== 0 && run.status !== null, namedExpectedFailure: run.output.includes(m.expect),
         observedExit: run.status,
         evidence: run.output.split('\n').filter((l) => l.startsWith('FAIL') || l.includes('-> accepted')).slice(0, 2).map((l) => l.trim().slice(0, 120)),
       })
@@ -467,7 +469,7 @@ if (MODE === 'mutate') {
   const unrestored = touched.filter((rel) => execFileSync('git', ['status', '--porcelain', '--', rel], { cwd: REPO, encoding: 'utf8' }).trim())
   const bad = results.filter((r) => !r.applied || !r.guardAlarmed || !r.namedExpectedFailure)
   writeFileSync(`${OUT}/report-mutate.json`, JSON.stringify({ results, unrestored }, null, 2))
-  for (const r of results) console.log(`${r.applied && r.guardAlarmed && r.namedExpectedFailure ? 'OK  ' : 'FAIL'} ${r.id} ${r.file}${r.note ? ` (${r.note})` : ` -> oracle exit ${r.observedExit}, named expected failure: ${r.namedExpectedFailure}`}${r.evidence && r.evidence.length ? `\n      ${r.evidence.join('\n      ')}` : ''}`)
+  for (const r of results) console.log(`${r.applied && r.guardAlarmed && r.namedExpectedFailure ? 'OK  ' : 'FAIL'} ${r.id} ${r.file}${r.note ? ` (${r.note})` : ` -> oracle exit ${r.observedExit}, named expected failure: ${r.namedExpectedFailure}${r.spawnError ? `, spawnError: ${r.spawnError}` : ''}`}${r.evidence && r.evidence.length ? `\n      ${r.evidence.join('\n      ')}` : ''}`)
   console.log(`guard mutations: ${results.length - bad.length}/${mutations.length} alarms reproduced | tree restored: ${unrestored.length === 0 ? 'clean' : `DIRTY ${unrestored.join(', ')}`}`)
   process.exit(bad.length || unrestored.length ? 2 : 0)
 }
