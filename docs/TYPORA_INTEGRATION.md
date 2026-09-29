@@ -33,7 +33,7 @@ Typora 通过 **Custom Command / 自定义命令** 调用图床维护的默认�
 ```text
 Typora 图片
   ↓
-Image Hosting Platform executable --typora-upload
+Image Hosting Platform executable --typora-upload --data-dir "<数据目录>" -- "<图片路径>"
   ↓
 默认上传链（处理 / 重命名 / 默认云端）
   ↓
