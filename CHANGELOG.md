@@ -68,6 +68,37 @@ sawMinimizedReject: true   broken: []
 
 **这条演示比预想的更值钱**：窗口最小化时 `innerWidth/innerHeight` 仍然是 1406×803，只有 `visibilityState` 翻成 hidden——也就是说"innerWidth>0 就安全"是错的，**load-bearing 的那一项是 visibility**。诚实记录没做到的两件事：`Emulation.setVisibilityStateOverride` 在这个 Edge 构建里不存在，`setDeviceMetricsOverride` 对 0×0 静默忽略，所以 `innerWidth=0` 那一支在本机**没能重新造出来**，它只有本轮早些时候连接器那次一手读数（hidden / inner [0,0] / client [0,0] / screen [0,0]）作为依据。
 
+### 修前 / 修后逐条对照（真视口，13:00 重采；旧数据作废清单见本节末）
+
+**`534cc15` 长文案溢出**——同一次运行、同一个视口（1406×803 / `visible`）、同一段注入文本（64 位哈希文件名 + 一条不断行 URL），只把 `overflow-wrap` 从 `break-word` 改回 `normal` 来复现修前状态。这样两边只有被测属性在变，比"跑两次"更干净：
+
+| | `overflow-wrap` | `<p>` client / scroll | overflowX | 卡片右边界 | 文字画到 | 超出卡片 | 卡片高 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 修前 | `normal` | 302 / **512** | **210px** | x=923 | **x=1068** | **+145px** | 284 |
+| 修后 | `break-word` | 302 / 302 | **0** | x=923 | x=858（内缩 65px） | **0** | 332 |
+
+用户视角：修前那行哈希文件名**从白色卡片里伸出去、压在暗色模糊背景上**（截图 `ab-before-break-words.png`，肉眼一眼可见）；修后收在卡片内，代价是卡片多两行高（284→332）。
+
+**`a561161` 三处教程入口**——每种基址都重启 dev server（只改环境变量，仓库配置未动）后走真实点击，记录实际文本：
+
+| `VITE_DOCS_BASE_URL` | 三处按钮 | 点开新标签 | 应用内实际提示（原文） |
+| --- | --- | --- | --- |
+| 未设置 | **三处都不渲染**（`getDocsBaseUrl()` 返回 null） | 0 | 无。配置教程面板仍在，文案是「GitHub 配置教程 / 教程内置在应用里，不依赖文档网站。按顺序完成即可。」+ 5 步 |
+| 生产值 `https://159357yangjun.github.io/image-hosting-platform` | 「在线文档」×2、「完整调用教程与状态码」 | 3，标题分别是「5 分钟上手 / 本机 HTTP API / 连接 GitHub \| 图床 · Image Hosting Platform」 | **无吐司**（正常路径不被误报，这条是回归防线） |
+| 不可达 `https://definitely-not-a-real-docs-host.invalid/…` | 同上三处照常渲染 | 3，标签标题只有裸域名 `definitely-not-a-real-docs-host.invalid`（= 浏览器自己的错误页） | **无吐司** |
+| 畸形 `not a url` | 三处照常渲染（按钮不校验值） | 0 | 三处各一条：**「打开链接失败：TypeError: Failed to construct 'URL': Invalid URL」** |
+| 非 http `ftp://docs.example.invalid/base` | 三处照常渲染 | 0 | 三处各一条：**「打开链接失败：Error: 只允许打开 http/https 外部地址」** |
+
+**能不能区分"网络不可达"与"协议被策略拦下"：能，但不对称。** 协议被拦 / URL 畸形 → 不开标签 + 明确吐司；网络不可达 → **开标签且没有任何应用内提示**，与"打开成功"在 UI 上完全同形。这不是我漏修：`window.open` 只告诉你有没有把窗口交出去，页面加载结果属于另一个浏览进程，`noopener` 之下更拿不到句柄。**所以这条修复覆盖的是"我们自己知道失败"的那两类，不覆盖"远端挂了"。** 远端不可达目前唯一的缓解是那句「教程内置在应用里，不依赖文档网站」——5 步内置教程与在线教程是两条独立供给。
+
+**本节作废的旧数据**（来自会话内置连接器那个 `visibilityState: hidden` + `inner/outer/screen = 0×0` 的窗口，只此一条几何值，其余属性读数是有效的）：
+
+- `dlgWidth: 186.796875` —— **作废**，0×0 视口下 `max-w-[440px]` 的伪影；同一次读数里的 `dialogRect: {}`（全 0）一并作废。
+- 同一次读数里的 `overlayZ: "95"`、`overlayPosition: "fixed"`、`sectionMaxWidth: "440px"`、`pWhiteSpace: "pre-line"`、`activeElementText: "取消"`、`focusIsCancel: true` 是**属性/文本**读数，不依赖视口，保留；且这些量后来都在门禁下重取过一遍（见上表与 `report-confirm.json`）。
+- 本轮报告里**没有任何一个数字**取自 hidden 窗口：`210 / 145 / 302 / 512 / 440 / 332 / 284 / 952 / 95 / 70 / 50 / 80 / 90 / 472` 全部来自门禁放行后的 headless Edge（`visible`，1406×803，或显式 `setDeviceMetricsOverride` 的 420×720 / 640×480）。
+
+
+
 ### 确认框：五件事的实测值（原第 1 条，从"无法证明"移出；每一项都在真视口下取数）
 
 | 问的 | 实测（视口 1406×803，`visible`） |
@@ -84,14 +115,13 @@ sawMinimizedReject: true   broken: []
 
 纯浏览器不崩：7 条路由逐个可信点击后 `main h1` 都正确切换、`#root` 未卸载、无 React 崩溃；缺 Tauri 运行时的表现是吐司「数据加载失败：TypeError: Cannot read properties of undefined (reading 'invoke')」。**这条只在非 Tauri 运行时出现，装包用户看不到，因此按 harness 事实记录、不算产品缺陷。**
 
-### 教程基址不可达时用户看到什么（原第 3 条，已修）
+### 三处调用点与两条踩坑记录
 
-`VITE_DOCS_BASE_URL` 只用本机环境变量注入，仓库配置未改。
+三处 `void` 调用点的确切位置：`HelpCenterDialog.tsx:32`（经 `AppShell.tsx:114` 注入）、`SettingsPage.tsx:328`、`StorageSetupDialog.tsx:256`（后者要先在云端页展开"配置教程"面板才出现）；同一批里另外 6 处是 `GalleryPage.tsx:321/342/388` 与 `StorageBrowserDialog.tsx:149/169/183` 的"浏览器打开"，它们共用同一个包装函数。逐基址的实际提示文本见上面那张表。
 
-- 指向**不可达但合法**的 `https://definitely-not-a-real-docs-host.invalid/image-hosting-platform`：三处调用点（`HelpCenterDialog.tsx:32`、`SettingsPage.tsx:328`、`StorageSetupDialog.tsx:256`，后者要先在云端页展开"配置教程"才出现）各自开出 1 个新标签，标签标题就是裸域名（即浏览器自己的错误页）；应用内 **0 条吐司、0 处内联错误、0 条 console 记录**。用户感知 = "开了个报错页，软件里什么都没发生"。
-- 指向**畸形**的 `not a url`：修复前 0 标签、0 提示（`new URL()` 的 rejection 被调用点丢弃）；修复后三处都出吐司「打开链接失败：TypeError: Failed to construct 'URL': Invalid URL」。同一页面内直接对比 `void` 与包装函数：`toastsAfterVoidCall: 0`、`toastsAfterWrapperCall: 1`。
-- 我第一版顺手加的 `if (!window.open(...)) throw new Error('浏览器拦截了新窗口…')` **是错的**：规范规定带 `noopener` 时 `window.open` 一律返回 `null`，实测三个本来能正常打开的链接全部误报成"被拦截"。已撤掉，并在注释里写明浏览器分支只能报告真正的 rejection。
-- 诚实边界：`popup 被拦`这一种失败在浏览器分支仍**不可检测**（因为保留 `noopener` 比一个诊断信号更值钱）；Tauri 分支的 `openUrl` rejection 现在会被报告，但那条分支需要 Rust 运行时，本机没跑。
+- 我第一版顺手加的 `if (!window.open(...)) throw new Error('浏览器拦截了新窗口…')` **是错的**：规范规定带 `noopener` 时 `window.open` 一律返回 `null`，实测三个本来能正常打开的链接全部误报成"被拦截"（那一次的吐司原文：「打开链接失败：Error: 浏览器拦截了新窗口，请允许弹出窗口后重试」，出现在明明已经开好的标签旁边）。已撤掉，并在注释里写明浏览器分支只能报告真正的 rejection。
+- 丢弃 promise 这件事本身的红→绿是在同一页面里对照测的（等吐司栈清空后各调一次）：`void openExternalUrl('not a url…')` → `toastsAfterVoidCall: 0`，只留一条 `Uncaught (in promise)` 的页面错误；`openExternalUrlOrReport(同一个值)` → `toastsAfterWrapperCall: 1`，文本就是表里那条 TypeError。
+- 诚实边界：`popup 被拦`这一种失败在浏览器分支仍**不可检测**（保留 `noopener` 比一个诊断信号更值钱）；Tauri 分支的 `openUrl` rejection 现在会被报告，但那条分支需要 Rust 运行时，本机没跑。
 
 ### 本轮验证命令与实际输出
 
@@ -115,6 +145,10 @@ JOB desktop-check | completed | success | steps=25 | non-green=[]
 
 $ python watch_ci.py                          # 记录提交 86e59a3 之后
 attempt 4: run 36599811212 CI status=completed conclusion=success
+JOB desktop-check | completed | success | steps=25 | non-green=[]
+
+$ python watch_ci.py                          # 作废 186.8 并重采之后 fe57911
+attempt 3: run 36600841593 CI status=completed conclusion=success
 JOB desktop-check | completed | success | steps=25 | non-green=[]
 ```
 
