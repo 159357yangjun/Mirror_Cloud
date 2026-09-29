@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.3 - Online Tutorials Reachable
+
+- The tutorial site is published at `https://159357yangjun.github.io/image-hosting-platform`, so this is the first bundle whose **在线文档 / 配置教程 / 本机 API 教程** entries resolve: release.yml probes one real tutorial route before building and bakes the base URL only when it answers 200.
+- Document how API and Typora publishes differ from a desktop publish: they persist a `typora_publish` task but cannot raise `task://updated` or `asset://published`, so the open window refreshes by polling and auto-copy after publish does not happen.
+- Give the exact Raw URL the app builds for Gitee when no custom domain is set.
+
 ## 1.4.2 - Error Channel and Cloud Onboarding Truthfulness
 
 - Stop reporting one plugin failure twice. Those mutations declare no `onError`, so the global handler already raises a toast; the inline `window.alert` was a second report for the same event, and in WebView2 an alert suspends painting until it is dismissed. Storage pages that did own their error path now use the same toast channel instead of a native dialog, and batch enable/disable reports that the remaining plugins were left untouched rather than dumping a raw error string.
