@@ -37,6 +37,25 @@ jobs:
           python scripts/check_release_version.py
           python scripts/check_tauri_dependency_family.py
 
+      - name: Verify the baked docs base URL is actually published
+        shell: pwsh
+        run: |
+          $docsBase = $env:VITE_DOCS_BASE_URL
+          if ([string]::IsNullOrWhiteSpace($docsBase)) {
+            throw 'VITE_DOCS_BASE_URL is empty. The bundle would hide every online tutorial link.'
+          }
+          $probe = "$docsBase/guides/github/"
+          try {
+            $response = Invoke-WebRequest -Uri $probe -UseBasicParsing -TimeoutSec 30
+            $code = [int]$response.StatusCode
+          } catch {
+            throw "Docs at $probe are not reachable ($($_.Exception.Message)). Enable GitHub Pages at Settings -> Pages -> Source: GitHub Actions, run the Docs Site workflow, then release again."
+          }
+          if ($code -ne 200) {
+            throw "Docs at $probe returned HTTP $code. Publish the docs site before releasing."
+          }
+          Write-Host "docs reachable: HTTP $code $probe"
+
       - name: Verify committed dependency locks
         shell: pwsh
         run: |
