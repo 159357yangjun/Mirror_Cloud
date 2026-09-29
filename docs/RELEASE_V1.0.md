@@ -55,17 +55,17 @@ v1.0 的范围是：一个普通用户可以连接常用云端，选择一个 Re
 - SQLite foreign key 开启；增加常用查询索引。
 
 ### 教程站
-`website/` 是 Astro + Starlight 静态教程站工程，包含 R2、OSS、COS、S3、GitHub、Gitee、WebDAV、Recipe、多云、剪贴板/URL 发布与安全说明。
+`website/` 是 Astro + Starlight 静态教程站工程，包含 R2、OSS、COS、S3、GitHub、Gitee、WebDAV、Recipe、多云、剪贴板/URL 发布、本机 HTTP API 与安全说明。
 
 ## 教程站连接
 
-`website/` 可以部署到 Cloudflare Pages、GitHub Pages、Netlify 或任意静态托管。桌面正式构建前设置：
+`website/` 部署到 GitHub Pages 项目站点（`.github/workflows/docs.yml` 构建并发布 `website/dist`）。桌面构建需要注入同一个基址，`release.yml` 已经在 `windows-bundle` 作业里设置：
 
 ```text
-VITE_DOCS_BASE_URL=https://docs.example.com
+VITE_DOCS_BASE_URL=https://159357yangjun.github.io/image-hosting-platform
 ```
 
-桌面端将显示全局“教程与帮助”入口，以及每个 Provider 的“配置教程”按钮。URL 只携带文档路径，不携带 Token、Secret 或任何账户凭据。
+桌面端将显示全局“教程与帮助”入口，以及每个 Provider 的“配置教程”按钮；未设置该变量时这些入口会自动隐藏而不是指向死链。`scripts/check_docs_site.py` 会在 CI 中校验文档站侧边栏、`astro.config.mjs` 的 `site` / `base` 与 `release.yml` 注入的基址三者一致。URL 只携带文档路径，不携带 Token、Secret 或任何账户凭据。
 
 ## 版本边界
 

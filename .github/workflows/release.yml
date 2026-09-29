@@ -13,6 +13,8 @@ jobs:
   windows-bundle:
     runs-on: windows-latest
     timeout-minutes: 75
+    env:
+      VITE_DOCS_BASE_URL: https://159357yangjun.github.io/image-hosting-platform
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -30,6 +32,7 @@ jobs:
           python scripts/validate.py
           python scripts/check_contracts.py
           python scripts/check_user_flow.py
+          python scripts/check_docs_site.py
           python scripts/check_workflow_action_pins.py
           python scripts/check_release_version.py
           python scripts/check_tauri_dependency_family.py

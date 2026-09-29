@@ -50,6 +50,11 @@ export function getProviderGuideUrl(provider: string): string | null {
   return `${docsBaseUrl}/guides/${encodeURIComponent(provider)}/`
 }
 
+export function getLocalApiGuideUrl(): string | null {
+  if (!docsBaseUrl) return null
+  return `${docsBaseUrl}/use/local-api/`
+}
+
 export async function openExternalUrl(url: string): Promise<void> {
   const parsed = new URL(url)
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {

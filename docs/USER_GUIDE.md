@@ -143,7 +143,7 @@ Root 是这个 Storage 的远端根目录。
 
 - 全局快捷键：上传剪贴板图片；
 - Windows 右键菜单：上传选中的图片文件；
-- Local HTTP API：给脚本、ShareX 风格工具和未来 Agent 使用。
+- Local HTTP API：给脚本、ShareX 风格工具和未来 Agent 使用。端点、鉴权、状态码与已知限制见教程站 `/use/local-api/`。
 
 Local API 只绑定 loopback，Token 保存在操作系统凭据库。
 

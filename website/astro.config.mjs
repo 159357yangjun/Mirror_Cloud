@@ -1,7 +1,11 @@
 import { defineConfig } from 'astro/config'
 import starlight from '@astrojs/starlight'
 
+// GitHub Pages project sites serve the build from a repository subpath, so base has to be
+// explicit; scripts/check_docs_site.py fails CI if site, base and the app's VITE_DOCS_BASE_URL drift.
 export default defineConfig({
+  site: 'https://159357yangjun.github.io/image-hosting-platform/',
+  base: '/image-hosting-platform',
   integrations: [
     starlight({
       title: '图床 · Image Hosting Platform',
@@ -26,6 +30,7 @@ export default defineConfig({
             { label: '文件 / URL / 剪贴板', slug: 'use/publish' },
             { label: 'Typora 配置向导', slug: 'use/typora' },
             { label: '多云组与修复', slug: 'use/multicloud' },
+            { label: '本机 HTTP API', slug: 'use/local-api' },
             { label: '凭据与安全', slug: 'use/security' }
           ]
         },

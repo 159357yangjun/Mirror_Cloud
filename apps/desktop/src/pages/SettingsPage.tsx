@@ -20,12 +20,14 @@ import { PageHeader } from '../components/PageHeader'
 import {
   copyText,
   getLocalApiInfo,
+  getLocalApiGuideUrl,
   getSystemDiagnostics,
   getGlobalShortcutInfo,
   getWindowsContextMenuInfo,
   getOutputPreferences,
   getTyporaIntegrationInfo,
   openAppDataDir,
+  openExternalUrl,
   openTypora,
   regenerateLocalApiToken,
   setGlobalShortcutEnabled,
@@ -39,6 +41,7 @@ import type { OutputFormat, OutputPreferences } from '../types'
 export function SettingsPage() {
   const queryClient = useQueryClient()
   const setPage = useAppStore((state) => state.setPage)
+  const localApiGuideUrl = getLocalApiGuideUrl()
   const { data } = useQuery({ queryKey: ['output-preferences'], queryFn: getOutputPreferences })
   const { data: typora, error: typoraError, isFetching: typoraChecking, refetch: refreshTypora } = useQuery({
     queryKey: ['typora-integration'],
@@ -320,6 +323,11 @@ export function SettingsPage() {
           <div>
             <div className="flex items-center gap-2 text-sm font-semibold text-sky-950"><Network size={17} /> Local HTTP API</div>
             <p className="mt-1 max-w-2xl text-xs leading-6 text-sky-800/70">给 ShareX、脚本、Obsidian 插件和未来 Agent 使用的本机上传入口。它复用与 Typora 相同的默认 Workflow、插件和多云策略，不维护第二套上传逻辑。</p>
+            {localApiGuideUrl && (
+              <button type="button" onClick={() => void openExternalUrl(localApiGuideUrl)} className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 hover:text-sky-900">
+                完整调用教程与状态码 <ExternalLink size={11} />
+              </button>
+            )}
           </div>
           <div className={`rounded-full px-3 py-1 text-[11px] font-medium ${!localApi ? 'bg-slate-100 text-slate-500' : localApi.running ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{!localApi ? (localApiError ? '状态读取失败' : '正在检查服务…') : localApi.running ? '127.0.0.1 服务运行中' : '服务未监听'}</div>
         </div>

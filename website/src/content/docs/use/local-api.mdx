@@ -1,0 +1,112 @@
+---
+title: 本机 HTTP API
+summary: 让 ShareX、脚本和编辑器直接调用图床的默认上传链。
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components'
+
+图床桌面版内置一个**只监听本机回环地址**的 HTTP 服务。它不是一个独立的上传器：请求最终进入的是与 Typora、命令行和全局快捷键完全相同的 `PublisherCore` 默认上传链，所以 Resize / WebP / 重命名 / 多云策略 / 已启用插件全部照常生效。
+
+## 基本信息
+
+| 项目 | 值 |
+| --- | --- |
+| 基地址 | `http://127.0.0.1:36677` |
+| 监听 | 仅 `127.0.0.1`，端口为内置常量，不可配置 |
+| 启动 | 应用启动时即监听，当前版本没有开关可以关闭 |
+| 鉴权 | 请求头 `Authorization: Bearer <token>` |
+| Token 存放 | 操作系统凭据库，键名 `integration:local-api-token` |
+| 请求体上限 | 32 MiB（按 `Content-Length` 判断）|
+| 响应 | `Connection: close`、`Cache-Control: no-store` |
+
+Token 与复制好的 curl 示例都在 **设置 → 本机 HTTP API** 面板里，可以随时「重置 Token」；重置后旧 Token 立刻失效。
+
+## 先决条件
+
+<Steps>
+1. 已连接至少一个可写的 Storage（在「云端」页点「测试并保存」通过）。
+2. 已设置默认发布目标：单个 Storage 或一个 Storage Group。
+3. 桌面应用正在运行（服务随应用启动，应用退出即不可用）。
+</Steps>
+
+没有默认目标时接口仍然会正常应答，但发布失败会以 `422` 返回原因，而不是静默丢图。
+
+## 1. 健康检查（不需要 Token）
+
+```bash
+curl.exe -s http://127.0.0.1:36677/health
+```
+
+```json
+{ "ok": true, "service": "Multi-cloud Publisher", "api": "v1" }
+```
+
+用它确认端口通不通，再排查 Token 与路径问题。
+
+## 2. `POST /v1/upload-paths`：提交本机路径
+
+适合编辑器插件和批处理脚本——文件已经在磁盘上，只把路径交给图床。一次 1 到 100 条。
+
+```bash
+curl.exe -s -X POST "http://127.0.0.1:36677/v1/upload-paths" ^
+  -H "Authorization: Bearer <token>" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"paths\":[\"C:/Users/you/Pictures/screenshot.png\"]}"
+```
+
+```json
+{ "ok": true, "urls": ["https://raw.githubusercontent.com/.../screenshot.png"] }
+```
+
+PowerShell 写法：
+
+```powershell
+$body = @{ paths = @('C:\Users\you\Pictures\screenshot.png') } | ConvertTo-Json -Compress
+Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:36677/v1/upload-paths' `
+  -Headers @{ Authorization = "Bearer $token" } -ContentType 'application/json' -Body $body
+```
+
+## 3. `POST /v1/upload`：直接发送二进制
+
+适合 ShareX 之类只会在内存里生成图片、不落盘的工具。请求体就是图片原始字节，文件名放在 `X-Publisher-Filename`（省略时按 `upload.png` 处理）。
+
+```bash
+curl.exe -s -X POST "http://127.0.0.1:36677/v1/upload" ^
+  -H "Authorization: Bearer <token>" ^
+  -H "X-Publisher-Filename: sharex-capture.png" ^
+  --data-binary "@C:/path/image.png"
+```
+
+返回结构与上面一致，公网 URL 始终在 `urls` 数组里。
+
+<Aside type="note">
+`Content-Type` 不参与判断，也不接受 `multipart/form-data`。请直接发送裸二进制。
+</Aside>
+
+## 状态码
+
+| 状态 | 响应体 | 含义 |
+| --- | --- | --- |
+| 200 | `{"ok":true,"urls":[...]}` | 远端 Provider 已确认写入，URL 即公网地址 |
+| 400 | `{"error":"paths must contain 1..100 local image paths"}` | 路径数组为空或超过 100 条 |
+| 401 | `{"error":"unauthorized"}` | Token 缺失或不匹配 |
+| 404 | `{"error":"not_found"}` | Token 正确，但路径不在上表之内 |
+| 405 | `{"error":"method_not_allowed"}` | 除 `/health` 之外的非 POST 请求 |
+| 422 | `{"ok":false,"error":"<原因>"}` | 已进入发布链但失败，原因见 `error` |
+
+## 已知限制
+
+<Aside type="caution" title="超限请求不会返回 413">
+当 `Content-Length` 超过 32 MiB，或者头部超过 64 KiB、请求行无法解析时，服务会**直接关闭连接且不返回任何 HTTP 响应**。调用方看到的是连接被重置，而不是一个状态码。请在发送前自行控制大小。
+</Aside>
+
+- **浏览器网页里的 JS 调不动它。** 服务不返回 CORS 头，也没有 `OPTIONS` 分支，因此只能在本地脚本、命令行或 ShareX 这类原生程序里使用。
+- **只能从本机访问。** 绑定 `127.0.0.1`，并且对端地址不是回环时连接会被丢弃；它不是局域网或公网 API。
+- **每条响应都关闭连接。** 不要复用 keep-alive 连接池。
+
+## 排错顺序
+
+1. `GET /health` 不通 → 桌面应用没在运行，或 36677 被其他程序占用（占用时应用只在日志里记录绑定失败，界面显示为未运行）。
+2. `401` → 从设置页重新复制 Token；刚点过「重置 Token」的话旧值一定失效。
+3. `422` → 到「任务」页看失败原因，通常是默认发布目标未设置或凭据过期。
+4. 拿到了 URL 但打不开 → 检查该 Storage 的公开访问域名配置，与本机 API 无关。
