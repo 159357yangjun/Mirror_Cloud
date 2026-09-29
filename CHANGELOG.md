@@ -47,17 +47,40 @@ $ npm run build          # apps/desktop，tsc -b && vite build
 
 只起前端：`npx vite --port 1420`（**不碰 Rust、不出包、不装任何东西**）。浏览器侧用本机已装的 Edge `--headless=new` + CDP，输入全部走 `Input.dispatchMouseEvent` / `Input.dispatchKeyEvent`（可信事件，React 的 `onMouseDown` 才会真的触发），采样前先 `getAnimations().pause()` 冻结入场动画。实测视口 1406×803。
 
-> 中途踩到两个会让结论失真的坑，都记下来：① 会话内置的浏览器连接器那个窗口是 0×0 / `visibilityState: hidden`，同一个 440px 卡片被量成 186.8px——隐藏窗口的几何值不可用；② `styles.css` 有 `scroll-behavior: smooth`，`scrollIntoView()` 之后立刻读 `getBoundingClientRect()` 会拿到滚动前的坐标，第一次跑就"点不到"设置页的按钮。
+> 中途踩到三个会让结论失真的坑，都记下来：① 会话内置的浏览器连接器那个窗口是 0×0 / `visibilityState: hidden`，同一个 440px 卡片被量成 186.8px——隐藏窗口的几何值不可用，现已做成硬门禁（见下）；② `styles.css` 有 `scroll-behavior: smooth`，`scrollIntoView()` 之后立刻读 `getBoundingClientRect()` 会拿到滚动前的坐标，第一次跑就"点不到"设置页的按钮；③ 用 bash heredoc 写出 `.mjs` 再 `node` 执行时，`'C:\\Program Files (x86)\\...\\msedge.exe'` 的反斜杠被吃掉，`spawn` 报 `ENOENT`——**路径其实是存在的**（同一轮 `ls` 刚列到）。探针脚本里 Windows 路径一律用正斜杠（`C:/Program Files (x86)/...`），不要在 bash 里拼反斜杠。
 
-### 确认框：五件事的实测值（原第 1 条，从"无法证明"移出）
+### 采样门禁（本节的数全部重取过）
 
-| 问的 | 实测 |
+上一版这一节里有一条**作废**的数：连接器那个 Chrome 窗口是 `visibilityState: hidden` + `inner/outer/screen = 0×0`，同一个 `max-w-[440px]` 卡片在那里被量成 **186.796875px**。那是伪影，不是布局。这个坑的第三种形态：**不是动画中间帧，而是窗口隐藏时整个布局基准就跳了**——而且隐藏窗口不一定报 0 宽（见下）。
+
+现在探针里 `assertRealViewport(stage)` 是硬前置：`visibilityState !== 'visible'`、`innerWidth <= 0`、`innerHeight <= 0`、`clientWidth/Height <= 0` 任一命中就抛错退出，不拍图、不记数；它在挂载后调用一次，并在**每一次几何采样前**再调用一次（初始焦点、1440 长文案、420×720、640×480、640×480 撑高、吐司共存、平局命中测试、上传对话框各一次），几何采样函数内部还嵌了一道同样条件的断言。
+
+门禁自身演示过红：
+
+```text
+$ node cdp-dialog-probe.mjs gate        # exit 0
+control                | expectedFail=false | passed=true  | visible 1406x803
+window minimized       | expectedFail=true  | passed=false | VIEWPORT GATE FAILED: visibilityState=hidden
+                         但同一时刻 innerWidth=1406 innerHeight=803 clientWidth=1406 hasFocus=false
+window restored        | expectedFail=false | passed=true  | visible 1406x803
+sawMinimizedReject: true   broken: []
+```
+
+**这条演示比预想的更值钱**：窗口最小化时 `innerWidth/innerHeight` 仍然是 1406×803，只有 `visibilityState` 翻成 hidden——也就是说"innerWidth>0 就安全"是错的，**load-bearing 的那一项是 visibility**。诚实记录没做到的两件事：`Emulation.setVisibilityStateOverride` 在这个 Edge 构建里不存在，`setDeviceMetricsOverride` 对 0×0 静默忽略，所以 `innerWidth=0` 那一支在本机**没能重新造出来**，它只有本轮早些时候连接器那次一手读数（hidden / inner [0,0] / client [0,0] / screen [0,0]）作为依据。
+
+### 确认框：五件事的实测值（原第 1 条，从"无法证明"移出；每一项都在真视口下取数）
+
+| 问的 | 实测（视口 1406×803，`visible`） |
 | --- | --- |
 | 初始焦点 | `document.activeElement.textContent === '取消'`，`focusIsCancel: true`、`focusIsConfirm: false`。追加测了 Enter：焦点在取消上时回车**关闭且不执行**破坏性动作。 |
 | Escape | 关闭。关闭后设置页没有出现"操作继续执行"才会产生的错误块，页面错误日志为空 → 说明 resolve(false) 走通、`await` 后面的分支没跑。 |
 | 点遮罩 | 在 (8,8) 按下即关闭（`onMouseDown`，不是 `onClick`）；在卡片标题上按下**不**关闭（`stopPropagation` 生效）；右上角 X 关闭。 |
-| 长文案 | 卡片宽度钉死在 440px 不增长；`<p>` 可视宽 302px，塞入无空格可断的长 token（哈希名 / 原始 URL）后 `scrollWidth 550 - clientWidth 302 = 248px` 溢出，**文字画到遮罩和模糊背景上**（1440 与 640×480 两种宽度都溢出，截图 `05-long-text-1440.png` 修复前 / 修复后各一张）。已修：标题与正文加 `break-words`，重测 overflowX 在两种宽度下均为 **0**，卡片宽度不变。 |
-| z-index | 确认层 computed `z-index: 95`、`position: fixed`，祖先链里只有它自己因 `backdrop-filter` 生成层叠上下文，`main` 与 `app-shell-root` 都是 `static`/`z-auto` → 它和其他弹层在同一个根上下文里直接比大小：UploadDialog `50`、StorageBrowser 层 `70`、其预览 `80`、HelpCenter / ThemePanel / 图库预览 `90`、ToastViewport `70`。ConfirmDialog 是 `main` 的最后一个子节点（index 2 of 3）。**真实共存命中测试**：确认框打开时用 `elementFromPoint` 打吐司中心，落点在确认层内 → 95 盖住 70（副作用见下面"仍然没验证"第 5 条）。UploadDialog 与确认框无法真共存（它的遮罩会吞掉侧栏点击），所以"平局怎么判"用同 class 的 `fixed inset-0 z-[95]` 合成节点测：后挂载者命中 → `GalleryPage.tsx:364` 那个同为 95 的路径对话框输给 `App.tsx:53` 最后挂载的 ConfirmDialog。 |
+| 长文案 | 卡片宽度恒 440px 不增长。**修复前**：`<p>` 可视宽 302px、`scrollWidth 550` → overflowX **248px**，文字画到遮罩与模糊背景上（视口 1406×803 与 640×480 各一份，均有截图）。**修复后**（标题与正文加 `break-words`）：1440 / 420×720 / 640×480 三种视口下 overflowX 全部 **0**。 |
+| z-index | 确认层 computed `z-index: 95`、`position: fixed`；祖先链只有它自己因 `backdrop-filter` 生成层叠上下文，`main` 与 `app-shell-root` 都是 `static`/`z-auto` → 与其他弹层在同一根上下文直接比大小：UploadDialog `50`、StorageBrowser 层 `70`、其预览 `80`、HelpCenter / ThemePanel / 图库预览 `90`、ToastViewport `70`。**真实共存命中测试**（重跑到成功为止）：确认框开着的同时让插件/任务路由各抛 4 条吐司，`elementFromPoint(吐司中心)` 落在确认层内（`isToastOrChild:false, isConfirmOrChild:true`）→ 95 盖住 70。ConfirmDialog 是 `main` 的最后一个子节点（有吐司时 index 2 of 3，无吐司时 1 of 2）。UploadDialog 与确认框无法真共存（它的遮罩吞掉侧栏点击），"平局"改用同 class 的 `fixed inset-0 z-[95]` 合成节点测：**后挂载者命中**（`hitIsSynth:true`、`confirmOrderVsSynth:-1`）→ `GalleryPage.tsx:364` 那个同为 95 的路径对话框输给 `App.tsx:53` 最后挂载的 ConfirmDialog；图库预览 90 < 95 恒在下方。 |
+
+窄视口的两条要分清可达性：**420×720 低于 `tauri.conf.json` 的 `minWidth: 640`**，那里卡片 440 + 左右 16 内边距 = 472 > 420，确认按钮 `confirmFullyVisible: false` 被裁出视口——**产品里到不了这个宽度**，只作为 CSS 契约记录；640×480（真实下限）下同一份长文案 overflowX 0、卡片 440×472、按钮完整可见。
+
+
 
 纯浏览器不崩：7 条路由逐个可信点击后 `main h1` 都正确切换、`#root` 未卸载、无 React 崩溃；缺 Tauri 运行时的表现是吐司「数据加载失败：TypeError: Cannot read properties of undefined (reading 'invoke')」。**这条只在非 Tauri 运行时出现，装包用户看不到，因此按 harness 事实记录、不算产品缺陷。**
 
@@ -89,6 +112,10 @@ $ python jobs.py 36592371911 36593715132      # GitHub Actions API
 $ python watch_ci.py                          # 本批三个提交推上 dev 之后
 attempt 3: run 36599075215 CI status=completed conclusion=success
 JOB desktop-check | completed | success | steps=25 | non-green=[]
+
+$ python watch_ci.py                          # 记录提交 86e59a3 之后
+attempt 4: run 36599811212 CI status=completed conclusion=success
+JOB desktop-check | completed | success | steps=25 | non-green=[]
 ```
 
 原第 4 条（`3c642af` / `49f7e0c` 的 CI 结论）到此填实：两条提交各触发一次 CI，运行 `36592371911` 与 `36593715132`，唯一作业 `desktop-check` 均 `completed / success`，25 个步骤无一非绿。
@@ -99,8 +126,8 @@ JOB desktop-check | completed | success | steps=25 | non-green=[]
 
 1. **基址到底进没进 v1.4.3 / v1.4.4 的包**：按批准不下包、不解包、不安装，这条**允许长期停在无法本地证明**。日后要证的话，方案是在 `release.yml` 现有 `windows-bundle` 作业里加一步 `echo "docs base baked as: ${env:VITE_DOCS_BASE_URL}"`——不新增作业、不新增 artifact、不改 version、不动 `check_docs_site.py` 里"禁止硬编码 `VITE_DOCS_BASE_URL:`"的既有约束（它禁的是硬编码，回显探测结果是另一回事）。**方案先报，未批不动 CI。**
 2. **Tauri 分支的 `openUrl` 失败提示**：需要 Rust 运行时，本机无 cargo，只能靠代码路径推断。
-3. **14 行级长文案在最小窗口下的可用性**：640×480（`tauri.conf.json` 的 minWidth/minHeight）时，5 行文案卡片高 424px、按钮完整可见；把正文撑到 14 行则卡片高 952px，确认按钮落在 y=877..943、视口外，且遮罩 `overflowY: visible` 不可滚动 → 用户既看不到也点不到。**当前 10 个调用点里最长的批量删除文案只有 2 行，构造不出这个尺寸，所以判为潜在而非现存缺陷，未修。** 真要修是给 `<section>` 加 `max-h` + 滚动。
-4. **确认框打开期间吐司被遮住**：95 盖住 70 是实测事实。现有调用点都是"确认关闭之后才发吐司"，所以看不见吐司的情况还没构造出来；如果以后出现"确认框还在、后台先报错"的流程，这条会变成真的看不见。
+3. **14 行级长文案在最小窗口下的可用性**：640×480（`tauri.conf.json` 的 minWidth/minHeight）时，本轮那串 5 行长文案下卡片 440×472、按钮 `confirmFullyVisible: true`；把正文撑到 14 行则卡片高 **952px**、确认按钮 `confirmFullyVisible: false`，且遮罩 `overflowY: visible` 不可滚动 → 用户既看不到也点不到。**当前 10 个调用点里最长的批量删除文案只有 2 行，构造不出这个尺寸，所以判潜在而非现存缺陷，未修。** 真要修是给 `<section>` 加 `max-h` + 滚动。
+4. **确认框打开期间吐司被遮住**：95 盖住 70 已实测（`elementFromPoint` 落在确认层内），且遮罩本身是 `background-color: oklab(0.129 … / 0.35)` + `backdrop-filter: blur(8px)`——吐司是画在这层 35% 暗色 + 8px 模糊**之下**的，截图 `10-toast-behind-confirm.png`。"还能不能读清"是感知判断，我没有下结论；能确定的是它不在最上层、点不到（吐司容器 `pointer-events: none`，其上的确认层吃掉命中）。现有 10 个调用点都是"确认关闭之后才发吐司"，所以真实流程里还没构造出"确认框还开着、后台先报错"的场景。
 5. **`StorageBrowserDialog.tsx:148 / :168 / :182` 还有 3 处 `void copyText(...)`**（三个"复制"按钮）：和这轮修掉的 `void openExternalUrl` 是同一类丢弃 promise 的写法，剪贴板写入失败时按钮不会给任何反馈。同一条线改起来只要把包装函数换成通用版，但本轮没有实测证据（浏览器分支的 `navigator.clipboard` 在 headless 下直接成功，构造不出失败），所以**只登记不动**，等真需要时一起改。
 6. **默认分支 `main` 指向另一项目**：依旧只交方案、未执行任何分支操作，方案与影响面见上一批第 5 条。
 
