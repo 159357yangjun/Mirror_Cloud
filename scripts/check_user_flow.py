@@ -354,8 +354,17 @@ confirm_store = text('apps/desktop/src/store/useConfirmStore.ts')
 require('settle(false)' in confirm_store, 'the confirm store can resolve a request as cancelled')
 require('danger: spec.danger ?? true' in confirm_store, 'confirm requests default to the destructive style')
 
+# Measured in a browser against the running app: an unbreakable token (a hashed filename or a raw
+# URL) in the dialog text overflowed its 302px paragraph by 248px and painted over the dimmed
+# backdrop, because the card width is pinned at max-w-[440px] and does not grow.
+confirm_dialog = text('apps/desktop/src/components/ConfirmDialog.tsx')
+require(re.search(r'<h2[^>]*\bbreak-words\b[^>]*>', confirm_dialog) is not None, 'the confirm dialog title wraps unbreakable filenames')
+require(re.search(r'<p[^>]*\bbreak-words\b[^>]*>', confirm_dialog) is not None, 'the confirm dialog detail wraps unbreakable filenames')
+require("event.key === 'Escape'" in confirm_dialog and 'settle(false)' in confirm_dialog, 'Escape cancels the confirm request')
+require('cancelRef.current?.focus()' in confirm_dialog, 'the dialog focuses Cancel, so Enter cannot fire the destructive action')
+
 failed = [label for ok, label in checks if not ok]
-for ok, label in checks[-13:]:
+for ok, label in checks[-16:]:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
     raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')

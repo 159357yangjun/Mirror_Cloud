@@ -36,8 +36,8 @@ export function ConfirmDialog() {
             <TriangleAlert size={17} />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 id="confirm-dialog-title" className="text-sm font-semibold">{request.title}</h2>
-            <p className="mt-2 text-xs leading-6 text-[var(--text-secondary)] whitespace-pre-line">{request.detail}</p>
+            <h2 id="confirm-dialog-title" className="break-words text-sm font-semibold">{request.title}</h2>
+            <p className="mt-2 break-words text-xs leading-6 text-[var(--text-secondary)] whitespace-pre-line">{request.detail}</p>
           </div>
           <button onClick={() => settle(false)} className="shrink-0 rounded-full p-1.5 text-[var(--text-muted)] hover:bg-[var(--surface-soft)]" aria-label="关闭">
             <X size={16} />
