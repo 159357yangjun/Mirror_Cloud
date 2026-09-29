@@ -159,37 +159,10 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  docs-bundle:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: '.node-version'
-          cache: npm
-          cache-dependency-path: website/package-lock.json
-      - name: Validate release version consistency
-        run: python scripts/check_release_version.py
-      - name: Install docs dependencies from lock
-        working-directory: website
-        run: npm ci
-      - name: Build static docs
-        working-directory: website
-        run: npm run build
-      - name: Upload static docs
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: image-hosting-platform-docs
-          path: website/dist/**
-          if-no-files-found: error
-          retention-days: 30
-
   publish-release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs:
       - windows-bundle
-      - docs-bundle
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
