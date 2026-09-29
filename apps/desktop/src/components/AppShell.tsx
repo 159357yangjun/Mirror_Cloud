@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { BookOpen, Boxes, Cloud, Images, ListTodo, Palette, Plug, Settings, Upload, Zap } from 'lucide-react'
-import { getDocsBaseUrl, openExternalUrl } from '../lib/desktop'
+import { getDocsBaseUrl, openExternalUrlOrReport } from '../lib/desktop'
 import {
   applyThemePreferences,
   loadThemePreferences,
@@ -111,7 +111,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           onClose={closeHelp}
           onNavigate={setPage}
           onlineDocsUrl={docsUrl}
-          openExternalUrl={openExternalUrl}
+          openExternalUrl={openExternalUrlOrReport}
         />
       )}
       {showTheme && (

@@ -363,6 +363,19 @@ require(re.search(r'<p[^>]*\bbreak-words\b[^>]*>', confirm_dialog) is not None, 
 require("event.key === 'Escape'" in confirm_dialog and 'settle(false)' in confirm_dialog, 'Escape cancels the confirm request')
 require('cancelRef.current?.focus()' in confirm_dialog, 'the dialog focuses Cancel, so Enter cannot fire the destructive action')
 
+# Every docs / external link used to be `void openExternalUrl(...)`. Measured with an unreachable
+# and then a malformed baked base: the click opened a tab to an error page, or nothing at all, and
+# the app showed no toast, no inline error and no console entry the user could act on.
+silent_openers = sorted(
+    str(path.relative_to(ROOT / 'apps' / 'desktop').as_posix())
+    for path in (ROOT / 'apps' / 'desktop' / 'src').rglob('*.ts*')
+    if 'void openExternalUrl(' in path.read_text(encoding='utf-8')
+)
+require(not silent_openers, f'no external-link open is fire-and-forget ({silent_openers})')
+desktop_lib = text('apps/desktop/src/lib/desktop.ts')
+require('openExternalUrl(url).catch((error) => notifyError' in desktop_lib, 'a failed external-link open is reported through the toast channel')
+require("if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')" in desktop_lib, 'external links are still restricted to http/https')
+
 failed = [label for ok, label in checks if not ok]
 for ok, label in checks[-16:]:
     print(('OK   ' if ok else 'FAIL ') + label)

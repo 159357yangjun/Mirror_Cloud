@@ -20,7 +20,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { GalleryMediaCard } from '../components/GalleryMediaCard'
-import { browseStorage, chooseDownloadPath, copyText, createStorageDirectory, deleteStorageEntry, downloadStorageEntry, listStorages, moveStorageEntry, openExternalUrl, queueBatchDeleteStorageEntries, queueBatchMoveStorageEntries, queueBatchRenameStorageEntries } from '../lib/desktop'
+import { browseStorage, chooseDownloadPath, copyText, createStorageDirectory, deleteStorageEntry, downloadStorageEntry, listStorages, moveStorageEntry, openExternalUrlOrReport, queueBatchDeleteStorageEntries, queueBatchMoveStorageEntries, queueBatchRenameStorageEntries } from '../lib/desktop'
 import type { StorageEntryView } from '../types'
 
 function parentPath(path: string) {
@@ -318,7 +318,7 @@ export function GalleryPage() {
             else if (isImage(entry) && entry.publicUrl) setPreview(entry)
           }}
           onCopy={() => void copyUrl(entry)}
-          onOpenExternal={() => entry.publicUrl && void openExternalUrl(entry.publicUrl)}
+          onOpenExternal={() => entry.publicUrl && openExternalUrlOrReport(entry.publicUrl)}
           onRename={() => setPathDialog({ mode: 'rename', entry, value: entry.name })}
           onMove={() => setPathDialog({ mode: 'move', entry, value: parentPath(entry.path) })}
           onDownload={() => void downloadEntry(entry)}
@@ -339,7 +339,7 @@ export function GalleryPage() {
                 </button>
                 {!entry.isDir && <>
                   {entry.publicUrl && <button onClick={() => void copyUrl(entry)} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700" title="复制公开链接"><Copy size={14} /></button>}
-                  {entry.publicUrl && <button onClick={() => void openExternalUrl(entry.publicUrl || '')} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700" title="浏览器打开"><ExternalLink size={14} /></button>}
+                  {entry.publicUrl && <button onClick={() => openExternalUrlOrReport(entry.publicUrl || '')} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700" title="浏览器打开"><ExternalLink size={14} /></button>}
                   <button disabled={operationBusy} onClick={() => setPathDialog({ mode: 'rename', entry, value: entry.name })} className="rounded-lg px-2 py-1.5 text-[11px] text-slate-400 hover:bg-white hover:text-slate-700" title="重命名">改名</button>
                   <button disabled={operationBusy} onClick={() => setPathDialog({ mode: 'move', entry, value: parentPath(entry.path) })} className="rounded-lg px-2 py-1.5 text-[11px] text-slate-400 hover:bg-white hover:text-slate-700" title="移动">移动</button>
                   <button disabled={busyPath === entry.path} onClick={() => void downloadEntry(entry)} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700 disabled:opacity-30" title="下载"><Download size={14} /></button>
@@ -385,7 +385,7 @@ export function GalleryPage() {
             <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
               <div className="max-w-[46vw] truncate rounded-xl bg-white/95 px-3 py-2 text-xs font-medium">{preview.name}</div>
               <button onClick={() => void copyUrl(preview)} className="rounded-xl bg-white px-4 py-2 text-xs font-medium"><Copy size={13} className="mr-1 inline" />复制链接</button>
-              <button onClick={() => void openExternalUrl(preview.publicUrl || '')} className="rounded-xl bg-white px-4 py-2 text-xs font-medium"><ExternalLink size={13} className="mr-1 inline" />浏览器打开</button>
+              <button onClick={() => openExternalUrlOrReport(preview.publicUrl || '')} className="rounded-xl bg-white px-4 py-2 text-xs font-medium"><ExternalLink size={13} className="mr-1 inline" />浏览器打开</button>
               <button onClick={() => void downloadEntry(preview)} className="rounded-xl bg-white px-4 py-2 text-xs font-medium"><Download size={13} className="mr-1 inline" />下载</button>
               <button onClick={() => void deleteEntry(preview)} className="rounded-xl bg-red-50 px-4 py-2 text-xs font-medium text-red-600"><Trash2 size={13} className="mr-1 inline" />删除</button>
             </div>

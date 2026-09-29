@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { browseStorage, chooseDownloadPath, copyText, deleteStorageEntry, downloadStorageEntry, openExternalUrl } from '../lib/desktop'
+import { browseStorage, chooseDownloadPath, copyText, deleteStorageEntry, downloadStorageEntry, openExternalUrlOrReport } from '../lib/desktop'
 import { confirmAction } from '../store/useConfirmStore'
 import type { StorageEntryView, StorageView } from '../types'
 
@@ -146,7 +146,7 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
                   </button>
                   {!entry.isDir && <div className="flex items-center gap-1 border-t border-slate-100 p-2 opacity-80 group-hover:opacity-100">
                     {entry.publicUrl && <button onClick={() => void copyText(entry.publicUrl || '')} className="flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[10px] text-slate-500 hover:bg-slate-50" title="复制公开链接"><Copy size={12} />复制</button>}
-                    {entry.publicUrl && <button onClick={() => void openExternalUrl(entry.publicUrl || '')} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50" title="浏览器打开"><ExternalLink size={12} /></button>}
+                    {entry.publicUrl && <button onClick={() => openExternalUrlOrReport(entry.publicUrl || '')} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50" title="浏览器打开"><ExternalLink size={12} /></button>}
                     <button disabled={busyPath === entry.path} onClick={() => void downloadEntry(entry)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 disabled:opacity-30" title="下载"><Download size={12} /></button>
                     <button disabled={busyPath === entry.path} onClick={() => void deleteEntry(entry)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30" title="永久删除"><Trash2 size={12} /></button>
                   </div>}
@@ -166,7 +166,7 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
               </button>
               {!entry.isDir && <>
                 {entry.publicUrl && <button onClick={() => void copyText(entry.publicUrl || '')} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700" title="复制公开链接"><Copy size={14} /></button>}
-                {entry.publicUrl && <button onClick={() => void openExternalUrl(entry.publicUrl || '')} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700" title="浏览器打开"><ExternalLink size={14} /></button>}
+                {entry.publicUrl && <button onClick={() => openExternalUrlOrReport(entry.publicUrl || '')} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700" title="浏览器打开"><ExternalLink size={14} /></button>}
                 <button disabled={busyPath === entry.path} onClick={() => void downloadEntry(entry)} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700 disabled:opacity-30" title="下载"><Download size={14} /></button>
                 <button disabled={busyPath === entry.path} onClick={() => void deleteEntry(entry)} className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30" title="永久删除"><Trash2 size={14} /></button>
               </>}
@@ -180,7 +180,7 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
           <img src={preview.publicUrl} alt={preview.name} decoding="async" className="max-h-[82vh] max-w-[88vw] rounded-2xl bg-white object-contain shadow-2xl" />
           <div className="mt-3 flex items-center justify-center gap-2">
             <button onClick={() => void copyText(preview.publicUrl || '')} className="rounded-xl bg-white px-4 py-2 text-xs font-medium"><Copy size={13} className="mr-1 inline" />复制链接</button>
-            <button onClick={() => void openExternalUrl(preview.publicUrl || '')} className="rounded-xl bg-white px-4 py-2 text-xs font-medium"><ExternalLink size={13} className="mr-1 inline" />浏览器打开</button>
+            <button onClick={() => openExternalUrlOrReport(preview.publicUrl || '')} className="rounded-xl bg-white px-4 py-2 text-xs font-medium"><ExternalLink size={13} className="mr-1 inline" />浏览器打开</button>
             <button onClick={() => void downloadEntry(preview)} className="rounded-xl bg-white px-4 py-2 text-xs font-medium"><Download size={13} className="mr-1 inline" />下载</button>
             <button onClick={() => void deleteEntry(preview)} className="rounded-xl bg-red-50 px-4 py-2 text-xs font-medium text-red-600"><Trash2 size={13} className="mr-1 inline" />删除</button>
             <button onClick={() => setPreview(null)} className="rounded-xl bg-white px-4 py-2 text-xs font-medium">关闭</button>

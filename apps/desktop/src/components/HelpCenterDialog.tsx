@@ -10,7 +10,7 @@ export function HelpCenterDialog({
   onClose: () => void
   onNavigate: (page: PageKey) => void
   onlineDocsUrl?: string | null
-  openExternalUrl: (url: string) => Promise<void>
+  openExternalUrl: (url: string) => void
 }) {
   function go(page: PageKey) {
     onNavigate(page)
@@ -29,7 +29,7 @@ export function HelpCenterDialog({
             <h2 className="text-lg font-semibold">新手教程 · 图床</h2>
             <p className="mt-1 text-xs leading-5 text-[var(--text-muted)]">先完成第一次真实云端上传，再按需配置 Typora、插件和多云策略。这里的教程始终随应用提供，不依赖外部网站。</p>
           </div>
-          {onlineDocsUrl && <button onClick={() => void openExternalUrl(onlineDocsUrl)} className="rounded-xl border border-[var(--border)] px-3 py-2 text-xs text-[var(--text-secondary)]"><ExternalLink size={13} className="mr-1 inline" />在线文档</button>}
+          {onlineDocsUrl && <button onClick={() => openExternalUrl(onlineDocsUrl)} className="rounded-xl border border-[var(--border)] px-3 py-2 text-xs text-[var(--text-secondary)]"><ExternalLink size={13} className="mr-1 inline" />在线文档</button>}
           <button onClick={onClose} className="rounded-full p-2 text-[var(--text-muted)] hover:bg-[var(--surface-soft)]" aria-label="关闭教程"><X size={18} /></button>
         </header>
 

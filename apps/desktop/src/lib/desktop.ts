@@ -1,4 +1,5 @@
 import { mockBootstrap, mockRecipes } from '../data/mock'
+import { notifyError } from '../store/useToastStore'
 import type {
   AssetView,
   BootstrapSnapshot,
@@ -65,7 +66,15 @@ export async function openExternalUrl(url: string): Promise<void> {
     await openUrl(url)
     return
   }
+  // `noopener` makes window.open return null by spec, so a null return here says nothing about
+  // whether the popup was blocked; the browser branch can only report real rejections.
   window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+// Every docs / external-link button used to discard the promise, so a rejected opener or a
+// malformed baked-in base URL produced no toast, no inline error and no visible change.
+export function openExternalUrlOrReport(url: string): void {
+  openExternalUrl(url).catch((error) => notifyError(`打开链接失败：${String(error)}`))
 }
 
 export async function copyText(text: string): Promise<void> {

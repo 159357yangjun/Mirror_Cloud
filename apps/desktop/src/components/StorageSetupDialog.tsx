@@ -9,6 +9,7 @@ import {
   createWebDavStorage,
   getProviderGuideUrl,
   openExternalUrl,
+  openExternalUrlOrReport,
 } from '../lib/desktop'
 import type {
   CreateObjectStorageInput,
@@ -253,7 +254,7 @@ export function StorageSetupDialog({
                 <div className="mt-1 text-[11px] leading-5 text-indigo-700/70">教程内置在应用里，不依赖文档网站。按顺序完成即可。</div>
               </div>
               {guideUrl && (
-                <button type="button" onClick={() => void openExternalUrl(guideUrl)} className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-medium text-indigo-700">
+                <button type="button" onClick={() => openExternalUrlOrReport(guideUrl)} className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-medium text-indigo-700">
                   在线文档 <ExternalLink size={11} />
                 </button>
               )}

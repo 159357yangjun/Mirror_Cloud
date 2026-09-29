@@ -27,7 +27,7 @@ import {
   getOutputPreferences,
   getTyporaIntegrationInfo,
   openAppDataDir,
-  openExternalUrl,
+  openExternalUrlOrReport,
   openTypora,
   regenerateLocalApiToken,
   setGlobalShortcutEnabled,
@@ -325,7 +325,7 @@ export function SettingsPage() {
             <div className="flex items-center gap-2 text-sm font-semibold text-sky-950"><Network size={17} /> Local HTTP API</div>
             <p className="mt-1 max-w-2xl text-xs leading-6 text-sky-800/70">给 ShareX、脚本、Obsidian 插件和未来 Agent 使用的本机上传入口。它复用与 Typora 相同的默认 Workflow、插件和多云策略，不维护第二套上传逻辑。</p>
             {localApiGuideUrl && (
-              <button type="button" onClick={() => void openExternalUrl(localApiGuideUrl)} className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 hover:text-sky-900">
+              <button type="button" onClick={() => openExternalUrlOrReport(localApiGuideUrl)} className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 hover:text-sky-900">
                 完整调用教程与状态码 <ExternalLink size={11} />
               </button>
             )}
