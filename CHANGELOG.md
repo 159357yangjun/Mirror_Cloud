@@ -58,7 +58,7 @@ $ npm run build          # apps/desktop，tsc -b && vite build
 门禁自身演示过红：
 
 ```text
-$ node cdp-dialog-probe.mjs gate        # exit 0
+$ node scripts/verify_dialog_interactions.mjs gate        # exit 0
 control                | expectedFail=false | passed=true  | visible 1406x803
 window minimized       | expectedFail=true  | passed=false | VIEWPORT GATE FAILED: visibilityState=hidden
                          但同一时刻 innerWidth=1406 innerHeight=803 clientWidth=1406 hasFocus=false
@@ -121,6 +121,42 @@ sawMinimizedReject: true   broken: []
 
 - 我第一版顺手加的 `if (!window.open(...)) throw new Error('浏览器拦截了新窗口…')` **是错的**：规范规定带 `noopener` 时 `window.open` 一律返回 `null`，实测三个本来能正常打开的链接全部误报成"被拦截"（那一次的吐司原文：「打开链接失败：Error: 浏览器拦截了新窗口，请允许弹出窗口后重试」，出现在明明已经开好的标签旁边）。已撤掉，并在注释里写明浏览器分支只能报告真正的 rejection。
 - 丢弃 promise 这件事本身的红→绿是在同一页面里对照测的（等吐司栈清空后各调一次）：`void openExternalUrl('not a url…')` → `toastsAfterVoidCall: 0`，只留一条 `Uncaught (in promise)` 的页面错误；`openExternalUrlOrReport(同一个值)` → `toastsAfterWrapperCall: 1`，文本就是表里那条 TypeError。
+
+### 测具已进仓：`scripts/verify_dialog_interactions.mjs`
+
+上面所有数字都出自这个探针。它此前只存在于会话目录（`cdp-dialog-probe.mjs`，34,750 字节 / 12:31），而仓库里已经有 11 个 `scripts/*` 检查器——**修搞出来了，别人重跑不了验证，会话目录一清测具就没了**。现在它和 `534cc15` / `a561161` 同仓。
+
+- **身份**：847 行 / 52,460 字节 / sha256 `6f511d63cf8b8e11c60fa581da915bb49ab88a11b91b8cf98475e49413a471a3`。以后本节里引用它的数字，先比这个哈希；对不上就说明测具与结论不是同一份。
+- **依赖：零第三方包。** 只用 `node:child_process` + `node:fs`，加上 Node 22+ 自带的全局 `fetch` / `WebSocket`（这正是"能不能进仓"的判据）。`check_user_flow.py` 里有一条断言会解析它的 import 列表，出现任何非 `node:` 前缀就 FAIL。
+- **怎么跑**：`cd apps/desktop && npm run dev` 起前端，再 `node scripts/verify_dialog_interactions.mjs <mode>`；模式 `confirm | ab | gate | links | pages | external`，`--help` 打印同一份说明。截图与 JSON 默认落 `%TEMP%/image-hosting-probes/<日期>/`——不写进仓库，也不写主目录根；dev server 没起就直接 `rc=4` 并打印该敲的那条命令。
+- **进仓后复跑**：`gate` → `rc=0`、`sawMinimizedReject: true`；`ab` → 复现同一组数（`210 / 145 / 302 / 512 / 923 / 1068 / 858 / 332 / 284`），与会话目录版逐位相同。
+- **测具自己也被守卫钉住**（`check_user_flow.py` 150 → **154**）：文件在不在仓里、有没有 `function assertRealViewport`、门禁调用点是否 ≥8、import 是否全是 `node:`。四条各自演示过红，改完立即还原并 `diff -q` 确认字节一致：
+
+```text
+baseline:                                              rc=0 fails=0
+M1 把 gate 函数改名            → rc=1 FAIL the harness defines the viewport gate
+M2 只留 after-mount 一处门禁    → rc=1 FAIL the viewport gate guards every geometry sample, not just startup
+M3 加一行 import chalk         → rc=1 FAIL the harness adds no third-party dependency (['node:child_process', 'chalk', 'node:fs'])
+M4 把测具从树里移走            → rc=1 FAIL the dialog interaction harness is version controlled (+ 连带 2 条)
+restored:                                              rc=0 fails=0，harness byte-identical to backup
+```
+
+顺带记一次**测具自己造的假绿灯**：第一版变异脚本用 `execSync('python …')` 取退出码，`e.status` 拿到 `null`，于是 baseline 就是"红"，四条变异全部被误报成"成功变红"。是那句 `baseline rc = 1 (must be 0)` 暴露的——**变异脚本必须先证明自己在未变异时是绿的**，否则它什么也没验。上面那份输出是改用 bash 直跑之后的。
+
+### 本轮记录（仓库路径与实状态）
+
+- 仓库路径：`D:\image-hosting-platform`，分支 `dev`，远端 `origin/dev`。
+- 提交前 `git status -sb` 实输出：
+
+```text
+## dev...origin/dev [ahead 1]
+ M CHANGELOG.md
+ M scripts/check_user_flow.py
+?? scripts/verify_dialog_interactions.mjs
+```
+
+（`[ahead 1]` 是上一笔 `8f8d1e3`：本机 `github.com:443` 直连 `000`、代理 7897 也连不上，推送在后台按 45 秒间隔重试，推成与否以最终 `git status -sb` 为准，不当已交付。`M CHANGELOG.md` 就是承载本条记录的文件本身。）
+
 - 诚实边界：`popup 被拦`这一种失败在浏览器分支仍**不可检测**（保留 `noopener` 比一个诊断信号更值钱）；Tauri 分支的 `openUrl` rejection 现在会被报告，但那条分支需要 Rust 运行时，本机没跑。
 
 ### 本轮验证命令与实际输出
