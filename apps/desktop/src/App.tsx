@@ -11,6 +11,7 @@ import { StoragesPage } from './pages/StoragesPage'
 import { TasksPage } from './pages/TasksPage'
 import { PluginsPage } from './pages/PluginsPage'
 import { ToastViewport } from './components/ToastViewport'
+import { ConfirmDialog } from './components/ConfirmDialog'
 import { useAppStore } from './store/useAppStore'
 import { notifyError } from './store/useToastStore'
 
@@ -49,6 +50,7 @@ export default function App() {
       {page === 'settings' && <SettingsPage />}
       <UploadDialog />
       <ToastViewport />
+      <ConfirmDialog />
     </AppShell>
   )
 }

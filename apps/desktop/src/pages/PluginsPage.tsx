@@ -5,6 +5,7 @@ import { aiPlanWorkflow, deletePlugin, getAiSettings, installMarketplacePlugin, 
 import { PageHeader } from '../components/PageHeader'
 import type { AiSettings, PluginView } from '../types'
 import { notifyError } from '../store/useToastStore'
+import { confirmAction } from '../store/useConfirmStore'
 
 // The global MutationCache already turns a failed plugin mutation into a toast, so these catch
 // handlers exist only to stop an unhandled rejection — a second dialog would report it twice.
@@ -52,7 +53,7 @@ export function PluginsPage() {
     if (enabled) {
       const missing = plugin.permissions.filter((permission) => !plugin.grantedPermissions.includes(permission))
       if (missing.length) {
-        const accepted = window.confirm(`“${plugin.name}”请求以下权限：\n\n${missing.map((permission) => `• ${permissionLabel(permission)}`).join('\n')}\n\n允许后该插件在开启期间可使用这些能力。是否始终允许？`)
+        const accepted = await confirmAction({ title: '插件权限请求', detail: `“${plugin.name}”请求以下权限：\n\n${missing.map((permission) => `• ${permissionLabel(permission)}`).join('\n')}\n\n允许后该插件在开启期间可使用这些能力。是否始终允许？`, confirmLabel: '始终允许', cancelLabel: '不开启', danger: false })
         if (!accepted) return
         await authorize.mutateAsync({ id: plugin.id, permissions: plugin.permissions })
       }
@@ -108,7 +109,7 @@ export function PluginsPage() {
               onRevokePermissions={() => { void revokeSensitivePermissions(plugin).catch(ignoreReportedFailure) }}
               onToggleHook={(hook) => { const values = plugin.enabledHooks.includes(hook) ? plugin.enabledHooks.filter((item) => item !== hook) : [...plugin.enabledHooks, hook]; void hooks.mutateAsync({ id: plugin.id, values }).catch(ignoreReportedFailure) }}
               hookLabel={hookLabel}
-              onRemove={() => window.confirm(`卸载插件“${plugin.name}”吗？`) && remove.mutate(plugin.id)}
+              onRemove={() => { void confirmAction({ title: '卸载插件', detail: `卸载插件“${plugin.name}”吗？`, confirmLabel: '卸载' }).then((accepted) => accepted && remove.mutate(plugin.id)) }}
               onSaved={refresh}
             />
           ))}

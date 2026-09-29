@@ -105,13 +105,14 @@ require('PluginPermission::Secret' in plugin_runtime, 'AI API key access require
 require('"type": "image_url"' in plugin_runtime and '"detail": "auto"' in plugin_runtime, 'AI caption sends actual image as multimodal input')
 require('official.ai-caption' in migration9 and '"secret"' in migration9, 'existing AI Caption installs migrate to secret permission')
 require('cargo generate-lockfile' not in ci and 'npm ci' in ci and '--locked' in ci and all((ROOT / rel).exists() for rel in ('Cargo.lock', 'apps/desktop/package-lock.json', 'website/package-lock.json')), 'CI consumes committed dependency locks without regenerating them')
-require('cargo generate-lockfile' not in release and release.count('npm ci') >= 2 and '--locked' in release, 'release build consumes committed dependency locks without regenerating them')
+docs_workflow = text('.github/workflows/docs.yml')
+require('cargo generate-lockfile' not in release and 'cargo generate-lockfile' not in ci and 'npm install' not in release and 'npm install' not in ci and 'npm install' not in docs_workflow and '--locked' in release, 'every build workflow installs from committed locks only (npm ci + cargo --locked), never npm install or generate-lockfile')
 
 require('granted_permissions: &[PluginPermission]' in plugin_runtime and 'granted_permissions.contains(&permission)' in plugin_runtime, 'plugin runtime requires explicit user grants')
 require('granted_permissions_json' in persistence and 'set_granted_permissions' in persistence, 'plugin grants persist separately from manifest declarations')
 require('granted_permissions_json' in migration10 and 'read_asset' in migration10 and 'SET enabled = 0' in migration10, 'existing sensitive plugins are disabled until explicit re-authorization')
 require('set_plugin_permissions' in commands and 'commands::set_plugin_permissions' in lib, 'plugin permission grant command is registered')
-require('grantedPermissions' in plugins and 'setPluginPermissions' in plugins and 'window.confirm' in plugins, 'plugin UI requests user approval before sensitive permission use')
+require('grantedPermissions' in plugins and 'setPluginPermissions' in plugins and 'confirmAction' in plugins and 'if (!accepted) return' in plugins, 'plugin UI requests user approval before sensitive permission use and honours a decline')
 require('permissions: plugin.permissions.filter' in plugins and 'revokeSensitivePermissions' in plugins, 'plugin UI can revoke sensitive grants')
 require(re.search(r'execute_for_hook\(\s*&manifest,\s*&granted_permissions', cli) is not None, 'Typora plugin runtime uses persisted user grants')
 
@@ -168,7 +169,7 @@ require("setDefaultPublishTarget" in publish_page and "saveOutputPreferences" in
 require("delete_storage_entry" in commands and "download_storage_entry" in commands and "commands::delete_storage_entry" in lib and "commands::download_storage_entry" in lib, 'cloud file delete/download commands are implemented and registered')
 require("deployment_ids_for_remote" in persistence and "DeploymentStatus::Deleted" in commands[commands.find('pub async fn delete_storage_entry'):commands.find('pub async fn download_storage_entry')], 'direct cloud delete reconciles local Deployment state')
 require("deleteStorageEntry" in desktop and "downloadStorageEntry" in desktop and "chooseDownloadPath" in desktop, 'frontend exposes safe cloud file management APIs')
-require("deleteStorageEntry" in gallery and "downloadStorageEntry" in gallery and "window.confirm" in gallery, 'Gallery exposes confirmed delete and download actions')
+require("deleteStorageEntry" in gallery and "downloadStorageEntry" in gallery and "confirmAction" in gallery, 'Gallery exposes confirmed delete and download actions')
 
 failed = [label for ok, label in checks if not ok]
 for ok, label in checks[-9:]:
@@ -319,7 +320,8 @@ require(not eager, f'every list/grid remote image defers its network fetch (eage
 require(not blocking, f'every list/grid remote image decodes off the main thread (blocking: {blocking})')
 
 # window.alert is a second, blocking channel for failures the global MutationCache already toasts.
-# window.confirm stays allowed: it gates a destructive decision synchronously and needs its own dialog.
+# Both native dialogs are now banned: alert double-reports, and confirm gates destructive actions
+# from browser chrome instead of the app's own ConfirmDialog (see the confirm gate below).
 alerting = sorted(
     str(path.relative_to(ROOT / 'apps' / 'desktop')).replace('\\', '/')
     for path in (ROOT / 'apps' / 'desktop' / 'src').rglob('*.ts*')
@@ -336,6 +338,21 @@ require(opendal_storage.count('standard_capabilities(config.public_base_url.is_s
 require('raw.githubusercontent.com' in github_storage, 'GitHub storage derives a Raw URL when no custom domain is set')
 require(setup_dialog.count('公开访问域名（发布到该云端时必填') == 3, 'every provider without a derived public URL states when the domain is required')
 require(setup_dialog.count('自定义公开域名（可选') == 1, 'repository providers keep the custom domain optional')
+
+# Destructive gates must use the in-app dialog: window.confirm suspends painting in WebView2 and
+# looks like browser chrome, while confirmAction fails closed - with no dialog mounted the promise
+# never resolves, so a destructive action cannot slip through unnoticed.
+confirming = sorted(
+    str(path.relative_to(ROOT / 'apps' / 'desktop').as_posix())
+    for path in (ROOT / 'apps' / 'desktop' / 'src').rglob('*.ts*')
+    if 'window.confirm(' in path.read_text(encoding='utf-8')
+)
+require(not confirming, f'destructive gates use the in-app dialog, never window.confirm ({confirming})')
+app_entry = text('apps/desktop/src/App.tsx')
+require('ConfirmDialog' in app_entry and '<ConfirmDialog />' in app_entry, 'the confirm dialog is mounted at the app root')
+confirm_store = text('apps/desktop/src/store/useConfirmStore.ts')
+require('settle(false)' in confirm_store, 'the confirm store can resolve a request as cancelled')
+require('danger: spec.danger ?? true' in confirm_store, 'confirm requests default to the destructive style')
 
 failed = [label for ok, label in checks if not ok]
 for ok, label in checks[-13:]:

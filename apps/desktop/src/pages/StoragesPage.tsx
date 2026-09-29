@@ -14,6 +14,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { notifyError, notifySuccess } from '../store/useToastStore'
+import { confirmAction } from '../store/useConfirmStore'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
@@ -99,14 +100,14 @@ export function StoragesPage() {
     }
   }
 
-  const removeGroup = (id: string, name: string) => {
-    if (window.confirm(`删除多云组“${name}”吗？这不会删除任何云端文件或存储配置。`)) {
+  const removeGroup = async (id: string, name: string) => {
+    if (await confirmAction({ title: '删除多云组', detail: `删除多云组“${name}”吗？这不会删除任何云端文件或存储配置。`, confirmLabel: '删除' })) {
       removeGroupMutation.mutate(id)
     }
   }
 
-  const removeStorage = (id: string, name: string) => {
-    if (window.confirm(`删除存储“${name}”的连接配置吗？\n\n如果它仍被资源、多云组或内部上传配置引用，系统会拒绝删除。`)) {
+  const removeStorage = async (id: string, name: string) => {
+    if (await confirmAction({ title: '删除存储连接', detail: `删除存储“${name}”的连接配置吗？\n\n如果它仍被资源、多云组或内部上传配置引用，系统会拒绝删除。`, confirmLabel: '删除连接' })) {
       removeStorageMutation.mutate(id, {
         onError: (error) => notifyError(`操作失败：${String(error)}`),
       })
@@ -146,7 +147,7 @@ export function StoragesPage() {
                 <div className="truncate text-sm font-medium">{group.name}</div>
                 <div className="mt-1 text-[11px] text-slate-400">{strategyLabel(group.strategy)} · {group.members.length} 个云端</div>
               </div>
-              <button onClick={() => removeGroup(group.id, group.name)} className="rounded-lg p-2 text-slate-300 transition hover:bg-red-50 hover:text-red-500" title="删除多云组"><Trash2 size={14} /></button>
+              <button onClick={() => void removeGroup(group.id, group.name)} className="rounded-lg p-2 text-slate-300 transition hover:bg-red-50 hover:text-red-500" title="删除多云组"><Trash2 size={14} /></button>
             </div>
             <div className="mt-4 space-y-2">
               {group.members.map((member) => (
@@ -188,7 +189,7 @@ export function StoragesPage() {
                   <div className="truncate text-[11px] text-slate-400">{storage.providerKey.toUpperCase()} · {storage.detail}</div>
                 </div>
                 <div className="ml-auto flex shrink-0 items-center gap-2">{defaultTarget?.kind === 'storage' && defaultTarget.id === storage.id && <span className="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-medium text-indigo-600">默认</span>}{testResults[storage.id] === true && <span className="flex items-center gap-1 text-[10px] text-emerald-600"><CheckCircle2 size={12} /> 已验证</span>}{testResults[storage.id] === false && <span className="text-[10px] text-red-500">连接失败</span>}</div>
-                <button onClick={() => removeStorage(storage.id, storage.name)} className="rounded-lg p-2 text-slate-300 transition hover:bg-red-50 hover:text-red-500" title="删除连接"><Trash2 size={14} /></button>
+                <button onClick={() => void removeStorage(storage.id, storage.name)} className="rounded-lg p-2 text-slate-300 transition hover:bg-red-50 hover:text-red-500" title="删除连接"><Trash2 size={14} /></button>
               </div>
               <div className="mt-4 truncate text-[11px] text-slate-400">{storage.publicBaseUrl || storage.publicHint}</div>
               <div className="mt-4 grid grid-cols-2 gap-2">

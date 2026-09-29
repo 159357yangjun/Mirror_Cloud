@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { WorkflowSetupDialog } from '../components/WorkflowSetupDialog'
 import { deleteWorkflow, listRecipes, listWorkflows, setDefaultWorkflow } from '../lib/desktop'
+import { confirmAction } from '../store/useConfirmStore'
 import type { RecipeView } from '../types'
 
 export function WorkflowsPage() {
@@ -60,7 +61,7 @@ export function WorkflowsPage() {
             <div className="flex items-start gap-3">
               <div className="grid size-10 place-items-center rounded-2xl bg-slate-950 text-white"><Workflow size={17} /></div>
               <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><div className="truncate text-sm font-semibold">{workflow.name}</div>{workflow.isDefault && <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[10px] text-emerald-600"><Check size={10} />默认</span>}</div><div className="mt-1 truncate text-xs text-slate-400">{workflow.targetName}</div></div>
-              <button onClick={() => window.confirm(`删除方案“${workflow.name}”吗？`) && deleteMutation.mutate(workflow.id)} className="rounded-lg p-2 text-slate-300 hover:bg-red-50 hover:text-red-500"><Trash2 size={14} /></button>
+              <button onClick={() => { void confirmAction({ title: '删除方案', detail: `删除方案“${workflow.name}”吗？`, confirmLabel: '删除' }).then((accepted) => accepted && deleteMutation.mutate(workflow.id)) }} className="rounded-lg p-2 text-slate-300 hover:bg-red-50 hover:text-red-500"><Trash2 size={14} /></button>
             </div>
             <div className="mt-5 grid grid-cols-3 gap-2">
               <div className="rounded-xl bg-slate-50 p-3"><div className="text-[10px] text-slate-400">格式</div><div className="mt-1 text-xs font-medium uppercase">{workflow.format}</div></div>

@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react'
 import { notifySuccess } from '../store/useToastStore'
+import { confirmAction } from '../store/useConfirmStore'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
@@ -132,7 +133,7 @@ export function GalleryPage() {
 
   async function deleteEntry(entry: StorageEntryView) {
     if (!storageId || entry.isDir) return
-    if (!window.confirm(`确定从云端永久删除 “${entry.name}” 吗？\n\n如果它属于 Publisher 资源，本地 Deployment 状态也会同步为已删除。`)) return
+    if (!(await confirmAction({ title: '永久删除远端文件', detail: `确定从云端永久删除 “${entry.name}” 吗？\n\n如果它属于 Publisher 资源，本地 Deployment 状态也会同步为已删除。`, confirmLabel: '永久删除' }))) return
     setBusyPath(entry.path)
     setActionError(null)
     try {
@@ -219,7 +220,7 @@ export function GalleryPage() {
   async function batchDeleteSelected() {
     if (!storageId || !selectedPaths.size) return
     const paths = Array.from(selectedPaths)
-    if (!window.confirm(`确定永久删除选中的 ${paths.length} 个远端文件吗？\n\n对应的 Publisher Deployment 状态会同步更新。`)) return
+    if (!(await confirmAction({ title: '批量永久删除', detail: `确定永久删除选中的 ${paths.length} 个远端文件吗？\n\n对应的 Publisher Deployment 状态会同步更新。`, confirmLabel: `永久删除 ${paths.length} 个文件` }))) return
     setOperationBusy(true)
     setActionError(null)
     try {

@@ -17,6 +17,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { browseStorage, chooseDownloadPath, copyText, deleteStorageEntry, downloadStorageEntry, openExternalUrl } from '../lib/desktop'
+import { confirmAction } from '../store/useConfirmStore'
 import type { StorageEntryView, StorageView } from '../types'
 
 function parentPath(path: string) {
@@ -74,7 +75,7 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
 
   async function deleteEntry(entry: StorageEntryView) {
     if (entry.isDir) return
-    if (!window.confirm(`确定从云端永久删除 “${entry.name}” 吗？`)) return
+    if (!(await confirmAction({ title: '永久删除远端文件', detail: `确定从云端永久删除 “${entry.name}” 吗？`, confirmLabel: '永久删除' }))) return
     setBusyPath(entry.path)
     setActionError(null)
     try {

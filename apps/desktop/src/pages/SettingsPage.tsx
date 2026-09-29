@@ -36,6 +36,7 @@ import {
   saveOutputPreferences,
 } from '../lib/desktop'
 import { useAppStore } from '../store/useAppStore'
+import { confirmAction } from '../store/useConfirmStore'
 import type { OutputFormat, OutputPreferences } from '../types'
 
 export function SettingsPage() {
@@ -176,7 +177,7 @@ export function SettingsPage() {
   }
 
   async function regenerateApiToken() {
-    if (!window.confirm('重新生成后，之前配置在 ShareX、脚本或其他工具里的 Local API Token 会立即失效。继续吗？')) return
+    if (!(await confirmAction({ title: '重置 Local API Token', detail: '重新生成后，之前配置在 ShareX、脚本或其他工具里的 Local API Token 会立即失效。继续吗？', confirmLabel: '重置 Token' }))) return
     try {
       await regenerateApiTokenMutation.mutateAsync()
       await refreshLocalApi()

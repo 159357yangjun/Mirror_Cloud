@@ -14,6 +14,7 @@ import {
   saveOutputPreferences,
 } from '../lib/desktop'
 import { useAppStore } from '../store/useAppStore'
+import { confirmAction } from '../store/useConfirmStore'
 import type { AssetView, OutputFormat, OutputPreferences } from '../types'
 import { formatPublishedAsset } from '../lib/output'
 
@@ -113,14 +114,13 @@ export function AssetsPage() {
     window.setTimeout(() => setCopied((current) => (current === key ? null : current)), 1200)
   }
 
-  function remove(asset: AssetView) {
-    if (
-      window.confirm(
-        `从所有已记录的云端位置删除“${asset.name}”吗？这个操作会真正删除远端文件。`,
-      )
-    ) {
-      deleteMutation.mutate(asset.id)
-    }
+  async function remove(asset: AssetView) {
+    const accepted = await confirmAction({
+      title: '删除资源',
+      detail: `从所有已记录的云端位置删除“${asset.name}”吗？这个操作会真正删除远端文件。`,
+      confirmLabel: '删除',
+    })
+    if (accepted) deleteMutation.mutate(asset.id)
   }
 
   return (
@@ -193,7 +193,7 @@ export function AssetsPage() {
                 <div className="grid h-full place-items-center text-xs text-[var(--text-muted)]">没有公开 URL</div>
               )}
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-slate-950/35 to-transparent opacity-0 transition group-hover:opacity-100" />
-              <button disabled={deleteMutation.isPending} onClick={() => remove(asset)} className="absolute right-3 top-3 rounded-xl bg-white/92 p-2 text-slate-500 opacity-0 shadow-sm backdrop-blur transition hover:text-red-500 group-hover:opacity-100" title="永久删除这个资源已记录的远端副本">
+              <button disabled={deleteMutation.isPending} onClick={() => void remove(asset)} className="absolute right-3 top-3 rounded-xl bg-white/92 p-2 text-slate-500 opacity-0 shadow-sm backdrop-blur transition hover:text-red-500 group-hover:opacity-100" title="永久删除这个资源已记录的远端副本">
                 <Trash2 size={14} />
               </button>
             </div>
