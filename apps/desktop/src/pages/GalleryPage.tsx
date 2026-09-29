@@ -49,6 +49,9 @@ function isImage(entry: StorageEntryView) {
 }
 
 const GALLERY_PAGE_SIZE = 120
+// Revealed batches stay mounted, so an unbounded "继续显示" leaves the page scrolling through
+// thousands of live nodes. Beyond this many, a large leftover is reported instead of offered.
+const GALLERY_RENDER_CAP = 600
 
 export function GalleryPage() {
   const queryClient = useQueryClient()
@@ -101,6 +104,9 @@ export function GalleryPage() {
 
   const visibleEntries = filtered.length > visibleCount ? filtered.slice(0, visibleCount) : filtered
   const hiddenCount = filtered.length - visibleEntries.length
+  // Soft cap: a small leftover is simply handed over instead of scaring the user with a limit
+  // message, so the worst case is one batch past the cap.
+  const revealCapped = visibleCount >= GALLERY_RENDER_CAP && hiddenCount > GALLERY_PAGE_SIZE
 
   async function copyUrl(entry: StorageEntryView) {
     if (!entry.publicUrl) return
@@ -340,11 +346,15 @@ export function GalleryPage() {
                 </>}
               </div>
             ))}
-            {hiddenCount > 0 && (
+            {hiddenCount > 0 && (revealCapped ? (
+              <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-4 py-2.5 text-xs leading-5 text-amber-700">
+                本页最多渲染约 {GALLERY_RENDER_CAP} 项，还有 {hiddenCount} 项未显示。继续追加会让滚动变慢，请进入更深的目录或用搜索缩小范围。
+              </div>
+            ) : (
               <button onClick={() => setVisibleCount((current) => current + GALLERY_PAGE_SIZE)} className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50">
                 继续显示 {Math.min(GALLERY_PAGE_SIZE, hiddenCount)} 项（还有 {hiddenCount} 项未渲染）
               </button>
-            )}
+            ))}
           </div>
         </section>
       )}
