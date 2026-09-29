@@ -1,5 +1,10 @@
 from pathlib import Path
 import re
+import sys
+
+# Failure labels carry Chinese UI strings; the Windows console codepage would mangle them.
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 ROOT = Path(__file__).resolve().parents[1]
 checks = []
@@ -69,6 +74,65 @@ if site_match and base_match:
             is not None,
             f'.env.example documents the same docs base URL {docs_base}',
         )
+
+APP_SRC_DIR = ROOT / 'apps' / 'desktop' / 'src'
+# Third-party consoles the tutorials legitimately point at. Anything else in an
+# "enter/click/open **X**" instruction has to be a string the desktop app really renders.
+EXTERNAL_UI = {
+    'R2 Object Storage', 'Cloudflare', '偏好设置', '图像', 'Typora', 'GitHub', 'Gitee',
+    '阿里云 OSS', '腾讯云 COS', 'Bucket', 'Console', '控制台', 'Access Key', '自定义域名',
+    'Custom Command / 自定义命令', 'Test Uploader / 验证图片上传选项',
+}
+INSTRUCTION = re.compile(r'(进入|打开|点击|选择|在)([^\n]{0,12})\*\*([^*\n]{1,40})\*\*')
+PROSE = set('。．，,、；;：:!！?？()（）')
+
+
+def app_source_text() -> str:
+    return '\n'.join(
+        path.read_text(encoding='utf-8')
+        for path in sorted(APP_SRC_DIR.rglob('*'))
+        if path.is_file() and path.suffix in ('.ts', '.tsx')
+    )
+
+
+def split_targets(value: str) -> list:
+    if any(character in PROSE for character in value):
+        return []
+    return [segment.strip() for segment in value.split('→') if segment.strip()]
+
+
+source = app_source_text()
+nav_labels = set(re.findall(r"\{ key: '[a-z]+', label: '([^']+)'", text('apps/desktop/src/components/AppShell.tsx')))
+require(len(nav_labels) >= 7, f'app navigation is enumerable for tutorial checks (found {sorted(nav_labels)})')
+
+phantom = []
+for path in content_files:
+    location = path.relative_to(DOCS_DIR).as_posix()
+    for verb, gap, value in INSTRUCTION.findall(path.read_text(encoding='utf-8')):
+        segments = split_targets(value)
+        if not segments:
+            continue
+        # A substring match in some component is not reachability: 方案 appears in code that no
+        # navigation entry can open, so page-level instructions must name a real sidebar item.
+        if verb in ('进入', '打开') or '左侧' in gap:
+            if segments[0] not in nav_labels and segments[0] not in EXTERNAL_UI:
+                phantom.append(f'{location}:{verb} {segments[0]}(不是可达的导航项)')
+        for segment in segments:
+            if segment in EXTERNAL_UI or segment in nav_labels or segment in source:
+                continue
+            phantom.append(f'{location}:{segment}')
+require(not phantom, f'tutorials only name UI the app renders (phantom: {phantom})')
+
+# Recipes/方案 can only be created from WorkflowsPage, which has no navigation entry, so no
+# tutorial may tell the reader to create or install one. Negated sentences are the correct case.
+NEGATION = ('不要求', '不需要', '无需', '不必', '不是必须', '不天然')
+recipe_line = re.compile(r'(创建|安装)[^\n]{0,12}(方案|Recipe)')
+promised = []
+for path in content_files:
+    for line in path.read_text(encoding='utf-8').splitlines():
+        if recipe_line.search(line) and not any(word in line for word in NEGATION):
+            promised.append(f'{path.relative_to(DOCS_DIR).as_posix()}:{line.strip()[:40]}')
+require(not promised, f'no tutorial asks the reader to create a 方案 that has no reachable UI ({promised})')
 
 failed = [label for ok, label in checks if not ok]
 for ok, label in checks:
