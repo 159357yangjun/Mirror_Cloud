@@ -53,6 +53,8 @@ export function AssetsPage() {
   const [copied, setCopied] = useState<string | null>(null)
   const [repairing, setRepairing] = useState<string | null>(null)
 
+  const listTruncated = assets.length >= assetLimit
+
   const filtered = useMemo(() => {
     const keyword = search.trim().toLowerCase()
     if (!keyword) return assets
@@ -162,7 +164,13 @@ export function AssetsPage() {
         {assetsLoading && <div className="col-span-full grid min-h-[240px] place-items-center text-slate-300"><LoaderCircle size={22} className="animate-spin" /></div>}
         {!assetsError && !assetsLoading && !filtered.length && (
           <div className="col-span-full rounded-[26px] border border-dashed border-[var(--border)] bg-[var(--surface)] p-10">
-            {search ? <div className="text-center text-sm font-medium">没有匹配的资源</div> : (
+            {search ? (
+              <div className="text-center">
+                <div className="text-sm font-medium">没有匹配的资源</div>
+                {listTruncated && <div className="mt-1 text-xs text-[var(--text-muted)]">当前只在已加载的 {assets.length} 条里搜索，更早的资源还没有取回本地。</div>}
+                {listTruncated && assetLimit < 10_000 && <button onClick={() => setAssetLimit((current) => Math.min(current + 200, 10_000))} className="mt-3 rounded-xl border border-[var(--border)] px-3 py-1.5 text-xs font-medium">加载更多后再搜一次</button>}
+              </div>
+            ) : (
               <div>
                 <div className="text-center"><div className="mx-auto grid size-11 place-items-center rounded-2xl bg-slate-950 text-white"><Sparkles size={17} /></div><div className="mt-4 text-sm font-semibold">3 步完成第一次公网发布</div><div className="mt-1 text-xs text-[var(--text-muted)]">不用先理解 Endpoint、Workflow 或多云策略；连接云端、按需开启插件，然后上传。</div></div>
                 <div className="mx-auto mt-7 grid max-w-3xl grid-cols-3 gap-3 max-md:grid-cols-1">
