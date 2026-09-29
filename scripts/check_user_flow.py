@@ -391,6 +391,12 @@ require(all(i.startswith('node:') for i in harness_imports), f'the harness adds 
 desktop_pkg = json.loads(text('apps/desktop/package.json'))
 require('verify_dialog_interactions.mjs' in json.dumps(desktop_pkg.get('scripts', {})), 'the harness is reachable from an npm script entry')
 
+# Encoding integrity for the change record. A latin1 read + utf8 write turns every CJK character
+# into a two-byte mojibake sequence; the result still decodes as UTF-8, so "it parsed" proves
+# nothing. Real Chinese code points sit far above U+00FF, so their absence is the signature.
+change_log_text = (ROOT / 'CHANGELOG.md').read_bytes().decode('utf-8')
+require(any(ord(c) > 0x255 for c in change_log_text), 'CHANGELOG.md still holds real CJK code points (not double-encoded)')
+
 failed = [label for ok, label in checks if not ok]
 for ok, label in checks[-20:]:
     print(('OK   ' if ok else 'FAIL ') + label)
