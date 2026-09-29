@@ -18,7 +18,7 @@ This makes a given source revision resolve to the same dependency graph across d
 
 ## Compiler toolchain
 
-`rust-toolchain.toml` pins the Rust compiler used for development, CI and release builds. The current release line is pinned to Rust `1.98.1`, the compiler used by the verified Windows v1.4.0 Preview bundle. CI and Release explicitly install the same toolchain instead of following the moving `stable` channel.
+`rust-toolchain.toml` pins the Rust compiler used for development, CI and release builds. The current release line is pinned to Rust `1.98.1`, the compiler used by the verified Windows v1.4.3 bundle. CI and Release explicitly install the same toolchain instead of following the moving `stable` channel.
 
 Compiler upgrades are intentional dependency changes: update `rust-toolchain.toml` and CI/Release toolchain inputs together, then rerun the complete validation and a real Windows bundle before accepting the new compiler.
 
