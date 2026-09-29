@@ -19,7 +19,7 @@ Gitee 在 Publisher 中属于 **Repository Storage**。它适合项目文档、�
 2. 在账号安全/访问令牌页面创建 Token，只授予实际需要的仓库读写权限。
 3. Publisher 中进入 **云端 → 添加存储 → Gitee**。
 4. 填写 Owner、Repository、Branch、Token；Root 可设置为 `assets`。
-5. 如你有独立公开域名/代理，可填写“自定义公开域名”；否则使用仓库可用的 Raw 访问方式。
+5. 留空“自定义公开域名”时，应用会自己拼出 Raw 地址：`https://gitee.com/<Owner>/<Repository>/raw/<Branch>/<Root>/<文件>`；有独立公开域名或代理再填这一项。访客能否打开这条地址，取决于仓库本身是否公开。
 6. 点击 **测试并保存**。
 </Steps>
 
