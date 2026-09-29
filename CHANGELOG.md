@@ -131,8 +131,8 @@ sawMinimizedReject: true   broken: []
 
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 |
 | --- | --- | --- | --- | --- |
-| `scripts/verify_dialog_interactions.mjs` | 888 | 55,706 | `c1d7a403b69a3b3388cb75c47cbbd078ec2899a51eff11f6c349da8946c9797d` | `gate-unit` 6/6、`gate` 3 项 + `sawMinimizedReject: true`、`ab` `deltaOverflowX: 210` |
-| `scripts/check_user_flow.py`（认证上面这个测具的那份检查器，同址在 `scripts/`） | 405 | 38,178 | `1cb644121a89c4aac5c597ea214ab5f13ad3dd5a8fec6eaa8857116165a3ce32` | `total checks: 156` |
+| `scripts/verify_dialog_interactions.mjs` | 965 | 61,019 | `9341e4ba1f65a8adc6f4a57b7e252e0cf48f4b069d140ee9bfa04694c9f7a78a` | `gate-unit` 6/6、`gate` 3 项 + `sawMinimizedReject: true`、`ab` `deltaOverflowX: 210`、`identity` 75 个导出全中 |
+| `scripts/check_user_flow.py`（认证上面这个测具的那份检查器，同址在 `scripts/`） | 411 | 38,849 | `53006acee34da1eae87d5ddfba629c9e1fb1c1da1ff0f3854892969fc15a5b1d` | `total checks: 159` |
 
 **指纹是对着 `git show <commit>:<path>` 的 blob 比的，不是对着工作区比的**——`core.autocrlf=true` 下工作区是 CRLF、库里是 LF，拿工作区算出的哈希别人复现不出来。
 
@@ -178,12 +178,53 @@ M5 判定恒过             → rc=1  FAIL 五条全被 accepted                
 M6 摘掉 npm 入口        → rc=1  FAIL the harness is reachable from an npm script entry
 M7 把 CHANGELOG 双重编码 → rc=1  FAIL CHANGELOG.md still holds real CJK code points (not double-encoded)
                           同一刻 readFileSync(...,'utf8') 不报错 —— 只做 parse 检查抓不到这类损坏
+M8 摘掉身份门禁函数        → rc=1  FAIL the harness verifies it is measuring this project
+M9 失败改成 finish(2) 不抛 → rc=1  FAIL an identity mismatch exits as a harness fault, not a pass or a regression
+M10 把 type/interface 加回导出正则 → rc=1  FAIL the export comparison ignores type exports that the TS transform erases
 每次改完立即还原并 diff -q 确认字节一致；baseline 与 restored 均 rc=0。
 ```
 
 真浏览器侧的端到端拦截（`gate` 模式，`Browser.setWindowBounds minimized`）：`visibilityState` 翻成 `hidden` 而 `innerWidth/innerHeight` **仍是 1406×803**，门禁照样抛错退出——所以"尺寸>0 就安全"是错的。`innerWidth=0` 那一支**本机无法在活页面上复现**（`setDeviceMetricsOverride` 忽略 0，最小化窗口保留旧尺寸），它由上面 `gate-unit` 的第 3、6 例覆盖，输入是本轮连接器实际报过的读数。**这是等价物的边界，别当端到端证据。**
 
-守卫计数：`check_user_flow.py` 143 → 150 → 154 → 155 → **156**（本批 +1 条入口可达性、+1 条变更记录编码完整性）。
+守卫计数：`check_user_flow.py` 143 → 150 → 154 → 155 → 156 → **159**（本批 +3 条身份门禁断言）。
+
+### 身份门禁：指纹钉得住"文档与测具同版本"，钉不住"测具跑的是当前代码"
+
+上面那张表只保证测具文件本身没被换过。它**不保证 1420 端口上跑的是这棵树**——旧 commit 的 dev server 还挂着，测出来的就是旧代码，而且照样报 PASS。这台机器有前科：另一套回归脚本硬编码 `5173`，撞上别的项目长期占用，15 页全报"未渲染"仍然 rc=0。所以采样前加三道，全部**从仓库现读、不写死常量**（否则会和被测代码一起漂移）：
+
+- **L1** `document.title` 必须等于磁盘 `apps/desktop/index.html` 里的 `<title>`；
+- **L2** dev server 返回的 `/package.json` 必须与工作区**逐字节相同**（Vite 对这个路径是原样透传的）——这一条专抓"同一个应用、另一个 checkout/另一个 commit"；
+- **L3** 磁盘 `src/lib/desktop.ts` 里每个**值导出**名都必须出现在 server 返回的模块文本里——这一条专抓"package.json 没变但源码是旧的"。
+
+不匹配就 **`throw` 并由 `main().catch` 退出码 2**：既不算通过也不算回归。退出码表已写进测具头部注释（0 测成 / 1 断言真红或崩 / 2 harness 故障 / 3 找不到浏览器 / 4 dev server 不可达）。
+
+红绿两条实输出（红用 `node:http` 临时起的假 server 顶在 1431/1432 端口，脚本放在仓库外，跑完删）：
+
+```text
+$ node scripts/verify_dialog_interactions.mjs ab --app http://127.0.0.1:1431/   # 另一个项目占端口
+rc=2  PROJECT IDENTITY GATE FAILED - refusing to measure. Exit 2 means harness fault...
+        L2 served /package.json differs from the working tree (different checkout or app)
+        L1 document.title is "Some Other App", index.html says "图床 | Image Hosting Platform"
+
+$ node scripts/verify_dialog_interactions.mjs ab --app http://127.0.0.1:1432/   # 同标题同 package.json，源码是旧的
+rc=2  PROJECT IDENTITY GATE FAILED - refusing to measure. ...
+        L3 served /src/lib/desktop.ts is missing 1 export(s) present on disk: openExternalUrlOrReport
+
+$ node scripts/verify_dialog_interactions.mjs ab                                # 真 dev server
+rc=0  IDENTITY   {"title":"图床 | Image Hosting Platform","packageJsonMatches":true,"exportsChecked":75,"exportsMissing":0}
+      PROVENANCE {"headCommitUnderTest":"bd9c06b","desktopPackageVersion":"1.4.4", ...}
+      "deltaOverflowX": 210
+```
+
+L3 那条红是**独立**抓到的：假 server 的标题和 `package.json` 都跟真的一模一样，只有模块少了被验修复的那个导出。
+
+**这两条红之前，门禁自己先错过两次，都记下来：**
+1. 第一版把 `export interface` / `export type` 也算进比较，于是对着**正确的** dev server 报 `missing 1 export: RemoteIndexSyncResult`——TS transform 会把类型擦掉，服务端的 JS 里永远不可能有它。改成只比值导出（`function|const|class|enum`）。这条断言现在被 `the export comparison ignores type exports that the TS transform erases` 钉住，把 `type|interface` 加回去就红（M10）。
+2. 第一版失败时调 `finish(2)`，而 `finish` 是 `setTimeout(process.exit, 300)`——**控制流继续往下走**，于是同一次运行先打印 `PROJECT IDENTITY GATE FAILED`，紧接着又打印一行 `"packageJsonMatches":true` 的成功 IDENTITY。等于门禁报了故障还顺手伪造通过证据。改成 `throw`（带 `identityFault` 标记 → 退出码 2），M9 把 `throw` 换回 `finish(2)` 就红。
+
+**测具与被测之间的版本链还剩哪环没闭上**：应用里**没有构建期版本标记**，Vite 又是按需读盘，所以 L2/L3 证明的是"server 的根目录 = 当前工作树"，而**不是**"这个 dev server 是在 `bd9c06b` 启动的"。报告里 `headCommitUnderTest` 取自我本地 `git rev-parse --short HEAD`，不是应用自报——想真正闭死这一环，得让应用暴露一个构建期 commit（新配置项，超出本轮范围，记为待批）。
+
+
 
 
 ### 本轮记录（仓库路径与实状态）
