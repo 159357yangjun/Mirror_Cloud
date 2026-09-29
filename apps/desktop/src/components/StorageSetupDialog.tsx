@@ -47,35 +47,35 @@ const providerGuideSteps: Record<SupportedProviderKey, string[]> = {
     '在 Cloudflare R2 创建 Bucket，并记下 Account ID。',
     '创建 R2 API Token / Access Key，获得 Access Key ID 与 Secret Access Key。',
     'Region 保持 auto；填写 Bucket、Account ID 和密钥。',
-    '配置可公开访问的域名（自定义域名或允许公开读取的地址），用于生成图片 URL。',
+    '填写公开访问域名：它决定图片的公网链接。留空时该云端只能作为镜像 / 备份成员；作为发布目标时发布会失败并回滚。',
     '点击“测试并保存”，再上传一张测试图片验证。',
   ],
   s3: [
     '准备兼容 S3 的 Bucket、Endpoint 和 Region。',
     '创建具备对象读写权限的 Access Key ID / Secret Access Key。',
     '填写 Endpoint、Region、Bucket 和密钥；资源目录可选。',
-    '填写真正能让别人访问图片的公开 URL 前缀。',
+    '填写真正能让别人访问图片的公开 URL 前缀；应用不会从 Endpoint 推导图片地址，留空时该云端只能作为镜像 / 备份成员。',
     '点击“测试并保存”，再到图库验证浏览。',
   ],
   oss: [
     '在阿里云 OSS 创建 Bucket，并确认区域对应的 Endpoint。',
     '创建具备该 Bucket 读写权限的 AccessKey ID / AccessKey Secret。',
     '填写 Bucket、Endpoint、密钥和可选资源目录。',
-    '建议绑定 CDN 或自定义公开域名并填入公开访问域名。',
+    '填写公开访问域名；应用不会从 Endpoint 推导图片地址。留空时该云端只能作为镜像 / 备份成员，作为发布目标会失败并回滚。',
     '点击“测试并保存”，再上传测试图片。',
   ],
   cos: [
     '在腾讯云 COS 创建 Bucket，并确认区域对应的 Endpoint。',
     '创建具备该 Bucket 读写权限的 SecretId / SecretKey。',
     '填写 Bucket、Endpoint、密钥和可选资源目录。',
-    '建议绑定 CDN 或自定义公开域名并填入公开访问域名。',
+    '填写公开访问域名；应用不会从 Endpoint 推导图片地址。留空时该云端只能作为镜像 / 备份成员，作为发布目标会失败并回滚。',
     '点击“测试并保存”，再上传测试图片。',
   ],
   webdav: [
     '准备 WebDAV Endpoint、用户名与密码 / App Password。',
     '确认账号对目标目录具备读取、写入和删除权限。',
     '填写可选资源目录。',
-    'WebDAV 地址通常不是公网图片地址，因此还需要填写别人可以直接访问文件的公开 URL 前缀。',
+    'WebDAV 地址通常不是公网图片地址，因此要填写别人可以直接访问文件的公开 URL 前缀；留空时该云端只能作为镜像 / 备份成员。',
     '点击“测试并保存”，再到图库验证远端浏览。',
   ],
 }
@@ -313,7 +313,7 @@ export function StorageSetupDialog({
             <Field label="Secret Access Key" type="password" value={s3Form.secretAccessKey} onChange={(value) => setS3('secretAccessKey', value)} />
             <Field label="资源目录（可选）" value={s3Form.root || ''} onChange={(value) => setS3('root', value)} placeholder="assets" />
             <div className="sm:col-span-2">
-              <Field label="公开访问域名" value={s3Form.publicBaseUrl || ''} onChange={(value) => setS3('publicBaseUrl', value)} placeholder="https://img.example.com" />
+              <Field label="公开访问域名（发布到该云端时必填）" value={s3Form.publicBaseUrl || ''} onChange={(value) => setS3('publicBaseUrl', value)} placeholder="https://img.example.com" />
               <p className="mt-1.5 text-[11px] text-slate-400">用于生成别人可以直接打开的 URL。</p>
             </div>
           </div>
@@ -328,7 +328,7 @@ export function StorageSetupDialog({
             <Field label={provider === 'cos' ? 'SecretKey' : 'AccessKey Secret'} type="password" value={objectForm.secretAccessKey} onChange={(value) => setObject('secretAccessKey', value)} />
             <Field label="资源目录（可选）" value={objectForm.root || ''} onChange={(value) => setObject('root', value)} placeholder="assets" />
             <div className="sm:col-span-2">
-              <Field label="公开访问域名" value={objectForm.publicBaseUrl || ''} onChange={(value) => setObject('publicBaseUrl', value)} placeholder="https://img.example.com" />
+              <Field label="公开访问域名（发布到该云端时必填）" value={objectForm.publicBaseUrl || ''} onChange={(value) => setObject('publicBaseUrl', value)} placeholder="https://img.example.com" />
               <p className="mt-1.5 text-[11px] text-slate-400">建议使用已绑定的 CDN / 自定义域名；不要填写控制台地址。</p>
             </div>
           </div>
@@ -342,7 +342,7 @@ export function StorageSetupDialog({
             <Field label="用户名" value={webdavForm.username} onChange={(value) => setWebDav('username', value)} />
             <Field label="密码 / App Password" type="password" value={webdavForm.password} onChange={(value) => setWebDav('password', value)} />
             <div className="sm:col-span-2">
-              <Field label="公开访问域名" value={webdavForm.publicBaseUrl || ''} onChange={(value) => setWebDav('publicBaseUrl', value)} placeholder="https://files.example.com/public" />
+              <Field label="公开访问域名（发布到该云端时必填）" value={webdavForm.publicBaseUrl || ''} onChange={(value) => setWebDav('publicBaseUrl', value)} placeholder="https://files.example.com/public" />
               <p className="mt-1.5 text-[11px] text-slate-400">WebDAV 本身不等于公网图床；这里必须填写别人能直接访问资源的公开 URL 前缀。</p>
             </div>
           </div>

@@ -327,6 +327,16 @@ alerting = sorted(
 )
 require(not alerting, f'errors reach the user through toasts only, never a blocking native dialog ({alerting})')
 
+# Which providers can produce a public URL without the user typing a domain is a backend fact;
+# the form labels have to agree with it or people discover it as a failed publish plus rollback.
+opendal_storage = text('crates/storage-opendal/src/lib.rs')
+github_storage = text('crates/storage-github/src/lib.rs')
+setup_dialog = text('apps/desktop/src/components/StorageSetupDialog.tsx')
+require(opendal_storage.count('standard_capabilities(config.public_base_url.is_some())') == 4, 'S3/R2, OSS, COS and WebDAV can only build a public URL from the configured domain')
+require('raw.githubusercontent.com' in github_storage, 'GitHub storage derives a Raw URL when no custom domain is set')
+require(setup_dialog.count('公开访问域名（发布到该云端时必填') == 3, 'every provider without a derived public URL states when the domain is required')
+require(setup_dialog.count('自定义公开域名（可选') == 1, 'repository providers keep the custom domain optional')
+
 failed = [label for ok, label in checks if not ok]
 for ok, label in checks[-13:]:
     print(('OK   ' if ok else 'FAIL ') + label)

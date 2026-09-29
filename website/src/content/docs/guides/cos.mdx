@@ -12,7 +12,7 @@ import { Steps, Aside } from '@astrojs/starlight/components'
 2. 确认 COS Endpoint，例如 `https://cos.ap-guangzhou.myqcloud.com`。
 3. 创建独立 CAM 子用户/密钥，只授予目标 Bucket 所需对象读写/删除权限。
 4. 准备自定义域名或 CDN 地址，作为别人实际访问图片的 URL 前缀。
-5. Publisher 中选择 **腾讯云 COS**，填写 Bucket、Endpoint、SecretId、SecretKey、可选 Root 和公开访问域名。
+5. Publisher 中选择 **腾讯云 COS**，填写 Bucket、Endpoint、SecretId、SecretKey；Root 可选，但 **公开访问域名** 在作为发布目标时必填：应用不会从 Endpoint 推导图片地址，留空时该云端只能作为镜像 / 备份成员，作为发布目标会失败并回滚。
 6. 点击 **测试并保存**。
 </Steps>
 
