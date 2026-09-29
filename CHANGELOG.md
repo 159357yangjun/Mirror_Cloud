@@ -85,6 +85,10 @@ $ cd apps/desktop && npx tsc --noEmit -p tsconfig.app.json
 $ python jobs.py 36592371911 36593715132      # GitHub Actions API
 === run 36592371911 ===   desktop-check | completed | success | steps=25 | non-green=[]
 === run 36593715132 ===   desktop-check | completed | success | steps=25 | non-green=[]
+
+$ python watch_ci.py                          # 本批三个提交推上 dev 之后
+attempt 3: run 36599075215 CI status=completed conclusion=success
+JOB desktop-check | completed | success | steps=25 | non-green=[]
 ```
 
 原第 4 条（`3c642af` / `49f7e0c` 的 CI 结论）到此填实：两条提交各触发一次 CI，运行 `36592371911` 与 `36593715132`，唯一作业 `desktop-check` 均 `completed / success`，25 个步骤无一非绿。
@@ -97,7 +101,8 @@ $ python jobs.py 36592371911 36593715132      # GitHub Actions API
 2. **Tauri 分支的 `openUrl` 失败提示**：需要 Rust 运行时，本机无 cargo，只能靠代码路径推断。
 3. **14 行级长文案在最小窗口下的可用性**：640×480（`tauri.conf.json` 的 minWidth/minHeight）时，5 行文案卡片高 424px、按钮完整可见；把正文撑到 14 行则卡片高 952px，确认按钮落在 y=877..943、视口外，且遮罩 `overflowY: visible` 不可滚动 → 用户既看不到也点不到。**当前 10 个调用点里最长的批量删除文案只有 2 行，构造不出这个尺寸，所以判为潜在而非现存缺陷，未修。** 真要修是给 `<section>` 加 `max-h` + 滚动。
 4. **确认框打开期间吐司被遮住**：95 盖住 70 是实测事实。现有调用点都是"确认关闭之后才发吐司"，所以看不见吐司的情况还没构造出来；如果以后出现"确认框还在、后台先报错"的流程，这条会变成真的看不见。
-5. **默认分支 `main` 指向另一项目**：依旧只交方案、未执行任何分支操作，方案与影响面见上一批第 5 条。
+5. **`StorageBrowserDialog.tsx:148 / :168 / :182` 还有 3 处 `void copyText(...)`**（三个"复制"按钮）：和这轮修掉的 `void openExternalUrl` 是同一类丢弃 promise 的写法，剪贴板写入失败时按钮不会给任何反馈。同一条线改起来只要把包装函数换成通用版，但本轮没有实测证据（浏览器分支的 `navigator.clipboard` 在 headless 下直接成功，构造不出失败），所以**只登记不动**，等真需要时一起改。
+6. **默认分支 `main` 指向另一项目**：依旧只交方案、未执行任何分支操作，方案与影响面见上一批第 5 条。
 
 ## 1.4.4 - Gallery Render Bound and Installer Publisher
 
