@@ -33,13 +33,74 @@ $ npm run build          # apps/desktop，tsc -b && vite build
 
 ### 本轮仍然没有验证的东西
 
-1. **新确认框的视觉与交互**：焦点初始位置、Escape 与遮罩点击的实际行为、长文案换行、与其他弹层（上传对话框 / 图库预览）的 z-index 关系——只过了 `tsc`、`vite build` 和静态断言，没有运行时观察，也没装过应用。
+1. **新确认框的视觉与交互**：焦点初始位置、Escape 与遮罩点击的实际行为、长文案换行、与其他弹层（上传对话框 / 图库预览）的 z-index 关系——只过了 `tsc`、`vite build` 和静态断言，没有运行时观察，也没装过应用。**（已被下一节的实测取代：五项全部量过，其中长文案溢出是真缺陷并已修复。）**
 2. **教程基址是否真的进了 v1.4.3 / v1.4.4 的包**：NSIS 压缩使二进制搜索无效，解包或安装超出授权；只有间接证据链（Pages 10:47Z 返回 200 → CI 探测步 11:01:46 → 前端构建步 11:10:26）。
-3. **`openExternalUrl` 失败时用户零提示**：三处调用点都是 `onClick={() => void openExternalUrl(...)}`（`HelpCenterDialog.tsx:32`、`StorageSetupDialog.tsx:256`、`SettingsPage.tsx:328`），rejection 被吞；本轮只证明了调用点形态，没构造出 openUrl 真失败的场景。可修，未修。
-4. **`3c642af` 的 CI 结论**：推送成功（代理一度全断、直连重试成功），但记录本条时 API 不可达，尚未读到该次运行的最终结果。
+3. **`openExternalUrl` 失败时用户零提示**：三处调用点都是 `onClick={() => void openExternalUrl(...)}`（`HelpCenterDialog.tsx:32`、`StorageSetupDialog.tsx:256`、`SettingsPage.tsx:328`），rejection 被吞；本轮只证明了调用点形态，没构造出 openUrl 真失败的场景。可修，未修。**（已被下一节取代：两种失败场景都构造出来了，并已修。）**
+4. **`3c642af` 的 CI 结论**：推送成功（代理一度全断、直连重试成功），但记录本条时 API 不可达，尚未读到该次运行的最终结果。**（已填实：`36592371911` / `36593715132` 均 `desktop-check completed / success`，25 步无一非绿。）**
 5. **默认分支 `main` 指向另一项目（`# depot`）**：按指令**未执行任何分支操作**，只交方案。关键事实是 `git merge-base --is-ancestor origin/main HEAD` 成立——main 是 dev 的祖先，因此 `git push origin dev:main` 是**纯快进、零提交丢失、不需要 force push**；推荐它而非"只改默认分支指针"（后者仍把 depot 的 README 留在仓库里）。影响面：Dependabot 已显式 `target-branch: dev` 故不受影响；`release.yml` 只认 `v*` tag 故推 main 不会误发版；`ci.yml` 无分支过滤故以后推 main 会跑 CI；外部已分享的 `blob/main/<老文件>` 链接在文件被改名/删除后会 404。
 
+## Unreleased - 2026-09-29 下午（同一轮的第二批：把"无法证明"改成"已证明"）
+
+本轮提交：`534cc15`、`a561161`（`dev`，接在 `a8eb977`、`502b25c`、`3c642af`、`49f7e0c` 之后）。上一批留下的第 1、3、4 条在本批被实测取代，原文保留在下面并逐条标注状态。
+
+### 测量手段
+
+只起前端：`npx vite --port 1420`（**不碰 Rust、不出包、不装任何东西**）。浏览器侧用本机已装的 Edge `--headless=new` + CDP，输入全部走 `Input.dispatchMouseEvent` / `Input.dispatchKeyEvent`（可信事件，React 的 `onMouseDown` 才会真的触发），采样前先 `getAnimations().pause()` 冻结入场动画。实测视口 1406×803。
+
+> 中途踩到两个会让结论失真的坑，都记下来：① 会话内置的浏览器连接器那个窗口是 0×0 / `visibilityState: hidden`，同一个 440px 卡片被量成 186.8px——隐藏窗口的几何值不可用；② `styles.css` 有 `scroll-behavior: smooth`，`scrollIntoView()` 之后立刻读 `getBoundingClientRect()` 会拿到滚动前的坐标，第一次跑就"点不到"设置页的按钮。
+
+### 确认框：五件事的实测值（原第 1 条，从"无法证明"移出）
+
+| 问的 | 实测 |
+| --- | --- |
+| 初始焦点 | `document.activeElement.textContent === '取消'`，`focusIsCancel: true`、`focusIsConfirm: false`。追加测了 Enter：焦点在取消上时回车**关闭且不执行**破坏性动作。 |
+| Escape | 关闭。关闭后设置页没有出现"操作继续执行"才会产生的错误块，页面错误日志为空 → 说明 resolve(false) 走通、`await` 后面的分支没跑。 |
+| 点遮罩 | 在 (8,8) 按下即关闭（`onMouseDown`，不是 `onClick`）；在卡片标题上按下**不**关闭（`stopPropagation` 生效）；右上角 X 关闭。 |
+| 长文案 | 卡片宽度钉死在 440px 不增长；`<p>` 可视宽 302px，塞入无空格可断的长 token（哈希名 / 原始 URL）后 `scrollWidth 550 - clientWidth 302 = 248px` 溢出，**文字画到遮罩和模糊背景上**（1440 与 640×480 两种宽度都溢出，截图 `05-long-text-1440.png` 修复前 / 修复后各一张）。已修：标题与正文加 `break-words`，重测 overflowX 在两种宽度下均为 **0**，卡片宽度不变。 |
+| z-index | 确认层 computed `z-index: 95`、`position: fixed`，祖先链里只有它自己因 `backdrop-filter` 生成层叠上下文，`main` 与 `app-shell-root` 都是 `static`/`z-auto` → 它和其他弹层在同一个根上下文里直接比大小：UploadDialog `50`、StorageBrowser 层 `70`、其预览 `80`、HelpCenter / ThemePanel / 图库预览 `90`、ToastViewport `70`。ConfirmDialog 是 `main` 的最后一个子节点（index 2 of 3）。**真实共存命中测试**：确认框打开时用 `elementFromPoint` 打吐司中心，落点在确认层内 → 95 盖住 70（副作用见下面"仍然没验证"第 5 条）。UploadDialog 与确认框无法真共存（它的遮罩会吞掉侧栏点击），所以"平局怎么判"用同 class 的 `fixed inset-0 z-[95]` 合成节点测：后挂载者命中 → `GalleryPage.tsx:364` 那个同为 95 的路径对话框输给 `App.tsx:53` 最后挂载的 ConfirmDialog。 |
+
+纯浏览器不崩：7 条路由逐个可信点击后 `main h1` 都正确切换、`#root` 未卸载、无 React 崩溃；缺 Tauri 运行时的表现是吐司「数据加载失败：TypeError: Cannot read properties of undefined (reading 'invoke')」。**这条只在非 Tauri 运行时出现，装包用户看不到，因此按 harness 事实记录、不算产品缺陷。**
+
+### 教程基址不可达时用户看到什么（原第 3 条，已修）
+
+`VITE_DOCS_BASE_URL` 只用本机环境变量注入，仓库配置未改。
+
+- 指向**不可达但合法**的 `https://definitely-not-a-real-docs-host.invalid/image-hosting-platform`：三处调用点（`HelpCenterDialog.tsx:32`、`SettingsPage.tsx:328`、`StorageSetupDialog.tsx:256`，后者要先在云端页展开"配置教程"才出现）各自开出 1 个新标签，标签标题就是裸域名（即浏览器自己的错误页）；应用内 **0 条吐司、0 处内联错误、0 条 console 记录**。用户感知 = "开了个报错页，软件里什么都没发生"。
+- 指向**畸形**的 `not a url`：修复前 0 标签、0 提示（`new URL()` 的 rejection 被调用点丢弃）；修复后三处都出吐司「打开链接失败：TypeError: Failed to construct 'URL': Invalid URL」。同一页面内直接对比 `void` 与包装函数：`toastsAfterVoidCall: 0`、`toastsAfterWrapperCall: 1`。
+- 我第一版顺手加的 `if (!window.open(...)) throw new Error('浏览器拦截了新窗口…')` **是错的**：规范规定带 `noopener` 时 `window.open` 一律返回 `null`，实测三个本来能正常打开的链接全部误报成"被拦截"。已撤掉，并在注释里写明浏览器分支只能报告真正的 rejection。
+- 诚实边界：`popup 被拦`这一种失败在浏览器分支仍**不可检测**（因为保留 `noopener` 比一个诊断信号更值钱）；Tauri 分支的 `openUrl` rejection 现在会被报告，但那条分支需要 Rust 运行时，本机没跑。
+
+### 本轮验证命令与实际输出
+
+```text
+$ for g in validate check_contracts check_user_flow check_docs_site; do python scripts/$g.py; done
+validate           ... version alignment: 1.4.4 | GitHub write queue: OK
+check_contracts    Command contracts: OK | frontend invokes: 66 | Rust commands: 66 | registered: 66
+check_user_flow    User-flow ... OK | total checks: 150        # 143 → 150，本批 +7
+check_docs_site    Docs site contract OK | total checks: 16
+
+$ cd apps/desktop && npx tsc --noEmit -p tsconfig.app.json
+（无输出，exit 0）
+
+$ python jobs.py 36592371911 36593715132      # GitHub Actions API
+=== run 36592371911 ===   desktop-check | completed | success | steps=25 | non-green=[]
+=== run 36593715132 ===   desktop-check | completed | success | steps=25 | non-green=[]
+```
+
+原第 4 条（`3c642af` / `49f7e0c` 的 CI 结论）到此填实：两条提交各触发一次 CI，运行 `36592371911` 与 `36593715132`，唯一作业 `desktop-check` 均 `completed / success`，25 个步骤无一非绿。
+
+守卫变异验证（每次只改一处，跑完立即还原并复核内容一致）：摘掉 `<p>` 的 `break-words` → FAIL `the confirm dialog detail wraps unbreakable filenames`；把 `SettingsPage.tsx:328` 改回丢弃 promise 的写法 → FAIL `no external-link open is fire-and-forget (['src/pages/SettingsPage.tsx'])`；摘掉包装里的 `.catch(...)` → 同时 FAIL 上面两条。这条守卫自己也红过一次：它把 `desktop.ts` 里描述旧写法的**注释文本**当成了违规调用点，我没有放宽断言，而是改写注释——放宽规则会让下一个真调用点混过去。
+
+### 本批仍然没有验证的东西
+
+1. **基址到底进没进 v1.4.3 / v1.4.4 的包**：按批准不下包、不解包、不安装，这条**允许长期停在无法本地证明**。日后要证的话，方案是在 `release.yml` 现有 `windows-bundle` 作业里加一步 `echo "docs base baked as: ${env:VITE_DOCS_BASE_URL}"`——不新增作业、不新增 artifact、不改 version、不动 `check_docs_site.py` 里"禁止硬编码 `VITE_DOCS_BASE_URL:`"的既有约束（它禁的是硬编码，回显探测结果是另一回事）。**方案先报，未批不动 CI。**
+2. **Tauri 分支的 `openUrl` 失败提示**：需要 Rust 运行时，本机无 cargo，只能靠代码路径推断。
+3. **14 行级长文案在最小窗口下的可用性**：640×480（`tauri.conf.json` 的 minWidth/minHeight）时，5 行文案卡片高 424px、按钮完整可见；把正文撑到 14 行则卡片高 952px，确认按钮落在 y=877..943、视口外，且遮罩 `overflowY: visible` 不可滚动 → 用户既看不到也点不到。**当前 10 个调用点里最长的批量删除文案只有 2 行，构造不出这个尺寸，所以判为潜在而非现存缺陷，未修。** 真要修是给 `<section>` 加 `max-h` + 滚动。
+4. **确认框打开期间吐司被遮住**：95 盖住 70 是实测事实。现有调用点都是"确认关闭之后才发吐司"，所以看不见吐司的情况还没构造出来；如果以后出现"确认框还在、后台先报错"的流程，这条会变成真的看不见。
+5. **默认分支 `main` 指向另一项目**：依旧只交方案、未执行任何分支操作，方案与影响面见上一批第 5 条。
+
 ## 1.4.4 - Gallery Render Bound and Installer Publisher
+
 
 - Bound gallery rendering: past 600 revealed entries the page reports how many remain and asks you to narrow the directory or search instead of offering another batch forever. The cap is soft, so up to about 720 files stay fully reachable with no limit message. This also bounds what 全选本页文件 can select, which previously could reach every entry you had revealed.
 - Name the installer publisher. `bundle.publisher` was unset, so WiX fell back to the second segment of the identifier and the MSI reported `Manufacturer = multicloud`; publisher and copyright now carry the string from `LICENSE`. This affects Windows Installer metadata only - the `.exe` `CompanyName` version resource has no Tauri configuration key and stays empty.
