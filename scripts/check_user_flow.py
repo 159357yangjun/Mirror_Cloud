@@ -390,6 +390,12 @@ require(all(i.startswith('node:') for i in harness_imports), f'the harness adds 
 # Reachability: a tool nobody can discover is a tool that rots. It must stay wired to a real entry.
 desktop_pkg = json.loads(text('apps/desktop/package.json'))
 require('verify_dialog_interactions.mjs' in json.dumps(desktop_pkg.get('scripts', {})), 'the harness is reachable from an npm script entry')
+# Pointing a probe at a port is not pointing it at this project. The identity gate has to stay, and
+# it has to refuse by throwing - a finish(2) that falls through keeps sampling and prints success
+# fields next to its own failure message.
+require('async function assertProjectIdentity' in harness, 'the harness verifies it is measuring this project')
+require('error.identityFault = true' in harness and 'e.identityFault ? 2 : 1' in harness, 'an identity mismatch exits as a harness fault, not a pass or a regression')
+require('exportNames' in harness and "function|const|class|enum" in harness, 'the export comparison ignores type exports that the TS transform erases')
 
 # Encoding integrity for the change record. A latin1 read + utf8 write turns every CJK character
 # into a two-byte mojibake sequence; the result still decodes as UTF-8, so "it parsed" proves

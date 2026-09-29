@@ -28,10 +28,23 @@
  *   --tag NAME  filename suffix for reports
  *   --port N    CDP port, default 9333
  *
+ * Exit codes
+ *   0  measured, every assertion held
+ *   1  an app-level assertion failed (a real regression) or the run crashed
+ *   2  harness fault: the viewport gate or the project-identity gate refused to sample. Never
+ *      report a 2 as a pass or as a regression - it means nothing was measured.
+ *   3  no local Chromium-family browser found
+ *   4  the dev server on --app is not reachable
+ *
+ * Before any sample is taken the tool proves it is pointed at this project: document.title must
+ * match index.html, the served /package.json must be byte-identical to the working tree, and every
+ * value export in src/lib/desktop.ts must appear in the module the server returns. A stale checkout
+ * on port 1420 therefore fails loudly instead of returning confident PASSes about old code.
+ *
  * No third-party imports: node:child_process and node:fs, plus the fetch / WebSocket globals that
  * Node 22+ ships. Requires Node >= 22 for the global WebSocket.
  */
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 
 const argv = process.argv.slice(2)
@@ -114,6 +127,66 @@ const browser = spawn(BROWSER, [
 ], { stdio: 'ignore' })
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+// Identity gate. Navigating to a port is not the same as measuring this project: a dev server from
+// an older checkout, or a different app entirely, produces confident PASSes against the wrong code.
+// Three layers, none of them hardcoded, so they cannot drift from the tree they check:
+//   L1 document.title must equal the <title> in the on-disk index.html
+//   L2 the served /package.json must be byte-identical to the on-disk one
+//   L3 every export name in the on-disk desktop.ts must appear in the module the server returns
+// A mismatch exits 2: harness fault. It is never counted as a pass and never as an app regression.
+const REPO = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1').replace(/\/+$/, '')
+const readRepoFile = (rel) => readFileSync(`${REPO}/${rel}`, 'utf8')
+
+function exportNames(source) {
+  // Value exports only. `export interface` / `export type` are erased by the TypeScript transform,
+  // so demanding they appear in the served JS makes the gate permanently red for a reason that has
+  // nothing to do with staleness - the first version of this check tripped on RemoteIndexSyncResult.
+  return [...source.matchAll(/export\s+(?:async\s+)?(?:function|const|class|enum)\s+([A-Za-z0-9_]+)/g)].map((m) => m[1])
+}
+
+async function fetchText(url) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.text()
+}
+
+async function assertProjectIdentity() {
+  const faults = []
+  const expectedTitle = (readRepoFile('apps/desktop/index.html').match(/<title>([^<]*)<\/title>/) || [])[1]
+  const servedPackage = await fetchText(`${APP}package.json`).catch((e) => `__unreachable__ ${e.message}`)
+  const onDiskPackage = readRepoFile('apps/desktop/package.json')
+  if (typeof servedPackage !== 'string' || servedPackage.trim() !== onDiskPackage.trim()) {
+    faults.push('L2 served /package.json differs from the working tree (different checkout or app)')
+  }
+  const probeModule = await fetchText(`${APP}src/lib/desktop.ts`).catch((e) => `__unreachable__ ${e.message}`)
+  const missing = exportNames(readRepoFile('apps/desktop/src/lib/desktop.ts')).filter((n) => !probeModule.includes(n))
+  if (missing.length) faults.push(`L3 served /src/lib/desktop.ts is missing ${missing.length} export(s) present on disk: ${missing.slice(0, 6).join(', ')}`)
+  const actualTitle = await evaluate(`document.title`)
+  if (expectedTitle && actualTitle !== expectedTitle) faults.push(`L1 document.title is ${JSON.stringify(actualTitle)}, index.html says ${JSON.stringify(expectedTitle)}`)
+  if (faults.length) {
+    console.error(`PROJECT IDENTITY GATE FAILED - refusing to measure. Exit 2 means harness fault, not a pass and not an app regression.\n  ${faults.join('\n  ')}\n  server: ${APP}`)
+    // Throwing, not finish(2): finish() defers process.exit, so falling through would let the run
+    // continue and print an IDENTITY line full of hardcoded success values next to its own failure.
+    const error = new Error(`identity gate rejected ${APP}: ${faults.join('; ')}`)
+    error.identityFault = true
+    throw error
+  }
+  return { title: actualTitle, packageJsonMatches: true, exportsChecked: exportNames(readRepoFile('apps/desktop/src/lib/desktop.ts')).length, exportsMissing: 0 }
+}
+
+function buildProvenance() {
+  // The app has no build-time version marker, and Vite reads sources from disk per request, so the
+  // most this tool can honestly claim is "the tree the server is rooted at matches HEAD".
+  let head = 'unknown'
+  try {
+    head = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: REPO, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+  } catch { /* git missing or not a repo: report it rather than guessing */ }
+  let version = 'unknown'
+  try { version = JSON.parse(readRepoFile('apps/desktop/package.json')).version } catch { /* keep unknown */ }
+  return { headCommitUnderTest: head, desktopPackageVersion: version, caveat: 'the dev server injects no build-time commit marker; identity is proven by /package.json and export-name equality with HEAD, not by a version the app itself reports' }
+}
+
 
 // Exiting while a CDP socket or the browser child is still closing trips a libuv assertion on
 // Windows, so give both a moment to shut down first.
@@ -304,12 +377,15 @@ async function main() {
     await sleep(500)
   }
   await evaluate(HELPERS)
-  console.log('VIEWPORT', JSON.stringify(await assertRealViewport('after-mount')))
-  await evaluate(`(function(){const c=Array.from(document.querySelectorAll('button')).find(b=>b.getAttribute('aria-label')==='关闭教程');if(c)c.click();return true;})()`)
-  await sleep(300)
-
   const report = { mode: MODE, steps: [] }
   const record = (name, data) => report.steps.push({ name, ...data })
+  console.log('VIEWPORT', JSON.stringify(await assertRealViewport('after-mount')))
+  report.identity = await assertProjectIdentity()
+  report.provenance = buildProvenance()
+  console.log('IDENTITY', JSON.stringify(report.identity))
+  console.log('PROVENANCE', JSON.stringify(report.provenance))
+  await evaluate(`(function(){const c=Array.from(document.querySelectorAll('button')).find(b=>b.getAttribute('aria-label')==='关闭教程');if(c)c.click();return true;})()`)
+  await sleep(300)
 
   // ---- go to Settings and open the confirm dialog with a trusted click ----
   const goto = async (label) => {
@@ -884,5 +960,6 @@ async function main() {
 main().catch((e) => {
   console.error('FAILED', e)
   try { browser.kill() } catch {}
-  process.exit(1)
+  // 2 = the harness could not establish what it was pointed at. Never a pass, never an app regression.
+  process.exit(e && e.identityFault ? 2 : 1)
 })
