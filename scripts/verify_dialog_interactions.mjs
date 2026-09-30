@@ -1237,18 +1237,40 @@ window.__L = (function () {
   // Tailwind's sr-only (and anything like it) is a 1px box with clipped overflow holding text meant
   // for a screen reader only. Flagging those as "cut off" is a probe bug.
   const isVisualHiding = (e, cs) => /rect\\(\\s*0/.test(cs.clip || '') || /inset\\(\\s*50%/.test(cs.clipPath || '') || (e.offsetWidth <= 1 && e.offsetHeight <= 1 && cs.overflow !== 'visible')
-  // The nearest ancestor that actually cuts: overflow visible chains do not clip, and an
-  // auto/scroll rail is a reachable affordance rather than a silent cut.
-  const clipperOf = (e) => {
+  // The first ancestor that cuts, with its PADDING box. Overflow clips at the padding edge, so
+  // comparing against the border box would let content hide under the border.
+  //
+  // The chain STOPS here rather than intersecting every clipper: if this first one scrolls
+  // (auto/scroll), the content is reachable by scrolling it, and testing the clippers above it
+  // would flag ordinary page content as cut. .app-main is overflow-y:auto, so a walk that continued
+  // past rails reported 22 below-the-fold buttons at 1440x900 that a user reaches by scrolling.
+  // A rail that is itself cut is caught when the rail is evaluated as its own subject.
+  const nearestClipper = (e) => {
     let n = e.parentElement
     while (n && n.nodeType === 1) {
       const cs = getComputedStyle(n)
-      const ox = cs.overflowX, oy = cs.overflowY
-      if (ox !== 'visible' || oy !== 'visible') return { node: n, ox, oy, rail: /auto|scroll/.test(ox) || /auto|scroll/.test(oy) }
-      if (n === document.body || n === document.documentElement) return { node: n, ox, oy, rail: false, root: true }
+      if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
+        const r = n.getBoundingClientRect()
+        return {
+          node: n, ox: cs.overflowX, oy: cs.overflowY,
+          rail: /auto|scroll/.test(cs.overflowX) || /auto|scroll/.test(cs.overflowY),
+          box: {
+            left: r.left + (parseFloat(cs.borderLeftWidth) || 0),
+            top: r.top + (parseFloat(cs.borderTopWidth) || 0),
+            right: r.right - (parseFloat(cs.borderRightWidth) || 0),
+            bottom: r.bottom - (parseFloat(cs.borderBottomWidth) || 0),
+          },
+        }
+      }
+      if (n === document.body || n === document.documentElement) return null
       n = n.parentElement
     }
     return null
+  }
+  const intersectLoss = (r, box) => {
+    const w = Math.max(0, Math.min(r.right, box.right) - Math.max(r.left, box.left))
+    const h = Math.max(0, Math.min(r.bottom, box.bottom) - Math.max(r.top, box.top))
+    return { lostX: Math.round((r.width - w) * 10) / 10, lostY: Math.round((r.height - h) * 10) / 10 }
   }
   return {
     geometry: (touchMin) => {
@@ -1268,7 +1290,7 @@ window.__L = (function () {
         docOverflowPx: doc.scrollWidth - iw,
         // Criterion VIEWPORT: per-element rect past the viewport edge.
         viewportOverflowPx: 0,
-        offenders: [], clipped: [], clippedByAncestor: [], smallTargets: [], brokenImages: [], focusables: 0,
+        offenders: [], clipped: [], clippedByAncestor: [], controlsCut: [], containersCut: [], smallTargets: [], brokenImages: [], focusables: 0,
       }
       for (const e of all) {
         if (!vis(e)) continue
@@ -1280,33 +1302,44 @@ window.__L = (function () {
         }
         const cs = getComputedStyle(e)
         if (cs.position === 'fixed') { out.skipFixed++; continue }
-        const clip = clipperOf(e)
-        if (!clip || clip.root) continue
+        const clip = nearestClipper(e)
+        if (!clip) continue
         if (clip.rail) { out.railClips++; continue }
-        const cr = clip.node.getBoundingClientRect()
-        const overRight = Math.round(r.right - (cr.right - 1))
-        const overBottom = Math.round(r.bottom - (cr.bottom - 1))
-        const overLeft = Math.round((cr.left + 1) - r.left)
-        const excess = Math.max(overRight, overBottom, overLeft)
-        if (excess > 1) out.clippedByAncestor.push({ sel: sel(e), by: sel(clip.node), axis: overRight >= overBottom && overRight >= overLeft ? 'x' : 'y', excess, overflow: clip.ox + '/' + clip.oy, text: txt(e).slice(0, 30) })
+        const loss = intersectLoss(r, clip.box)
+        const px = Math.max(loss.lostX, loss.lostY)
+        if (px <= 1) continue
+        const tag = e.tagName.toLowerCase()
+        const isTextLeaf = hasOwnText(e) && !!txt(e)
+        // The known false-positive sources only apply to text: a visually-hidden label, an
+        // ellipsis or line-clamp that truncates on purpose, and a title that carries the whole
+        // string for a tooltip.
+        if (isTextLeaf && (isVisualHiding(e, cs) || cs.textOverflow === 'ellipsis' || (cs.webkitLineClamp && cs.webkitLineClamp !== 'none') || e.title || e.closest('[title]'))) continue
+        const rec = { sel: sel(e), by: sel(clip.node), excess: px, axis: loss.lostX >= loss.lostY ? 'x' : 'y', overflow: clip.ox + '/' + clip.oy, text: txt(e).slice(0, 30) }
+        if (isTextLeaf) out.clippedByAncestor.push(rec)
+        else if (/^(button|a|input|select|textarea)$/.test(tag) || e.getAttribute('role')) out.controlsCut.push(rec)
+        else out.containersCut.push(rec)
       }
       out.offenders.sort((a, b) => b.over - a.over)
       out.offenders = out.offenders.slice(0, 6)
-      out.clippedByAncestor.sort((a, b) => b.excess - a.excess)
-      out.clippedByAncestorTotal = out.clippedByAncestor.length
-      out.clippedByAncestor = out.clippedByAncestor.slice(0, 8)
+      for (const key of ['clippedByAncestor', 'controlsCut', 'containersCut']) {
+        out[key].sort((a, b) => b.excess - a.excess)
+        out[key + 'Total'] = out[key].length
+        out[key] = out[key].slice(0, 8)
+      }
       for (const e of all) {
         if (!hasOwnText(e) || !txt(e) || !vis(e)) continue
         out.textLeaves++
         const cs = getComputedStyle(e)
         if (isVisualHiding(e, cs)) { out.skipSrOnly++; continue }
-        if (cs.textOverflow === 'ellipsis') { out.skipEllipsis++; continue }
+        const clamped = cs.webkitLineClamp && cs.webkitLineClamp !== 'none'
+        if (cs.textOverflow === 'ellipsis' || clamped) { out.skipEllipsis++; continue }
         if (e.title || e.closest('[title]')) { out.skipTitle++; continue }
         if (/auto|scroll/.test(cs.overflowX)) { out.skipScrollRail++; continue }
         out.measuredLeaves++
-        if (!(e.scrollWidth > e.clientWidth + 1)) continue
-        // A scroll container is a deliberate affordance; overflow:hidden on a text leaf is not.
-        out.clipped.push({ sel: sel(e), text: txt(e), scrollWidth: e.scrollWidth, clientWidth: e.clientWidth, delta: e.scrollWidth - e.clientWidth, overflowX: cs.overflowX })
+        // SELF-CLIP: the leaf's own box is smaller than its own content.
+        if (e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1) {
+          out.clipped.push({ sel: sel(e), text: txt(e), delta: Math.max(e.scrollWidth - e.clientWidth, e.scrollHeight - e.clientHeight), overflowX: cs.overflowX })
+        }
       }
       out.clipped.sort((a, b) => b.delta - a.delta)
       const clippedTotal = out.clipped.length
@@ -1377,7 +1410,13 @@ window.__L = (function () {
       for (const e of nodes) {
         if (!vis(e)) continue
         e.setAttribute('data-lidx', String(i))
-        window.__LBASE[i] = { ...styleOf(e), sel: sel(e), name: nameOf(e).slice(0, 30), tag: e.tagName.toLowerCase() }
+        // Component libraries paint the focus ring on a wrapper rather than on the element that
+        // actually receives focus, so the resting style is captured for the element and its
+        // ancestors and the comparison is made against all of them.
+        const chain = []
+        let n = e
+        for (let d = 0; d < 4 && n && n.nodeType === 1; d++) { chain.push(styleOf(n)); n = n.parentElement }
+        window.__LBASE[i] = { chain, sel: sel(e), name: nameOf(e).slice(0, 30), tag: e.tagName.toLowerCase(), own: styleOf(e) }
         i++
       }
       return i
@@ -1386,15 +1425,25 @@ window.__L = (function () {
       const e = document.activeElement
       if (!e || e === document.body || e === document.documentElement) return { tag: 'body', left: true }
       const idx = e.getAttribute('data-lidx')
-      const now = styleOf(e)
       const base = idx !== null && window.__LBASE ? window.__LBASE[idx] : null
-      const changed = base ? (now.outline !== base.outline || now.shadow !== base.shadow || now.border !== base.border || now.bg !== base.bg) : null
+      const chain = []
+      let n = e
+      for (let d = 0; d < 4 && n && n.nodeType === 1; d++) { chain.push(styleOf(n)); n = n.parentElement }
+      const own = styleOf(e)
+      let changed = null
+      if (base) {
+        changed = chain.some((s, i) => {
+          const b = base.chain[i]
+          return b && (s.outline !== b.outline || s.shadow !== b.shadow || s.border !== b.border || s.bg !== b.bg)
+        })
+      }
       let viaFocusVisible = null
       try { viaFocusVisible = e.matches(':focus-visible') } catch (err) { viaFocusVisible = null }
+      const ringLevel = base ? chain.findIndex((s, i) => base.chain[i] && (s.outline !== base.chain[i].outline || s.shadow !== base.chain[i].shadow)) : -1
       return {
         tag: e.tagName.toLowerCase(), sel: base ? base.sel : sel(e), name: base ? base.name : nameOf(e).slice(0, 30), unmarked: idx === null,
-        outline: now.outline, changed, viaFocusVisible,
-        visible: changed === null ? !!(now.outline.split(' ')[0] !== 'none' && parseFloat(now.outline.split(' ')[1]) > 0) : changed,
+        outline: own.outline, shadow: own.shadow, changed, ringLevel, viaFocusVisible,
+        visible: changed === null ? !!(own.outline.split(' ')[0] !== 'none' && parseFloat(own.outline.split(' ')[1]) > 0) : changed,
       }
     },
   }
@@ -1412,12 +1461,24 @@ true
     const control = await evaluate(`(function(){
       window.__L.settle();
       const wide = () => { const d = document.createElement('div'); d.style.cssText = 'width:2400px;height:12px;background:red'; return d };
+      const LONG = 'abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnop';
       const host = document.querySelector('main') || document.body;
       const clipper = Array.from(host.querySelectorAll('*')).find((e) => { const cs = getComputedStyle(e); return cs.overflowX !== 'visible' && !/auto|scroll/.test(cs.overflowX) && e.clientWidth > 40 && e.clientWidth < innerWidth });
       const baseline = window.__L.geometry(0);
       const report = { baselineDocOverflow: baseline.docOverflowPx, baselineClips: baseline.clippedByAncestorTotal };
       const probe = {};
-      if (clipper) { const d = wide(); clipper.appendChild(d); const g = window.__L.geometry(0); probe.clippedPlacement = { docOverflowPx: g.docOverflowPx, clippedByAncestorTotal: g.clippedByAncestorTotal, caught: g.clippedByAncestorTotal > baseline.clippedByAncestorTotal, worst: g.clippedByAncestor[0] ? g.clippedByAncestor[0].excess : null }; d.remove() }
+      if (clipper) {
+        // Text-bearing, because the ancestor-clip criterion is defined over text leaves: content
+        // that is silently cut where a reader would look for it.
+        const d = document.createElement('div');
+        d.style.cssText = 'width:2400px;height:12px;white-space:nowrap;font-size:12px;overflow:visible';
+        d.textContent = 'LCTL' + LONG;
+        clipper.appendChild(d);
+        const g = window.__L.geometry(0);
+        const mine = g.clippedByAncestor.filter((c) => c.text && c.text.indexOf('LCTL') === 0)
+        probe.clippedPlacement = { docOverflowPx: g.docOverflowPx, clippedByAncestorTotal: g.clippedByAncestorTotal, caught: mine.length > 0, worst: mine.length ? Math.max(...mine.map((c) => c.excess)) : null };
+        d.remove()
+      }
       else probe.clippedPlacement = { skipped: 'no non-scrolling clipping ancestor found on this page' };
       const d2 = wide(); document.documentElement.appendChild(d2); const g2 = window.__L.geometry(0);
       probe.scrollPlacement = { docOverflowPx: g2.docOverflowPx, caughtByDoc: g2.docOverflowPx > baseline.docOverflowPx, caughtByViewport: g2.viewportOverflowPx > 0 };
@@ -1425,7 +1486,6 @@ true
       // Negative controls: the four known false-positive sources. Each plants something that must
       // NOT be reported, so an exclusion that never fires cannot be mistaken for a clean page.
       const mk = (css, text) => { const d = document.createElement('span'); d.style.cssText = css; d.textContent = text; return d };
-      const LONG = 'abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnop';
       const sr = mk('position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0', LONG);
       const rail = mk('display:block;width:60px;overflow-x:auto;white-space:nowrap;font-size:12px', LONG);
       const real = mk('display:block;width:60px;overflow:hidden;white-space:nowrap;font-size:12px', LONG);
@@ -1438,6 +1498,35 @@ true
         realCutStillCaught: g3.clippedTotal > baseline.clippedTotal,
       };
       sr.remove(); rail.remove(); real.remove();
+      // The reachability pair: a leaf inside a scroll rail is reachable, so it must NOT be reported;
+      // the rail itself, when an outer overflow:hidden cuts it, must be reported at its own level.
+      const outer = document.createElement('div'); outer.style.cssText = 'width:180px;overflow:hidden'
+      const inner = document.createElement('div'); inner.style.cssText = 'width:400px;overflow-x:auto;white-space:nowrap;font-size:12px'
+      const leaf = document.createElement('span'); leaf.textContent = 'LCTL2' + LONG
+      inner.appendChild(leaf); outer.appendChild(inner); host.appendChild(outer)
+      const g4 = window.__L.geometry(0)
+      probe.railThenOuter = {
+        leafNotFlagged: !g4.clippedByAncestor.some((c) => c.text && c.text.indexOf('LCTL2') === 0),
+        railFlagged: g4.containersCut.some((c) => c.excess > 100),
+        worst: Math.max(0, ...g4.containersCut.map((c) => c.excess)),
+      }
+      outer.remove();
+      // Two focus controls, one in each direction. A ring drawn on a wrapper must read as visible
+      // (otherwise every component library that styles :focus-within is a false red), and a bare
+      // outline:none with no substitute must read as invisible (otherwise the test is decorative).
+      const sheet = document.createElement('style');
+      sheet.textContent = '.lctl-none{outline:none !important;box-shadow:none !important;border:1px solid rgb(200,200,200);background:rgb(255,255,255)}' +
+        '.lctl-wrap{display:inline-block}.lctl-wrap:focus-within{box-shadow:0 0 0 3px rgba(79,70,229,.55)}';
+      document.head.appendChild(sheet);
+      const fa0 = document.createElement('button'); fa0.className = 'lctl-none'; fa0.textContent = 'lctlNoRing';
+      const wrap = document.createElement('div'); wrap.className = 'lctl-wrap';
+      const fb0 = document.createElement('button'); fb0.className = 'lctl-none'; fb0.textContent = 'lctlWrapperRing';
+      wrap.appendChild(fb0); host.appendChild(fa0); host.appendChild(wrap);
+      window.__L.markFocusables();
+      fa0.focus(); const stopA = window.__L.focusNow();
+      fb0.focus(); const stopB = window.__L.focusNow();
+      probe.focus = { noRingRed: stopA.visible === false, wrapperRingGreen: stopB.visible === true, ringLevel: stopB.ringLevel, aChanged: stopA.changed, bChanged: stopB.changed };
+      fa0.remove(); wrap.remove(); sheet.remove();
       const after = window.__L.geometry(0);
       probe.removedCleanly = after.clippedByAncestorTotal === baseline.clippedByAncestorTotal && after.docOverflowPx === baseline.docOverflowPx;
       probe.nodes = baseline.nodes; probe.textLeaves = baseline.textLeaves;
@@ -1448,7 +1537,12 @@ true
     if (!control.clippedPlacement.caught) bad.push(`the per-element criterion missed a 2400px box planted inside an overflow:hidden ancestor (got ${JSON.stringify(control.clippedPlacement)})`)
     if (!control.scrollPlacement.caughtByDoc && !control.scrollPlacement.caughtByViewport) bad.push('neither criterion reacted to a 2400px box appended to documentElement')
     if (!control.removedCleanly) bad.push('the control leaked: counts did not return to baseline after removing the planted boxes')
-    for (const [k, why] of [['srOnlySkipped', 'a visually-hidden sr-only span was counted as cut-off text'], ['scrollRailSkipped', 'an overflow-x:auto rail was counted as a clip rather than a reachable scroll'], ['realCutStillCaught', 'a genuinely cut overflow:hidden text run was NOT reported - the exclusions are swallowing real defects']]) {
+    if (!control.negative.realCutStillCaught) bad.push('negative control failed: a genuinely cut overflow:hidden text run was NOT reported - the exclusions are swallowing real defects')
+    if (!control.railThenOuter.leafNotFlagged) bad.push('a leaf inside a scroll rail was reported as cut, although scrolling brings it into view')
+    if (!control.railThenOuter.railFlagged) bad.push(`the scroll rail itself was not reported although an outer overflow:hidden cuts it (worst container cut ${control.railThenOuter.worst}px)`)
+    if (!control.focus.noRingRed) bad.push(`focus control failed: a button with outline:none and no box-shadow read as having a visible focus state (changed=${control.focus.aChanged})`)
+    if (!control.focus.wrapperRingGreen) bad.push(`focus control failed: a ring drawn on the wrapper was missed, so real component-library rings would be false reds (changed=${control.focus.bChanged}, ringLevel=${control.focus.ringLevel})`)
+    for (const [k, why] of [['srOnlySkipped', 'a visually-hidden sr-only span was counted as cut-off text'], ['scrollRailSkipped', 'an overflow-x:auto rail was counted as a clip rather than a reachable scroll']]) {
       if (!control.negative[k]) bad.push(`negative control failed: ${why}`)
     }
     // The divergence is the point, not a failure: the clip placement leaves the document-level
@@ -1457,6 +1551,8 @@ true
     console.log(`CONTROL clip-placement -> CLIP-BY-ANCESTOR caught=${control.clippedPlacement.caught} (worst +${control.clippedPlacement.worst}px) while DOC saw ${control.clippedPlacement.docOverflowPx}px vs baseline ${control.baselineDocOverflow}px -> doc-level blind to a clipped overflow: ${docBlindToClip ? 'YES (why the per-element criterion exists)' : 'no'}`)
     console.log(`CONTROL scroll-placement -> DOC caught=${control.scrollPlacement.caughtByDoc}, VIEWPORT caught=${control.scrollPlacement.caughtByViewport}; restored=${control.removedCleanly}; nodes=${control.nodes} textLeaves=${control.textLeaves}`)
     console.log(`CONTROL negatives -> sr-only skipped=${control.negative.srOnlySkipped}, overflow-x:auto rail skipped=${control.negative.scrollRailSkipped}, real cut still caught=${control.negative.realCutStillCaught}`)
+    console.log(`CONTROL rail-then-outer -> leaf inside a scroll rail left alone=${control.railThenOuter.leafNotFlagged}; the rail itself reported when an outer overflow:hidden cuts it=${control.railThenOuter.railFlagged} (worst ${control.railThenOuter.worst}px)`)
+    console.log(`CONTROL focus -> outline:none+no-shadow reads invisible=${control.focus.noRingRed}; ring on wrapper reads visible=${control.focus.wrapperRingGreen} (ring found at ancestor depth ${control.focus.ringLevel})`)
     if (bad.length) {
       for (const b of bad) console.log(`HARNESS FAULT ${b}`)
       finish(2)
@@ -1514,7 +1610,9 @@ true
         }
         if (g.docOverflowPx > 1) failures.push(`DOC-OVERFLOW ${entry.tier} ${label}: documentElement.scrollWidth ${g.docScrollWidth} exceeds innerWidth ${g.innerWidth} by ${g.docOverflowPx}px (a scrollbar / unreachable content)`)
         if (g.viewportOverflowPx > 1) failures.push(`VIEWPORT-OVERFLOW ${entry.tier} ${label}: ${g.offenders.length} element(s) extend past the viewport edge, widest +${g.offenders[0].over}px at ${g.offenders[0].sel} "${g.offenders[0].text}"`)
-        if (g.clippedByAncestorTotal) failures.push(`CLIP-BY-ANCESTOR ${entry.tier} ${label}: ${g.clippedByAncestorTotal} element(s) cut off by a non-scrolling overflow:hidden ancestor - worst +${g.clippedByAncestor[0].excess}px on axis ${g.clippedByAncestor[0].axis} at ${g.clippedByAncestor[0].sel} (clipped by ${g.clippedByAncestor[0].by}, overflow ${g.clippedByAncestor[0].overflow})`)
+        if (g.clippedByAncestorTotal) failures.push(`CLIP-BY-ANCESTOR ${entry.tier} ${label}: ${g.clippedByAncestorTotal} text leaf(s) cut by a non-scrolling ancestor - ${g.clippedByAncestor.slice(0, 3).map((c) => `+${c.excess}px ${c.axis} "${c.text}" at ${c.sel} (cut by ${c.by}, overflow ${c.overflow})`).join(' | ')}`)
+        if (g.controlsCutTotal) failures.push(`CONTROL-CUT ${entry.tier} ${label}: ${g.controlsCutTotal} interactive element(s) cut by a non-scrolling ancestor, unreachable - ${g.controlsCut.slice(0, 3).map((c) => `+${c.excess}px ${c.axis} "${c.text}" at ${c.sel} (cut by ${c.by}, overflow ${c.overflow})`).join(' | ')}`)
+        if (g.containersCutTotal) failures.push(`CONTAINER-CUT ${entry.tier} ${label}: ${g.containersCutTotal} container(s) cut by a non-scrolling ancestor - ${g.containersCut.slice(0, 2).map((c) => `+${c.excess}px ${c.axis} at ${c.sel} (cut by ${c.by}, overflow ${c.overflow})`).join(' | ')}`)
         if (g.clippedTotal) failures.push(`SELF-CLIP ${entry.tier} ${label}: ${g.clippedTotal} own-text run(s) cut with no ellipsis and no title - worst +${g.clipped[0].delta}px "${g.clipped[0].text}" at ${g.clipped[0].sel}`)
         if (g.smallTotal) failures.push(`TOUCH-TARGET ${entry.tier} ${label}: ${g.smallTotal} clickable target(s) under ${TOUCH}x${TOUCH} - smallest ${g.smallTargets[0].w}x${g.smallTargets[0].h} "${g.smallTargets[0].text}" at ${g.smallTargets[0].sel}`)
         if (g.brokenImages.length) failures.push(`BROKEN-IMAGE ${entry.tier} ${label}: ${g.brokenImages.length} image(s) with naturalWidth 0 - ${g.brokenImages.map((b) => b.src).join(', ')}`)
