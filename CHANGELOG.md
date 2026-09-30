@@ -232,6 +232,47 @@ L3 那条红是**独立**抓到的：假 server 的标题和 `package.json` 都�
 
 
 
+### 这张表第一次真的报警（原始输出，非转述）
+
+要求是"改一个字节、不更新表 → 必须红"。用一行**只加了一个空格**的改动做（行数不变，所以只有哈希能抓到）：
+
+```text
+$ python - <<'PY'   # 给 fixture 的注释行末尾加一个空格，表不动
+$ git diff --numstat
+1       1       scripts/__fixtures__/impostor_dev_server.mjs
+
+$ python scripts/check_user_flow.py ; echo $?
+FAIL fingerprint row for scripts/__fixtures__/impostor_dev_server.mjs matches the file (table 76L/3897B/d54d83cb52a1; working copy 76L/3898B/06958e44cb61)
+User-flow contract FAILED: 1 of 177 check(s)
+1                                     ← 非 0 退出码
+
+$ cp /tmp/fx.orig scripts/__fixtures__/impostor_dev_server.mjs
+$ git diff HEAD | wc -l ; 0                       ← 还原是字节级的
+$ git diff HEAD --numstat | wc -l ; 0
+$ python scripts/check_user_flow.py ; echo $?
+User-flow v1.3.5 ... OK | total checks: 177
+0
+```
+
+同一件事也做成了可重跑：`node scripts/verify_guard_mutations.mjs M11` 就是这一字节，跑完自己还原。
+
+**为了走到这一步，又挖出两个我自己造的坑**（都属于"守卫被自己的测试数据喂绿/喂红"这一类）：
+
+1. **只比 HEAD blob 不够**：第一版指纹断言只比 `git show HEAD:<path>`，于是**未提交**的一字节改动照样绿——而漂移恰恰发生在提交之前。现在分两半各自比：HEAD blob（别人 clone 后能复现的那份）与工作区（把没提交的漂移也抓住），失败消息里点名是哪一半不一致。
+2. **依赖扫描被自己的测试数据毒了**：`re.findall(r"from '([^']+)'")` 不认行首，M12 那条变异为了演示"第三方 import 会被判红"，字面量里写了 `import chalk from 'chalk'`——结果**含这张表的文件**被扫出 `chalk`，依赖断言假红。改成只匹配行首 `import … from '…'`。这条与"mutation 表不能放在被同一文件子串断言的测具里"是同一个失效形状，只是这次是扫描器扫到了自己的说明书。
+
+### 测具链现在自带的三条重跑命令
+
+```text
+node scripts/verify_dialog_interactions.mjs gate-unit   # 视口门禁 6/6（纯 predicate，不开浏览器）
+node scripts/verify_dialog_interactions.mjs red-demo    # 身份门禁 2/2 次 rc=2（真起 headless Edge）
+node scripts/verify_guard_mutations.mjs                 # 12/12 变异都被对应 oracle 抓到，跑完树干净
+```
+
+本轮实测：`red-demo` → `2/2 alarms reproduced`、两个子进程 `exit=2 (want 2)`；`verify_guard_mutations` → `12/12 alarms reproduced | interpreter: py -3 | tree restored: clean`，退出码 0。
+
+
+
 ### 本轮故意放弃的选项（写清楚"放弃 X，因为 Y"，别只写做了什么）
 
 1. **放弃把 `mutate` 做成测具自带模式**（一开始就是这么写的）——因为测具的守卫断言是**子串匹配**，而 mutation 表的字面量里就含那些子串：`from: 'async function assertProjectIdentity()'` 让"这个函数必须存在"的断言在函数被改名后**仍然绿**。已实测到：M8/M9/M10 在表内联时 exit 0。改成独立文件 `scripts/verify_guard_mutations.mjs`，并加了两条断言钉住这个不变式（测具里不得出现 mutation 表、runner 不得变异自己）。
@@ -242,6 +283,9 @@ L3 那条红是**独立**抓到的：假 server 的标题和 `package.json` 都�
 6. **放弃顺手修 `StorageBrowserDialog.tsx:148/168/182` 三处 `void copyText(...)`**——和已修的 `void openExternalUrl` 同一类，但本轮拿不出它真会失败的证据（headless 下剪贴板写入不失败）。没有红过的证据就不动，避免把"看起来同类"当成"已验证"。
 7. **放弃让 `red-demo` 用纯 predicate 代替真浏览器**——那样只证明字符串比较，证明不了真页面 + 真门禁会拒绝。现在每个用例真起一次 headless Edge，代价约 40 秒，买到的是端到端。
 8. **放弃 `shell: true` 跑 python oracle**——cmd.exe 把 `python` 解析到一个死掉的 WindowsApps 转发，exit 1 且零输出，看起来"守卫报警了"其实是 oracle 没跑。改成探测真解释器，并要求输出里出现它自己的 `total checks:` 标记才算"跑过"。
+9. **放弃"只比 HEAD blob"的指纹语义**（第一版就是这么实现，也是你最初要求的措辞）——它抓不到未提交的一字节漂移，而那正是漂移发生的地方。现在 blob 与工作区两半都比；代价是提交前必然看到一次"表比 blob 新"的红，这是设计而非缺陷，已在上面贴出。
+10. **放弃给依赖扫描加豁免名单**（比如"忽略出现在 `id: 'M12'` 行里的 import 字面量"）——豁免名单会跟着下一条变异数据一起再被毒一次，且它自己就是一条"看起来在检查"的假绿。改成把扫描限定在行首 `import`，从语法上而不是从名单上排除字符串字面量。
+11. **放弃把 mutation 表挪进 JSON 数据文件**（能同时解掉两个自吞问题）——多一个没有类型、没有断言、谁都能手改的数据面；现在的两条不变式（测具里不得有 mutation 表、runner 不得变异自己）已经把它们挡在结构外，不需要再引入一个可被同样方式污染的文件。
 
 ### 本轮记录（仓库路径与实状态）
 
