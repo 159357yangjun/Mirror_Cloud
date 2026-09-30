@@ -43,15 +43,28 @@ if (process.argv.includes('help')) {
   process.exit(0)
 }
 
+function pythonCandidates() {
+  // On this box `python` resolves through a WindowsApps execution alias that fails under
+  // CreateProcess (node reports ENOENT), while the real interpreters sit behind it on PATH. Ask the
+  // OS for every match and drop the alias instead of hardcoding an interpreter path.
+  const found = []
+  if (process.env.PYTHON) found.push(process.env.PYTHON)
+  const where = spawnSync('where.exe', ['python'], { encoding: 'utf8', timeout: 20_000 })
+  if (where.status === 0) {
+    found.push(...where.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
+      .filter((p) => !/[\\/]WindowsApps[\\/]/i.test(p)).map((p) => p.replace(/\\/g, '/')))
+  }
+  found.push('python', 'python3')
+  return found.filter(Boolean)
+}
+
 function resolvePython() {
-  // tomllib landed in 3.11 and scripts/validate.py imports it, so "a python that starts" is not
-  // enough: an earlier version of this probe picked 3.10 and reported three guards as failed when
-  // the only thing wrong was the interpreter.
-  for (const [exe, pre] of [[process.env.PYTHON, []], ['python', []], ['py', ['-3']], ['python3', []]]) {
-    if (!exe) continue
-    const probe = spawnSync(exe, [...pre, '-c', 'import sys; print(sys.version_info[0] * 100 + sys.version_info[1])'], { encoding: 'utf8', timeout: 30_000 })
+  // Require 3.11+: scripts/validate.py imports tomllib, so picking a 3.10 launcher previously made
+  // three healthy guards look like failures.
+  for (const spec of [...pythonCandidates().map((exe) => ({ exe, pre: [] })), { exe: 'py', pre: ['-3'] }]) {
+    const probe = spawnSync(spec.exe, [...spec.pre, '-c', 'import sys; print(sys.version_info[0] * 100 + sys.version_info[1])'], { encoding: 'utf8', timeout: 30_000 })
     const minor = Number((probe.stdout || '').trim())
-    if (probe.status === 0 && minor >= 311) return { exe, pre }
+    if (probe.status === 0 && minor >= 311) return spec
   }
   return null
 }

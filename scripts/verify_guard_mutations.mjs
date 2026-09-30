@@ -77,20 +77,34 @@ if (dirty.length) {
 // `python` is not launchable from node on this box: without a shell it is ENOENT, and cmd.exe
 // resolves it to a dead WindowsApps stub that exits 1 with no output - which is indistinguishable
 // from "the guard alarmed". Probe for a real interpreter instead of trusting an exit code.
+function pythonCandidates() {
+  // `python` on this box resolves through a WindowsApps execution alias that fails under
+  // CreateProcess (node reports ENOENT), so ask the OS for every match and drop the alias rather
+  // than hardcoding an interpreter path.
+  const found = []
+  if (process.env.PYTHON) found.push(process.env.PYTHON)
+  const where = spawnSync('where.exe', ['python'], { encoding: 'utf8', timeout: 20_000 })
+  if (where.status === 0) {
+    found.push(...where.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
+      .filter((p) => !/[\\/]WindowsApps[\\/]/i.test(p)).map((p) => p.replace(/\\/g, '/')))
+  }
+  found.push('python', 'python3')
+  return found.filter(Boolean)
+}
+
 function resolvePython() {
   // Require 3.11+: the oracle chain includes guards importing tomllib, and picking a 3.10 launcher
   // would report "the guard stayed silent" for a reason that has nothing to do with the mutation.
-  for (const [exe, pre] of [[process.env.PYTHON, []], ['python', []], ['py', ['-3']], ['python3', []]]) {
-    if (!exe) continue
-    const probe = spawnSync(exe, [...pre, '-c', 'import sys; print(sys.version_info[0] * 100 + sys.version_info[1])'], { encoding: 'utf8', timeout: 30_000 })
+  for (const spec of [...pythonCandidates().map((exe) => ({ exe, pre: [] })), { exe: 'py', pre: ['-3'] }]) {
+    const probe = spawnSync(spec.exe, [...spec.pre, '-c', 'import sys; print(sys.version_info[0] * 100 + sys.version_info[1])'], { encoding: 'utf8', timeout: 30_000 })
     const minor = Number((probe.stdout || '').trim())
-    if (probe.status === 0 && minor >= 311) return { exe, pre }
+    if (probe.status === 0 && minor >= 311) return spec
   }
   return null
 }
 const python = resolvePython()
 if (!python) {
-  console.error('no Python >= 3.11 interpreter found (tried $PYTHON, python, py -3, python3); the guard oracle cannot run.')
+  console.error('no Python >= 3.11 interpreter found (tried $PYTHON, where.exe python, python, python3, py -3); the guard oracle cannot run.')
   process.exit(3)
 }
 

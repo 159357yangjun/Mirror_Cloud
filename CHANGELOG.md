@@ -131,9 +131,9 @@ sawMinimizedReject: true   broken: []
 
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
-| `scripts/verify_all.mjs` | 125 | 7,871 | `625592e29d4c682c49fda381e07bcef0d03ca3faade927d42cb7a9a380aac4ac` | 12 stages，一条命令跑完七道守卫 + 四个测具模式 + 变异套件 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行） |
+| `scripts/verify_all.mjs` | 138 | 8,503 | `bc76d7a42949d4b34ba12ecb1757b2d317c64202341557a29a269a103695466d` | 12 stages，一条命令跑完七道守卫 + 四个测具模式 + 变异套件 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行） |
 | `scripts/verify_dialog_interactions.mjs` | 1034 | 65,136 | `fe60f629ffc208f1a3da3221ad3051ed564414e87dbb4b8111316cc9b8248f5b` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5` |
-| `scripts/verify_guard_mutations.mjs` | 158 | 10,988 | `ddfac99d6f580da1e822d34367648ef2aeb2de8751d17b5cd2c67767821d47a8` | 12/12 变异都被对应 oracle 抓到 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
+| `scripts/verify_guard_mutations.mjs` | 172 | 11,688 | `1b809539efae7880701d2205f87881617ad7441ea1e2cf1a24039e34147c4be8` | 12/12 变异都被对应 oracle 抓到 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
 | `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,897 | `d54d83cb52a1f8489efa4c59162ce8d44f96f34505d3396a5d4e59675460833b` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
 | `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 505 | 45,528 | `35147a4b7559c93773c4c45bb4a9a6f522f34d9f99a1ae2def71dc43a7f98394` | `total checks: 182` | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12` |
 
