@@ -825,6 +825,54 @@ run 在第一个故障处停下，所以 `CONTRAST_GATE` 那行根本没印 —�
 在断言之前把吐司画了出来。改成"清空 + 给覆盖层上 `display:none`，断言的是**没有被绘制**"，
 这条 race 才不再依赖时序。**判据要长在它能被保证的东西上，不是长在我等了多久上。**
 
+## Unreleased - 2026-09-30（第四批：两条读数活，一条红自己认领成因，23 条分档）
+
+边界照旧：不新增依赖、不改依赖清单/lock/配置、不 push、不出包、不改版本号（仍 1.4.4）、不打 tag。
+
+### 一、`--danger-solid`：普查答案落第三个分支，而且我上一轮的描述是错的
+
+新量具 `scripts/theme_token_census.mjs`（只报数不判，因为口径还没定）。
+语义色族 7 个 token：**分主题 2 个（`--accent`、`--accent-soft`，各 3/3 块），只声明一次 5 个**
+（`--danger`/`--success`/`--warning` 在 `:root` 独占；`--accent-solid`/`--danger-solid` **只在 midnight 块里**）。
+全仓 85 个主题块 token 里 16 个分主题、69 个只一份，其中 61 个是 midnight 的 `--color-*` 覆写、**sakura 独占 0 个**。
+
+我上一轮把它写成"`--danger-solid` 没有分主题值"——**这句方向反了**：它不是"只有全局一份"，是"只有 midnight 一份"，
+读起来像"这个 token 忘了分主题"，实际它是暗色专属覆写，亮色侧对应值走 Tailwind 自己的 `--color-red-600`。
+
+**顺着查下去，那条红是我自己造的**：`ConfirmDialog.tsx:53` 的危险按钮是 `bg-red-600`，
+亮色走 `var(--color-red-600)`、midnight 走 `var(--danger-solid)`；而我上一轮为了让 `text-red-600` 在 `bg-red-50`
+上够 4.5:1，把 `:root --color-red-600` 定成了 `#b91c1c`——**与 midnight 那个 fill 同一个 hex**。
+改之前亮色是 oklch red-600 `rgb(231,0,11)`，两边不同，所以不冻结。
+所以它不需要"危险色是否主题无关"这种拍板，只需要亮色那个红别撞同一个 hex（约束：`L ≤ 0.1633` 才在
+`rgb(254,242,242)` 上过 4.5:1）。**本轮按边界没改颜色**，也没加白名单。
+
+### 二、`layout` 23 条：分档，一条没修
+
+`LAYOUT_GATE checked=21 matched=21 skipped=0 failures=23`。**23 条报警行不是 23 个缺陷**：
+
+| | 行数 | 档 |
+|---|---|---|
+| A `CONTROL-CUT` 640×480 侧栏底部"教程与帮助" +25px | 7 | 真缺陷 |
+| B `CONTAINER-CUT` 640×480 同一块的容器 +33px | 7 | 真缺陷，**与 A 同一条** |
+| C `TOUCH-TARGET` 640×480 | 7 | 2 行假象 + 5 行分不清 |
+| D `SELF-CLIP` 图库 1024/640 "刷新" 0px 水平 / 4px 垂直 | 2 | 分不清 |
+
+**净：14 真 / 2 假 / 7 分不清。** 三条支撑 A+B 判真的独立读盘：`tauri.conf.json:18-19` `minWidth:640, minHeight:480`
+（⇒ 640×480 是产品自己的最小窗口，"用户到不了"这条豁免不成立）；`AppShell.tsx:51` 侧栏 `fixed inset-y-0`；
+`styles.css:301-309` 的 `overflow-y:auto` 属于 **`.app-main` 不是 `.app-sidebar`**，全文件找不到给侧栏上 overflow 的规则。
+
+C 的 2 行假象是 label 套 input 那一族（`PublishPage.tsx:217` 的 `<label class="… cursor-pointer … px-3 py-3">`
+被按 13×13 的 `input` 记账）；5 行分不清是因为它们的"最小 16×16"全是**吐司关闭按钮**
+（`div.pointer-events-none.fixed > … > button`，`关闭提示`）——目标本身真的小，但它是瞬态覆盖层，
+现在被并进"这一页有多少可点目标"的计数，于是每路由那个 23/18/15/16/17/14/20 **不是页面的属性，是当时飘几条吐司的属性**。
+D 的两个候选因反都能解释"4px 垂直"：真下缘裁切，或 `Range.getClientRects()` 给行盒而非墨迹；分辨它只要一次
+`height`/`line-height`/`scrollHeight` 读数，本轮没做，所以留"分不清"。
+
+### 三、本轮明确不做的
+
+不改任何颜色、不修任何 layout 条目、不给 `paintedByUnmarked` 设上限（你说得对：要卡它得先修标记集定义，
+现在那个分母量的是"门自己的粒度"，不是"覆盖率"）、不拆 190 KB harness 也不记成欠账。
+
 ## 1.4.4 - Gallery Render Bound and Installer Publisher
 
 

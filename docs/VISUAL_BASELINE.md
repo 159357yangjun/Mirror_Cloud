@@ -367,3 +367,96 @@ oklch red-600 在那块底上是 **4.36:1**）。这一条正是被上面第 1 �
 - `app-upload-button` —— 三套主题都是 slate-950 实心 + 白字，primary action 的识别度靠的就是它不跟随主题。
 
 当前 `SURFACE_GATE routes=7 surfaces=196 frozen=8 offThemeUnwhitelisted=0 whitelisted=8`（改前 off-theme 21）。
+
+## 5. `--danger-solid` 那条红：先答口径普查，再答它是不是缺陷
+
+复算式：`node scripts/theme_token_census.mjs --family=accent,success,warning,danger`
+
+语义色族一共 7 个 token，**分主题的 2 个，只声明一次的 5 个**：
+
+| token | 声明在 | 说明 |
+|---|---|---|
+| `--accent` | `:root` + midnight + sakura（3/3） | 分主题 |
+| `--accent-soft` | 3/3 | 分主题 |
+| `--danger` | 只有 `:root` | 全局一份 |
+| `--success` | 只有 `:root` | 全局一份 |
+| `--warning` | 只有 `:root` | 全局一份 |
+| `--accent-solid` | **只有 midnight** | 不是"全局一份"，是"只有暗色那一份" |
+| `--danger-solid` | **只有 midnight** | 同上 |
+
+全仓 85 个主题块里的 token，16 个分主题、69 个只声明一次；只声明一次的里面 **61 个是 midnight 的 `--color-*` 覆写**，
+8 个是 `:root` 独占（`--success/--warning/--danger/--radius-*/--backdrop-blur/--glass-strength/--wallpaper`），
+**sakura 独占 0 个**。
+
+这组数落进你给的三个分支的**第三个**（同族里一半一半、文档里没有声明过口径）——但要点比你预设的更具体：
+**`--danger-solid` 不是"只有全局一份"，它是"只有 midnight 一份"**。我上一轮把它写成"没有分主题值"，那句是错的，
+错在一个会误导决策的方向上：它读起来像"这个 token 忘了分主题"，实际上它是**暗色专属覆写**，
+亮色侧的对应值走的是 Tailwind 自己的 `--color-red-600`。
+
+### 那条红的成因是我自己造的，不是历史设计
+
+`ConfirmDialog.tsx:53` 的危险按钮是 `… text-white bg-red-600 hover:bg-red-700`。
+- 亮色主题：`.bg-red-600` 走 Tailwind 工具类 → `var(--color-red-600)`；
+- midnight：走 `styles.css:185` 那条 midnight 作用域的覆写 → `var(--danger-solid)` = `#b91c1c`。
+
+而我上一轮为了让 `text-red-600` 压在 `bg-red-50` 上够 4.5:1，把 `:root` 的 `--color-red-600` 定成了 **`#b91c1c`——
+和 midnight 那个 fill 同一个 hex**。改之前亮色是 oklch red-600 = `rgb(231,0,11)`，与 midnight 不同，所以不冻结。
+**所以 `theme-surfaces` 那条红是我把两件事撞成同一个颜色造成的，不是"危险色是否该主题无关"这个设计问题。**
+
+因此它真正需要的决定比上一轮我框的要小得多：只要亮色侧那个红**不取 midnight 的同一个 hex**，
+且仍满足 `L ≤ 0.1633`（在 `rgb(254,242,242)` 上够 4.5:1）即可，两条性质互不干扰。
+本轮按你的边界**没有改颜色**；口径（哪些语义 token 必须分主题）也仍未定，`theme_token_census.mjs` 只报数不判，
+等你定了口径我再把它升成断言。
+
+
+## 6. `layout` 那 23 条：分档，不修
+
+复算式：`node scripts/verify_dialog_interactions.mjs layout` → `LAYOUT_GATE checked=21 matched=21 skipped=0 failures=23`
+（21 = 7 路由 × 3 档宽度；三档都真生效，`assertRealViewport` 逐次核过）。
+
+**23 条报警行不是 23 个缺陷。** 它们归成 4 个家族，其中两个家族是同一个物理问题的两种记账口径：
+
+| 家族 | 行数 | 现象 | 档位 |
+|---|---|---|---|
+| A `CONTROL-CUT` 640×480 | 7（每路由 1 条） | 侧栏底部"教程与帮助"按钮被裁，超出裁剪祖先 **+25px y**，裁剪者是 `html>body`（overflow hidden） | **真缺陷** |
+| B `CONTAINER-CUT` 640×480 | 7（每路由 1 条） | 同一个按钮的**容器** `div.mt-auto.space-y-2` 被裁 **+33px y** | **真缺陷，但与 A 是同一条** |
+| C `TOUCH-TARGET` 640×480 | 7（每路由 1 条，计数 23/18/15/16/17/14/20） | 见下面拆分 | **2 条假象 + 5 条分不清** |
+| D `SELF-CLIP` 图库 1024 与 640 | 2 | "刷新"按钮文字墨迹被裁 **0px 水平 / 4px 垂直**，无 ellipsis 无 title | **分不清** |
+
+### A + B：一条真缺陷，被记成 14 行
+
+证据链（三处独立读盘，不靠门自己说）：
+- `tauri.conf.json:18-19` `minWidth: 640, minHeight: 480` ⇒ **640×480 是产品自己的最小窗口**，不是量具臆造的档位，"用户到不了这个尺寸"这条豁免不成立；
+- `AppShell.tsx:51` 侧栏是 `aside.app-sidebar … fixed inset-y-0` ⇒ 高度锁死为视口高（480）；
+- `styles.css:301-309` 里 `overflow-y: auto` 属于 **`.app-main`，不属于 `.app-sidebar`**；全文件搜不到给 `.app-sidebar` 上 `overflow` 的规则。
+⇒ 侧栏内容高于 480 时，底部那块既不在滚动容器里、又被 `body` 裁掉，**"教程与帮助"在最小窗口下真的点不到**。
+A 与 B 是同一次越界的两种口径（控件盒 +25px、容器盒 +33px），修一处两条一起消。
+
+### C：7 条里 2 条是我已经见过的同族假象，5 条还分不清
+
+- **假象（2 条）**：`发布` 的"最小 13×13 `发布完成自动复制`"、`设置` 的"最小 13×16 `启用`"，都落在 `input` 上。
+  但这两个 input 外面套着 `<label className="… cursor-pointer … px-3 py-3">`（`PublishPage.tsx:217`）
+  和 `label.flex.items-center`（设置页），**真正可点的目标是 label，不是 13px 的方框**。
+  这和对比度那侧"包装型控件被按整盒量"是同一族（拖放区按钮 1.76:1 那次）。
+- **分不清（5 条）**：`资源/云端/图库/插件/任务` 五条的"最小 16×16"全是 **`关闭提示`**，选择器是
+  `div.pointer-events-none.fixed > div.pointer-events-auto.flex > button` —— 那是**吐司的关闭按钮**。
+  两件事没定下来所以不敢判：① 它确实是用户要点的东西，16px 在 640 宽的窗口上是真问题；
+  ② 但它是**瞬态覆盖层**，`layout` 现在把它的节点并进"这一页有多少可点目标"的计数里，
+  于是每路由那个 23/18/15/16/17/14/20 **不是这一页的属性**，而是"这一页当时飘着几条吐司"——
+  和我刚在对比度侧作废过的分母同源。要判它，得先把覆盖层从页面计数里拆出来（拆法现成：`contrast-tier` 那套）。
+- 另外每路由那串计数里除 label-input 和吐司按钮之外**还剩多少真小目标，我没逐条核**，所以 C 的整体不写"真缺陷"。
+
+### D：2 条分不清，两个候选因反都能解释读数
+
+"刷新"按钮（`header… > button.flex…`）报 **0px 水平 / 4px 垂直** 墨迹被裁。
+- 可能一（真）：按钮定高小于 line-box，中文行的下缘被切掉 4px；
+- 可能二（假象）：`Range.getClientRects()` 给的是**行盒**不是墨迹，行盒比字形高，
+  固定高度 + `items-center` 的按钮上会稳定虚报几像素垂直"裁切"。
+分辨它只要一次读数：该按钮的 `height` / `line-height` / `getClientRects()` 与 `scrollHeight`。本轮没做，所以留"分不清"。
+
+### 净结论
+
+**23 条 = 14 行真缺陷（A+B，同一个 bug）+ 2 行同族假象 + 5 行分不清（C 的吐司按钮）+ 2 行分不清（D）= 14 真 / 2 假 / 7 分不清。** 另：C 那 7 行里除"最小值"之外的整串计数还没逐条核，所以"14 真"这个数不会因为核完 C 而变小，只会让 C 的 5 行落定。
+本轮按边界**一条都没修**。下一步顺序：先把覆盖层从 `layout` 的页面计数里拆出来（C 的 5 条才能判），
+再给 `SELF-CLIP` 补行盒/墨迹的分辨读数（D 的 2 条才能判），A+B 那条可以直接修（给 `.app-sidebar` 上 `overflow-y:auto`
+或把底部块移出固定高度容器），但它会改变最小窗口下的侧栏行为，属于要你点头的界面改动。
