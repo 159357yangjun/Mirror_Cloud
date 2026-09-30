@@ -390,6 +390,30 @@ class/tag，新出现的按钮形状会落进 `ghost` 而被判读，不会不�
 本轮按你的边界**没有改颜色**；口径（哪些语义 token 必须分主题）也仍未定，`theme_token_census.mjs` 只报数不判，
 等你定了口径我再把它升成断言。
 
+### 5.1 口径已定，并已升成断言（它当场咬到一处真违规）
+
+**规矩（`--verify` 只断言这一条）**：同一语义色族内**声明方式必须一致**——族里只要有一个成员分主题声明（≥2 个主题块），
+全部成员都必须分主题；全族都只声明一次是合法的（那表示这个角色**故意**与主题无关）。
+
+```text
+$ node scripts/theme_token_census.mjs --verify
+TOKEN_POLICY_SELFTEST cases=5 failed=0        <- 先自证：混合族要报、统一全局族不许报
+TOKEN_POLICY families=13 breaches=1
+  BREACH accent: per-theme --accent,--accent-soft but declared once --accent-solid
+EXIT=1
+```
+
+13 个非调色板族里**只有 1 个违规**，就是 `accent`：`--accent`/`--accent-soft` 三块齐全，`--accent-solid` 只在 midnight。
+`danger` 族（`--danger` 全局 + `--danger-solid` 只在 midnight）**按这条口径是合规的**——这句要说白：
+口径治的是"声明方式不一致"，它**看不见**"两套主题渲染成同一个颜色"。后者只能由量像素的 `theme-surfaces` 报，
+也就是本轮那条红。所以两件事分开：`--accent-solid` 是口径违规（未修，本轮不改颜色），
+danger 撞 hex 是渲染事实（不是缺陷，是门的假阳性，需要的是签名豁免而不是改色）。
+
+修 `--accent-solid` 不需要动任何颜色：它唯一的消费规则（`styles.css:184`）是 midnight 作用域的，
+在 `:root` 补一份同值声明不改变任何主题的渲染结果。**本轮没做**，因为边界写着不碰颜色，
+留到颜色那一轮与断言接入 stage 同笔落地（复算式已写在 `verify_all.mjs` 的注释里）。
+
+
 
 ## 6. `layout` 那 23 条：分档，不修
 

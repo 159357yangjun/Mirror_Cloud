@@ -178,7 +178,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
-| `scripts/verify_all.mjs` | 343 | 24,602 | `73969ca984be9334d55ff4cfbd66efb504afea416934f8591f8e9ad23595ef1f` | 18 stages：七道静态守卫 + 两份台账（`theme_face_inventory`、`verify_shape`）+ 七个测具模式（新增 `contrast-tier`、`theme-surfaces`）+ `red-demo` + 变异套件；`layout` 仍不接入，原因见其注释 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行）；`node scripts/verify_all.mjs selftest`（往 stage 表里粘一行重复名字，必须被点名） |
+| `scripts/verify_all.mjs` | 353 | 25,495 | `448a0136e03306a42894397b48dba897e9686210d1f14c59d4a9c23cce1d0244` | 18 stages：七道静态守卫 + 两份台账（`theme_face_inventory`、`verify_shape`）+ 七个测具模式（新增 `contrast-tier`、`theme-surfaces`）+ `red-demo` + 变异套件；`layout` 仍不接入，原因见其注释 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行）；`node scripts/verify_all.mjs selftest`（往 stage 表里粘一行重复名字，必须被点名） |
 | `scripts/verify_dialog_interactions.mjs` | 2635 | 203,290 | `50c099fc41dbc2abadf659567d691d198178918ca86a60c76c354d12d184c0d9` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
 | `scripts/verify_guard_mutations.mjs` | 288 | 23,220 | `c909de97ff370ed6e0593e519b7d21728d459030966788dc4a2c2df694edf52f` | 24 个变异（M1–M24），每个都必须被它指定的那台 oracle 抓到；本轮 M18/M19/M21/M22/M23/M24 的逐条读数见下面"本轮末次运行读数"一节 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
 | `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 553 | 33,262 | `1edc005d5f8c6bacb4921d45eca4781e3b0122f67d895ba87b011c9315c5e01e` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
@@ -845,6 +845,25 @@ run 在第一个故障处停下，所以 `CONTRAST_GATE` 那行根本没印 —�
 改之前亮色是 oklch red-600 `rgb(231,0,11)`，两边不同，所以不冻结。
 所以它不需要"危险色是否主题无关"这种拍板，只需要亮色那个红别撞同一个 hex（约束：`L ≤ 0.1633` 才在
 `rgb(254,242,242)` 上过 4.5:1）。**本轮按边界没改颜色**，也没加白名单。
+
+### 口径已定并升成断言（同笔带着一处真违规）
+
+`theme_token_census.mjs --verify` 现在断言一条规矩：**同一语义色族内声明方式必须一致——族里只要有一个成员分主题声明，
+全部成员都必须分主题；全族都只声明一次合法（那是故意的主题无关常量）。**
+先自证再判树（`TOKEN_POLICY_SELFTEST cases=5 failed=0`：混合族必须报、统一全局族必须不报、单成员族不报、
+`--color-*` 梯子不在范围内），然后当场咬到 **1 处真违规、exit 1**：
+
+```text
+TOKEN_POLICY families=13 breaches=1
+  BREACH accent: per-theme --accent,--accent-soft but declared once --accent-solid
+```
+
+分工要说白：**这条口径治"声明方式不一致"，看不见"两套主题渲染成同一个颜色"**。
+`danger` 族按口径是**合规**的（全族都不分主题）；danger 撞 hex 是**渲染事实**，只有量像素的 `theme-surfaces`
+能报——所以那条红不是口径违规，是门的假阳性，它要的是签名豁免而不是改色。
+`--accent-solid` 才是口径违规，且**修它不需要动任何颜色**（唯一消费它的规则是 midnight 作用域的，
+在 `:root` 补一份同值声明不改变任何主题的渲染结果）——本轮按边界没做，`verify_all.mjs` 里写明它为何不作
+stage、复算式是什么，留到颜色那一轮同笔接入。
 
 ### 二、`layout` 23 条：分档，一条没修
 

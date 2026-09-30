@@ -103,6 +103,16 @@ const stages = [
   // `theme-surfaces` IS a stage: it has been green since the palette remap (0 off-theme, 0 dead
   // exemptions) and it now also sweeps the confirm dialog and a raised toast, so a whitelist entry
   // that no surface hits any more is reported as DEAD-EXEMPTION.
+  // `token-policy` (scripts/theme_token_census.mjs --verify) is deliberately NOT a stage yet: it is
+  // red on the current tree, on one named violation. The policy is "within a semantic colour family
+  // the declaration style must be consistent - if any member follows the theme, all of them must".
+  // It bites once, and that once is real: --accent and --accent-soft are declared in all three theme
+  // blocks while --accent-solid exists only in midnight's. Reproduce with:
+  //   node scripts/theme_token_census.mjs --verify     (exit 1, BREACH accent)
+  // It lands as a stage in the colour round, in the same commit as whichever way that is resolved -
+  // declaring --accent-solid in :root changes no rendered colour (its only consumer rule is
+  // midnight-scoped), so this is a one-line fix that was NOT taken here because the boundary for
+  // this round was "no colour changes".
   { name: 'theme-surfaces', run: 'node', args: [NODE_MODE, 'theme-surfaces'], needsServer: true, gateJson: true, timeout: 600_000, count: /SURFACE_GATE routes=(\d+).*offThemeUnwhitelisted=(\d+)/ },
   // `layout` is deliberately NOT a stage yet. Standalone it reports 23 real geometry findings;
   // inside this aggregate the viewport override for the 1024 tier never applied and the injected
