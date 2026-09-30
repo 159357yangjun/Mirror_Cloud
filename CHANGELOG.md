@@ -115,6 +115,53 @@ sawMinimizedReject: true   broken: []
 
 纯浏览器不崩：7 条路由逐个可信点击后 `main h1` 都正确切换、`#root` 未卸载、无 React 崩溃；缺 Tauri 运行时的表现是吐司「数据加载失败：TypeError: Cannot read properties of undefined (reading 'invoke')」。**这条只在非 Tauri 运行时出现，装包用户看不到，因此按 harness 事实记录、不算产品缺陷。**
 
+### 一条命令跑完整条链：`cd apps/desktop && npm run verify:all`
+
+七个入口记不住，实际发生的就是"只跑一个就当全绿"。`scripts/verify_all.mjs` 按固定顺序跑 12 道，每道打自己的计数，任何一道非 0 就整体非 0：
+
+```text
+1-7   validate / check_contracts / check_user_flow / check_docs_site /
+      check_workflow_action_pins / check_release_version / check_tauri_dependency_family
+8     gate-unit      视口门禁判定（纯 predicate，不开浏览器）
+9     gate           视口门禁对真最小化窗口
+10    ab             确认框溢出的成对读数
+11    red-demo       身份门禁拒绝两种冒牌 server
+12    mutations      证明上面每一道都会报警（放最后，因为它会临时改受版本控制的文件）
+```
+
+退出码：`0` 全过；`2` 有道失败（**每道的所有 FAIL 行在它自己那一段就原样打出来**，不等汇总，避免"最后一道遮住前一道"）；`3` 没有失败但有空跑——`gate`/`ab` 需要 dev server，起不来时报 **SKIPPED 而不是 PASSED**，所以"没起服务"永远刷不出绿色。本机实测：
+
+```text
+$ cd apps/desktop && npm run verify:all ; echo $?
+verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
+0
+```
+
+聚合层的红（改指纹表一个字符，`verify_all.mjs` 那行哈希末位 2→3）：
+
+```text
+$ cd apps/desktop && npm run verify:all ; echo $?
+    FAIL fingerprint row for scripts/verify_all.mjs matches its HEAD blob (table ...dbbc363; blob ...dbbc362)
+    FAIL fingerprint row for scripts/verify_all.mjs matches the working copy (table ...dbbc363; on disk ...dbbc362)
+FAILED  check_user_flow  USERFLOW_CHECKS total=183 failed=2
+FAILED  mutations  count: NOT REPORTED by this stage - treat as a harness gap, not a pass
+verify:all | 12 stages: 10 passed, 2 failed, 0 skipped
+2
+$ cp /tmp/cl.good CHANGELOG.md && npm run verify:all ; echo $?
+verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
+0
+```
+
+`mutations` 那道一起红是**设计**：CHANGELOG 是它的变异目标之一，脏树时它拒绝执行，不静默跳过。哈希这次打满 64 位，因为十二位截断曾让"末位改一个字符"的两边显示成同一个值。
+
+**为什么又改了一次 `apps/desktop/package.json`**：只加 `verify:all` 一个 scripts 键（`node ../../scripts/verify_all.mjs`）。仍然没有新依赖、没动 `version`/`dependencies`/`devDependencies`、没动 lock、没跑 `npm install`。这条与上一条 `verify:dialog` 同理：仓库里没有根 `package.json`，聚合入口挂在已有的桌面清单上。
+
+**聚合器自己踩的两个坑**（都是"看起来在检查，其实检查的是散文"）：① 解释器探测——`spawnSync('python')` 在本机 ENOENT，因为 PATH 第一个 `python` 是 WindowsApps 执行别名，CreateProcess 过不去，而 `where.exe python` 能列出真正的 `D:/anaconda/python.exe`；改成枚举 `where.exe` 结果、剔掉别名、并要求 ≥3.11（`validate.py` 用 `tomllib`，挑到 3.10 会让三道守卫假红）。② "oracle 到底跑没跑"的判据原来是输出里有没有 `total checks:` 这句人话——我把横幅改掉之后它只在成功路径存在，于是 12 道变异里有 11 道被误判成"oracle 沉默"。现在检查器无论成败都先打一行机器可读的 `USERFLOW_CHECKS total=N failed=M`。
+
+### 横幅里的版本标号（你问的第 2 条）
+
+确认过：`v1.3.5` **不是**检查器自己的版本号，也不是应用版本，而是"这一批断言是在应用 v1.3.5 那轮加进来的"分节标号，且从 1.4.0 起再没跟着动过 —— 属于旧残留被当成现状读。改法：分节行统一成 `user-flow section [v1.3.4 lifecycle/application/task hardening] | checks so far: N`（明确是进度），结论文行去掉版本字样，改成 `user-flow checker: OK | total checks: 183`，失败时 `user-flow checker FAILED: 2 of 183 check(s)`。现在同一屏上只剩应用版本一个数字（`Release version consistent: 1.4.4`）。
+
 ### 三处调用点与两条踩坑记录
 
 三处 `void` 调用点的确切位置：`HelpCenterDialog.tsx:32`（经 `AppShell.tsx:114` 注入）、`SettingsPage.tsx:328`、`StorageSetupDialog.tsx:256`（后者要先在云端页展开"配置教程"面板才出现）；同一批里另外 6 处是 `GalleryPage.tsx:321/342/388` 与 `StorageBrowserDialog.tsx:149/169/183` 的"浏览器打开"，它们共用同一个包装函数。逐基址的实际提示文本见上面那张表。
@@ -287,6 +334,9 @@ node scripts/verify_guard_mutations.mjs                 # 12/12 变异都被对�
 9. **放弃"只比 HEAD blob"的指纹语义**（第一版就是这么实现，也是你最初要求的措辞）——它抓不到未提交的一字节漂移，而那正是漂移发生的地方。现在 blob 与工作区两半都比；代价是提交前必然看到一次"表比 blob 新"的红，这是设计而非缺陷，已在上面贴出。
 10. **放弃给依赖扫描加豁免名单**（比如"忽略出现在 `id: 'M12'` 行里的 import 字面量"）——豁免名单会跟着下一条变异数据一起再被毒一次，且它自己就是一条"看起来在检查"的假绿。改成把扫描限定在行首 `import`，从语法上而不是从名单上排除字符串字面量。
 11. **放弃把 mutation 表挪进 JSON 数据文件**（能同时解掉两个自吞问题）——多一个没有类型、没有断言、谁都能手改的数据面；现在的两条不变式（测具里不得有 mutation 表、runner 不得变异自己）已经把它们挡在结构外，不需要再引入一个可被同样方式污染的文件。
+12. **放弃把解释器探测抽成共享模块**——多一个 `scripts/*.mjs` 就要多一行指纹表项、多一条"它自己有没有被断言过"的问题；两处 20 行的探测逻辑重复，换来的是每个文件都能被单独证伪。若第三处再需要，就该抽了。
+13. **放弃在聚合器里自动起 dev server**——那是把"我测的是哪个构建"变成聚合器自己的副作用，而且 `npm run dev` 属于起进程，越出本轮边界；宁可 SKIPPED 并退 3。
+14. **放弃给 `verify:all` 加超时后继续**——12 道里有 4 道要开真浏览器，最坏几分钟；一道卡死应该被看见成一道失败，而不是被 `Promise.race` 吞成"没跑到"。
 
 ### 本轮记录（仓库路径与实状态）
 
@@ -360,7 +410,10 @@ JOB desktop-check | completed | success | steps=25 | non-green=[]
 2. **Tauri 分支的 `openUrl` 失败提示**：需要 Rust 运行时，本机无 cargo，只能靠代码路径推断。
 3. **14 行级长文案在最小窗口下的可用性**：640×480（`tauri.conf.json` 的 minWidth/minHeight）时，本轮那串 5 行长文案下卡片 440×472、按钮 `confirmFullyVisible: true`；把正文撑到 14 行则卡片高 **952px**、确认按钮 `confirmFullyVisible: false`，且遮罩 `overflowY: visible` 不可滚动 → 用户既看不到也点不到。**当前 10 个调用点里最长的批量删除文案只有 2 行，构造不出这个尺寸，所以判潜在而非现存缺陷，未修。** 真要修是给 `<section>` 加 `max-h` + 滚动。
 4. **确认框打开期间吐司被遮住**：95 盖住 70 已实测（`elementFromPoint` 落在确认层内），且遮罩本身是 `background-color: oklab(0.129 … / 0.35)` + `backdrop-filter: blur(8px)`——吐司是画在这层 35% 暗色 + 8px 模糊**之下**的，截图 `10-toast-behind-confirm.png`。"还能不能读清"是感知判断，我没有下结论；能确定的是它不在最上层、点不到（吐司容器 `pointer-events: none`，其上的确认层吃掉命中）。现有 10 个调用点都是"确认关闭之后才发吐司"，所以真实流程里还没构造出"确认框还开着、后台先报错"的场景。
-5. **`StorageBrowserDialog.tsx:148 / :168 / :182` 还有 3 处 `void copyText(...)`**（三个"复制"按钮）：和这轮修掉的 `void openExternalUrl` 是同一类丢弃 promise 的写法，剪贴板写入失败时按钮不会给任何反馈。同一条线改起来只要把包装函数换成通用版，但本轮没有实测证据（浏览器分支的 `navigator.clipboard` 在 headless 下直接成功，构造不出失败），所以**只登记不动**，等真需要时一起改。
+5. **`StorageBrowserDialog.tsx:148 / :168 / :182` 还有 3 处 `void copyText(...)`**（三个"复制"按钮）：**判定 = 与已修的 `void openExternalUrl` 同构，只是这一轮拿不到红**，不是"Tauri 分支走另一条错误通道"。
+   - 依据：`desktop.ts:71-78` 的 `copyText` 两条分支都 `await` 一个会 reject 的 promise（Tauri 走 `plugin-clipboard-manager` 的 `writeText`，浏览器走 `navigator.clipboard.writeText`），而**缺陷在调用点的 `void`**，与走哪条分支无关。所以修法和 openExternalUrl 一模一样（一个把 rejection 送进吐司的包装 + 三处换调用），不需要另一套错误通道。
+   - 边界（写给后人，不是结论）：浏览器分支我**没测过它的失败**——本轮 headless 里 `writeText` 都成功；规范上文档失焦时它会 reject（`Document is not focused`），那是一条**候选**造红路线，我没走，所以别把它当已验证。Tauri 分支的 `writeText` 会因窗口失焦/权限失败，那是真正上线的那条，但需要 Rust 运行时才能证。
+   - 因此这条的现状是"同构缺陷 + 两条分支都暂无本机证据"。**没有为了"修对称"而改代码**；要动的时候连同这三处一起，并先造出一次红。
 6. **默认分支 `main` 指向另一项目**：依旧只交方案、未执行任何分支操作，方案与影响面见上一批第 5 条。
 
 ## 1.4.4 - Gallery Render Bound and Installer Publisher
