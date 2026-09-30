@@ -96,7 +96,7 @@ for ok, label in checks:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
     raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
-print(f'User-flow contract: OK | checks: {len(checks)}')
+print(f'user-flow section [base] | checks so far: {len(checks)}')
 
 # v1.2.3 reliability hardening.
 github = text('crates/storage-github/src/lib.rs')
@@ -133,7 +133,7 @@ for ok, label in checks[-18:]:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
     raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
-print(f'User-flow reliability hardening: OK | total checks: {len(checks)}')
+print(f'user-flow section [reliability hardening] | checks so far: {len(checks)}')
 
 # v1.2.5 consistency and integrity hardening.
 gitee = text('crates/storage-gitee/src/lib.rs')
@@ -170,7 +170,7 @@ for ok, label in checks[-20:]:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
     raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
-print(f'User-flow integrity hardening: OK | total checks: {len(checks)}')
+print(f'user-flow section [integrity hardening] | checks so far: {len(checks)}')
 
 # v1.3.0 core/UI/cloud-manager architecture.
 require("pub struct PublisherCore" in application and "StorageGroupStrategy::MirrorAll" in application and "StorageGroupStrategy::PrimaryWithBackups" in application, 'PublisherCore owns multi-cloud strategy semantics')
@@ -188,7 +188,7 @@ for ok, label in checks[-9:]:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
     raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
-print(f'User-flow v1.3 architecture: OK | total checks: {len(checks)}')
+print(f'user-flow section [v1.3 architecture] | checks so far: {len(checks)}')
 
 # v1.3.1 integration/performance architecture.
 integrations = text('apps/desktop/src-tauri/src/commands/integrations.rs')
@@ -212,7 +212,7 @@ for ok, label in checks[-10:]:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
     raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
-print(f'User-flow v1.3.1 integrations: OK | total checks: {len(checks)}')
+print(f'user-flow section [v1.3.1 integrations] | checks so far: {len(checks)}')
 
 # v1.3.2 zero-context integrations and cloud-manager mutation layer.
 main_rs = text('apps/desktop/src-tauri/src/main.rs')
@@ -239,7 +239,7 @@ for ok, label in checks[-14:]:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
     raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
-print(f'User-flow v1.3.2 zero-context/cloud-manager: OK | total checks: {len(checks)}')
+print(f'user-flow section [v1.3.2 zero-context/cloud-manager] | checks so far: {len(checks)}')
 
 
 # v1.3.3 lifecycle, batch-management and command-boundary hardening.
@@ -261,7 +261,7 @@ for ok, label in checks[-11:]:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
     raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
-print(f'User-flow v1.3.3 lifecycle/batch architecture: OK | total checks: {len(checks)}')
+print(f'user-flow section [v1.3.3 lifecycle/batch architecture] | checks so far: {len(checks)}')
 
 
 # v1.3.4 application-boundary, lifecycle and persistent batch-task hardening.
@@ -289,7 +289,7 @@ for ok, label in checks[-15:]:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
     raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
-print(f'User-flow v1.3.4 lifecycle/application/task hardening: OK | total checks: {len(checks)}')
+print(f'user-flow section [v1.3.4 lifecycle/application/task hardening] | checks so far: {len(checks)}')
 
 # v1.3.5 task-control, plugin-observability and diagnostics hardening.
 migration13 = text('crates/persistence-sqlite/migrations/0013_plugin_execution_logs.sql')
@@ -401,6 +401,15 @@ require(all(i.startswith('node:') for i in harness_imports), f'the harness adds 
 # Reachability: a tool nobody can discover is a tool that rots. It must stay wired to a real entry.
 desktop_pkg = json.loads(text('apps/desktop/package.json'))
 require('verify_dialog_interactions.mjs' in json.dumps(desktop_pkg.get('scripts', {})), 'the harness is reachable from an npm script entry')
+# One command must reproduce the whole chain, and it must not be able to report green while the
+# browser-backed stages never ran.
+all_scripts = json.dumps(desktop_pkg.get('scripts', {}))
+require('verify_all.mjs' in all_scripts, 'one npm entry reproduces the whole measurement chain')
+all_path = ROOT / 'scripts' / 'verify_all.mjs'
+all_text = all_path.read_text(encoding='utf-8') if all_path.exists() else ''
+require('SKIPPED' in all_text and 'skipped.length ? 3 : 0' in all_text, 'the aggregate reports skipped stages instead of passing them')
+require("line.startsWith('FAIL')" in all_text, 'the aggregate prints each failing stage its own failures')
+require(all(i.startswith('node:') for i in top_level_imports(all_text)), f'the aggregate adds no third-party dependency ({top_level_imports(all_text)})')
 # Pointing a probe at a port is not pointing it at this project. The identity gate has to stay, and
 # it has to refuse by throwing - a finish(2) that falls through keeps sampling and prints success
 # fields next to its own failure message.
@@ -490,5 +499,6 @@ for ok, label in checks[-8:]:
     if ok:
         print('OK   ' + label)
 if failed:
-    raise SystemExit(f'User-flow contract FAILED: {len(failed)} of {len(checks)} check(s)')
-print(f'User-flow v1.3.5 task/observability/diagnostics hardening: OK | total checks: {len(checks)}')
+    raise SystemExit(f'user-flow checker FAILED: {len(failed)} of {len(checks)} check(s)')
+print(f'user-flow section [v1.3.5 task/observability/diagnostics hardening] | checks so far: {len(checks)}')
+print(f'user-flow checker: OK | total checks: {len(checks)}')

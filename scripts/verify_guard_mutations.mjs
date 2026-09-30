@@ -78,16 +78,19 @@ if (dirty.length) {
 // resolves it to a dead WindowsApps stub that exits 1 with no output - which is indistinguishable
 // from "the guard alarmed". Probe for a real interpreter instead of trusting an exit code.
 function resolvePython() {
+  // Require 3.11+: the oracle chain includes guards importing tomllib, and picking a 3.10 launcher
+  // would report "the guard stayed silent" for a reason that has nothing to do with the mutation.
   for (const [exe, pre] of [[process.env.PYTHON, []], ['python', []], ['py', ['-3']], ['python3', []]]) {
     if (!exe) continue
-    const probe = spawnSync(exe, [...pre, '-c', 'import sys; print(sys.version_info[0])'], { encoding: 'utf8', timeout: 30_000 })
-    if (probe.status === 0 && (probe.stdout || '').trim() === '3') return { exe, pre }
+    const probe = spawnSync(exe, [...pre, '-c', 'import sys; print(sys.version_info[0] * 100 + sys.version_info[1])'], { encoding: 'utf8', timeout: 30_000 })
+    const minor = Number((probe.stdout || '').trim())
+    if (probe.status === 0 && minor >= 311) return { exe, pre }
   }
   return null
 }
 const python = resolvePython()
 if (!python) {
-  console.error('no Python 3 interpreter found (tried $PYTHON, python, py -3, python3); the guard oracle cannot run.')
+  console.error('no Python >= 3.11 interpreter found (tried $PYTHON, python, py -3, python3); the guard oracle cannot run.')
   process.exit(3)
 }
 
