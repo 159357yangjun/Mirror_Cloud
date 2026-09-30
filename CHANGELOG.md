@@ -178,8 +178,8 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
-| `scripts/verify_all.mjs` | 332 | 23,627 | `ecb255d37155cb380691d330163c51b6a4b939b04f4933b5d5c3e73c684efee6` | 18 stages：七道静态守卫 + 两份台账（`theme_face_inventory`、`verify_shape`）+ 七个测具模式（新增 `contrast-tier`、`theme-surfaces`）+ `red-demo` + 变异套件；`layout` 仍不接入，原因见其注释 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行）；`node scripts/verify_all.mjs selftest`（往 stage 表里粘一行重复名字，必须被点名） |
-| `scripts/verify_dialog_interactions.mjs` | 2486 | 190,800 | `31a47d65209c9d1fae7a77e94d92b4cd6c84e169bbf3c7c35459b32f02668964` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
+| `scripts/verify_all.mjs` | 343 | 24,602 | `73969ca984be9334d55ff4cfbd66efb504afea416934f8591f8e9ad23595ef1f` | 18 stages：七道静态守卫 + 两份台账（`theme_face_inventory`、`verify_shape`）+ 七个测具模式（新增 `contrast-tier`、`theme-surfaces`）+ `red-demo` + 变异套件；`layout` 仍不接入，原因见其注释 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行）；`node scripts/verify_all.mjs selftest`（往 stage 表里粘一行重复名字，必须被点名） |
+| `scripts/verify_dialog_interactions.mjs` | 2588 | 199,443 | `c33159c857f2573b62690357370a1689f3e9507824bdf2ebdf796febe4147f47` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
 | `scripts/verify_guard_mutations.mjs` | 288 | 23,220 | `c909de97ff370ed6e0593e519b7d21728d459030966788dc4a2c2df694edf52f` | 24 个变异（M1–M24），每个都必须被它指定的那台 oracle 抓到；本轮 M18/M19/M21/M22/M23/M24 的逐条读数见下面"本轮末次运行读数"一节 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
 | `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 553 | 33,262 | `1edc005d5f8c6bacb4921d45eca4781e3b0122f67d895ba87b011c9315c5e01e` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
@@ -774,7 +774,52 @@ run 在第一个故障处停下，所以 `CONTRAST_GATE` 那行根本没印 —�
 3. **23 条几何缺陷、25 处 `text-muted` 调用点归类、sr-only 的应用内路径**：都还挂着，本批一条没修。
 4. **没给 M25 留位**（理由在上面撤回那条里）。
 
+### 追加一轮：把门自己加速一倍，结果量出两个门一直在指错元素
+
+`verify:all` 印出每个 stage 的成本之后（`verify:all | wall=… cost (slowest first): …`），最贵的一格是
+`contrast-tier=63.3s / 140.2s`。它自己那行再拆一层 `PHASE-COST`，结论跟我的猜测相反：
+
+| 阶段 | 改前 | 改后 |
+|---|---|---|
+| nav（页面加载） | 32.5s | 15.6s |
+| prep（等待 + 断言） | 9.4s | 1.9s |
+| collect | 1.0s | 1.0s |
+| shot（拍照） | 5.0s | 4.8s |
+| sample（逐点取样） | 1.7s | 1.7s |
+| **整轮** | **59s** | **34s** |
+
+我原本准备动的是取样和拍照（合计 6.5s）。**不印这一行，下一步就会去稀采样密度** —— 那是把门弄瞎的方向，
+也是你上一轮明确划的线（要稀的是组合数，不是每个面上的密度）。真正的两处改动是：
+① 循环顺序改成"路由在外、壁纸在内"（壁纸只是 `documentElement` 上一个自定义属性，不值得为它重载页面：
+576 次加载 → 192 次）；② 固定 `sleep(120)` 换成"等到那一帧真的画出来"。
+
+**加速没改结论，但把两个漏看顶出来了**（详见 `docs/VISUAL_BASELINE.md` 4.36）：
+
+1. `对话框` 那一面以前无条件枚举 `main/aside/section`，也就是**把弹窗背后那一页算进弹窗**。
+   它的行数看着对（5 行），只是因为错误吐司栈挡着其余行 —— 巧合，不是正确。
+   现在覆盖层面只量自己的子树，并且**断言 `[role=dialog]` 真的在屏上**；这条断言第一次跑就抓到
+   "壁纸第 2、3 趟时弹窗已经关了"。
+2. `theme-surfaces` 按"哪个盒子的几何范围包含这个点"记账，于是确认框那个红色"重置 Token"按钮的像素
+   被算到它底下一张 `rounded-2xl … bg-white` 卡片名下，报警指着卡片说"它不跟主题"。
+   现在按**谁真的把漆落在那一点上**记账，报警点名 `button.rounded-xl.px-4`。
+
+改完之后剩下 **1 条真红，我没有进白名单**：危险按钮三套主题都是 `rgb(185,28,28)`，因为
+`--danger-solid` 没有分主题值。危险色全局一致可以是设计（它白标签的比值 4.77 / 6.47 / 4.77 都过），
+也可以算"暗色没落地"——**这板该你拍**，所以 `verify:all` 现在是 17 passed / 1 failed，红的就是这一条，
+不加豁免、不改颜色去凑绿。
+
+另外补了一条 token：`--color-red-600` 在 `:root` 定成 `#b91c1c`。Tailwind v4 自带的 oklch red-600
+压在 `bg-red-50` 上是 **4.36:1**（33 处 `text-red-600` 大多落在那 38 处面板上），而这个组合以前从没被量到 ——
+那些错误提示行一直躲在吐司底下。
+
+一次我自己造出来的race，也记一下：清吐司这件事本来是"先 dismiss 再 sleep(120) 再断言没有节点"，
+有一轮报 `1 toast node still painted after dismissing 0` —— _store 是空的，但一个还没落地的查询错误
+在断言之前把吐司画了出来。改成"清空 + 给覆盖层上 `display:none`，断言的是**没有被绘制**"，
+这条 race 才不再依赖时序。**判据要长在它能被保证的东西上，不是长在我等了多久上。**
+
 ## 1.4.4 - Gallery Render Bound and Installer Publisher
+
+
 
 
 - Bound gallery rendering: past 600 revealed entries the page reports how many remain and asks you to narrow the directory or search instead of offering another batch forever. The cap is soft, so up to about 720 files stay fully reachable with no limit message. This also bounds what 全选本页文件 can select, which previously could reach every entry you had revealed.
