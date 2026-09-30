@@ -24,6 +24,11 @@
  *   visual    the measured visual baseline (type scale, radii, gaps, dead space, sequences,
  *             contrast) for every surface, plus four asserted invariants on the onboarding dialog
  *   contrast  the raw colour chain behind one flagged element, for hand-checking the ratio
+ *   contrast-tier  the contrast floor: every readable text run and every control kind, on every
+ *             route, under all three themes and both wallpaper extremes, judged against the surface
+ *             sampled from a glyph-hidden screenshot (so gradients, backdrop-filter and the wallpaper
+ *             composite are in the number). --doc=PATH additionally checks the two marked tables in
+ *             that document against this run; --doc-write regenerates them from it.
  *   layout    the geometry floor: every route at 1440/1024/640 checked for horizontal overflow,
  *             clipped text, touch-target size, focus visibility, accessible names and broken images
  *   theme-surfaces  photographs each surface under all three themes and reports the ones whose
@@ -40,6 +45,16 @@
  *   --tag NAME  filename suffix for reports
  *   --port N    CDP port; default is an OS-assigned free loopback port (a fixed default once
  *               attached to the developer's own running browser - see the comment at the binding)
+ *   --routes A,B  restrict a sweep to named routes. The sweep then prints `SCOPE partial`, and the
+ *               "every kind of surface was seen" assertions only bind a full sweep - a subset that
+ *               passes has not measured the routes it skipped.
+ *   --deadline MS  hard self-budget; also read from VERIFY_DEADLINE_MS. The harness stops itself and
+ *               prints which combinations are UNMEASURED, rather than being killed from outside with
+ *               no reading at all.
+ *   --doc PATH  check the marked tables in PATH against this run (contrast-tier), or against the
+ *               source (theme_face_inventory.mjs).
+ *   --doc-write  with --doc, regenerate those marked blocks from this run. Only the blocks move;
+ *               the prose around them stays authored.
  *
  * Exit codes
  *   0  measured, every assertion held
@@ -62,16 +77,76 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { fileURLToPath } from 'node:url'
 import { HELPERS, VISUAL_PROBE, LAYOUT_PROBE } from './verify_probes.mjs'
+import { MODES, DISPATCH_RE } from './verify_modes.mjs'
 
 const argv = process.argv.slice(2)
 const MODE = argv[0] && !argv[0].startsWith('--') ? argv[0] : ''
-const opt = (name, fallback) => {
-  const i = argv.indexOf(`--${name}`)
-  return i !== -1 && argv[i + 1] ? argv[i + 1] : fallback
+// MODES lives in its own module so the shape ledger and this runner read the same list; here it is
+// cross-checked against the dispatch statements that actually exist. Both directions matter: a name
+// listed with no block spawns a browser, judges nothing and exits 0, and a block with no name is
+// invisible to whoever reads the help. `help` is exempt from the comparison test because it is the
+// usage branch (`if (!MODE || MODE === 'help')`), not a measurement block.
+{
+  const source = readFileSync(new URL(import.meta.url), 'utf8')
+  const dispatched = new Set([...source.matchAll(DISPATCH_RE)].map((m) => m[1]))
+  const missing = MODES.filter((m) => m !== 'help' && !dispatched.has(m))
+  const extra = [...dispatched].filter((m) => !MODES.includes(m)).sort()
+  if (missing.length || extra.length) {
+    console.error(`HARNESS FAULT: the mode dispatch disagrees with scripts/verify_modes.mjs. declaredButAbsent=${missing.join(',') || '-'} dispatchedButUndeclared=${extra.join(',') || '-'}`)
+    process.exit(2)
+  }
+  // Third direction: declared and dispatched is not the same as discoverable. `contrast-tier` ran for
+  // weeks without appearing in the usage block, so the only person who knew it existed was the one who
+  // wrote it - and a mode nobody can find is a gate nobody runs.
+  const usage = source.split('*/')[0]
+  const undocumented = MODES.filter((m) => m !== 'help' && !new RegExp(`^ \\*   ${m}( |  )`, 'm').test(usage))
+  if (undocumented.length) {
+    console.error(`HARNESS FAULT: mode(s) ${undocumented.join(', ')} are declared and dispatched but not listed in this file's usage block.`)
+    process.exit(2)
+  }
+  if (MODE && MODE !== 'help' && !MODES.includes(MODE)) {
+    console.error(`HARNESS FAULT: mode "${MODE}" is not declared, so no block would run. Declared: ${MODES.join(', ')}`)
+    process.exit(2)
+  }
 }
+// Both `--routes a,b` and `--routes=a,b` are accepted. This matters: the `=` form used to be
+// ignored, so `--routes=发布,资源,云端,图库,插件,任务,设置` ran the two-route default and still
+// printed a confident CONTRAST_GATE - the instrument answered while the application was never
+// asked. Anything the parser cannot consume is now a hard error for the same reason.
+// The accepted flag list is read back out of this file rather than typed here: a hand-maintained
+// whitelist drifts the moment a mode starts using an option, and the drift shows up as an
+// unhelpful "unknown option" for a flag that works.
+const KNOWN_OPTS = new Set(
+  [...readFileSync(new URL(import.meta.url), 'utf8').matchAll(/\b(?:opt|flag)\('([a-z0-9-]+)'/g)].map((m) => m[1]),
+)
+const opt = (name, fallback) => {
+  const eq = argv.findIndex((a) => a.startsWith(`--${name}=`))
+  if (eq !== -1) return argv[eq].slice(name.length + 3) || fallback
+  const i = argv.indexOf(`--${name}`)
+  return i !== -1 && argv[i + 1] && !String(argv[i + 1]).startsWith('--') ? argv[i + 1] : fallback
+}
+// Boolean switches go through this rather than a bare argv.includes, so the derivation above still
+// sees them: a flag read by hand is a flag the unknown-option guard does not know about, and it would
+// be rejected as a typo on the way in.
+const flag = (name) => argv.some((a) => a === `--${name}`)
+for (const a of argv) {
+  if (!a.startsWith('--')) continue
+  const name = a.slice(2).split(/[=\s]/)[0]
+  if (!KNOWN_OPTS.has(name)) {
+    console.error(`HARNESS FAULT: unknown option --${name}. A flag the parser ignores does not narrow the run, it fakes one. Known: ${[...KNOWN_OPTS].sort().join(', ')}`)
+    process.exit(2)
+  }
+}
+// Hard budget, in milliseconds, from --deadline or VERIFY_DEADLINE_MS. The aggregate sets it to its own
+// stage timeout minus a minute so the harness always stops itself, cleanly, with the coverage it managed to
+// reach printed - a stage killed from outside cannot print anything, and an unfinished sweep that
+// looks like a finished one is worse than a short one.
+const DEADLINE_MS = Number(opt('deadline', process.env.VERIFY_DEADLINE_MS || '')) || 0
+const RUN_STARTED = Date.now()
+let budgetHits = 0
 if (!MODE || MODE === 'help') {
   console.log(readFileSync(new URL(import.meta.url), 'utf8').split('*/')[0].replace(/^\/\*\*/, ''))
-  console.log(`modes: confirm | ab | gate | gate-unit | links | pages | external | red-demo | visual | contrast | layout | theme-surfaces | settings-guard`)
+  console.log(`modes: ${MODES.join(' | ')}`)
   process.exit(MODE === 'help' ? 0 : 2)
 }
 
@@ -129,6 +204,22 @@ const TAG = opt('tag', MODE)
 const OUT = opt('out', `${(process.env.TEMP || '/tmp').replace(/\\/g, '/')}/image-hosting-probes/${new Date().toISOString().slice(0, 10)}`)
 mkdirSync(OUT, { recursive: true })
 
+// The coverage rule, as a predicate the unit mode can feed both ways. Two reasons it lives here
+// rather than inline: the ceiling had never tripped on a real sweep, so inline it was an assertion
+// nobody had seen fire; and the inline version's `judgedTotal &&` guard meant a sweep that judged
+// NOTHING (a broken collector, not a busy page) passed with measured=0 below=0 - the emptiest
+// possible green. An unknown bucket is only honest if losing it is loud AND losing everything is
+// louder.
+function coverageVerdict({ judged, dropped, ceiling = 0.25 }) {
+  const problems = []
+  if (!judged) problems.push(`judged=0: the sweep measured no run at all, so a below-count of 0 is the collector talking, not the page`)
+  if (judged && dropped > judged * ceiling) {
+    problems.push(`dropped=${dropped} exceeds ${Math.round(ceiling * 100)}% of judged=${judged}`)
+  }
+  const coverage = judged + dropped
+  return { ok: !problems.length, problems, pct: coverage ? Math.round((judged / coverage) * 100) : 0 }
+}
+
 if (MODE === 'gate-unit') {
   // No browser, no dev server: this exercises the gate predicate against readings that were really
   // observed on this machine, including the one that produced the bogus 186.796875px card width.
@@ -138,27 +229,43 @@ if (MODE === 'gate-unit') {
   // the zero-width case also carrying a zero clientWidth, so deleting the innerWidth clause from the
   // predicate still passed 5/5.
   const HEALTHY = { visibility: 'visible', innerWidth: 1406, innerHeight: 803, clientWidth: 1406, clientHeight: 803 }
-  const cases = [
-    { name: 'live headless viewport', reading: { ...HEALTHY }, expectReject: false, expectToken: null },
-    { name: 'hidden, sizes healthy', reading: { ...HEALTHY, visibility: 'hidden' }, expectReject: true, expectToken: 'visibilityState=hidden' },
-    { name: 'innerWidth 0, everything else healthy', reading: { ...HEALTHY, innerWidth: 0 }, expectReject: true, expectToken: 'innerWidth=0' },
-    { name: 'innerHeight 0, everything else healthy', reading: { ...HEALTHY, innerHeight: 0 }, expectReject: true, expectToken: 'innerHeight=0' },
-    { name: 'clientWidth 0, everything else healthy', reading: { ...HEALTHY, clientWidth: 0 }, expectReject: true, expectToken: 'client=0x803' },
-    { name: 'recorded connector reading (hidden + 0x0)', reading: { visibility: 'hidden', innerWidth: 0, innerHeight: 0, clientWidth: 0, clientHeight: 0 }, expectReject: true, expectToken: 'visibilityState=hidden' },
-  ]
-  const results = cases.map((c) => {
-    const verdict = gateVerdict(c.reading)
+  const check = (run, c) => {
+    const verdict = run(c.reading)
     const namedTheClause = c.expectReject === !verdict.ok && (!c.expectToken || verdict.problems.some((p) => p.startsWith(c.expectToken)))
     const extraClauses = c.expectToken ? verdict.problems.filter((p) => !p.startsWith(c.expectToken)) : []
-    return { name: c.name, expectedReject: c.expectReject, gateRejected: !verdict.ok, problems: verdict.problems, correct: namedTheClause, unexpectedOtherClauses: extraClauses }
-  })
+    return { group: c.group, name: c.name, expectedReject: c.expectReject, gateRejected: !verdict.ok, problems: verdict.problems, correct: namedTheClause, unexpectedOtherClauses: extraClauses }
+  }
+  const results = [
+    { group: 'viewport', name: 'live headless viewport', reading: { ...HEALTHY }, expectReject: false, expectToken: null },
+    { group: 'viewport', name: 'hidden, sizes healthy', reading: { ...HEALTHY, visibility: 'hidden' }, expectReject: true, expectToken: 'visibilityState=hidden' },
+    { group: 'viewport', name: 'innerWidth 0, everything else healthy', reading: { ...HEALTHY, innerWidth: 0 }, expectReject: true, expectToken: 'innerWidth=0' },
+    { group: 'viewport', name: 'innerHeight 0, everything else healthy', reading: { ...HEALTHY, innerHeight: 0 }, expectReject: true, expectToken: 'innerHeight=0' },
+    { group: 'viewport', name: 'clientWidth 0, everything else healthy', reading: { ...HEALTHY, clientWidth: 0 }, expectReject: true, expectToken: 'client=0x803' },
+    { group: 'viewport', name: 'recorded connector reading (hidden + 0x0)', reading: { visibility: 'hidden', innerWidth: 0, innerHeight: 0, clientWidth: 0, clientHeight: 0 }, expectReject: true, expectToken: 'visibilityState=hidden' },
+    // Coverage ceiling, both directions, on the reading the sweep really printed last run plus the
+    // ways it can go wrong. The `judged=0` case is the one that mattered: written inline as
+    // `if (judged && dropped > judged*0.25)`, a collector that returned nothing produced
+    // measured=0 / below=0 / unresolved=0 and exited 0 - the emptiest green available.
+    { group: 'coverage', name: 'last run reading (judged 2016, dropped 461)', reading: { judged: 2016, dropped: 461 }, expectReject: false },
+    { group: 'coverage', name: 'dropped above the ceiling (1000 judged, 400 dropped)', reading: { judged: 1000, dropped: 400 }, expectReject: true, expectToken: 'dropped=400' },
+    { group: 'coverage', name: 'dropped exactly at the ceiling (1000 judged, 250 dropped)', reading: { judged: 1000, dropped: 250 }, expectReject: false },
+    { group: 'coverage', name: 'nothing judged', reading: { judged: 0, dropped: 0 }, expectReject: true, expectToken: 'judged=0' },
+    { group: 'coverage', name: 'nothing judged, everything dropped', reading: { judged: 0, dropped: 900 }, expectReject: true, expectToken: 'judged=0' },
+  ].map((c) => check(c.group === 'coverage' ? coverageVerdict : gateVerdict, c))
   const failed = results.filter((r) => !r.correct)
+  const byGroup = (g) => results.filter((r) => r.group === g)
   writeFileSync(`${OUT}/report-gate-unit.json`, JSON.stringify(results, null, 2))
-  for (const r of results) console.log(`${r.correct ? 'OK  ' : 'FAIL'} ${r.name} -> ${r.gateRejected ? 'rejected: ' + r.problems.join('; ') : 'accepted'}`)
+  for (const r of results) console.log(`${r.correct ? 'OK  ' : 'FAIL'} ${r.group}: ${r.name} -> ${r.gateRejected ? 'rejected: ' + r.problems.join('; ') : 'accepted'}`)
+  // One emitGate per predicate under test: a single tally would let the viewport cases carry a
+  // coverage failure, which is the cross-group averaging this table exists to avoid. The rollup has
+  // to be the LAST line - verify_all.mjs reads the last GATE_JSON of a stage and cross-checks its
+  // name against the stage, so reordering these three would silently narrow what gets checked.
+  for (const g of ['viewport', 'coverage']) emitGate(`gate-unit:${g}`, byGroup(g).length, byGroup(g).filter((r) => !r.correct).length)
   emitGate('gate-unit', results.length, failed.length)
-  console.log(`Viewport gate unit check: ${results.length - failed.length}/${results.length} correct | reports: ${OUT}`)
+  console.log(`gate unit check: ${results.length - failed.length}/${results.length} correct (viewport ${byGroup('viewport').length - byGroup('viewport').filter((r) => !r.correct).length}/${byGroup('viewport').length}, coverage ${byGroup('coverage').length - byGroup('coverage').filter((r) => !r.correct).length}/${byGroup('coverage').length}) | reports: ${OUT}`)
   process.exit(failed.length ? 1 : 0)
 }
+
 
 const profile = `${OUT.replace(/\/+$/, '')}/.profile-${Date.now()}`
 // The browser and the dev-server preflight are lazy: red-demo orchestrates child processes and must
@@ -259,10 +366,21 @@ function emitGate(name, checked, failed, extra) {
 
 // Exiting while a CDP socket or the browser child is still closing trips a libuv assertion on
 // Windows, so give both a moment to shut down first.
+// finish() used to schedule the exit and return, so the code after it kept running: a fault that
+// called finish(2) then threw (because the fault had already torn down the page state) reached
+// main().catch, which called finish(1) - a second scheduled exit that wins, because both timers fire
+// and the last one decides. One code, recorded once, and an exception that unwinds instead of
+// returning, so nothing after a verdict can overwrite it or print under it.
+let finishCode = null
+class HarnessFinishing extends Error { constructor(code) { super(`harness finished with exit ${code}`); this.code = code } }
 function finish(code) {
-  try { ws.close() } catch {}
-  try { browser?.kill() } catch {}
-  setTimeout(() => process.exit(code), 300)
+  if (finishCode === null) {
+    finishCode = code
+    try { ws.close() } catch {}
+    try { browser?.kill() } catch {}
+    setTimeout(() => process.exit(finishCode), 300)
+  }
+  throw new HarnessFinishing(code)
 }
 
 async function waitForTarget() {
@@ -475,6 +593,8 @@ async function main() {
   await sleep(300)
 
   // ---- go to Settings and open the confirm dialog with a trusted click ----
+  const ALL_ROUTES = ['发布', '资源', '云端', '图库', '插件', '任务', '设置']
+  const routeList = () => (opt('routes', '') ? opt('routes', '').split(',') : ALL_ROUTES)
   const goto = async (label) => {
     await scrollToAndClick(`(function(){const b=window.__H.byText('nav button', ${JSON.stringify(label)});if(!b)throw new Error('nav not found: '+Array.from(document.querySelectorAll('nav button')).map(x=>(x.textContent||'').trim()).join(','));return b;})()`)
     await sleep(250)
@@ -1020,15 +1140,252 @@ async function main() {
   }
 
   if (MODE === 'contrast-tier') {
+    const t0 = Date.now()
+    const cpu0 = process.cpuUsage()
     // Contrast measured off rendered pixels, not off token pairs. The wallpaper is a user-supplied
     // image, so no fixed foreground can be reasoned about analytically; the envelope is the two
     // extreme images a user could pick - entirely black and entirely white - and the real page is
     // rendered behind each. Token-vs-token would report a number the user never sees.
     const THEMES = [['default', ''], ['midnight', 'midnight'], ['sakura', 'sakura']]
     const WALLS = [['none', 'none'], ['black', 'linear-gradient(#000,#000)'], ['white', 'linear-gradient(#fff,#fff)']]
-    const ROUTES = (opt('routes', '') || '发布,设置').split(',')
+    const ROUTES = routeList()
     const rows = []
     const failures = []
+    const combosTotal = THEMES.length * WALLS.length * (ROUTES.length + 1)
+    let comboIndex = 0
+    const allControls = []
+    const gridStats = { text: 0, disagreed: 0, centreWouldHaveMissed: 0, fallbacks: 0, worstDelta: 0, points: 0 }
+    let controlDone = false
+    // Six named control kinds, each measured against the surface it actually sits on (the pixel
+    // photographed at its own centre), never against a neighbouring panel: a primary button's
+    // background IS its surface. Classification reads the element's own classes/tag, so a new
+    // button shape falls into `ghost` and is still judged rather than going uncounted.
+    const controlKind = (c) => {
+      if (c.tag === 'input' || c.tag === 'select' || c.tag === 'textarea') return 'field'
+      if (/bg-red-(500|600|700)/.test(c.cls)) return 'danger-fill'
+      if (/bg-\[var\(--accent\)\]|bg-indigo-(500|600|700)|bg-slate-950/.test(c.cls)) return 'primary-fill'
+      if (/bg-(white|slate-(50|100))/.test(c.cls)) return 'subtle-fill'
+      // Icon-only controls carry their name in title/aria-label, so the label is short and the box
+      // is square: this is the one kind whose ink is a glyph, judged at 3:1 as non-text.
+      if (c.text.length <= 8 && /\b(size-[89]|size-1[01]|p-1\.5|p-2)\b/.test(c.cls)) return 'icon'
+      return 'ghost'
+    }
+    // One predicate, used by the text sweep, by the control sweep and by the control that proves
+    // the sweep's own skip counters are live. Written as a string with a flag argument so the
+    // control cannot end up testing a copy of the logic.
+    const COLLECT_TEXTS = `(function(controls){
+            // Monotonic and page-global: the text sweep and the control sweep are two calls over the same page, and a
+            // per-call counter plus a clear-at-start wiped the first call marks, so every text row came back
+            // with "no sampled point belonged to this run" - the ownership test was rejecting its own rows.
+            const out=[]; let offcanvas=0, occluded=0, clipped=0, offscreen=0, nonText=0, containers=0, foreignOnly=0; const occlBy={};
+            for (const e of document.querySelectorAll(controls ? 'main button, main input, main a, main select, aside button, aside input, header button, [role=dialog] button, [role=dialog] input, [role=dialog] a, [role=dialog] select' : 'main *, aside *, header *, [role=dialog] *')) {
+              if (!controls && e.children.length) continue;
+              // A form control has no rendered ink of its own in the text sense: an input's textContent is
+              // empty and its value is a string the browser may not paint at all (a checkbox's value is
+              // literally "on"). Collected as "readable text" it scored the glyph's own colour against the
+              // accent fill the browser paints, and produced a 1.04:1 finding that describes nothing.
+              if (!controls && /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(e.tagName)) continue;
+              if (controls && e.disabled) continue;
+              // A checkbox/radio/range carries no ink of its own - its textContent is the literal
+              // value "on". Judging it as a text run invents a failure and hides the real one, which
+              // is that the browser paints the control from its own palette. Counted, reported, and
+              // checked separately via color-scheme.
+              if (controls && e.tagName === 'INPUT' && /^(checkbox|radio|range|color|file|submit|reset|button)$/.test(e.type || '')) { nonText++; continue }
+              const ownText=Array.from(e.childNodes).some(function(n){ return n.nodeType===3 && (n.textContent||'').trim().length>0 });
+              // A wrapper button whose label is the concatenation of its descendants has no ink of its
+              // own: sampling its box reads the big gradient icon tile inside it and calls the button's
+              // inherited colour unreadable - the drop-zone button was reported at 1.76:1 against
+              // rgb(52,42,172), a pixel that belongs to a decoration, not to any glyph. The descendant
+              // text rows are already in the sweep, so the container is skipped and counted.
+              if (controls && !ownText && (e.textContent || '').trim()) { containers++; continue }
+              const t=(e.textContent||e.value||e.getAttribute('aria-label')||e.getAttribute('title')||e.placeholder||'').trim(); if(!t) continue;
+              const r=e.getBoundingClientRect(); if(r.width<2||r.height<2) continue;
+              // Counted separately from clipped: a run entirely outside the fold is neither
+              // judged nor excused here - it is simply out of this sweep's reach, and the report
+              // has to say how many of them there are.
+              if (r.bottom<2||r.top>innerHeight-2||r.right<2||r.left>innerWidth-2) { offscreen++; continue };
+              const cs=getComputedStyle(e);
+              if (cs.visibility==='hidden'||Number(cs.opacity)<0.9) continue;
+              // The ink lives where the glyphs are, not in the border box. A paragraph that contains
+              // a grey <code> chip has a box covering the chip, but no ink of its own sits on the
+              // chip - sampling the box called that 4.44:1 while the sentence next to it is on the
+              // card at 6:1. Each direct text node's own client rects are the surface a reader
+              // actually sees behind that run, so those are the sample region.
+              const inkRaw=[];
+              for (const n of e.childNodes) {
+                if (n.nodeType!==3 || !(n.textContent||'').trim()) continue;
+                try { const rg=document.createRange(); rg.selectNodeContents(n);
+                  for (const q of rg.getClientRects()) if (q.width>=2&&q.height>=2) inkRaw.push([q.left,q.top,q.width,q.height]);
+                } catch (err) {}
+              }
+              // Clamped to the element's own box: a Range reports the layout rect of the whole line,
+              // which sticks out of a truncated or overflow-hidden element. Sampling out there would
+              // judge the ink against a surface the run is never painted on.
+              const ink=inkRaw.map((q) => {
+                const x=Math.max(q[0], r.left), y=Math.max(q[1], r.top)
+                const x2=Math.min(q[0]+q[2], r.right), y2=Math.min(q[1]+q[3], r.bottom)
+                return [Math.round(x), Math.round(y), Math.round(Math.max(0, x2-x)), Math.round(Math.max(0, y2-y))]
+              }).filter((q) => q[2]>=2 && q[3]>=2);
+              const radius=Math.max(parseFloat(cs.borderTopLeftRadius)||0, parseFloat(cs.borderTopRightRadius)||0, parseFloat(cs.borderBottomLeftRadius)||0, parseFloat(cs.borderBottomRightRadius)||0);
+              if (!ink.length) {
+                // No text node of its own (an icon button named through title/aria-label): the whole
+                // border box is the candidate region, and here the rounded corner does matter - a
+                // point inside the geometric corner is outside the painted fill and reads the card
+                // behind the button, which is how white-on-white got reported as 1:1.
+                const pad=Math.min(Math.max(2, Math.ceil(radius) + 1), Math.max(2, Math.floor(Math.min(r.width, r.height) / 2) - 1));
+                ink.push([Math.round(r.left + pad), Math.round(r.top + pad), Math.round(Math.max(0, r.width - 2 * pad)), Math.round(Math.max(0, r.height - 2 * pad))]);
+              }
+              // The centre of the element is NOT a valid sample point: an element that is half
+              // scrolled out has its centre outside the captured canvas, and getImageData there
+              // returns transparent black - which this gate then reported as a real 1.31:1 defect
+              // over a "rgb(0,0,0)" background. Sample the centre of the part the user can see, and
+              // refuse the row when that part is too small to carry ink.
+              const vx=Math.max(r.left,0), vy=Math.max(r.top,0), vw=Math.min(r.right,innerWidth)-vx, vh=Math.min(r.bottom,innerHeight)-vy;
+              if (vw<4||vh<4) { clipped++; continue }
+              const x=Math.round(vx+vw/2), y=Math.round(vy+vh/2);
+              if (x<0||y<0||x>=innerWidth||y>=innerHeight) { offcanvas++; continue }
+              const hit=document.elementFromPoint(x,y);
+              if (!hit || !(hit===e||e.contains(hit)||hit.contains(e))) {
+                occluded++;
+                // A skip counter without a name is how "we silently judged half the page" hides itself.
+                const key = hit ? hit.tagName.toLowerCase() + '.' + String(typeof hit.className === 'string' ? hit.className : '').slice(0, 40).trim() : 'null'
+                occlBy[key] = (occlBy[key] || 0) + 1
+                continue
+              }
+              // Ownership is decided HERE, next to the geometry it is derived from, and the surviving
+              // points are stored. Deciding it later meant comparing stored rects against a live DOM
+              // that had already moved (the sidebar transitions its width, a toast can reflow the page),
+              // and 37 ordinary rows came back as "no point belongs to this run" - the filter was
+              // rejecting its own rows, not a neighbour's pixels. The mark has to exist before the
+              // loop that asks who owns a pixel, which the first version of this block got wrong.
+              const pts = []
+              let foreign = 0
+              for (const q of ink) {
+                const x0 = Math.max(0, q[0]), y0 = Math.max(0, q[1])
+                const x1 = Math.min(innerWidth - 1, q[0] + q[2] - 1), y1 = Math.min(innerHeight - 1, q[1] + q[3] - 1)
+                if (x1 < x0 || y1 < y0) continue
+                const fw = x1 - x0, fh = y1 - y0
+                const stepX = Math.max(3, Math.ceil(fw / 10)), stepY = Math.max(3, Math.ceil(fh / 6))
+                const xs = []
+                for (let dx = 0; dx < fw; dx += stepX) xs.push(dx)
+                if (!xs.length || xs[xs.length - 1] !== fw) xs.push(fw)
+                const ys = []
+                for (let dy = 0; dy < fh; dy += stepY) ys.push(dy)
+                if (!ys.length || ys[ys.length - 1] !== fh) ys.push(fh)
+                for (const dy of ys) for (const dx of xs) {
+                  const px = x0 + dx, py = y0 + dy
+                  const h = document.elementFromPoint(px, py)
+                  if (!h) { foreign++; continue }
+                  if (h === e) { pts.push([px, py]); continue }
+                  // A descendant still counts only when it paints nothing of its own. The last six
+                  // failures were one caption judged on an inline chip nested inside it: closest()
+                  // said "mine" because the chip is a child, while the pixel was the chip's own
+                  // slate-200 fill - so the run was scored against a surface none of its glyphs
+                  // touch. An svg (no background, no fill of its own) stays owned, which is what
+                  // keeps icon buttons in the sweep.
+                  if (!(e.contains(h))) { foreign++; continue }
+                  const hs = getComputedStyle(h)
+                  const paints = (hs.backgroundColor && hs.backgroundColor !== 'rgba(0, 0, 0, 0)' && hs.backgroundColor !== 'transparent')
+                    || (hs.backgroundImage && hs.backgroundImage !== 'none')
+                    || (hs.opacity && Number(hs.opacity) < 1)
+                  if (paints) foreign++; else pts.push([px, py])
+                }
+              }
+              if (!pts.length) { foreignOnly++; continue }
+              const size = parseFloat(cs.fontSize);
+              const bold=Number(cs.fontWeight)>=600;
+              // cls is reported so a failure names its call site; without it the only way back to
+              // the source is the composited rgb(), which cannot distinguish two shades that round
+              // to the same triple.
+              out.push({ pts, foreign, kind: controls ? 'control' : 'text', text:t.slice(0,26), size, bold, color:cs.color, cls:(typeof e.className==='string'?e.className:'').slice(0,120), tag:e.tagName.toLowerCase(), threshold: (size>=24&&bold)?3:4.5, x, y, box:[vx,vy,vw,vh], ink, rects:ink.length, bgi:cs.backgroundImage.slice(0,60), hit:hit.tagName.toLowerCase()+((typeof hit.className==='string'?hit.className:'').slice(0,50)) });
+            }
+            return { rows: out.slice(0, 400), skipped: { clipped, offcanvas, occluded, offscreen, nonText, containers, foreignOnly }, occlBy, truncated: Math.max(0, out.length-400) };
+          })`
+    // The pixel sampler, kept as a page-side function so the sweep and the control that proves the
+    // sweep works execute the SAME code - a control measured against a copy of the logic proves the
+    // copy, not the logic.
+    const SAMPLE_FN = `(async function (b64, items) {
+            const img = new Image();
+            await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = 'data:image/png;base64,' + b64 });
+            const cv = document.createElement('canvas'); cv.width = img.width; cv.height = img.height;
+            const ctx = cv.getContext('2d', { willReadFrequently: true }); ctx.drawImage(img, 0, 0);
+            const lum = (c) => { const g = (v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4) }; return 0.2126 * g(c[0]) + 0.7152 * g(c[1]) + 0.0722 * g(c[2]) }
+            // Canvas, not a regex: Tailwind v4 serialises colours as oklch()/color-mix(), which an
+            // rgb() matcher silently drops - that is what made 179 of 314 runs "unresolved" here.
+            const pcv = document.createElement('canvas').getContext('2d', { willReadFrequently: true })
+            const parse = (s) => {
+              if (!s || s === 'transparent' || s === 'none') return null
+              pcv.fillStyle = '#010203'; pcv.fillStyle = s
+              const norm = String(pcv.fillStyle)
+              if (norm === '#010203' || norm === 'rgb(1, 2, 3)') return null
+              pcv.clearRect(0, 0, 1, 1); pcv.fillStyle = norm; pcv.fillRect(0, 0, 1, 1)
+              const d = pcv.getImageData(0, 0, 1, 1).data
+              return [d[0], d[1], d[2], d[3] / 255]
+            }
+            // A canvas pixel with alpha 0 is NOT black: it is unpainted. Read as rgb(0,0,0) it gave
+            // every light foreground a 1.04:1 "failure" over a fake black background, and the numbers
+            // were internally impossible (white ink on black is 20:1, not 1.04:1) - which is how the
+            // bug was caught. Unpainted points are excluded and counted; a row whose every point is
+            // unpainted is unresolved, which stops the run, rather than a fabricated finding.
+            const at = (x, y) => { const d = ctx.getImageData(x, y, 1, 1).data; return d[3] < 250 ? null : [d[0], d[1], d[2]] }
+            const ratioOf = (f, bg) => {
+              const a = f[3]
+              const over = [f[0] * a + bg[0] * (1 - a), f[1] * a + bg[1] * (1 - a), f[2] * a + bg[2] * (1 - a)]
+              const l1 = Math.max(lum(over), lum(bg)), l2 = Math.min(lum(over), lum(bg))
+              return Math.round(((l1 + 0.05) / (l2 + 0.05)) * 100) / 100
+            }
+            return items.map((t) => {
+              if (t.x >= img.width || t.y >= img.height) return { ...t, ratio: null, why: 'sample point outside the captured canvas' }
+              // The points were chosen where the run's own glyphs are, and only those the run paints
+              // over - both decided in the page at collection time (see COLLECT_TEXTS). What is left
+              // here is reading pixels: one raster grab per fragment rather than per point, because
+              // this sweep covers ~2700 rows x 72 combinations and a per-pixel getImageData turned a
+              // 12-minute gate into something nobody would run. The cost printed on CONTRAST_GATE
+              // exists because a gate that is too expensive dies the same way a blind one does.
+              const f = parse(t.color)
+              if (!f) return { ...t, bg: 'n/a', ratio: null, why: 'unparsable colour' }
+              const pts = (t.pts || []).filter((p) => p[0] < img.width && p[1] < img.height)
+              if (!pts.length) return { ...t, ratio: null, why: 'no owned point inside the captured canvas (foreign=' + t.foreign + ')' }
+              let worst = null, worstBg = null, best = null, points = 0, unpainted = 0
+              for (const [px, py] of pts) {
+                const bg = at(px, py)
+                if (!bg) { unpainted++; continue }
+                const r = ratioOf(f, bg)
+                points++
+                if (worst === null || r < worst) { worst = r; worstBg = bg }
+                if (best === null || r > best) best = r
+              }
+              if (!points) return { ...t, bg: 'unpainted', ratio: null, why: 'every owned canvas point was unpainted (' + unpainted + ')' }
+              const centreBg = at(t.x, t.y)
+              const a = f[3]
+              return { ...t, bg: worstBg.join(','), fg: [f[0] * a + worstBg[0] * (1 - a), f[1] * a + worstBg[1] * (1 - a), f[2] * a + worstBg[2] * (1 - a)].map((v) => Math.round(v)).join(','), ratio: worst, bestRatio: best, centreRatio: centreBg ? ratioOf(f, centreBg) : null, centreBg: centreBg ? centreBg.join(',') : 'unpainted', sampledPoints: points, unpainted, inkRects: t.rects, fellBack: !t.rects, spread: Math.round((best - worst) * 100) / 100 }
+            })
+          })`
+    // Without this, clipped=0/occluded=0 in the report means either "nothing was hidden" or "the
+    // branch was never reachable", and the two are indistinguishable from the output.
+    const SWEEP_CONTROL = `(function(){
+      const collect = window.__COLLECT
+      const before = collect(false).skipped
+      const host = document.querySelector('main') || document.body
+      // 400px below the fold: must land in the offscreen counter.
+      const below = document.createElement('div')
+      below.style.cssText = 'position:absolute;left:8px;top:' + (innerHeight + 400) + 'px;width:220px;height:20px;font-size:12px'
+      below.textContent = 'LCTL offscreen caption'
+      // Straddling the fold edge with 3px showing: too little ink to sample, must land in clipped.
+      const straddle = document.createElement('div')
+      straddle.style.cssText = 'position:absolute;left:8px;top:' + (innerHeight - 3) + 'px;width:220px;height:40px;font-size:12px'
+      straddle.textContent = 'LCTL straddling caption'
+      const under = document.createElement('div')
+      under.style.cssText = 'position:fixed;left:40px;top:120px;width:180px;height:26px;font-size:12px;background:transparent'
+      under.textContent = 'LCTL occluded caption'
+      const over = document.createElement('div')
+      over.style.cssText = 'position:fixed;left:30px;top:110px;width:220px;height:60px;background:var(--app-bg);z-index:50'
+      host.appendChild(below); host.appendChild(straddle); host.appendChild(under); document.body.appendChild(over)
+      const after = collect(false).skipped
+      const leaked = collect(false).rows.filter((r) => r.text.indexOf('LCTL') === 0)
+      below.remove(); straddle.remove(); under.remove(); over.remove()
+      return { before, after, leakedIntoSweep: leaked.map((r) => r.text), controlRows: collect(true).rows.length }
+    })`
 
     const applyTheme = (t) => evaluate(`(function(){const r=document.documentElement;if(${JSON.stringify(t)})r.dataset.theme=${JSON.stringify(t)};else delete r.dataset.theme;return r.dataset.theme||'default'})()`)
     const applyWall = (w) => evaluate(`(function(){const r=document.documentElement;if(${JSON.stringify(w)}==='none'){r.style.setProperty('--wallpaper','none');delete r.dataset.wallpaper}else{r.style.setProperty('--wallpaper',${JSON.stringify(w)});r.dataset.wallpaper='true'}return r.dataset.wallpaper==='true'?'on':'off'})()`)
@@ -1043,6 +1400,21 @@ async function main() {
         console.log(`HARNESS FAULT: asked for theme "${themeName}" but the document reports attr="${applied.attr}" --app-bg=${applied.appBg} (expected ${EXPECTED_BG[themeName]}); the app re-applied its own theme, so nothing under it is attributable.`)
         finish(2)
       }
+      // Native form controls are the one surface the CSS tokens cannot reach, so the theme has to
+      // announce its polarity to the browser as well. This is the assertion that makes the
+      // checkbox skip in the sweep safe: the control is not judged as text, but it IS judged for
+      // following the theme.
+      const native = await evaluate(`(function(){
+        const scheme = getComputedStyle(document.documentElement).colorScheme;
+        const boxes = Array.from(document.querySelectorAll('main input, aside input')).filter(function(i){ return /^(checkbox|radio)$/.test(i.type) });
+        const dark = /(^|\\s)dark(\\s|$)/.test(scheme);
+        return { scheme: scheme, dark: dark, boxes: boxes.length };
+      })()`)
+      const wantDark = themeValue === 'midnight'
+      if (native.dark !== wantDark) {
+        console.log(`NATIVE-CONTROLS ${themeName}: color-scheme resolves to "${native.scheme}" but this theme is ${wantDark ? 'dark' : 'light'}; ${native.boxes} checkbox/radio control(s) would be painted from the browser's opposite palette.`)
+        failures.push(`NATIVE-CONTROLS ${themeName}: color-scheme="${native.scheme}" (want ${wantDark ? 'dark' : 'light'}), ${native.boxes} native box(es) on the page`)
+      }
       // (a) token against token, for the record - the number a reader would compute by hand.
       const tokens = await evaluate(`(function(){
         const cs=getComputedStyle(document.documentElement);
@@ -1050,78 +1422,329 @@ async function main() {
         return { muted: g('--text-muted'), secondary: g('--text-secondary'), primary: g('--text-primary'), surface: g('--surface'), soft: g('--surface-soft'), appBg: g('--app-bg') };
       })()`)
       for (const [wallName, wallValue] of WALLS) {
+        if (budgetHits) break
         await applyWall(wallValue)
-        for (const label of ROUTES) {
-          await goto(label)
+        // The confirm dialog is appended as an eighth surface rather than a separate pass because
+        // it is the only place this app puts a filled primary button, a filled danger button and an
+        // icon-only button all together; without it three of the six control kinds are unmeasured
+        // and the table reports n/a, which is not a pass.
+        for (const label of ROUTES.concat(['对话框'])) {
+          if (DEADLINE_MS && Date.now() - RUN_STARTED > DEADLINE_MS) {
+            budgetHits++
+            console.log(`BUDGET: stopping the grid after ${comboIndex}/${combosTotal} combinations at ${Math.round((Date.now() - RUN_STARTED) / 1000)}s of a ${Math.round(DEADLINE_MS / 1000)}s budget. The remaining ${combosTotal - comboIndex} are UNMEASURED, not clean.`)
+            break
+          }
+          if (label === '对话框') await openConfirm()
+          else await goto(label)
           await evaluate(`window.__L ? window.__L.settle() : document.getAnimations().forEach(a=>{try{a.finish()}catch(e){}});true`)
+          // A toast is a transient overlay whose drop shadow paints onto whatever is underneath it.
+          // The six "settings caption at 4.12:1" findings this sweep printed were exactly that: four
+          // `invoke is undefined` error toasts sit over the page in a browser-only harness, and their
+          // shadow put the tail of one caption on rgb(224,224,224) - a pure grey that no theme in this
+          // app paints and that did not move between the wallpaper extremes. So the stack is dismissed
+          // before each surface is captured, and the emptiness is asserted rather than assumed: a
+          // reading taken under an overlay has to say so on its own line.
+          const toastClear = await evaluate(`(async function(){
+            try {
+              const m = await import('/src/store/useToastStore.ts');
+              const s = m.useToastStore.getState();
+              const before = s.toasts.length;
+              s.toasts.slice().forEach(function(t){ s.dismiss(t.id) });
+              return { before: before, after: m.useToastStore.getState().toasts.length };
+            } catch (e) { return { error: String(e) } }
+          })()`)
           await sleep(120)
+          const toastNodes = await evaluate(`document.querySelectorAll('[role=alert],[role=status]').length`)
+          if (toastClear.error) {
+            console.log(`HARNESS FAULT: cannot dismiss the toast stack before sampling (${toastClear.error}); an overlay's shadow would be measured as if it were the page's surface.`)
+            finish(2)
+          }
+          if (toastNodes) {
+            console.log(`HARNESS FAULT: ${toastNodes} toast node(s) still painted on ${themeName}/${wallName}/${label} after dismissing ${toastClear.before}; this combination's surface readings are taken under an overlay and are not attributable to the theme.`)
+            finish(2)
+          }
           await assertRealViewport(`contrast:${themeName}/${wallName}/${label}`)
           const dpr = await evaluate(`window.devicePixelRatio`)
           if (dpr !== 1) { console.log(`HARNESS FAULT: devicePixelRatio is ${dpr}, not 1 - pixel sampling would be offset. Aborting.`); finish(2) }
-          const texts = await evaluate(`(function(){
-            const out=[];
-            for (const e of document.querySelectorAll('main *, aside *, header *')) {
-              if (e.children.length) continue;
-              const t=(e.textContent||'').trim(); if(!t) continue;
-              const r=e.getBoundingClientRect(); if(r.width<2||r.height<2) continue;
-              if (r.bottom<2||r.top>innerHeight-2||r.right<2||r.left>innerWidth-2) continue;
-              const cs=getComputedStyle(e);
-              if (cs.visibility==='hidden'||Number(cs.opacity)<0.9) continue;
-              const size=parseFloat(cs.fontSize);
-              const bold=Number(cs.fontWeight)>=600;
-              out.push({ text:t.slice(0,26), size, bold, color:cs.color, threshold: (size>=24&&bold)?3:4.5, x:Math.round(r.left+r.width/2), y:Math.round(r.top+r.height/2) });
-            }
-            return out.slice(0, 220);
-          })()`)
+          const texts = await evaluate(`(function(){window.__COLLECT=${COLLECT_TEXTS};return window.__COLLECT(false)})()`)
+          if (texts.truncated) { console.log(`HARNESS FAULT: ${texts.truncated} more readable runs beyond the ${texts.rows.length} sampled in ${themeName}/${wallName}/${label}; the tally would be a partial one.`); finish(2) }
+          // Controls are the item 1.4.11 object: a button or field judged against the surface it
+          // actually sits on, not against a neighbouring panel of convenience.
+          const ctl = await evaluate(`window.__COLLECT(true)`)
+          // The three sampling fixtures run once per theme: each takes its own screenshot, so running
+          // them on all 72 combinations would double the sweep for no additional evidence.
+          if (!controlDone) {
+            controlDone = true
+          // Second sampling fixture, pointing the other way: a leaf caption whose line fragment runs
+          // under an adjacent chip. Judged on its own ink it is fine; judged on the fragment's right
+          // edge it reads the chip and becomes an invented failure - which is exactly the false red the
+          // box-edge version of this sampler produced on the settings page. The fixture asserts the two
+          // readings disagree in THIS direction, so a future change back to edges cannot pass quietly.
+          const chip = await (async () => {
+            await evaluate(`(function(){
+              const host = document.querySelector('main') || document.body
+              const p = document.createElement('p')
+              p.id = 'chip-lctl'
+              p.style.cssText = 'position:fixed;left:320px;top:260px;margin:0;font-size:12px;line-height:20px;color:var(--text-primary);white-space:nowrap'
+              p.textContent = '夹具文字夹具文字夹具文字夹具文字'
+              host.appendChild(p)
+              const rg = document.createRange(); rg.selectNodeContents(p)
+              const q = rg.getClientRects()[0]
+              // Covering the last 40% of the fragment, not a 6px sliver: the assertion needs grid
+              // points to fall on the chip whatever the stride, and a fixture that only works when the
+              // sample lands on 6 pixels is a fixture that fails for the wrong reason.
+              const c = document.createElement('div')
+              c.id = 'chip-lctl-block'
+              c.style.cssText = 'position:fixed;height:28px;background:var(--text-primary);left:' + Math.round(q.right - q.width * 0.4) + 'px;width:' + Math.round(q.width * 0.4 + 20) + 'px;top:256px'
+              host.appendChild(c)
+              return true
+            })()`)
+            await evaluate(`(function(){const s=document.createElement('style');s.id='chip-hide';s.textContent='*{color:transparent !important;-webkit-text-fill-color:transparent !important}';document.head.appendChild(s);return true})()`)
+            const cShot = await send('Page.captureScreenshot', { format: 'png' })
+            await evaluate(`(function(){const s=document.getElementById('chip-hide');if(s)s.remove();return true})()`)
+            const crow = await evaluate(`window.__COLLECT(false).rows.filter(function(r){return r.text.indexOf('夹具文字')===0})`)
+            const geom = await evaluate(`(function(){
+              const p = document.getElementById('chip-lctl'), c = document.getElementById('chip-lctl-block')
+              if (!p || !c) return { present: !p ? 'p missing' : 'chip missing' }
+              const rp = p.getBoundingClientRect(), rc = c.getBoundingClientRect()
+              const rg = document.createRange(); rg.selectNodeContents(p.firstChild)
+              const q = rg.getClientRects()[0]
+              const probe = [Math.round(q.right), Math.round(q.right - 1), Math.round(q.right - 3), Math.round(q.right - 6)]
+              return { pRect: [Math.round(rp.left), Math.round(rp.top), Math.round(rp.width), Math.round(rp.height)],
+                chipRect: [Math.round(rc.left), Math.round(rc.top), Math.round(rc.width), Math.round(rc.height)],
+                fragmentRight: Math.round(q.right), fragmentLeft: Math.round(q.left),
+                ownershipAt: probe.map(function(x){ const h = document.elementFromPoint(x, Math.round((rc.top + rc.bottom) / 2)); return x + '->' + (h ? h.tagName + '#' + (h.id || '(no id)') : 'null') }) }
+            })()`)
+            const cSampled = crow.length ? await evaluate(`(${SAMPLE_FN})(${JSON.stringify(cShot.data)}, ${JSON.stringify(crow)})`) : []
+            await evaluate(`(function(){['chip-lctl','chip-lctl-block'].forEach(function(i){const e=document.getElementById(i);if(e)e.remove()})})()`)
+            return cSampled[0] || null
+          })()
+          const cBad = []
+          if (!chip) cBad.push('the chip fixture caption was not collected, so the ink-versus-edge distinction is unproven in the safe direction')
+          else {
+            if (!(chip.ratio >= chip.threshold)) cBad.push(`ink reading ${chip.ratio}:1 should PASS ${chip.threshold}:1 - the run is being judged on the chip next to it, which is the false red this fixture exists to catch (bg rgb ${chip.bg})`)
+            if (!(chip.foreign > 0)) cBad.push(`the run kept ${chip.sampledPoints} points and rejected ${chip.foreign} as belonging to something else; expected the chip's pixels to be counted as foreign, so the ownership rule is not being exercised by this fixture`)
+          }
+          if (cBad.length) { console.log(`HARNESS FAULT: chip control: ${cBad.join('; ')}`); finish(2) }
+          if (chip) console.log(`CHIP-CONTROL ink=${chip.ratio}:1 (rgb ${chip.bg}) judged=${chip.sampledPoints} refused=${chip.foreign} - the neighbour's pixels are counted and not judged, which is the direction that used to invent failures`)
+          // Proves the multi-point grid is not decoration. A caption planted on a white-to-#333
+          // gradient reads 7.x:1 at its centre - which the single-point sampler accepted - and 1.7:1
+          // at the dark end. The control asserts the grid disagrees with the centre point, so if the
+          // grid ever degrades back to one sample the gate stops instead of going quiet.
+          const gradient = await (async () => {
+            await evaluate(`(function(){
+              const host = document.querySelector('main') || document.body
+              const box = document.createElement('div')
+              box.id = 'grad-lctl'
+              // Sized so the text run spans the ramp: an ink rect that stops short of the dark end
+              // would legitimately pass, and the control would then prove nothing.
+              box.style.cssText = 'position:fixed;left:320px;top:200px;width:132px;height:22px;font-size:12px;line-height:22px;color:#000000;white-space:nowrap;background-image:linear-gradient(to right,#ffffff,#333333)'
+              box.textContent = 'LCTLGRAD 渐变夹具文字'
+              host.appendChild(box)
+              return true
+            })()`)
+            await evaluate(`(function(){const s=document.createElement('style');s.id='grad-hide';s.textContent='*{color:transparent !important;-webkit-text-fill-color:transparent !important}';document.head.appendChild(s);return true})()`)
+            const gShot = await send('Page.captureScreenshot', { format: 'png' })
+            await evaluate(`(function(){const s=document.getElementById('grad-hide');if(s)s.remove();return true})()`)
+            const grow = await evaluate(`window.__COLLECT(false).rows.filter(function(r){return r.text.indexOf('LCTLGRAD')===0})`)
+            // The alarm line has to say which filter dropped the plant, or "not collected" is a
+            // mystery and the next person re-runs the whole sweep to find out.
+            const why = await evaluate(`(function(){
+              const b = document.getElementById('grad-lctl'); if(!b) return { exists:false }
+              const r = b.getBoundingClientRect(); const cs = getComputedStyle(b)
+              const hit = document.elementFromPoint(Math.round(r.left+r.width/2), Math.round(r.top+r.height/2))
+              return { exists:true, rect:[Math.round(r.left),Math.round(r.top),Math.round(r.width),Math.round(r.height)], children:b.children.length, text:(b.textContent||'').slice(0,20),
+                visibility:cs.visibility, opacity:cs.opacity, position:cs.position, inMain: !!b.closest('main'),
+                hit: hit ? hit.tagName + '.' + String(hit.className||'').slice(0,30) : null,
+                viewport:[innerWidth,innerHeight] }
+            })()`)
+            const gShot2 = gShot
+            const gSampled = grow.length ? await evaluate(`(${SAMPLE_FN})(${JSON.stringify(gShot2.data)}, ${JSON.stringify(grow)})`) : []
+            await evaluate(`(function(){const b=document.getElementById('grad-lctl');if(b)b.remove();return true})()`)
+            return { planted: grow.length, why, row: gSampled[0] || null }
+          })()
+          const gBad = []
+          if (!gradient.planted || !gradient.row) gBad.push(`the gradient caption was not planted or not collected, so the multi-point grid is unproven; plant state ${JSON.stringify(gradient.why)}`)
+          else {
+            const g = gradient.row
+            if (!(g.centreRatio >= 4.5)) gBad.push(`centre reads ${g.centreRatio}:1, expected to PASS 4.5:1 - the control is no longer a case the single point would have waved through`)
+            if (!(g.ratio < 4.5)) gBad.push(`worst point reads ${g.ratio}:1, expected to FAIL 4.5:1 on a ramp that ends at #333333 (centre ${g.centreRatio}:1) - the grid is sampling one pixel again`)
+            if (!(g.spread > 0)) gBad.push(`spread across the box is ${g.spread}, expected >0 - every sampled point returned the same pixel`)
+          }
+          if (gBad.length) { console.log(`HARNESS FAULT: gradient control: ${gBad.join('; ')}`); finish(2) }
+          if (gradient.row) console.log(`GRADIENT-CONTROL centre=${gradient.row.centreRatio}:1 (rgb ${gradient.row.centreBg}) worst=${gradient.row.ratio}:1 (rgb ${gradient.row.bg}) spread=${gradient.row.spread} points=${gradient.row.sampledPoints} - the grid disagrees with the centre point, which is what makes it worth running`)
+            const c = await evaluate(`(function(){window.__COLLECT=${COLLECT_TEXTS};window.__SAMPLE=${SAMPLE_FN};return (${SWEEP_CONTROL})()})()`)
+            const moved = (k) => c.after[k] - c.before[k]
+            const bad = []
+            if (moved('clipped') < 1) bad.push('clipped did not move (' + c.before.clipped + ' -> ' + c.after.clipped + ') although a caption straddles the fold with only 3px of ink showing')
+            if (moved('offscreen') < 1) bad.push('offscreen did not move (' + c.before.offscreen + ' -> ' + c.after.offscreen + ') although a caption sits 400px below the fold')
+            if (moved('occluded') < 1) bad.push('occluded did not move (' + c.before.occluded + ' -> ' + c.after.occluded + ') although an opaque plate was laid over a caption')
+            if (c.leakedIntoSweep.length) bad.push(`the planted captions reached the sweep (${c.leakedIntoSweep.join(', ')}) - the skip branches are not what removed them`)
+            if (!c.controlRows) bad.push('the control sweep found 0 interactive elements, so control-vs-surface ratios cannot be reported at all')
+            if (bad.length) { console.log(`HARNESS FAULT: the contrast sweep cannot see its own blind spots: ${bad.join('; ')}`); finish(2) }
+            console.log(`SWEEP-CONTROL clipped ${c.before.clipped}->${c.after.clipped} offscreen ${c.before.offscreen}->${c.after.offscreen} occluded ${c.before.occluded}->${c.after.occluded} control-rows=${c.controlRows} (all skip counters proven live; the sweep only vouches for what it can see)`)
+          }
           // Hide the glyphs, photograph what is left: that photograph IS the background the text
           // sits on, gradients, blur and wallpaper included.
           await evaluate(`(function(){const s=document.createElement('style');s.id='lctl-hide';s.textContent='*{color:transparent !important;-webkit-text-fill-color:transparent !important;text-shadow:none !important}';document.head.appendChild(s);return true})()`)
           const shotData = await send('Page.captureScreenshot', { format: 'png' })
           await evaluate(`(function(){const s=document.getElementById('lctl-hide');if(s)s.remove();return true})()`)
-          const sampled = await evaluate(`(async function(){
-            const img = new Image();
-            await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = 'data:image/png;base64,${shotData.data}' });
-            const cv = document.createElement('canvas'); cv.width = img.width; cv.height = img.height;
-            const ctx = cv.getContext('2d', { willReadFrequently: true }); ctx.drawImage(img, 0, 0);
-            const lum = (c) => { const f = (v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4) }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]) }
-            // Canvas, not a regex: Tailwind v4 serialises colours as oklch()/color-mix(), which a
-            // rgb() matcher silently drops - that is what made 179 of 314 runs "unresolved" here,
-            // the same mistake the visual mode already fixed.
-            const pcv = document.createElement('canvas').getContext('2d', { willReadFrequently: true })
-            const parse = (s) => {
-              if (!s || s === 'transparent' || s === 'none') return null
-              pcv.fillStyle = '#010203'; pcv.fillStyle = s
-              const norm = String(pcv.fillStyle)
-              if (norm === '#010203' || norm === 'rgb(1, 2, 3)') return null
-              pcv.clearRect(0, 0, 1, 1); pcv.fillStyle = norm; pcv.fillRect(0, 0, 1, 1)
-              const d = pcv.getImageData(0, 0, 1, 1).data
-              return [d[0], d[1], d[2], d[3] / 255]
-            }
-            const rows = ${JSON.stringify(texts)}.map((t) => {
-              const px = ctx.getImageData(t.x, t.y, 1, 1).data
-              const bg = [px[0], px[1], px[2]]
-              const f = parse(t.color)
-              if (!f) return { ...t, bg: bg.join(','), ratio: null, why: 'unparsable colour' }
-              const a = f[3]
-              const over = [f[0] * a + bg[0] * (1 - a), f[1] * a + bg[1] * (1 - a), f[2] * a + bg[2] * (1 - a)]
-              const l1 = Math.max(lum(over), lum(bg)), l2 = Math.min(lum(over), lum(bg))
-              return { ...t, bg: bg.join(','), fg: over.map((v) => Math.round(v)).join(','), ratio: Math.round(((l1 + 0.05) / (l2 + 0.05)) * 100) / 100 }
-            })
-            return rows
-          })()`)
+          const sampled = await evaluate(`(${SAMPLE_FN})(${JSON.stringify(shotData.data)}, ${JSON.stringify(texts.rows.concat(ctl.rows))})`)
+          if (!sampled.length) { console.log(`HARNESS FAULT: ${themeName}/${wallName}/${label} yielded 0 readable runs - an empty sweep is not a pass.`); finish(2) }
           const below = sampled.filter((s) => s.ratio !== null && s.ratio < s.threshold)
+          // When a row fails, say what is actually stacked under it. Guessing at a colour from its
+          // rgb triple is how I spent three rounds attributing this to chips, tiles and rounding.
+          for (const b of below.slice(0, 3)) {
+            b.under = await evaluate(`(function(){const h=document.elementFromPoint(${b.x},${b.y});const chain=[];let n=h;for(let i=0;i<6&&n;i++){const cs=getComputedStyle(n);chain.push(n.tagName.toLowerCase()+(typeof n.className==='string'&&n.className?'.'+n.className.trim().split(/\\s+/).slice(0,2).join('.'):'')+'{bg:'+cs.backgroundColor+',img:'+(cs.backgroundImage==='none'?'-':cs.backgroundImage.slice(0,28))+'}');n=n.parentElement}return chain.join(' < ')})()`)
+          }
           const unresolved = sampled.filter((s) => s.ratio === null)
           const worst = sampled.filter((s) => s.ratio !== null).sort((a, b) => a.ratio - b.ratio)[0]
-          rows.push({ theme: themeName, wallpaper: wallName, route: label, measured: sampled.length, below: below.length, unresolved: unresolved.length, worstRatio: worst ? worst.ratio : null, worstText: worst ? worst.text : null, worstBg: worst ? worst.bg : null, tokens })
+          // A colour the tool cannot parse is not a row that passed: it is a row that was never
+          // judged. It used to print `unresolved=N` and still exit 0 - the same shape as an alarm
+          // tag that never reaches the exit code, so it now stops the run.
+          if (unresolved.length) { console.log(`HARNESS FAULT: ${unresolved.length} run(s) in ${themeName}/${wallName}/${label} yielded no ratio (${unresolved.slice(0, 3).map((u) => u.text + ' ' + u.why).join('; ')}); the tally would be partial.`); finish(2) }
+          if (texts.skipped.offcanvas) { console.log(`HARNESS FAULT: ${texts.skipped.offcanvas} run(s) had a sample point outside the captured canvas in ${themeName}/${wallName}/${label}; the viewport containment check and the canvas disagree.`); finish(2) }
+          for (const s of sampled) {
+            if (s.kind !== 'text' || s.ratio === null) continue
+            gridStats.text++
+            const delta = Math.abs(s.ratio - s.centreRatio)
+            if (delta >= 0.2) {
+              gridStats.disagreed++
+              if (delta > gridStats.worstDelta) gridStats.worstDelta = Math.round(delta * 100) / 100
+              if (s.ratio < s.threshold && s.centreRatio >= s.threshold) gridStats.centreWouldHaveMissed++
+
+            }
+            if (s.fellBack) gridStats.fallbacks++
+            gridStats.points += s.sampledPoints || 0
+          }
+          const ctlRows = sampled.filter((s) => s.kind === 'control')
+          for (const c of ctlRows) allControls.push({ theme: themeName, wallpaper: wallName, route: label, ...c, kind: controlKind(c) })
+          rows.push({ theme: themeName, wallpaper: wallName, route: label, measured: sampled.length, controls: ctlRows.length, skipped: texts.skipped, below: below.length, unresolved: unresolved.length, worstRatio: worst ? worst.ratio : null, worstText: worst ? worst.text : null, worstBg: worst ? worst.bg : null, belowList: below, tokens })
           if (below.length) failures.push(`CONTRAST ${themeName}/${wallName}/${label}: ${below.length}/${sampled.length} readable runs below their threshold - worst ${worst.ratio}:1 (need ${worst.threshold}) "${worst.text}" ${worst.size}px ${worst.bold ? 'bold' : 'regular'} fg rgb(${worst.fg}) on sampled rgb(${worst.bg})`)
+          // A palette re-tune across three themes is exactly the change where every number can
+          // pass and the screen still looks wrong, so each combination is photographed as well.
+          rows[rows.length - 1].shot = await shot(`ct-${themeName}-${wallName}-${label}`)
+          // One line per combination, as it finishes. Without it a long run and a stalled run look the
+          // same from outside, and the only way to tell them apart was reaching for ps on a pid that
+          // turned out to belong to a different project.
+          comboIndex++
+          console.log(`COMBO ${comboIndex}/${combosTotal} ${themeName}/${wallName}/${label} elapsed=${Math.round((Date.now() - RUN_STARTED) / 1000)}s rows=${sampled.length} points=${sampled.reduce((a, x) => a + (x.sampledPoints || 0), 0)} rejected=${sampled.reduce((a, x) => a + (x.foreign || 0), 0)} toasts=${toastClear.before}`)
+          if (label === '对话框') { await pressEscape(); await sleep(200) }
         }
       }
     }
     await evaluate(`(function(){delete document.documentElement.dataset.theme;document.documentElement.style.setProperty('--wallpaper','none');delete document.documentElement.dataset.wallpaper;return true})()`)
-    writeFileSync(`${OUT}/contrast-tier.json`, JSON.stringify({ provenance: buildProvenance(), note: 'backgrounds are sampled from a screenshot taken with glyphs hidden, so gradients, backdrop-filter and the wallpaper scrim are all included; wallpaper envelope is an all-black and an all-white image', themes: THEMES.map((t) => t[0]), wallpapers: WALLS.map((w) => w[0]), rows }, null, 2))
+    const KINDS = ['primary-fill', 'danger-fill', 'subtle-fill', 'field', 'icon', 'ghost']
+    // Identity in both directions: every control row the sweep counted must reach the aggregation.
+    // A field written after a spread (kind overwritten by ...c) silently emptied the aggregation
+    // while every per-combo tally still looked correct.
+    const ctlTotal = rows.reduce((a, r) => a + r.controls, 0)
+    if (allControls.length !== ctlTotal) { console.log(`HARNESS FAULT: the sweep counted ${ctlTotal} control rows but the aggregation holds ${allControls.length} - control-vs-surface ratios are being dropped somewhere.`); finish(2) }
+    // The kinds live on different surfaces: the only text inputs are on 云端/设置, the only filled
+    // danger button is in the dialog. Demanding all six kinds from a --routes subset would fail for
+    // the right reason with the wrong message, so the requirement is asserted only when the sweep
+    // actually covers every surface, and a partial run says so on its own line.
+    const fullSweep = ROUTES.length === ALL_ROUTES.length
+    if (!fullSweep) console.log(`SCOPE partial sweep: ${ROUTES.length} of ${ALL_ROUTES.length} surfaces (${ROUTES.join(', ')}) - the per-control kind coverage below is a subset, not a verdict on the app`)
+    if (fullSweep && !KINDS.every((k) => allControls.some((c) => c.kind === k))) { console.log(`HARNESS FAULT: no control of kind(s) ${KINDS.filter((k) => !allControls.some((c) => c.kind === k)).join(', ')} was found on any surface; the per-control table would report n/a for them, which is not a pass.`); finish(2) }
+    const perControl = []
+    for (const theme of THEMES.map((t) => t[0])) {
+      for (const kind of KINDS) {
+        const set = allControls.filter((c) => c.theme === theme && c.kind === kind)
+        if (!set.length) { perControl.push({ theme, kind, measured: 0, worst: null }); continue }
+        const w = set.slice().sort((a, b) => a.ratio - b.ratio)[0]
+        perControl.push({ theme, kind, measured: set.length, worst: w.ratio, need: w.threshold, at: `${w.route}/${w.wallpaper}`, text: w.text, fg: w.fg, bg: w.bg, cls: w.cls, below: set.filter((c) => c.ratio < c.threshold).length })
+        if (set.some((c) => c.ratio < c.threshold)) failures.push(`CONTROL-CONTRAST ${theme}/${kind}: ${set.filter((c) => c.ratio < c.threshold).length}/${set.length} control(s) below their threshold against their own surface - worst ${w.ratio}:1 (need ${w.threshold}) "${w.text}" on ${w.route} rgb(${w.bg}), fg rgb(${w.fg}), class "${w.cls}"`)
+      }
+    }
+    console.log('CONTROLS ' + perControl.map((p) => `${p.theme}/${p.kind}=${p.worst === null ? 'n/a' : p.worst + ':1'}${p.below ? '(' + p.below + ' below)' : ''}`).join(' '))
+    // The two tables that go into docs/VISUAL_BASELINE.md, generated here so a hand-typed number in
+    // the document is checked against the run that produced it. A table nobody can re-run is prose.
+    const floor = {}
+    for (const r of rows) {
+      const k = `${r.route}|${r.theme}`
+      if (!floor[k] || r.worstRatio < floor[k].ratio) floor[k] = { ratio: r.worstRatio, text: r.worstText, n: r.measured }
+    }
+    const faceTable = ['| 面 | mist | midnight | sakura | 判读文字数（每主题） |', '|---|---|---|---|---|']
+    for (const label of ROUTES.concat(['对话框'])) {
+      const g = (t) => (floor[`${label}|${t}`] ? floor[`${label}|${t}`].ratio : null)
+      const n = (t) => (floor[`${label}|${t}`] ? floor[`${label}|${t}`].n : 0)
+      faceTable.push(`| ${label} | ${g('default')} | ${g('midnight')} | ${g('sakura')} | ${n('default')}/${n('midnight')}/${n('sakura')} |`)
+    }
+    const ctlTable = ['| 控件类型 | mist | midnight | sakura | 判读控件数（每主题） |', '|---|---|---|---|---|']
+    for (const kind of KINDS) {
+      const g = (t) => { const p = perControl.find((x) => x.theme === t && x.kind === kind); return p && p.worst !== null ? p.worst : 'n/a' }
+      const n = (t) => { const p = perControl.find((x) => x.theme === t && x.kind === kind); return p ? p.measured : 0 }
+      ctlTable.push(`| ${kind} | ${g('default')} | ${g('midnight')} | ${g('sakura')} | ${n('default')}/${n('midnight')}/${n('sakura')} |`)
+    }
+    const tables = { 'CONTRAST_FACE_TABLE': faceTable.join('\n'), 'CONTRAST_CONTROL_TABLE': ctlTable.join('\n') }
+    const docPath = opt('doc', '')
+    if (docPath && flag('doc-write')) {
+      // The comparison above just caught six hand-typed rows that no longer matched the run, which is
+      // the same drift class the fingerprint table had. So the numbers now come from this process
+      // instead of from whoever remembers to retype them: only the marked blocks are touched, the
+      // prose around them stays authored by a person, and the line-ending style of the file is kept
+      // (core.autocrlf checks it out CRLF; rewriting to LF would turn a six-row update into a
+      // whole-file diff).
+      const doc = readFileSync(docPath, 'utf8')
+      const eol = doc.includes('\r\n') ? '\r\n' : '\n'
+      let text = doc
+      let wrote = 0
+      for (const [tag, want] of Object.entries(tables)) {
+        const b = text.indexOf(`<!-- ${tag}:BEGIN -->`), e = text.indexOf(`<!-- ${tag}:END -->`)
+        if (b === -1 || e === -1 || e < b) { console.log(`HARNESS FAULT: --doc-write needs both markers for ${tag} in ${docPath}`); finish(2) }
+        text = text.slice(0, b + (`<!-- ${tag}:BEGIN -->`).length) + '\n' + want + '\n' + text.slice(e)
+        wrote += want.split('\n').length
+      }
+      if (text.includes('\r\n') !== doc.includes('\r\n')) { console.log(`HARNESS FAULT: --doc-write would change the line endings of ${docPath}`); finish(2) }
+      writeFileSync(docPath, text.split(/\r?\n/).join(eol), 'utf8')
+      console.log(`DOC-TABLE wrote ${wrote} generated lines into ${docPath} (marked blocks only)`)
+      // No early exit: the comparison below re-reads the file and checks what was just written, and
+      // the grid-evidence, coverage and budget assertions all still have to run. A writer that
+      // returned before them would license a table generated by a run that never proved its own
+      // sampler was awake.
+    }
+    if (docPath) {
+      const doc = readFileSync(docPath, 'utf8')
+      for (const [tag, want] of Object.entries(tables)) {
+        const b = doc.indexOf(`<!-- ${tag}:BEGIN -->`), e = doc.indexOf(`<!-- ${tag}:END -->`)
+        if (b === -1 || e === -1 || e < b) { failures.push(`${tag} the markers <!-- ${tag}:BEGIN --> / <!-- ${tag}:END --> are not both present in ${docPath}`); continue }
+        const have = doc.slice(b + (`<!-- ${tag}:BEGIN -->`).length, e).replace(/^\n/, '').replace(/\n$/, '')
+        const diff = want.split('\n').filter((line, i) => have.split('\n')[i] !== line).length
+        if (diff) failures.push(`${tag} ${diff} row(s) in ${docPath} do not match this run - the table was typed, not generated. Re-run: node scripts/verify_dialog_interactions.mjs contrast-tier`)
+      }
+      console.log(`${failures.some((f) => f.startsWith('CONTRAST_')) ? 'DOC-TABLE mismatch' : 'DOC-TABLE ok'} for ${docPath}`)
+    }
+    writeFileSync(`${OUT}/contrast-tier.json`, JSON.stringify({ provenance: buildProvenance(), note: 'backgrounds are sampled from a screenshot taken with glyphs hidden, so gradients, backdrop-filter and the wallpaper composite are all included; wallpaper envelope is an all-black and an all-white image; controls are judged against their own rendered surface', themes: THEMES.map((t) => t[0]), wallpapers: WALLS.map((w) => w[0]), perControl, faceTable: faceTable.join('\n'), ctlTable: ctlTable.join('\n'), rows }, null, 2))
+    if (budgetHits) { console.log(`CONTRAST_GATE INCOMPLETE: covered ${comboIndex}/${combosTotal} combinations inside the ${DEADLINE_MS}ms budget; the unmeasured remainder is not a pass.`); finish(2) }
     for (const f of failures) console.log(`FAIL ${f}`)
     console.log('TOKENS ' + JSON.stringify(rows.filter((r, i, a) => a.findIndex((x) => x.theme === r.theme) === i).map((r) => ({ theme: r.theme, ...r.tokens }))))
-    console.log(`CONTRAST_GATE combos=${rows.length} measured=${rows.reduce((a, r) => a + r.measured, 0)} below=${failures.length} unresolved=${rows.reduce((a, r) => a + r.unresolved, 0)}`)
+    // The planted gradient proves the grid CAN disagree with a single pixel. This proves it does so on
+    // this app's real surfaces: if no row's worst point ever differed from its centre point, the
+    // multi-point sampler is equivalent to the old one here and the extra cost is decoration - which
+    // is the claim worth breaking, so it is asserted rather than assumed.
+    console.log(`GRID-EVIDENCE textRows=${gridStats.text} disagreeWithCentre=${gridStats.disagreed} worstDelta=${gridStats.worstDelta} centreWouldHaveMissed=${gridStats.centreWouldHaveMissed} inkFallbacks=${gridStats.fallbacks}`)
+    if (!gridStats.disagreed) { console.log('HARNESS FAULT: no real surface had a worst point differing from its centre point by >=0.2 - the multi-point grid changes no verdict on this app, so either it degraded to one pixel or the range claim in docs/VISUAL_BASELINE.md 4.2 is unsupported.'); finish(2) }
+    if (gridStats.fallbacks > gridStats.disagreed + 10) { console.log(`HARNESS FAULT: ${gridStats.fallbacks} rows fell back to the single centre point against ${gridStats.disagreed} the grid disagreed with - the ink rects are being discarded too often for the range to be trustworthy.`); finish(2) }
+    const skipped = rows.reduce((a, r) => ({ clipped: a.clipped + r.skipped.clipped, offcanvas: a.offcanvas + r.skipped.offcanvas, occluded: a.occluded + r.skipped.occluded, offscreen: a.offscreen + r.skipped.offscreen, nonText: a.nonText + r.skipped.nonText, containers: a.containers + (r.skipped.containers || 0), foreignOnly: a.foreignOnly + (r.skipped.foreignOnly || 0) }), { clipped: 0, offcanvas: 0, occluded: 0, offscreen: 0, nonText: 0, containers: 0, foreignOnly: 0 })
+    // An `unknown`/skipped bucket without a ceiling is an escape hatch: a sweep that loses half the
+    // page to "occluded" prints a smaller below-count and looks healthier. The predicate itself is
+    // unit-checked both ways in gate-unit; here it runs on the real totals.
+    const judgedTotal = rows.reduce((a, r) => a + r.measured, 0)
+    const droppedTotal = rows.reduce((a, r) => a + r.skipped.occluded + r.skipped.containers + r.skipped.foreignOnly, 0)
+    const unresolvedTotal = rows.reduce((a, r) => a + r.unresolved, 0)
+    const cov = coverageVerdict({ judged: judgedTotal, dropped: droppedTotal })
+    if (!cov.ok) {
+      console.log(`HARNESS FAULT: coverage ceiling breached - ${cov.problems.join('; ')} (occluded=${skipped.occluded} containers=${skipped.containers} foreignOnly=${skipped.foreignOnly}); the sweep is no longer looking at most of what it claims to cover.`)
+      finish(2)
+    }
+    const occlTop = Object.entries(rows.reduce((a, r) => { for (const [k, v] of Object.entries(r.occlBy || {})) a[k] = (a[k] || 0) + v; return a }, {})).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([k, v]) => `${k}=${v}`).join(' ')
+    console.log(`COVERAGE judged=${judgedTotal} dropped=${droppedTotal} (${cov.pct}% of candidates) ceiling=75% topOccluders=${occlTop || '-'}`)
+    // Computed, not a literal: this line used to print `unresolved=0` unconditionally, which is the
+    // one number on the row that could never disagree with the run that produced it.
+    console.log(`CONTRAST_GATE combos=${rows.length} routes=${ROUTES.length} measured=${judgedTotal} below=${failures.length} unresolved=${unresolvedTotal} gridDisagreed=${gridStats.disagreed} points=${gridStats.points} nodeWall=${Math.round((Date.now() - t0) / 1000)}s nodeCpu=${(() => { const c = process.cpuUsage(cpu0); return ((c.user + c.system) / 1e6).toFixed(1) })()}s skipped=${JSON.stringify(skipped)}`)
+
+    emitGate('contrast-tier', rows.reduce((a, r) => a + r.measured, 0), failures.length, { combos: rows.length, routes: ROUTES.length, unresolved: rows.reduce((a, r) => a + r.unresolved, 0), gridDisagreed: gridStats.disagreed, inkFallbacks: gridStats.fallbacks, skipped })
     console.log(failures.length ? `contrast: ${failures.length} failure(s) across ${rows.length} theme/wallpaper/route combinations` : `contrast: every readable run meets its threshold in all ${rows.length} combinations`)
     finish(failures.length ? 1 : 0)
   }
@@ -1233,19 +1856,42 @@ async function main() {
     // a white block floating on a dark UI.
     const applyTheme = (t) => evaluate(`(function(){const r=document.documentElement;if(${JSON.stringify(t)})r.dataset.theme=${JSON.stringify(t)};else delete r.dataset.theme;return r.dataset.theme||'default'})()`)
     const THEMES = [['default', ''], ['midnight', 'midnight'], ['sakura', 'sakura']]
-    const ROUTES = (opt('routes', '') || '发布,资源,云端,图库,插件,任务,设置').split(',')
+    const ROUTES = routeList()
     // Deliberately theme-invariant, each with the reason. Anything outside this list that fails to
     // move is a finding.
     const WHITELIST = [
-      { re: /bg-slate-950\/\d/, why: 'modal backdrop scrim: intentionally dark under every theme' },
-      { re: /(^|\s)bg-\[var\(--accent\)\]/, why: 'accent-filled control, text-white by design' },
-      { re: /bg-emerald-|bg-amber-|bg-red-|bg-blue-/, why: 'semantic status colour' },
-      // The sampled pixel belongs to an ancestor whose own class carries no colour hint, so these
-      // are matched by the identity of the element that paints them.
+      // Four entries used to sit here - the modal scrim, the accent-filled button and the two toast
+      // layers - and the DEAD-EXEMPTION rule below found none of them matched anything this run.
+      // Not because those surfaces are unreachable (they are swept now, as 对话框 and 提示), but
+      // because the palette remap made them follow the theme: bg-red-50 renders 254,242,242 under a
+      // light theme and 43,21,25 under midnight. An exemption for a surface that moves is a licence
+      // for a surface that has not moved yet.
       { re: /app-upload-button/, why: 'primary upload action: filled slate-950 with white label in all three themes, by design' },
-      { re: /^pointer-events-none fixed bottom-4/, why: 'toast layer backdrop - the semantic colour is painted by the child toast' },
-      { re: /^pointer-events-auto flex items-start/, why: 'toast body - error/success tint is semantic, not thematic' },
+      // Deliberately NOT whitelisted: pale status tints (bg-amber-50 and friends). The hue is
+      // semantic, the luminance is not - whitelisting these by hue is what let a 1.02:1 banner
+      // pass this gate as "by design". If a tint is to be exempt it must be exempt by name, here,
+      // with a reason that survives a dark theme.
     ]
+    // Two overlay surfaces are appended to the sweep: a whitelist entry that no sweep can ever
+    // reach is a licence with no evidence behind it, and the modal scrim, the accent-filled button
+    // and the toast pair were sitting in that list excusing surfaces this gate had never looked at.
+    const SURFACES = ROUTES.concat(['对话框', '提示'])
+    const raiseToasts = async () => {
+      const r = await evaluate(`(async function(){
+        try {
+          const m = await import('/src/store/useToastStore.ts')
+          if (typeof m.notifyError !== 'function' || typeof m.notifySuccess !== 'function') return { ok: false, why: 'notifyError/notifySuccess are not exported: ' + Object.keys(m).join(',') }
+          m.notifyError('SURFACE 错误提示文案')
+          m.notifySuccess('SURFACE 成功提示文案')
+          return { ok: true }
+        } catch (e) { return { ok: false, why: String(e).slice(0, 160) } }
+      })()`)
+      if (!r.ok) { console.log(`HARNESS FAULT: cannot raise a toast in order to sample it (${r.why}); the toast whitelist entries are then unexercised and must be deleted.`); finish(2) }
+      await sleep(300)
+      const seen = await evaluate(`document.querySelectorAll('[role=alert], [role=status]').length`)
+      if (!seen) { console.log('HARNESS FAULT: the toast store accepted two pushes but no [role=alert]/[role=status] node exists, so the toast surface was never on screen to sample.'); finish(2) }
+      return r
+    }
     // Control: plant one surface that follows the theme and one that does not, and require the
     // test to tell them apart. Without this, "42 frozen" is indistinguishable from "the sampler
     // cannot see a background change".
@@ -1293,19 +1939,29 @@ async function main() {
     const failures = []
     const rows = []
 
-    for (const label of ROUTES) {
+    for (const label of SURFACES) {
       await applyTheme('')
-      await goto(label)
+      if (label === '对话框') await openConfirm()
+      else if (label === '提示') await raiseToasts()
+      else await goto(label)
       await evaluate(`window.__L ? window.__L.settle() : document.getAnimations().forEach(a=>{try{a.finish()}catch(e){}});true`)
       await assertRealViewport(`surfaces:${label}`)
       const marked = await evaluate(`(function(){
         let i = 0;
-        for (const e of document.querySelectorAll('main *, aside *, section *')) {
+        for (const e of document.querySelectorAll('main *, aside *, section *, [role=dialog] *')) {
           const r = e.getBoundingClientRect();
           if (r.width < 120 || r.height < 48) continue;
           if (!(e.textContent || '').trim()) continue;
           const cs = getComputedStyle(e);
           if (cs.display === 'inline' || cs.visibility === 'hidden' || Number(cs.opacity) < 0.9) continue;
+          e.setAttribute('data-tsid', String(i++));
+        }
+        // A toast is the one semantic surface that is small by design (one line of 12px text in a
+        // 38px box), so the 120x48 floor above would never mark it and its whitelist entry would be
+        // unexercised. Marked by role instead, at its real size.
+        for (const e of document.querySelectorAll('[role=alert], [role=status]')) {
+          const r = e.getBoundingClientRect();
+          if (r.width < 80 || r.height < 20) continue;
           e.setAttribute('data-tsid', String(i++));
         }
         return i;
@@ -1355,10 +2011,19 @@ async function main() {
         rows.push({ route: label, sel: d.sel, cls: d.cls, text: d.text, default: d.bg, midnight: m.bg, sakura: s.bg, frozen, whitelisted: wl ? wl.why : null })
         if (frozen && !wl) failures.push(`OFF-THEME ${label}: ${d.sel} renders the identical rgb(${d.bg}) in all three themes (text "${d.text}") - it does not follow the theme and is not whitelisted`)
       }
+      if (label === '对话框') { await pressEscape(); await sleep(250) }
+      if (label === '提示') { await evaluate(`(async function(){const m=await import('/src/store/useToastStore.ts');const s=m.useToastStore.getState();s.toasts.forEach(function(t){s.dismiss(t.id)});return true})()`); await sleep(150) }
     }
     await applyTheme('')
     const frozenCount = rows.filter((r) => r.frozen).length
+    // An exemption that matches nothing is not inert: it is a licence waiting for the next defect
+    // that happens to fit its pattern. Every entry must be earning its place on this run.
+    for (const w of WHITELIST) {
+      const used = rows.filter((r) => r.frozen && w.re.test(r.cls)).length
+      if (!used) failures.push(`DEAD-EXEMPTION theme-surfaces: /${w.re.source}/ ("${w.why}") matched 0 of ${rows.length} sampled surfaces this run - delete it, or it will quietly excuse a future one`)
+    }
     writeFileSync(`${OUT}/theme-surfaces.json`, JSON.stringify({ provenance: buildProvenance(), note: 'a surface is OFF-THEME when the pixel photographed 6px inside its top-left corner is identical (<=2/255 per channel) under default, midnight and sakura', whitelist: WHITELIST.map((w) => w.why), rows }, null, 2))
+    if (budgetHits) { console.log(`CONTRAST_GATE INCOMPLETE: covered ${comboIndex}/${combosTotal} combinations inside the ${DEADLINE_MS}ms budget; the unmeasured remainder is not a pass.`); finish(2) }
     for (const f of failures) console.log(`FAIL ${f}`)
     console.log(`SURFACE_GATE routes=${ROUTES.length} surfaces=${rows.length} frozen=${frozenCount} offThemeUnwhitelisted=${failures.length} whitelisted=${rows.filter((r) => r.frozen && r.whitelisted).length}`)
     emitGate('theme-surfaces', rows.length, failures.length, { frozen: frozenCount })
@@ -1376,7 +2041,7 @@ async function main() {
       { width: 1024, height: 768 },
       { width: 640, height: 480 },
     ]
-    const ROUTES = (opt('routes', '') || '发布,资源,云端,图库,插件,任务,设置').split(',')
+    const ROUTES = routeList()
     const TOUCH = Number(opt('touch', '44'))
     const onlyTier = opt('tier', '') ? Number(opt('tier', '')) : null
     const tiers = onlyTier ? TIERS.filter((t) => t.width === onlyTier) : TIERS
@@ -1625,12 +2290,21 @@ async function main() {
     await send('Emulation.clearDeviceMetricsOverride').catch(() => {})
     const summary = { provenance: buildProvenance(), note: 'widths are Emulation.setDeviceMetricsOverride CSS viewports, not real device screens; 640x480 is the app minimum window from tauri.conf.json', stuckLoading, tiers: results, failures }
     writeFileSync(`${OUT}/layout-baseline.json`, JSON.stringify(summary, null, 2))
+    if (budgetHits) { console.log(`CONTRAST_GATE INCOMPLETE: covered ${comboIndex}/${combosTotal} combinations inside the ${DEADLINE_MS}ms budget; the unmeasured remainder is not a pass.`); finish(2) }
     for (const f of failures) console.log(`FAIL ${f}`)
     if (stuckLoading.length) console.log(`STUCK-LOADING (excluded from both the findings and the pass tally; browser-only harness, no Rust invoke): ${stuckLoading.join(' | ')}`)
     if (skippedFindings.length) console.log(`SKIPPED-FINDINGS ${skippedFindings.length} condition(s) seen only on stuck-loading pages, listed for the record and NOT counted as failures:\n  ${skippedFindings.map((s) => s.slice(0, 120)).join('\n  ')}`)
     const checked = tiers.length * ROUTES.length
     const matched = results.filter((r) => r.geom && !r.stuckLoading).length
     const skipped = checked - matched
+    // A skipped page is not a page that passed. The stuck-loading exclusion used to print a
+    // warning line and still exit 0 - the shape flagged in the cross-repo report - so the set of
+    // tolerated skips is now named, and a skip outside it fails the run. Empty means nothing at
+    // all may be skipped: adding a route here is a written-down decision, not a silent one.
+    const STUCK_OK = new Set()
+    for (const r of results) {
+      if (r.stuckLoading && !STUCK_OK.has(r.route)) failures.push(`LAYOUT-SKIP ${r.tier} ${r.route}: the page never finished loading under the browser-only harness, so nothing about its geometry was judged, and "${r.route}" is not in the named exclusion set`)
+    }
     // Three exit codes because "no problems found" and "did not look at anything" are different
     // claims: 0 looked and clean, 1 findings, 2 harness fault, 3 nothing was measured at all.
     console.log(`LAYOUT_GATE checked=${checked} matched=${matched} skipped=${skipped} failures=${failures.length}`)
@@ -1801,10 +2475,12 @@ async function main() {
 }
 
 main().catch((e) => {
+  // A HarnessFinishing error is the normal end of a run that already reached a verdict, not a
+  // failure to report; and if a verdict is already recorded nothing here may replace it.
+  if (e instanceof HarnessFinishing || finishCode !== null) return
   console.error('FAILED', e)
   // Deferred exit, same reason as finish(): calling process.exit while the CDP socket and the browser
   // child are still tearing down aborts the process on Windows (0xC0000409), which the red-demo
-  // parent then reads as "the gate did not reject". Safe here because this is the terminal handler -
-  // nothing after it can run, unlike the earlier fall-through bug.
-  finish(e && e.identityFault ? 2 : 1)
+  // parent then reads as "the gate did not reject".
+  try { finish(e && e.identityFault ? 2 : 1) } catch (inner) { if (!(inner instanceof HarnessFinishing)) throw inner }
 })

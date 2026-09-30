@@ -311,11 +311,24 @@ window.__L = (function () {
   // would flag ordinary page content as cut. .app-main is overflow-y:auto, so a walk that continued
   // past rails reported 22 below-the-fold buttons at 1440x900 that a user reaches by scrolling.
   // A rail that is itself cut is caught when the rail is evaluated as its own subject.
-  // PER AXIS. overflow is two independent properties and Chrome resolves them independently
-  // (a visible axis paired with a non-visible one computes to auto). A single boolean that stops
-  // the whole chain when EITHER axis scrolls lets .app-main - overflow-y:auto, overflow-x:hidden -
-  // excuse horizontal cuts, because a vertical rail vouches for the horizontal axis. Each axis
-  // walks on its own and stops on its own.
+  // PROVENANCE OF THESE TWO LINES (stop-at-first + per-axis): 顺手, not 故意. The version that
+  // shipped first walked the whole chain (a "求交 everything" guess) and then excused the element
+  // on a SINGLE boolean over both overflow properties; neither shape was designed, and both were
+  // wrong - the first invented 22 findings, the second let a vertical rail vouch for horizontal
+  // cuts. Both halves became deliberate only under challenge from outside, and CONTROL-F is what
+  // keeps them deliberate now: it fails the gate if either axis stops being walked on its own.
+  // PER AXIS, and that is a deliberate choice, not a side effect of how the code fell out: overflow
+  // is two independent properties and Chrome resolves them independently (a visible axis paired with
+  // a non-visible one computes to auto). A single boolean that stops the whole chain when EITHER axis
+  // scrolls lets .app-main - overflow-y:auto, overflow-x:hidden - excuse horizontal cuts, because a
+  // vertical rail vouches for the horizontal axis. Each axis walks on its own and stops on its own.
+  // The cost of choosing this way is measured, not assumed, and the two halves of the choice have
+  // different evidence. Stopping a chain at a rail that scrolls: at 1440x900, a walk that continued
+  // PAST the rails reported 22 below-the-fold buttons as "cut" that a user reaches by scrolling -
+  // ordinary page content flagged as a defect, so that stop is what the rule is for. Splitting the
+  // stop per axis: .app-main (overflow-y:auto, overflow-x:hidden) is exactly the shape where a single
+  // boolean lets the vertical rail vouch for the horizontal axis, and that half rests on how Chrome
+  // resolves the two properties rather than on a count I have taken.
   const clipperForAxis = (e, axis) => {
     const prop = axis === 'x' ? 'overflowX' : 'overflowY'
     let n = e.parentElement
