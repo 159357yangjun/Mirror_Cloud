@@ -178,8 +178,8 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
-| `scripts/verify_all.mjs` | 140 | 8,807 | `f1b43f14f7d67091c7f27ad19e82ff1def88dbe5b14faa22422932f14ded6ed5` | 14 stages，一条命令跑完七道守卫 + 六个测具模式（新增 `layout`）+ 变异套件 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行） |
-| `scripts/verify_dialog_interactions.mjs` | 1932 | 130,405 | `10d60308dbbe9f86b1d47b8f7c29f9e338d8947b47246b2a59b345fb875d1914` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` 五道控制全过 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17` |
+| `scripts/verify_all.mjs` | 144 | 9,113 | `a59b1a6ebe4df86cf752ebbb42047982c6c3783ee33ee342b31651787e44f66c` | 13 stages，一条命令跑完七道守卫 + 五个测具模式 + 变异套件（`layout` 暂不接入，原因见下） | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行） |
+| `scripts/verify_dialog_interactions.mjs` | 1963 | 133,193 | `3ec5ebc639be5e8988f2dd363c1f1d093b6368fb83306121891dea66f5a6647d` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，六道控制全过 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17` |
 | `scripts/verify_guard_mutations.mjs` | 195 | 14,540 | `e149626757bd6f71cb01413d91e52591db50672f419068a33a99ed4775e9bf2c` | 17/17 变异都被对应 oracle 抓到 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
 | `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,897 | `d54d83cb52a1f8489efa4c59162ce8d44f96f34505d3396a5d4e59675460833b` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
 | `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 530 | 47,703 | `61a3105c8af4f5cf09cd7f8a8fe89b4eff795b82ff4d57c23e171133662c02bc` | `total checks: 191` | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16` |
@@ -505,6 +505,65 @@ guard mutations: 4/4 alarms reproduced | tree restored: clean
 7. **放弃给 `visual` 做"和上一次运行 JSON 做差"的自动对比**——两份 JSON 里 `sample` 字段是截断的 UI 文本，一旦文案改动，差值会同时报出真回归和纯文案变化，反而更难判。改成把关键数字断言成 4 条会退出的门禁。
 8. **放弃修 `no page target` 的端口分配**（改成 `listen(0)` 抢空闲端口）——`ab` 模式用 `PORT + c.port - 14570` 给子进程推导端口，换成语义会连带改动一个已经验绿的模式。买到的是"失败时能看见连到了谁的浏览器"，这条已经够诊断。
 
+
+
+## Unreleased - 2026-09-30（第二批：排版地板与合成层对比度）
+
+"整体使用功能没问题，页面排版设计不出问题"是地板。地板之前没探过：`pages` 模式只证明路由画出来了，**一个几何量都没量**。
+
+### 三条裁切判据是并集，不是替换
+
+| 形 | 判据 | 控制注入实测 |
+| --- | --- | --- |
+| (a) 元素比视口宽 | `VIEWPORT-OVERFLOW` + `DOC-OVERFLOW` | +994px / +994px，两条各自红一次 |
+| (b) 叶子被祖先 `overflow:hidden` 裁掉 | `CLIP-BY-ANCESTOR`（rect × 最近裁剪祖先 **padding box** 求交） | +1664px，而 **DOC-OVERFLOW 停在 0px** —— 文档级判据在这一形上是瞎的，本仓实测 |
+| (c) 元素自己裁自己 | `SELF-CLIP`（`scrollWidth - clientWidth`） | +254px；`overflow:hidden` **不**算逃生口，只有 `auto/scroll` 算 |
+
+(b) 看不见 (c)：元素的 rect 就是它的 border box，自裁发生在盒子内部，永远不越祖先的界。(c) 看不见 (b)。所以必须并列。
+`CONTROL-D` 再钉一条可达性：叶子在滚动轨里 ⇒ **不报**（滚得到），而那个轨自己被外层 `hidden` 裁掉 220px ⇒ **报**。
+
+### verify:all 里没接 `layout`（故意的，不是漏了）
+
+单独跑：`checked=21 matched=21 skipped=0 failures=23`，全是真缺陷。
+塞进聚合器：1024 档的 `setDeviceMetricsOverride` 从未生效（`innerWidth` 报回上一档的 1440），640 档时注入的 `window.__H` 已经没了 —— 于是产出 **7 条"navigation entry point not reachable"假缺陷**。一个会自己造缺陷的门比没有门更坏，所以先摘出来，并加了两道测具故障保护（覆盖轮询最多 3s 等生效；每档开头检查 `__H/__L` 是否还在，不在就退 2 而不是逐路由报错）。接回来的条件是它在聚合器里跑出与单独跑一致的 23 条。
+
+### `stuckLoading` 升级为门
+
+`LAYOUT_GATE checked=N matched=M skipped=K failures=F`，退码 **0 看了且干净 / 1 有缺陷 / 2 测具故障 / 3 什么都没看到**。还在转 spinner 的页 **既不进 findings 也不计通过**，它看到的条件另列 `SKIPPED-FINDINGS` 供翻查。
+
+### 几何层实测到的真缺陷（未修）
+
+- **最小窗口 640×480 下侧栏底部整块被裁**：`div.mt-auto.space-y-2` 越界 33px，**"教程与帮助"按钮越界 25px**，而 `body{overflow:hidden}` 不给滚动 —— 也就是说应用缩到最小尺寸时，打新手教程的那个入口点不到。
+- 图库页 `刷新` 按钮文字被自己裁掉 5px（1024 与 640 都有）。
+- 640 档每页 14–23 个可点目标小于 44×44，最小 13×13（`发布完成自动复制` 复选框）与 16×16（吐司关闭按钮）。
+- 焦点判据改成"焦点前后自身 + 3 层祖先的 outline/box-shadow/border/background 差分"以后，**上一轮报的 5 条"无可见焦点"全是假红**（那些输入框靠 `focus:border-` 换描边色表达焦点，是真环）；同时植入两次对照：`outline:none` 无环必须红、环画在包装层必须绿，两次都过。
+
+### 对比度：按渲染像素算，不按 token 算
+
+方法：注入 `* { color: transparent }` 后截图，把每个文字元素中心点的**像素值**当背景 —— 渐变、`backdrop-filter`、壁纸遮罩全部天然包含。壁纸取两张极值图（全黑 / 全白）当包络。
+
+| 主题 | (a) token↔token：`--text-muted` vs `--app-bg` | (b) 文字↔渲染合成背景，最坏值 |
+| --- | --- | --- |
+| default | `#94a3b8` vs `#f6f7fb` = **2.40:1** | 无壁纸 **2.46** / 黑壁纸 **1.42** / 白壁纸 **2.48** |
+| midnight | `#64748b` vs `#090d16` = **4.08:1** | 无壁纸 **1.02** / 黑壁纸 **1.02** / 白壁纸 **1.01** |
+| sakura | `#ad8798` vs `#fff8fb` = **3.00:1** | 无壁纸 **2.51** / 黑壁纸 **1.44** / 白壁纸 **2.53** |
+
+**六个值没有一个是"达标"的**，所以本批不报"对比度全达标"。9 个主题×壁纸×路由组合 **全部报红**（`below=9`，`unresolved=0`）。
+
+按渲染像素算，暴露出 token 算术**结构上看不见**的第二类缺陷，比灰度不达标更重：
+
+- 设置页 `还需要完成上传配置` 在 midnight 下前景 `rgb(248,250,252)`、采样背景 `rgb(251,248,237)` = **1.02:1**，几乎不可见。原因不是 token，是**硬编码 `bg-white` 的分区不跟随主题**：文字换成近白，底还是白的。
+- 同一页 `设置` 28px 标题在 midnight 黑壁纸下 `rgb(2,6,24)` on `rgb(7,10,17)` = **1.02:1**，是反过来的同一类（硬编码 `text-slate-950`）。
+- 云端的 `article.border.bg-white` 说明这不是孤例。
+
+⇒ 修对比度不是"把 `--text-muted` 提亮度"一件事，至少两件事：三套主题各自的弱化灰，**以及把硬编码调色板从主题里清出去**。后者范围大，本批只登记。
+
+### 本批放弃/未做的选项
+
+1. **没做 `verify_dialog_interactions.mjs` 的拆分**（现 1963 行 / 133KB）。它确实该拆，但这批同时新增了三道门（几何、合成层对比度、焦点差分），拆分会移动共享的浏览器引导与三道门禁代码；在同一批里既加门又搬家，一旦聚合器变红我分不清是新门抓到了回归还是搬家搬断了。计划：先抽 `scripts/verify_probes.mjs`（三段页面侧探针，约 400 行，纯字符串导出、零控制流），再按模式拆；每步跑同一套命令对账行数与用例计数。**这条是欠账，不是已完成。**
+2. **没接 `layout` 进 `verify:all`** —— 理由与复现日志在上面。
+3. **没修任何一条几何缺陷与任何一条对比度** —— 这批交付的是"能验的地板读数 + 门"，修是下一批的活；先把它们报成红，而不是为了让聚合器好看去调阈值。
+4. **放弃把 `sr-only` 负对照做成"用夹具 DOM 命中应用真分支"** —— 造一行假插件数据要在浏览器态里伪造 Rust 返回的存储配置，那是"用测具的复制品测测具"；现在改成把这条覆盖缺口写进输出（`COVERAGE:` 行），让读日志的人知道那条排除在保护什么、以及它在应用里没被跑到。
 
 
 ## 1.4.4 - Gallery Render Bound and Installer Publisher
