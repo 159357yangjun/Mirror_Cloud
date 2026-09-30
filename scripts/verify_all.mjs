@@ -81,7 +81,11 @@ const stages = [
   { name: 'gate', run: 'node', args: [NODE_MODE, 'gate'], needsServer: true, count: /"sawMinimizedReject": (true|false)/ },
   { name: 'ab', run: 'node', args: [NODE_MODE, 'ab'], needsServer: true, count: /"deltaOverflowX": (\d+)/ },
   { name: 'visual', run: 'node', args: [NODE_MODE, 'visual'], needsServer: true, timeout: 600_000, count: /VISUAL_GATE total=(\d+) failed=(\d+)/ },
-  { name: 'layout', run: 'node', args: [NODE_MODE, 'layout'], needsServer: true, timeout: 900_000, count: /LAYOUT_GATE tiers=(\d+) routes=(\d+) failures=(\d+)/ },
+  // `layout` is deliberately NOT a stage yet. Standalone it reports 23 real geometry findings;
+  // inside this aggregate the viewport override for the 1024 tier never applied and the injected
+  // helpers disappeared before 640, which surfaced as 7 invented "navigation entry point not
+  // reachable" failures. A stage that manufactures findings is worse than no stage. See
+  // CHANGELOG "verify:all 里没接 layout" for the reproduced log; it lands with the fix.
   { name: 'red-demo', run: 'node', args: [NODE_MODE, 'red-demo'], timeout: 600_000, count: /identity gate red demo: (\d+\/\d+ alarms reproduced)/ },
   { name: 'mutations', run: 'node', args: ['scripts/verify_guard_mutations.mjs'], timeout: 900_000, count: /guard mutations: (\d+\/\d+ alarms reproduced)/ },
 ]

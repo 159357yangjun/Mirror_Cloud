@@ -1588,7 +1588,7 @@ true
       }
       else probe.clippedPlacement = { skipped: 'no non-scrolling clipping ancestor found on this page' };
       const d2 = wide(); document.documentElement.appendChild(d2); const g2 = window.__L.geometry(0);
-      probe.scrollPlacement = { docOverflowPx: g2.docOverflowPx, caughtByDoc: g2.docOverflowPx > baseline.docOverflowPx, caughtByViewport: g2.viewportOverflowPx > 0 };
+      probe.scrollPlacement = { docOverflowPx: g2.docOverflowPx, docPx: g2.docOverflowPx - baseline.docOverflowPx, viewportPx: g2.viewportOverflowPx, caughtByDoc: g2.docOverflowPx > baseline.docOverflowPx, caughtByViewport: g2.viewportOverflowPx > 0 };
       d2.remove();
       // Negative controls: the four known false-positive sources. Each plants something that must
       // NOT be reported, so an exclusion that never fires cannot be mistaken for a clean page.
@@ -1655,22 +1655,39 @@ true
     // The divergence is the point, not a failure: the clip placement leaves the document-level
     // number untouched while the per-element one fires. Recorded so nobody re-merges them later.
     const docBlindToClip = control.clippedPlacement.caught && control.clippedPlacement.docOverflowPx === control.baselineDocOverflow
-    console.log(`CONTROL clip-placement -> CLIP-BY-ANCESTOR caught=${control.clippedPlacement.caught} (worst +${control.clippedPlacement.worst}px) while DOC saw ${control.clippedPlacement.docOverflowPx}px vs baseline ${control.baselineDocOverflow}px -> doc-level blind to a clipped overflow: ${docBlindToClip ? 'YES (why the per-element criterion exists)' : 'no'}`)
-    console.log(`CONTROL scroll-placement -> DOC caught=${control.scrollPlacement.caughtByDoc}, VIEWPORT caught=${control.scrollPlacement.caughtByViewport}; restored=${control.removedCleanly}; nodes=${control.nodes} textLeaves=${control.textLeaves}`)
-    console.log(`CONTROL negatives -> sr-only skipped=${control.negative.srOnlySkipped}, overflow-x:auto rail skipped=${control.negative.scrollRailSkipped}, real cut still caught=${control.negative.realCutStillCaught}`)
-    console.log(`CONTROL rail-then-outer -> leaf inside a scroll rail left alone=${control.railThenOuter.leafNotFlagged}; the rail itself reported when an outer overflow:hidden cuts it=${control.railThenOuter.railFlagged} (worst ${control.railThenOuter.worst}px)`)
-    console.log(`CONTROL focus -> outline:none+no-shadow reads invisible=${control.focus.noRingRed}; ring on wrapper reads visible=${control.focus.wrapperRingGreen} (ring found at ancestor depth ${control.focus.ringLevel})`)
+    console.log(`CONTROL-A (a) wide box -> VIEWPORT-OVERFLOW +${control.scrollPlacement.viewportPx}px and DOC-OVERFLOW +${control.scrollPlacement.docPx}px, each fired once`)
+    console.log(`CONTROL-B (b) ancestor hidden -> CLIP-BY-ANCESTOR +${control.clippedPlacement.worst}px while DOC-OVERFLOW stayed at ${control.clippedPlacement.docOverflowPx}px (baseline ${control.baselineDocOverflow}px) => document-level blind here: ${docBlindToClip ? 'YES' : 'no'}`)
+    console.log(`CONTROL-C (c) self hidden -> SELF-CLIP +${control.negative.realCutDelta}px; overflow:hidden was NOT accepted as an escape hatch`)
+    console.log(`CONTROL-negatives -> sr-only skipped=${control.negative.srOnlySkipped}, overflow-x:auto rail skipped=${control.negative.scrollRailSkipped}`)
+    console.log(`CONTROL-D rail-then-outer -> leaf inside a scroll rail left alone=${control.railThenOuter.leafNotFlagged}; the rail itself reported when an outer overflow:hidden cuts it=${control.railThenOuter.railFlagged} (worst ${control.railThenOuter.worst}px)`)
+    console.log(`CONTROL-E focus -> outline:none+no-shadow reads invisible=${control.focus.noRingRed}; ring drawn on a wrapper reads visible=${control.focus.wrapperRingGreen} (found at ancestor depth ${control.focus.ringLevel})`)
+    console.log(`COVERAGE: the sr-only exclusion is proven only by the planted control. In a browser-only harness no plugin row renders, so the app's own .sr-only element (PluginsPage.tsx:175) is never reached - the branch works, the app path is unexercised.`)
+    console.log(`COVERAGE: nodes=${control.nodes} textLeaves=${control.textLeaves} restored=${control.removedCleanly}`)
     if (bad.length) {
       for (const b of bad) console.log(`HARNESS FAULT ${b}`)
       finish(2)
     }
     for (const tier of tiers) {
       await send('Emulation.setDeviceMetricsOverride', { width: tier.width, height: tier.height, deviceScaleFactor: 1, mobile: false })
-      await sleep(250)
+      // The override is asynchronous: reading innerWidth on the next tick returns the PREVIOUS
+      // tier's width, which under verify:all made the 1024 tier abort and then blame the app.
+      let took = false
+      for (let i = 0; i < 20 && !took; i++) {
+        await sleep(150)
+        took = (await evaluate(`innerWidth`)) === tier.width
+      }
+      if (!took) { console.log(`HARNESS FAULT: the ${tier.width}x${tier.height} override never applied (innerWidth reports ${await evaluate('innerWidth')}); refusing to report anything measured at the wrong width.`); finish(2) }
       const v = await assertRealViewport(`layout:${tier.width}x${tier.height}`)
       if (v.innerWidth !== tier.width) {
         failures.push(`tier ${tier.width}: the override did not take - innerWidth reports ${v.innerWidth}`)
         continue
+      }
+      // If the document reloaded, the injected helpers are gone and every locator throws on
+      // undefined. That must stop the run: reporting it per route turns one harness fault into
+      // seven invented "navigation not reachable" findings.
+      if (!(await evaluate(`!!(window.__H && window.__H.byText && window.__L)`))) {
+        console.log(`HARNESS FAULT: the injected helpers are gone at tier ${tier.width} (window.__H/window.__L undefined) - the document reloaded mid-run, so no route here can be attributed to the app.`)
+        finish(2)
       }
       for (const label of ROUTES) {
         const entry = { tier: `${tier.width}x${tier.height}`, route: label }
