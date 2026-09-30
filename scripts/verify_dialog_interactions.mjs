@@ -33,7 +33,8 @@
  *   --app URL   dev server origin, default http://127.0.0.1:1420/
  *   --edge PATH browser binary, default: first existing of Edge (x86), Edge, Chrome
  *   --tag NAME  filename suffix for reports
- *   --port N    CDP port, default 9333
+ *   --port N    CDP port; default is an OS-assigned free loopback port (a fixed default once
+ *               attached to the developer's own running browser - see the comment at the binding)
  *
  * Exit codes
  *   0  measured, every assertion held
@@ -53,6 +54,7 @@
  */
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:net'
 import { fileURLToPath } from 'node:url'
 
 const argv = process.argv.slice(2)
@@ -81,7 +83,26 @@ if (!BROWSER) {
   process.exit(3)
 }
 
-const PORT = Number(opt('port', '9333'))
+// A fixed default port is a hazard, not a convenience: measured on this box, port 9333 was held
+// by the user's OWN Edge (tabs: edge://sync-confirmation-dialog, localhost:5173/showcase, a
+// chrome-extension page) and this harness happily attached to it and started injecting. Bind
+// port 0 and let the OS hand back something free, so a stranger can never be on our endpoint.
+async function freeDebugPort() {
+  return new Promise((resolve) => {
+    const srv = createServer()
+    srv.unref()
+    srv.on('error', () => resolve(0))
+    srv.listen(0, '127.0.0.1', () => {
+      const p = srv.address().port
+      srv.close(() => resolve(p > 65400 ? 1024 + (p % 50000) : p))
+    })
+  })
+}
+const PORT = Number(opt('port', '')) || (await freeDebugPort())
+if (!PORT) {
+  console.error('Cannot obtain a free loopback port for the browser debug endpoint. Pass --port <free> explicitly; refusing to fall back to a fixed port, because a fixed port is how this harness once attached to the developer\'s own browser.')
+  process.exit(2)
+}
 const APP = opt('app', 'http://127.0.0.1:1420/')
 const TAG = opt('tag', MODE)
 const OUT = opt('out', `${(process.env.TEMP || '/tmp').replace(/\\/g, '/')}/image-hosting-probes/${new Date().toISOString().slice(0, 10)}`)
@@ -1443,9 +1464,22 @@ window.__L = (function () {
         if (e.title || e.closest('[title]')) { out.skipTitle++; continue }
         if (/auto|scroll/.test(cs.overflowX)) { out.skipScrollRail++; continue }
         out.measuredLeaves++
-        // SELF-CLIP: the leaf's own box is smaller than its own content.
-        if (e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1) {
-          out.clipped.push({ sel: sel(e), text: txt(e), delta: Math.max(e.scrollWidth - e.clientWidth, e.scrollHeight - e.clientHeight), overflowX: cs.overflowX })
+        // SELF-CLIP. Horizontal uses scrollWidth-clientWidth. Vertical must NOT: scrollHeight
+        // counts line-height descender slack, which reports a 2-13px "cut" on ordinary headings.
+        // The text's own ink rect against the element's content box is what actually answers
+        // "did a glyph get eaten".
+        const r2 = e.getBoundingClientRect()
+        const hDelta = Math.max(0, e.scrollWidth - e.clientWidth)
+        let vDelta = 0
+        try {
+          const rg = document.createRange(); rg.selectNodeContents(e)
+          const ink = rg.getBoundingClientRect()
+          const top = r2.top + (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.paddingTop) || 0)
+          const bottom = r2.bottom - (parseFloat(cs.borderBottomWidth) || 0) - (parseFloat(cs.paddingBottom) || 0)
+          vDelta = Math.max(0, Math.round(Math.max(top - ink.top, ink.bottom - bottom)))
+        } catch (err) { vDelta = 0 }
+        if (hDelta > 1 || vDelta > 1) {
+          out.clipped.push({ sel: sel(e), text: txt(e), delta: Math.max(hDelta, vDelta), hDelta, vDelta, overflowX: cs.overflowX })
         }
       }
       out.clipped.sort((a, b) => b.delta - a.delta)
@@ -1748,7 +1782,7 @@ true
         if (g.clippedByAncestorTotal) emit(`CLIP-BY-ANCESTOR ${entry.tier} ${label}: ${g.clippedByAncestorTotal} text leaf(s) cut by a non-scrolling ancestor - ${g.clippedByAncestor.slice(0, 3).map((c) => `+${c.excess}px ${c.axis} "${c.text}" at ${c.sel} (cut by ${c.by}, overflow ${c.overflow})`).join(' | ')}`)
         if (g.controlsCutTotal) emit(`CONTROL-CUT ${entry.tier} ${label}: ${g.controlsCutTotal} interactive element(s) cut by a non-scrolling ancestor, unreachable - ${g.controlsCut.slice(0, 3).map((c) => `+${c.excess}px ${c.axis} "${c.text}" at ${c.sel} (cut by ${c.by}, overflow ${c.overflow})`).join(' | ')}`)
         if (g.containersCutTotal) emit(`CONTAINER-CUT ${entry.tier} ${label}: ${g.containersCutTotal} container(s) cut by a non-scrolling ancestor - ${g.containersCut.slice(0, 2).map((c) => `+${c.excess}px ${c.axis} at ${c.sel} (cut by ${c.by}, overflow ${c.overflow})`).join(' | ')}`)
-        if (g.clippedTotal) emit(`SELF-CLIP ${entry.tier} ${label}: ${g.clippedTotal} own-text run(s) cut with no ellipsis and no title - worst +${g.clipped[0].delta}px "${g.clipped[0].text}" at ${g.clipped[0].sel}`)
+        if (g.clippedTotal) emit(`SELF-CLIP ${entry.tier} ${label}: ${g.clippedTotal} own-text run(s) cut with no ellipsis and no title - worst ${g.clipped[0].hDelta}px horizontal / ${g.clipped[0].vDelta}px vertical ink "${g.clipped[0].text}" at ${g.clipped[0].sel}`)
         if (g.smallTotal) emit(`TOUCH-TARGET ${entry.tier} ${label}: ${g.smallTotal} clickable target(s) under ${TOUCH}x${TOUCH} - smallest ${g.smallTargets[0].w}x${g.smallTargets[0].h} "${g.smallTargets[0].text}" at ${g.smallTargets[0].sel}`)
         if (g.brokenImages.length) emit(`BROKEN-IMAGE ${entry.tier} ${label}: ${g.brokenImages.length} image(s) with naturalWidth 0 - ${g.brokenImages.map((b) => b.src).join(', ')}`)
         entry.exclusions = { srOnly: g.skipSrOnly, ellipsis: g.skipEllipsis, title: g.skipTitle, scrollRail: g.skipScrollRail, fixed: g.skipFixed, railClips: g.railClips, textLeaves: g.textLeaves, measuredLeaves: g.measuredLeaves }
