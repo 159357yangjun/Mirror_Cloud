@@ -425,18 +425,33 @@ if (MODE === 'red-demo') {
   ]
   const results = []
   for (const c of cases) {
-    const fixture = spawn(process.execPath, [`${REPO}/scripts/__fixtures__/impostor_dev_server.mjs`, c.fixture, String(c.port)], { stdio: ['ignore', 'pipe', 'pipe'] })
+    // Both ports are acquired fresh. They used to be derived from the parent's debug port
+    // (PORT + c.port - 14570), which was harmless while PORT was the fixed 9333 and became
+    // intermittent once PORT came from the ephemeral range: the derived value could land on a port
+    // already in use, the fixture would fail to bind, and the child would then report a plain
+    // exit 1 with the gate never having been asked to reject anything.
+    const fixturePort = await freeDebugPort()
+    const childPort = await freeDebugPort()
+    const fixture = spawn(process.execPath, [`${REPO}/scripts/__fixtures__/impostor_dev_server.mjs`, c.fixture, String(fixturePort)], { stdio: ['ignore', 'pipe', 'pipe'] })
     let fixtureErr = ''
+    let fixtureExited = null
     fixture.stderr.on('data', (d) => { fixtureErr += d })
+    fixture.on('exit', (code) => { fixtureExited = code })
     await sleep(900)
-    const child = spawnSync(process.execPath, [SELF, 'ab', '--app', `http://127.0.0.1:${c.port}/`, '--port', String(PORT + c.port - 14570)], { encoding: 'utf8', timeout: 180_000 })
+    if (fixtureExited !== null) {
+      console.log(`HARNESS FAULT: the ${c.fixture} fixture died before the child ran (exit ${fixtureExited}${fixtureErr ? `: ${fixtureErr.trim().slice(0, 160)}` : ''}) - "not rejected" here would be a missing fixture, not a broken gate.`)
+      results.push({ case: c.fixture, expectedExit: 2, actualExit: null, gateRejected: false, namedExpectedClause: false, harnessFault: 'fixture exited early' })
+      continue
+    }
+    const url = `http://127.0.0.1:${fixturePort}/`
+    const child = spawnSync(process.execPath, [SELF, 'ab', '--app', url, '--port', String(childPort)], { encoding: 'utf8', timeout: 180_000 })
     const output = `${child.stdout || ''}${child.stderr || ''}`
     const rejected = child.status === 2 && output.includes('PROJECT IDENTITY GATE FAILED')
     const namedClause = output.includes(c.expectClause)
     results.push({
-      case: c.fixture, url: `http://127.0.0.1:${c.port}/`, expectedExit: 2, actualExit: child.status,
+      case: c.fixture, url, expectedExit: 2, actualExit: child.status,
       gateRejected: rejected, namedExpectedClause: namedClause, whyThisRedIsExpected: c.why,
-      evidence: output.split('\n').filter((l) => /PROJECT IDENTITY|^  L\d|identity gate rejected/.test(l)).slice(0, 4),
+      evidence: output.split('\n').filter((l) => /PROJECT IDENTITY|^  L\d|identity gate rejected|HARNESS FAULT|FAILED/.test(l)).slice(0, 4),
     })
     fixture.kill()
     if (fixtureErr) console.error(`fixture ${c.fixture} stderr: ${fixtureErr.trim()}`)
