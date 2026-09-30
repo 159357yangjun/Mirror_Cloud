@@ -442,8 +442,61 @@ require(harness_path.exists(), 'the dialog interaction harness is version contro
 harness = harness_path.read_text(encoding='utf-8') if harness_path.exists() else ''
 require('function assertRealViewport' in harness, 'the harness defines the viewport gate')
 require(harness.count('assertRealViewport(') >= 8, 'the viewport gate guards every geometry sample, not just startup')
+def allowed_imports(source, label):
+    """Every top-level import must be a Node built-in or a tracked file inside scripts/.
+
+    Splitting the harness into a probe module means relative imports exist now. Saying "starts
+    with node:" would either fail the split or be relaxed to "anything", so the rule is narrowed
+    instead: a relative specifier is only allowed if the file it points at is itself version
+    controlled under scripts/, which keeps it inside the fingerprint set rather than smuggling a
+    dependency in through a path.
+    """
+    bad = []
+    for imp in top_level_imports(source):
+        if imp.startswith('node:'):
+            continue
+        if imp.startswith('./') or imp.startswith('../'):
+            target = (ROOT / 'scripts' / imp).resolve()
+            try:
+                rel = target.relative_to(ROOT).as_posix()
+            except ValueError:
+                bad.append(f'{imp} escapes scripts/')
+                continue
+            if rel in tracked_files():
+                continue
+            bad.append(f'{imp} is not a tracked file under scripts/')
+            continue
+        bad.append(imp)
+    require(not bad, f'{label} adds no third-party dependency ({bad})')
+
+
+def tracked_files():
+    import subprocess
+    out = subprocess.run(['git', 'ls-files', '-z'], cwd=ROOT, capture_output=True)
+    return set(out.stdout.decode('utf-8').split('\0')) if out.returncode == 0 else set()
+
+
 harness_imports = top_level_imports(harness)
-require(all(i.startswith('node:') for i in harness_imports), f'the harness adds no third-party dependency ({harness_imports})')
+allowed_imports(harness, 'the harness')
+
+# The probe module was cut out of the harness so the harness reads as control flow. That only
+# holds if the extracted file stays inert: three string exports and nothing that can run. If it
+# ever grows logic, the split has moved behaviour rather than text, and the harness's own
+# assertions no longer describe what the browser executes.
+probes_path = ROOT / 'scripts' / 'verify_probes.mjs'
+require(probes_path.exists(), 'the page-side probes live in a module the harness imports')
+if probes_path.exists():
+    probes_text = probes_path.read_text(encoding='utf-8')
+    require(top_level_imports(probes_text) == [], f'the probe module imports nothing at all ({top_level_imports(probes_text)})')
+    for probe_name in ('HELPERS', 'VISUAL_PROBE', 'LAYOUT_PROBE'):
+        require(f'export const {probe_name} = `' in probes_text, f'{probe_name} is still a template literal export')
+    require('export function' not in probes_text and '=>' not in probes_text.split('export const HELPERS')[0], 'the probe module exports no logic of its own above the payloads')
+    for bad_token in ('fetch(', 'require(', 'eval(', 'Function('):
+        require(bad_token not in probes_text, f'the probe module does not call {bad_token} from Node')
+    # The harness must still be the only thing that decides what happens with these strings.
+    require('await evaluate(HELPERS)' in harness, 'the harness installs the interaction helpers')
+    require('await evaluate(VISUAL_PROBE)' in harness, 'the harness injects the visual probe')
+    require('await evaluate(LAYOUT_PROBE)' in harness, 'the harness injects the geometry probe')
 # Reachability: a tool nobody can discover is a tool that rots. It must stay wired to a real entry.
 desktop_pkg = json.loads(text('apps/desktop/package.json'))
 require('verify_dialog_interactions.mjs' in json.dumps(desktop_pkg.get('scripts', {})), 'the harness is reachable from an npm script entry')
