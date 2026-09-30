@@ -51,7 +51,10 @@ const mutations = [
   { id: 'M8', file: HARNESS, from: 'async function assertProjectIdentity()', to: 'async function gateRemoved()', oracle: 'guard', expect: 'the harness verifies it is measuring this project' },
   { id: 'M9', file: HARNESS, from: '    error.identityFault = true\n    throw error', to: '    finish(2)', oracle: 'guard', expect: 'an identity mismatch exits as a harness fault, not a pass or a regression' },
   { id: 'M10', file: HARNESS, from: 'function|const|class|enum', to: 'function|const|class|type|interface|enum', oracle: 'guard', expect: 'the export comparison ignores type exports that the TS transform erases' },
-  { id: 'M11', file: FIXTURE, from: ' * An impostor dev server, for proving the identity gate in', to: ' * An impostor dev server, for proving the identity gate in today', oracle: 'guard', expect: `fingerprint row for ${FIXTURE} matches its HEAD blob` },
+  // One byte changed in a measured file, table left stale. This trips the working-copy half of the
+  // check while the edit is uncommitted, and the HEAD-blob half once it is committed without the
+  // table being updated - the two halves the guard now compares.
+  { id: 'M11', file: FIXTURE, from: ' * An impostor dev server, for proving the identity gate in', to: ' * An impostor dev server, for proving the identity gate in today', oracle: 'guard', expect: `fingerprint row for ${FIXTURE} matches the file` },
   { id: 'M12', file: FIXTURE, from: ' * node:http only; no third-party dependency.', to: ' * node:http, node:fs and chalk only.', oracle: 'guard', expect: 'the fixture adds no third-party dependency' },
 ]
 
@@ -118,7 +121,7 @@ for (const m of selected) {
       const needle = adapt(text, m.from)
       mutated = text.includes(needle) ? text.replace(needle, adapt(text, m.to)) : undefined
     }
-    if (mutated === undefined || mutated.equals(original)) {
+    if (mutated === undefined || Buffer.from(mutated).equals(original)) {
       results.push({ id: m.id, file: m.file, applied: false, note: 'anchor missing - mutation definition is stale' })
       continue
     }

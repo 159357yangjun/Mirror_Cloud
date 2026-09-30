@@ -132,9 +132,9 @@ sawMinimizedReject: true   broken: []
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
 | `scripts/verify_dialog_interactions.mjs` | 1032 | 64,911 | `8aaf80b220fc2dbeeaecbc33d3aa702a89ad1a89ab72def06ac64ec96567afaf` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5` |
-| `scripts/verify_guard_mutations.mjs` | 149 | 10,153 | `b8118acf10309b4ebf51f02a7784434d5ef4699637dc641969d7e6248ee717bf` | 12/12 变异都被对应 oracle 抓到 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
+| `scripts/verify_guard_mutations.mjs` | 152 | 10,425 | `2362ef66d7cfea352d3d1fbb7e1b80eaada2bc6c5c1858f6462ac2b52c2f194f` | 12/12 变异都被对应 oracle 抓到 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
 | `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,897 | `d54d83cb52a1f8489efa4c59162ce8d44f96f34505d3396a5d4e59675460833b` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
-| `scripts/check_user_flow.py`（认证上面三个的那份检查器，同址在 `scripts/`） | 470 | 43,105 | `adabfb322b669f62fb465b3d927adf1834c6a58e6933bcbf007a80261165d1aa` | `total checks: 173` | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12` |
+| `scripts/check_user_flow.py`（认证上面三个的那份检查器，同址在 `scripts/`） | 479 | 43,625 | `eb26fb4c0d726085a21c1bb2c560cfd13fab974665ec108a46d32f3b0f0d460d` | `total checks: 177` | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12` |
 
 **这张表现在是断言，不是纪律**：`check_user_flow.py` 解析上面每一行，对每个文件重算 `git show HEAD:<path>` 的行数/字节/sha256 并逐项比对，还断言"表里的行集合 == 磁盘上 `scripts/verify_*.mjs` + `scripts/__fixtures__/*.mjs` + `scripts/check_user_flow.py` 的集合"。所以：新加一个测具忘了上表 → 红；改了测具忘了更新表 → 红；哈希对不上 → 红，并附一句"该文件另有未提交改动"。上一版这张表就是**手写漂移了一笔提交**（记 965 行 / `9341e4ba…`，实际 1119 行 / `d9572a31…`），而它上面那句"改完必须回来更新"正是被漂移的那句——所以规则本身不解决问题，断言才解决。
 

@@ -431,6 +431,12 @@ def blob_of(rev_spec):
 def fingerprint(data):
     return {'lines': data.count(b'\n'), 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
 
+def working_fingerprint(rel):
+    # core.autocrlf=true checks files out with CRLF while the blob stores LF, so normalise before
+    # hashing; a clean file then fingerprints identically to its blob (verified by measurement).
+    data = (ROOT / rel).read_bytes().replace(b'\r\n', b'\n')
+    return fingerprint(data)
+
 table_rows = {}
 for line in (ROOT / 'CHANGELOG.md').read_text(encoding='utf-8').splitlines():
     row = re.match(r'\|\s*`(scripts/[^`]+)`[^|]*\|\s*(\d+)\s*\|\s*([\d,]+)\s*\|\s*`([0-9a-f]{64})`\s*\|', line)
@@ -450,11 +456,14 @@ for rel in measured_files:
     if blob is None:
         require(False, f'{rel}: no committed blob to compare the fingerprint table against')
         continue
-    got = fingerprint(blob)
-    uncommitted = subprocess.run(['git', 'status', '--porcelain', '--', rel], cwd=ROOT, capture_output=True, text=True).stdout.strip()
-    require(got == want, f'fingerprint row for {rel} matches its HEAD blob '
-                         f'(table {want["lines"]}L/{want["bytes"]}B/{want["sha256"][:12]} vs blob {got["lines"]}L/{got["bytes"]}B/{got["sha256"][:12]})'
-                         + (f'; note: this file also has uncommitted edits: {uncommitted.splitlines()[0]}' if uncommitted else ''))
+    committed = fingerprint(blob)
+    # Both halves matter. The blob comparison is what another person reproduces after cloning; the
+    # working-tree comparison is what catches the drift while it is still uncommitted - without it a
+    # one-byte edit to a measured tool stayed green here, because HEAD had not moved.
+    on_disk = working_fingerprint(rel)
+    label = f'fingerprint row for {rel} matches the file (table {want["lines"]}L/{want["bytes"]}B/{want["sha256"][:12]}'
+    require(committed == want, label + f'; HEAD blob {committed["lines"]}L/{committed["bytes"]}B/{committed["sha256"][:12]})')
+    require(on_disk == want, label + f'; working copy {on_disk["lines"]}L/{on_disk["bytes"]}B/{on_disk["sha256"][:12]})')
 
 # Encoding integrity for the change record. A latin1 read + utf8 write turns every CJK character
 # into a two-byte mojibake sequence; the result still decodes as UTF-8, so "it parsed" proves
