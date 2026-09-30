@@ -81,6 +81,7 @@ const stages = [
   { name: 'gate', run: 'node', args: [NODE_MODE, 'gate'], needsServer: true, count: /"sawMinimizedReject": (true|false)/ },
   { name: 'ab', run: 'node', args: [NODE_MODE, 'ab'], needsServer: true, count: /"deltaOverflowX": (\d+)/ },
   { name: 'visual', run: 'node', args: [NODE_MODE, 'visual'], needsServer: true, timeout: 600_000, count: /VISUAL_GATE total=(\d+) failed=(\d+)/ },
+  { name: 'settings-guard', run: 'node', args: [NODE_MODE, 'settings-guard'], needsServer: true, timeout: 600_000, count: /SETTINGS_GATE checked=(\d+) failed=(\d+)/ },
   // `layout` is deliberately NOT a stage yet. Standalone it reports 23 real geometry findings;
   // inside this aggregate the viewport override for the 1024 tier never applied and the injected
   // helpers disappeared before 640, which surfaced as 7 invented "navigation entry point not
