@@ -178,7 +178,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
-| `scripts/verify_all.mjs` | 144 | 9,113 | `a59b1a6ebe4df86cf752ebbb42047982c6c3783ee33ee342b31651787e44f66c` | 13 stages，一条命令跑完七道守卫 + 五个测具模式 + 变异套件（`layout` 暂不接入，原因见下） | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行） |
+| `scripts/verify_all.mjs` | 145 | 9,281 | `d9e1a600591b1f60741e3a70af8bbf4541d3841fd89faebc2ef1a75d0f4c56dd` | 14 stages，一条命令跑完七道守卫 + 六个测具模式（新增 `settings-guard`）+ 变异套件（`layout` 与 `theme-surfaces` 暂不接入，原因见下） | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行） |
 | `scripts/verify_dialog_interactions.mjs` | 2261 | 155,564 | `da3330d76bb95706d0eb77deb0dd6ac6d6e3a2dd8856e35005419933378ac7d9` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
 | `scripts/verify_guard_mutations.mjs` | 200 | 15,187 | `1bcd987e6ca131d7881ea5ecea6312c9e1193af10efe2d4d61149597e4c2fbe2` | 18/18 变异都被对应 oracle 抓到 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
 | `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,897 | `d54d83cb52a1f8489efa4c59162ce8d44f96f34505d3396a5d4e59675460833b` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
