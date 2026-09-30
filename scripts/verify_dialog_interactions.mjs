@@ -21,6 +21,11 @@
  *            rejection behaviour for a malformed value and a non-http scheme
  *   red-demo  starts scripts/__fixtures__/impostor_dev_server.mjs and asserts the identity gate
  *             refuses to measure it (exit 2 from the child is the expected outcome)
+ *   visual    the measured visual baseline (type scale, radii, gaps, dead space, sequences,
+ *             contrast) for every surface, plus four asserted invariants on the onboarding dialog
+ *   contrast  the raw colour chain behind one flagged element, for hand-checking the ratio
+ *   layout    the geometry floor: every route at 1440/1024/640 checked for horizontal overflow,
+ *             clipped text, touch-target size, focus visibility, accessible names and broken images
  *
  * Options
  *   --out DIR   default %TEMP%/image-hosting-probes/<date>; screenshots and JSON land there, never
@@ -58,7 +63,7 @@ const opt = (name, fallback) => {
 }
 if (!MODE || MODE === 'help') {
   console.log(readFileSync(new URL(import.meta.url), 'utf8').split('*/')[0].replace(/^\/\*\*/, ''))
-  console.log(`modes: confirm | ab | gate | gate-unit | links | pages | external | red-demo`)
+  console.log(`modes: confirm | ab | gate | gate-unit | links | pages | external | red-demo | visual | contrast | layout`)
   process.exit(MODE === 'help' ? 0 : 2)
 }
 
@@ -1164,6 +1169,392 @@ window.__V = (function () {
     else console.log('visual: onboarding dialog holds its baseline (0 below 4.5:1, 0 discarded button sizes, 1 sequence, all ordinals tabular)')
     console.log(JSON.stringify({ viewport: baseline.viewport, fonts: baseline.fonts, surfaces: baseline.surfaces.map((x) => ({ name: x.name, cards: x.cards, sizes: (x.scale || []).length, belowAA: (x.shapes?.belowAA || []).length })) }, null, 2))
     finish(regressions.length ? 1 : 0)
+  }
+
+  if (MODE === 'layout') {
+    // The geometry floor. `pages` proves a route painted; it measures no box, so horizontal
+    // overflow, silently clipped text, sub-threshold touch targets, an invisible focus ring and a
+    // broken image all pass there. Each tier is a CSS-viewport override of a real window size the
+    // app can be resized to (640x480 is tauri.conf.json's minWidth x minHeight), not a phone.
+    const TIERS = [
+      { width: 1440, height: 900 },
+      { width: 1024, height: 768 },
+      { width: 640, height: 480 },
+    ]
+    const ROUTES = (opt('routes', '') || '发布,资源,云端,图库,插件,任务,设置').split(',')
+    const TOUCH = Number(opt('touch', '44'))
+    const onlyTier = opt('tier', '') ? Number(opt('tier', '')) : null
+    const tiers = onlyTier ? TIERS.filter((t) => t.width === onlyTier) : TIERS
+    if (!tiers.length) { console.error(`unknown --tier ${onlyTier}; known: ${TIERS.map((t) => t.width).join(' ')}`); finish(2) }
+
+    await evaluate(`
+window.__L = (function () {
+  const txt = (e) => (e.textContent || '').trim().slice(0, 46)
+  const cls = (e) => (e.className || '').toString()
+  const sel = (e) => {
+    const parts = []
+    let n = e
+    for (let i = 0; i < 3 && n && n.nodeType === 1; i++) {
+      let s = n.tagName.toLowerCase()
+      if (n.id) s += '#' + n.id
+      else {
+        const c = cls(n).trim().split(/\\s+/).filter((x) => x && !/[~:\\/\\[\\]()%.,]/.test(x)).slice(0, 2)
+        if (c.length) s += '.' + c.join('.')
+      }
+      parts.unshift(s)
+      n = n.parentElement
+    }
+    return parts.join('>')
+  }
+  const vis = (e) => {
+    const r = e.getBoundingClientRect(); const cs = getComputedStyle(e)
+    return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && Number(cs.opacity) > 0.05
+  }
+  const nameOf = (e) => {
+    const direct = (e.getAttribute('aria-label') || txt(e) || e.getAttribute('alt') || e.getAttribute('title') || e.getAttribute('placeholder') || e.getAttribute('value') || '').trim()
+    if (direct) return direct
+    // A control wrapped in a <label>, or pointed at one by aria-labelledby, does have an accessible
+    // name even though it carries no attribute of its own - counting those as unnamed is a probe
+    // bug, not an app bug.
+    const labelledBy = e.getAttribute('aria-labelledby')
+    if (labelledBy) {
+      const ref = document.getElementById(labelledBy.trim().split(/\\s+/)[0])
+      if (ref && txt(ref)) return txt(ref)
+    }
+    const wrapping = e.closest('label')
+    if (wrapping) { const t = txt(wrapping).replace(txt(e), '').trim(); if (t) return t }
+    if (e.id) {
+      const forLabel = document.querySelector('label[for="' + e.id + '"]')
+      if (forLabel && txt(forLabel)) return txt(forLabel)
+    }
+    return ''
+  }
+  const styleOf = (e) => {
+    const cs = getComputedStyle(e)
+    return { outline: cs.outlineStyle + ' ' + cs.outlineWidth + ' ' + cs.outlineColor, shadow: cs.boxShadow, border: cs.borderTopColor + '/' + cs.borderTopWidth, bg: cs.backgroundColor }
+  }
+  const hasOwnText = (e) => Array.from(e.childNodes).some((n) => n.nodeType === 3 && (n.textContent || '').trim().length > 0)
+  // Tailwind's sr-only (and anything like it) is a 1px box with clipped overflow holding text meant
+  // for a screen reader only. Flagging those as "cut off" is a probe bug.
+  const isVisualHiding = (e, cs) => /rect\\(\\s*0/.test(cs.clip || '') || /inset\\(\\s*50%/.test(cs.clipPath || '') || (e.offsetWidth <= 1 && e.offsetHeight <= 1 && cs.overflow !== 'visible')
+  // The nearest ancestor that actually cuts: overflow visible chains do not clip, and an
+  // auto/scroll rail is a reachable affordance rather than a silent cut.
+  const clipperOf = (e) => {
+    let n = e.parentElement
+    while (n && n.nodeType === 1) {
+      const cs = getComputedStyle(n)
+      const ox = cs.overflowX, oy = cs.overflowY
+      if (ox !== 'visible' || oy !== 'visible') return { node: n, ox, oy, rail: /auto|scroll/.test(ox) || /auto|scroll/.test(oy) }
+      if (n === document.body || n === document.documentElement) return { node: n, ox, oy, rail: false, root: true }
+      n = n.parentElement
+    }
+    return null
+  }
+  return {
+    geometry: (touchMin) => {
+      const iw = innerWidth
+      const doc = document.documentElement
+      const all = Array.from(doc.querySelectorAll('*'))
+      const out = {
+        innerWidth: iw,
+        // Self-reporting counts. A sweep that examined nothing and a sweep that found nothing
+        // clean must never print the same way.
+        nodes: all.length, visibleNodes: 0, textLeaves: 0, measuredLeaves: 0,
+        skipSrOnly: 0, skipEllipsis: 0, skipTitle: 0, skipScrollRail: 0, skipFixed: 0, railClips: 0,
+        docScrollWidth: doc.scrollWidth,
+        bodyScrollWidth: document.body ? document.body.scrollWidth : 0,
+        // Criterion DOC: does the document's own content box extend past the viewport? This is the
+        // one that stays silent when an ancestor clips the overflow away.
+        docOverflowPx: doc.scrollWidth - iw,
+        // Criterion VIEWPORT: per-element rect past the viewport edge.
+        viewportOverflowPx: 0,
+        offenders: [], clipped: [], clippedByAncestor: [], smallTargets: [], brokenImages: [], focusables: 0,
+      }
+      for (const e of all) {
+        if (!vis(e)) continue
+        out.visibleNodes++
+        const r = e.getBoundingClientRect()
+        if (r.right > iw + 1) {
+          out.offenders.push({ sel: sel(e), over: Math.round(r.right - iw), w: Math.round(r.width), text: txt(e) })
+          out.viewportOverflowPx = Math.max(out.viewportOverflowPx, Math.round(r.right - iw))
+        }
+        const cs = getComputedStyle(e)
+        if (cs.position === 'fixed') { out.skipFixed++; continue }
+        const clip = clipperOf(e)
+        if (!clip || clip.root) continue
+        if (clip.rail) { out.railClips++; continue }
+        const cr = clip.node.getBoundingClientRect()
+        const overRight = Math.round(r.right - (cr.right - 1))
+        const overBottom = Math.round(r.bottom - (cr.bottom - 1))
+        const overLeft = Math.round((cr.left + 1) - r.left)
+        const excess = Math.max(overRight, overBottom, overLeft)
+        if (excess > 1) out.clippedByAncestor.push({ sel: sel(e), by: sel(clip.node), axis: overRight >= overBottom && overRight >= overLeft ? 'x' : 'y', excess, overflow: clip.ox + '/' + clip.oy, text: txt(e).slice(0, 30) })
+      }
+      out.offenders.sort((a, b) => b.over - a.over)
+      out.offenders = out.offenders.slice(0, 6)
+      out.clippedByAncestor.sort((a, b) => b.excess - a.excess)
+      out.clippedByAncestorTotal = out.clippedByAncestor.length
+      out.clippedByAncestor = out.clippedByAncestor.slice(0, 8)
+      for (const e of all) {
+        if (!hasOwnText(e) || !txt(e) || !vis(e)) continue
+        out.textLeaves++
+        const cs = getComputedStyle(e)
+        if (isVisualHiding(e, cs)) { out.skipSrOnly++; continue }
+        if (cs.textOverflow === 'ellipsis') { out.skipEllipsis++; continue }
+        if (e.title || e.closest('[title]')) { out.skipTitle++; continue }
+        if (/auto|scroll/.test(cs.overflowX)) { out.skipScrollRail++; continue }
+        out.measuredLeaves++
+        if (!(e.scrollWidth > e.clientWidth + 1)) continue
+        // A scroll container is a deliberate affordance; overflow:hidden on a text leaf is not.
+        out.clipped.push({ sel: sel(e), text: txt(e), scrollWidth: e.scrollWidth, clientWidth: e.clientWidth, delta: e.scrollWidth - e.clientWidth, overflowX: cs.overflowX })
+      }
+      out.clipped.sort((a, b) => b.delta - a.delta)
+      const clippedTotal = out.clipped.length
+      out.clipped = out.clipped.slice(0, 8)
+      out.clippedTotal = clippedTotal
+      if (touchMin) {
+        const nodes = Array.from(doc.querySelectorAll('button, a[href], input:not([type=hidden]), select, [role=button], [role=tab]'))
+        out.focusables = nodes.filter((e) => vis(e)).length
+        for (const e of nodes) {
+          if (!vis(e)) continue
+          const r = e.getBoundingClientRect()
+          if (r.width + 0.5 < touchMin || r.height + 0.5 < touchMin) {
+            out.smallTargets.push({ sel: sel(e), w: Math.round(r.width * 10) / 10, h: Math.round(r.height * 10) / 10, text: txt(e) || nameOf(e) })
+          }
+        }
+        out.smallTotal = out.smallTargets.length
+        out.smallTargets.sort((a, b) => (a.w * a.h) - (b.w * b.h))
+        out.smallTargets = out.smallTargets.slice(0, 8)
+      }
+      for (const im of doc.querySelectorAll('img')) {
+        if (im.complete && im.naturalWidth === 0 && (im.getAttribute('src') || '')) out.brokenImages.push({ sel: sel(im), src: (im.getAttribute('src') || '').slice(0, 70) })
+      }
+      return out
+    },
+    // Read the focus ring straight after a real Tab: what matters is whether a keyboard user can
+    // see where they are, so outline:none with no box-shadow substitute is a failure even when the
+    // element is technically focusable.
+    // Snapshot the resting style of every focusable so a Tab stop can be compared against its own
+    // unfocused state. "outline: none" alone is not an invisible focus ring if the element changes
+    // border colour or background on focus - only a differential can tell those apart.
+    // Freeze the page before any rect is read. finish() alone is not enough: it throws
+    // InvalidStateError on an infinite animation, which is exactly the case that leaves a rect
+    // parked on frame one. Anything that cannot be finished is paused, and only a paused
+    // animation that moves geometry invalidates the measurement.
+    settle: () => {
+      const GEOM = ['width', 'height', 'margin', 'padding', 'top', 'left', 'right', 'bottom', 'inset', 'transform', 'flex-basis', 'gap', 'line-height', 'font-size']
+      const anims = document.getAnimations()
+      let finished = 0, paused = 0
+      const geomRunning = []
+      for (const a of anims) {
+        let done = false
+        try { a.finish(); done = true; finished++ } catch (e) { /* infinite duration */ }
+        if (done) continue
+        try { a.pause(); paused++ } catch (e) { continue }
+        const target = a.effect && a.effect.target
+        const label = String(a.transitionProperty || a.animationName || 'anonymous')
+        let props = [label]
+        try {
+          if (a.effect && a.effect.getKeyframes) {
+            const ks = a.effect.getKeyframes()
+            for (const k of ks) for (const p of Object.keys(k)) if (p !== 'offset' && p !== 'computedOffset' && p !== 'easing' && p !== 'composite') props.push(p)
+          }
+        } catch (e) { /* getKeyframes can throw on scroll-timeline effects */ }
+        const hits = props.filter((p) => GEOM.some((g) => p === g || p.indexOf(g) !== -1))
+        // A rotating or otherwise transformed icon moves no layout box: getBoundingClientRect grows
+        // with the rotation but nothing around it reflows. Text or controls inside it would be a
+        // different story, so the exemption is only granted to a leaf with no content of its own.
+        const contentFree = !target || (!txt(target) && !target.querySelector('button,a[href],input,select,[role=button]'))
+        const transformOnly = hits.length > 0 && hits.every((p) => p === 'transform')
+        if (hits.length && !(transformOnly && contentFree)) geomRunning.push({ anim: label.slice(0, 34), hits: Array.from(new Set(hits)).slice(0, 4), sel: target ? sel(target) : 'unknown' })
+      }
+      return { total: anims.length, finished, paused, geomCount: geomRunning.length, geomRunning: geomRunning.slice(0, 4) }
+    },
+    markFocusables: () => {
+      window.__LBASE = {}
+      const nodes = Array.from(document.querySelectorAll('button, a[href], input:not([type=hidden]), select, textarea, [role=button], [role=tab], [tabindex]:not([tabindex="-1"])'))
+      let i = 0
+      for (const e of nodes) {
+        if (!vis(e)) continue
+        e.setAttribute('data-lidx', String(i))
+        window.__LBASE[i] = { ...styleOf(e), sel: sel(e), name: nameOf(e).slice(0, 30), tag: e.tagName.toLowerCase() }
+        i++
+      }
+      return i
+    },
+    focusNow: () => {
+      const e = document.activeElement
+      if (!e || e === document.body || e === document.documentElement) return { tag: 'body', left: true }
+      const idx = e.getAttribute('data-lidx')
+      const now = styleOf(e)
+      const base = idx !== null && window.__LBASE ? window.__LBASE[idx] : null
+      const changed = base ? (now.outline !== base.outline || now.shadow !== base.shadow || now.border !== base.border || now.bg !== base.bg) : null
+      let viaFocusVisible = null
+      try { viaFocusVisible = e.matches(':focus-visible') } catch (err) { viaFocusVisible = null }
+      return {
+        tag: e.tagName.toLowerCase(), sel: base ? base.sel : sel(e), name: base ? base.name : nameOf(e).slice(0, 30), unmarked: idx === null,
+        outline: now.outline, changed, viaFocusVisible,
+        visible: changed === null ? !!(now.outline.split(' ')[0] !== 'none' && parseFloat(now.outline.split(' ')[1]) > 0) : changed,
+      }
+    },
+  }
+})()
+true
+`)
+
+    const results = []
+    const failures = []
+    const stuckLoading = []
+    // Positive control with two placements, because the document-level criterion and the per-element
+    // criterion must be shown to be different tests: a 2400px box planted inside a clipping ancestor
+    // must be caught only by the per-element one. Without this, "0 failures" across 21 page/width
+    // combinations is indistinguishable from a sweep that cannot see anything.
+    const control = await evaluate(`(function(){
+      window.__L.settle();
+      const wide = () => { const d = document.createElement('div'); d.style.cssText = 'width:2400px;height:12px;background:red'; return d };
+      const host = document.querySelector('main') || document.body;
+      const clipper = Array.from(host.querySelectorAll('*')).find((e) => { const cs = getComputedStyle(e); return cs.overflowX !== 'visible' && !/auto|scroll/.test(cs.overflowX) && e.clientWidth > 40 && e.clientWidth < innerWidth });
+      const baseline = window.__L.geometry(0);
+      const report = { baselineDocOverflow: baseline.docOverflowPx, baselineClips: baseline.clippedByAncestorTotal };
+      const probe = {};
+      if (clipper) { const d = wide(); clipper.appendChild(d); const g = window.__L.geometry(0); probe.clippedPlacement = { docOverflowPx: g.docOverflowPx, clippedByAncestorTotal: g.clippedByAncestorTotal, caught: g.clippedByAncestorTotal > baseline.clippedByAncestorTotal, worst: g.clippedByAncestor[0] ? g.clippedByAncestor[0].excess : null }; d.remove() }
+      else probe.clippedPlacement = { skipped: 'no non-scrolling clipping ancestor found on this page' };
+      const d2 = wide(); document.documentElement.appendChild(d2); const g2 = window.__L.geometry(0);
+      probe.scrollPlacement = { docOverflowPx: g2.docOverflowPx, caughtByDoc: g2.docOverflowPx > baseline.docOverflowPx, caughtByViewport: g2.viewportOverflowPx > 0 };
+      d2.remove();
+      // Negative controls: the four known false-positive sources. Each plants something that must
+      // NOT be reported, so an exclusion that never fires cannot be mistaken for a clean page.
+      const mk = (css, text) => { const d = document.createElement('span'); d.style.cssText = css; d.textContent = text; return d };
+      const LONG = 'abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnop';
+      const sr = mk('position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0', LONG);
+      const rail = mk('display:block;width:60px;overflow-x:auto;white-space:nowrap;font-size:12px', LONG);
+      const real = mk('display:block;width:60px;overflow:hidden;white-space:nowrap;font-size:12px', LONG);
+      host.appendChild(sr); host.appendChild(rail); host.appendChild(real);
+      const g3 = window.__L.geometry(0);
+      const hit = (needle) => g3.clipped.some((c) => c.text === needle);
+      probe.negative = {
+        srOnlySkipped: g3.skipSrOnly > baseline.skipSrOnly && !hit(LONG),
+        scrollRailSkipped: g3.skipScrollRail > baseline.skipScrollRail,
+        realCutStillCaught: g3.clippedTotal > baseline.clippedTotal,
+      };
+      sr.remove(); rail.remove(); real.remove();
+      const after = window.__L.geometry(0);
+      probe.removedCleanly = after.clippedByAncestorTotal === baseline.clippedByAncestorTotal && after.docOverflowPx === baseline.docOverflowPx;
+      probe.nodes = baseline.nodes; probe.textLeaves = baseline.textLeaves;
+      probe.baselineDocOverflow = baseline.docOverflowPx; probe.baselineClips = baseline.clippedByAncestorTotal;
+      return probe;
+    })()`)
+    const bad = []
+    if (!control.clippedPlacement.caught) bad.push(`the per-element criterion missed a 2400px box planted inside an overflow:hidden ancestor (got ${JSON.stringify(control.clippedPlacement)})`)
+    if (!control.scrollPlacement.caughtByDoc && !control.scrollPlacement.caughtByViewport) bad.push('neither criterion reacted to a 2400px box appended to documentElement')
+    if (!control.removedCleanly) bad.push('the control leaked: counts did not return to baseline after removing the planted boxes')
+    for (const [k, why] of [['srOnlySkipped', 'a visually-hidden sr-only span was counted as cut-off text'], ['scrollRailSkipped', 'an overflow-x:auto rail was counted as a clip rather than a reachable scroll'], ['realCutStillCaught', 'a genuinely cut overflow:hidden text run was NOT reported - the exclusions are swallowing real defects']]) {
+      if (!control.negative[k]) bad.push(`negative control failed: ${why}`)
+    }
+    // The divergence is the point, not a failure: the clip placement leaves the document-level
+    // number untouched while the per-element one fires. Recorded so nobody re-merges them later.
+    const docBlindToClip = control.clippedPlacement.caught && control.clippedPlacement.docOverflowPx === control.baselineDocOverflow
+    console.log(`CONTROL clip-placement -> CLIP-BY-ANCESTOR caught=${control.clippedPlacement.caught} (worst +${control.clippedPlacement.worst}px) while DOC saw ${control.clippedPlacement.docOverflowPx}px vs baseline ${control.baselineDocOverflow}px -> doc-level blind to a clipped overflow: ${docBlindToClip ? 'YES (why the per-element criterion exists)' : 'no'}`)
+    console.log(`CONTROL scroll-placement -> DOC caught=${control.scrollPlacement.caughtByDoc}, VIEWPORT caught=${control.scrollPlacement.caughtByViewport}; restored=${control.removedCleanly}; nodes=${control.nodes} textLeaves=${control.textLeaves}`)
+    console.log(`CONTROL negatives -> sr-only skipped=${control.negative.srOnlySkipped}, overflow-x:auto rail skipped=${control.negative.scrollRailSkipped}, real cut still caught=${control.negative.realCutStillCaught}`)
+    if (bad.length) {
+      for (const b of bad) console.log(`HARNESS FAULT ${b}`)
+      finish(2)
+    }
+    for (const tier of tiers) {
+      await send('Emulation.setDeviceMetricsOverride', { width: tier.width, height: tier.height, deviceScaleFactor: 1, mobile: false })
+      await sleep(250)
+      const v = await assertRealViewport(`layout:${tier.width}x${tier.height}`)
+      if (v.innerWidth !== tier.width) {
+        failures.push(`tier ${tier.width}: the override did not take - innerWidth reports ${v.innerWidth}`)
+        continue
+      }
+      for (const label of ROUTES) {
+        const entry = { tier: `${tier.width}x${tier.height}`, route: label }
+        try {
+          if (label === 'confirm-longname') {
+            // The 534cc15 shape: a 64-character hashed filename with no break opportunities inside a
+            // 440px card. With overflow-wrap in place it wraps; strip it and the text runs out of
+            // the card, which is what the per-element criterion exists to catch.
+            await openConfirm()
+            await evaluate(`(function(){const d=window.__H.dialog();const p=d.querySelector('p');p.textContent='确定永久删除选中的 128 个远端文件吗？\\n\\na3f9c21be7d84f05c6b18d27ea49f30b5c8d7e12a6b4f90c3d5e7a1b2c4d6e8f0.png\\nIMG_20260930_142530_原图_未命名.png';return true})()`)
+          } else {
+            await goto(label)
+          }
+        } catch (error) {
+          entry.navError = String(error).slice(0, 150)
+          failures.push(`${entry.tier} ${label}: navigation entry point not reachable - ${entry.navError}`)
+          results.push(entry)
+          continue
+        }
+        // Measure a loaded page. A route still showing a spinner has not laid out its real content,
+        // and in a browser-only harness the data may never arrive at all - so this is recorded as
+        // its own named condition rather than silently measured as if it were the shipped page.
+        entry.spinnerWaitMs = await evaluate(`(async function(){
+          const spinning = () => document.querySelectorAll('[class*="animate-spin"]').length;
+          for (let i = 0; i < 40; i++) { if (!spinning()) return i * 250; await new Promise((r) => setTimeout(r, 250)); }
+          return 10000;
+        })()`)
+        entry.spinnersAtMeasure = await evaluate(`document.querySelectorAll('[class*="animate-spin"]').length`)
+        entry.settled = await evaluate(`window.__L.settle()`)
+        await sleep(80)
+        await assertRealViewport(`layout:${tier.width}:${label}`)
+        if (entry.settled.geomCount) {
+          console.log(`HARNESS FAULT: ${entry.tier} ${label} - ${entry.settled.geomCount} animation(s) move geometry and could not be settled (${entry.settled.geomRunning.map((r) => r.anim + ' on ' + r.sel).join('; ')}); any rect here is a mid-transition frame.`)
+          finish(2)
+        }
+        const g = await evaluate(`window.__L.geometry(${tier.width === 640 ? TOUCH : 0})`)
+        entry.geom = g
+        // Nothing examined is not the same as nothing found; refuse to let an empty document report
+        // a clean layout.
+        if (!g.nodes || !g.textLeaves) {
+          console.log(`HARNESS FAULT: ${entry.tier} ${label} - the sweep saw ${g.nodes} element(s) and ${g.textLeaves} text leaf(s); a page with no measured content cannot pass a layout gate.`)
+          await send('Emulation.clearDeviceMetricsOverride').catch(() => {})
+          finish(2)
+        }
+        if (g.docOverflowPx > 1) failures.push(`DOC-OVERFLOW ${entry.tier} ${label}: documentElement.scrollWidth ${g.docScrollWidth} exceeds innerWidth ${g.innerWidth} by ${g.docOverflowPx}px (a scrollbar / unreachable content)`)
+        if (g.viewportOverflowPx > 1) failures.push(`VIEWPORT-OVERFLOW ${entry.tier} ${label}: ${g.offenders.length} element(s) extend past the viewport edge, widest +${g.offenders[0].over}px at ${g.offenders[0].sel} "${g.offenders[0].text}"`)
+        if (g.clippedByAncestorTotal) failures.push(`CLIP-BY-ANCESTOR ${entry.tier} ${label}: ${g.clippedByAncestorTotal} element(s) cut off by a non-scrolling overflow:hidden ancestor - worst +${g.clippedByAncestor[0].excess}px on axis ${g.clippedByAncestor[0].axis} at ${g.clippedByAncestor[0].sel} (clipped by ${g.clippedByAncestor[0].by}, overflow ${g.clippedByAncestor[0].overflow})`)
+        if (g.clippedTotal) failures.push(`SELF-CLIP ${entry.tier} ${label}: ${g.clippedTotal} own-text run(s) cut with no ellipsis and no title - worst +${g.clipped[0].delta}px "${g.clipped[0].text}" at ${g.clipped[0].sel}`)
+        if (g.smallTotal) failures.push(`TOUCH-TARGET ${entry.tier} ${label}: ${g.smallTotal} clickable target(s) under ${TOUCH}x${TOUCH} - smallest ${g.smallTargets[0].w}x${g.smallTargets[0].h} "${g.smallTargets[0].text}" at ${g.smallTargets[0].sel}`)
+        if (g.brokenImages.length) failures.push(`BROKEN-IMAGE ${entry.tier} ${label}: ${g.brokenImages.length} image(s) with naturalWidth 0 - ${g.brokenImages.map((b) => b.src).join(', ')}`)
+        entry.exclusions = { srOnly: g.skipSrOnly, ellipsis: g.skipEllipsis, title: g.skipTitle, scrollRail: g.skipScrollRail, fixed: g.skipFixed, railClips: g.railClips, textLeaves: g.textLeaves, measuredLeaves: g.measuredLeaves }
+        if (entry.spinnersAtMeasure) {
+          entry.stuckLoading = true
+          if (!stuckLoading.includes(`${entry.tier} ${label}`)) stuckLoading.push(`${entry.tier} ${label}`)
+        }
+        if (tier.width === 640) {
+          const seen = []
+          entry.focusableCount = await evaluate(`window.__L.markFocusables()`)
+          await evaluate(`document.activeElement && document.activeElement.blur && document.activeElement.blur();true`)
+          for (let i = 0; i < 12; i++) {
+            for (const type of ['rawKeyDown', 'keyUp']) {
+              await send('Input.dispatchKeyEvent', { type, key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 })
+            }
+            await sleep(40)
+            const f = await evaluate(`window.__L.focusNow()`)
+            seen.push(f)
+          }
+          entry.focusStops = seen
+          const onControl = seen.filter((f) => !f.left)
+          const noRing = onControl.filter((f) => f.visible === false)
+          const noName = onControl.filter((f) => !f.name)
+          if (noRing.length) failures.push(`${entry.tier} ${label}: ${noRing.length}/${onControl.length} tab stops whose rendering does not change when focused (no outline, ring, border or background delta) - ${noRing.slice(0, 3).map((f) => f.sel + ' [resting ' + f.outline + ']').join('; ')}`)
+          if (noName.length) failures.push(`${entry.tier} ${label}: ${noName.length}/${onControl.length} tab stops with no accessible name (aria-label, text, alt, title, placeholder, wrapping or for= label, aria-labelledby all empty) - ${noName.slice(0, 3).map((f) => f.sel + '<' + f.tag + '>').join('; ')}`)
+        }
+        await shot(`lay-${label}-${tier.width}`)
+        if (label === 'confirm-longname') { await pressEscape(); await sleep(200) }
+        results.push(entry)
+      }
+    }
+    await send('Emulation.clearDeviceMetricsOverride').catch(() => {})
+    const summary = { provenance: buildProvenance(), note: 'widths are Emulation.setDeviceMetricsOverride CSS viewports, not real device screens; 640x480 is the app minimum window from tauri.conf.json', stuckLoading, tiers: results, failures }
+    writeFileSync(`${OUT}/layout-baseline.json`, JSON.stringify(summary, null, 2))
+    for (const f of failures) console.log(`FAIL ${f}`)
+    if (stuckLoading.length) console.log(`STUCK-LOADING (geometry here describes a loading state, not the loaded page; browser-only harness, no Rust invoke): ${stuckLoading.join(' | ')}`)
+    console.log(`LAYOUT_GATE tiers=${tiers.length} routes=${ROUTES.length} failures=${failures.length} stuckLoading=${stuckLoading.length}`)
+    console.log(failures.length ? `layout: ${failures.length} geometry failure(s) across ${tiers.length * ROUTES.length} page/width combinations` : `layout: no horizontal overflow, no unflagged clipping, touch targets and focus rings hold at ${tiers.map((t) => t.width).join('/')}`)
+    finish(failures.length ? 1 : 0)
   }
 
   if (MODE === 'contrast') {
