@@ -179,7 +179,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
 | `scripts/verify_all.mjs` | 144 | 9,113 | `a59b1a6ebe4df86cf752ebbb42047982c6c3783ee33ee342b31651787e44f66c` | 13 stages，一条命令跑完七道守卫 + 五个测具模式 + 变异套件（`layout` 暂不接入，原因见下） | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行） |
-| `scripts/verify_dialog_interactions.mjs` | 2152 | 146,624 | `4b5b788548a8aab1b5e5412dbf6a34d7648e9c6e8de627a04be6cbc8bcff0f40` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，六道控制全过；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17` |
+| `scripts/verify_dialog_interactions.mjs` | 2182 | 148,962 | `29abc5e8522ca01d9e7027a2fd36c9a6bcfb2b0d51e8b02e97f98c87afb4c9de` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17` |
 | `scripts/verify_guard_mutations.mjs` | 195 | 14,540 | `e149626757bd6f71cb01413d91e52591db50672f419068a33a99ed4775e9bf2c` | 17/17 变异都被对应 oracle 抓到 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
 | `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,897 | `d54d83cb52a1f8489efa4c59162ce8d44f96f34505d3396a5d4e59675460833b` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
 | `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 530 | 47,703 | `61a3105c8af4f5cf09cd7f8a8fe89b4eff795b82ff4d57c23e171133662c02bc` | `total checks: 191` | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16` |
@@ -557,6 +557,14 @@ guard mutations: 4/4 alarms reproduced | tree restored: clean
 - 云端的 `article.border.bg-white` 说明这不是孤例。
 
 ⇒ 修对比度不是"把 `--text-muted` 提亮度"一件事，至少两件事：三套主题各自的弱化灰，**以及把硬编码调色板从主题里清出去**。后者范围大，本批只登记。
+
+### 更正：裁切链要**逐轴**停，不是逐元素停
+
+我先前实现的 `rail` 是**单布尔**：`/auto|scroll/.test(overflowX) || /auto|scroll/.test(overflowY)`，撞到任一轴的滚动轨就把整条链、**两轴一起**赦掉。而 `.app-main` 恰好是 `overflow-y:auto; overflow-x:hidden` —— 于是**纵向的滚动轨替横向作了保**：横向真被裁的元素会被漏掉。现改为每轴各自往上走、各自停。
+
+`CONTROL-F` 是能区分两种实现的形状：`overflow-x:auto` + `overflow-y:hidden` 的轨里塞一个比盒子高的文字。逐轴实测 `lostY=9px 报`、`lostX=0px 赦`；单布尔会把两轴一起赦掉。
+
+**代价在本仓是 0，这条要如实写**：全部 21 条被报的裁切，其裁剪祖先的 overflow 对都是 `hidden/hidden`；整轮扫描里被轨赦掉的计数是 `railY=1613 / railX=3`——也就是说 `.app-main` 的 `overflow-x:hidden` 在本应用里**从未真的截断过任何内容**。这个 bug 是**潜伏**的，不是活跃的。隔壁单词站那个 `clip 2628→0` 是"治理滚动轨"带来的，不是"逐轴"带来的，两个数字不能混着报。
 
 ### 本批放弃/未做的选项
 
