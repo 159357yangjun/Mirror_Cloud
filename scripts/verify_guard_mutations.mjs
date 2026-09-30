@@ -67,6 +67,10 @@ const mutations = [
   { id: 'M14', file: DIALOG, from: '          </div>\n        </div>\n      </section>', to: '          </div>\n          <div className="mt-5 text-sm font-semibold">推荐的第一次使用顺序</div>\n          <div className="mt-4 grid grid-cols-5 gap-2">{[\'连接 GitHub\', \'上传 1 张图\'].map((t, i) => <div key={t} className="rounded-xl px-3 py-3 text-[12px]! font-medium!">{i + 1}.{t}</div>)}</div>\n        </div>\n      </section>', oracle: 'guard', expect: 'the duplicated five-chip ordering block stays deleted' },
   { id: 'M15', file: DIALOG, from: 'text-[var(--text-secondary)]">先完成第一次真实云端上传', to: 'text-[var(--text-muted)]">先完成第一次真实云端上传', oracle: 'guard', expect: 'the dialog avoids the muted grey measured at' },
   { id: 'M16', file: DIALOG, from: ' [font-variant-numeric:tabular-nums]', to: '', oracle: 'guard', expect: 'the STEP ordinals are tabular' },
+  // The geometry tier's own red proof, using the shape this repo really shipped: 534cc15 added
+  // overflow-wrap so a 64-character hashed filename stops running out of the 440px card. Take it
+  // away and the layout sweep must see the text cut - the document-level number will not.
+  { id: 'M17', file: 'apps/desktop/src/components/ConfirmDialog.tsx', from: 'mt-2 break-words text-xs', to: 'mt-2 text-xs', oracle: 'layout', expect: 'own-text run(s) cut with no ellipsis and no title' },
 ]
 
 const selected = only ? mutations.filter((m) => only.has(m.id)) : mutations
@@ -117,15 +121,20 @@ if (!python) {
 }
 
 const runOracle = (oracle) => {
+  // The layout oracle drives a real browser, so it is pinned to one tier and one route: the
+  // unbreakable-filename fixture inside the confirm card. That keeps a mutation that needs a
+  // browser at roughly the cost of one page load instead of the full 21-combination sweep.
   const cmd = oracle === 'gate-unit'
     ? [process.execPath, [`${REPO}/${HARNESS}`, 'gate-unit']]
-    : [python.exe, [...python.pre, 'scripts/check_user_flow.py']]
-  const r = spawnSync(cmd[0], cmd[1], { cwd: REPO, encoding: 'utf8', timeout: 180_000 })
+    : oracle === 'layout'
+      ? [process.execPath, [`${REPO}/${HARNESS}`, 'layout', '--tier', '640', '--routes', 'confirm-longname', '--port', String(9500 + (process.pid % 50))]]
+      : [python.exe, [...python.pre, 'scripts/check_user_flow.py']]
+  const r = spawnSync(cmd[0], cmd[1], { cwd: REPO, encoding: 'utf8', timeout: oracle === 'layout' ? 420_000 : 180_000 })
   return {
     status: r.status,
     spawnError: r.error ? String(r.error).slice(0, 120) : null,
     output: `${r.stdout || ''}${r.stderr || ''}`,
-    marker: oracle === 'gate-unit' ? 'gate unit check' : 'USERFLOW_CHECKS',
+    marker: oracle === 'gate-unit' ? 'gate unit check' : oracle === 'layout' ? 'LAYOUT_GATE' : 'USERFLOW_CHECKS',
   }
 }
 
@@ -161,7 +170,13 @@ for (const m of selected) {
       guardAlarmed: oracleRan && run.status !== 0 && run.status !== null,
       namedExpectedFailure: run.output.includes(m.expect),
       observedExit: run.status,
-      evidence: run.output.split('\n').filter((l) => l.startsWith('FAIL') || l.includes('-> accepted')).slice(0, 2).map((l) => l.trim().slice(0, 130)),
+      // Show the line that actually names the expected failure first. Slicing the raw FAIL list
+      // printed the sidebar's unrelated-but-real complaints and hid the one being proved.
+      evidence: (() => {
+        const lines = run.output.split('\n').filter((l) => l.startsWith('FAIL') || l.includes('-> accepted'))
+        const named = lines.filter((l) => l.includes(m.expect))
+        return [...new Set([...named, ...lines])].slice(0, 3).map((l) => l.trim().slice(0, 150))
+      })(),
     })
   } finally {
     writeFileSync(path, original)

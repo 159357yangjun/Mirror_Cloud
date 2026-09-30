@@ -1171,6 +1171,113 @@ window.__V = (function () {
     finish(regressions.length ? 1 : 0)
   }
 
+  if (MODE === 'contrast-tier') {
+    // Contrast measured off rendered pixels, not off token pairs. The wallpaper is a user-supplied
+    // image, so no fixed foreground can be reasoned about analytically; the envelope is the two
+    // extreme images a user could pick - entirely black and entirely white - and the real page is
+    // rendered behind each. Token-vs-token would report a number the user never sees.
+    const THEMES = [['default', ''], ['midnight', 'midnight'], ['sakura', 'sakura']]
+    const WALLS = [['none', 'none'], ['black', 'linear-gradient(#000,#000)'], ['white', 'linear-gradient(#fff,#fff)']]
+    const ROUTES = (opt('routes', '') || '发布,设置').split(',')
+    const rows = []
+    const failures = []
+
+    const applyTheme = (t) => evaluate(`(function(){const r=document.documentElement;if(${JSON.stringify(t)})r.dataset.theme=${JSON.stringify(t)};else delete r.dataset.theme;return r.dataset.theme||'default'})()`)
+    const applyWall = (w) => evaluate(`(function(){const r=document.documentElement;if(${JSON.stringify(w)}==='none'){r.style.setProperty('--wallpaper','none');delete r.dataset.wallpaper}else{r.style.setProperty('--wallpaper',${JSON.stringify(w)});r.dataset.wallpaper='true'}return r.dataset.wallpaper==='true'?'on':'off'})()`)
+
+    const EXPECTED_BG = { default: '#f6f7fb', midnight: '#090d16', sakura: '#fff8fb' }
+    for (const [themeName, themeValue] of THEMES) {
+      await applyTheme(themeValue)
+      // A cream background under midnight tokens would read as a contrast failure the app does not
+      // have, so confirm the theme actually took before believing anything measured under it.
+      const applied = await evaluate(`(function(){const cs=getComputedStyle(document.documentElement);return {attr:document.documentElement.dataset.theme||'default',appBg:cs.getPropertyValue('--app-bg').trim(),surface:cs.getPropertyValue('--surface').trim()}})()`)
+      if (applied.attr !== themeName || applied.appBg.toLowerCase() !== EXPECTED_BG[themeName]) {
+        console.log(`HARNESS FAULT: asked for theme "${themeName}" but the document reports attr="${applied.attr}" --app-bg=${applied.appBg} (expected ${EXPECTED_BG[themeName]}); the app re-applied its own theme, so nothing under it is attributable.`)
+        finish(2)
+      }
+      // (a) token against token, for the record - the number a reader would compute by hand.
+      const tokens = await evaluate(`(function(){
+        const cs=getComputedStyle(document.documentElement);
+        const g=(n)=>cs.getPropertyValue(n).trim();
+        return { muted: g('--text-muted'), secondary: g('--text-secondary'), primary: g('--text-primary'), surface: g('--surface'), soft: g('--surface-soft'), appBg: g('--app-bg') };
+      })()`)
+      for (const [wallName, wallValue] of WALLS) {
+        await applyWall(wallValue)
+        for (const label of ROUTES) {
+          await goto(label)
+          await evaluate(`window.__L ? window.__L.settle() : document.getAnimations().forEach(a=>{try{a.finish()}catch(e){}});true`)
+          await sleep(120)
+          await assertRealViewport(`contrast:${themeName}/${wallName}/${label}`)
+          const dpr = await evaluate(`window.devicePixelRatio`)
+          if (dpr !== 1) { console.log(`HARNESS FAULT: devicePixelRatio is ${dpr}, not 1 - pixel sampling would be offset. Aborting.`); finish(2) }
+          const texts = await evaluate(`(function(){
+            const out=[];
+            for (const e of document.querySelectorAll('main *, aside *, header *')) {
+              if (e.children.length) continue;
+              const t=(e.textContent||'').trim(); if(!t) continue;
+              const r=e.getBoundingClientRect(); if(r.width<2||r.height<2) continue;
+              if (r.bottom<2||r.top>innerHeight-2||r.right<2||r.left>innerWidth-2) continue;
+              const cs=getComputedStyle(e);
+              if (cs.visibility==='hidden'||Number(cs.opacity)<0.9) continue;
+              const size=parseFloat(cs.fontSize);
+              const bold=Number(cs.fontWeight)>=600;
+              out.push({ text:t.slice(0,26), size, bold, color:cs.color, threshold: (size>=24&&bold)?3:4.5, x:Math.round(r.left+r.width/2), y:Math.round(r.top+r.height/2) });
+            }
+            return out.slice(0, 220);
+          })()`)
+          // Hide the glyphs, photograph what is left: that photograph IS the background the text
+          // sits on, gradients, blur and wallpaper included.
+          await evaluate(`(function(){const s=document.createElement('style');s.id='lctl-hide';s.textContent='*{color:transparent !important;-webkit-text-fill-color:transparent !important;text-shadow:none !important}';document.head.appendChild(s);return true})()`)
+          const shotData = await send('Page.captureScreenshot', { format: 'png' })
+          await evaluate(`(function(){const s=document.getElementById('lctl-hide');if(s)s.remove();return true})()`)
+          const sampled = await evaluate(`(async function(){
+            const img = new Image();
+            await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = 'data:image/png;base64,${shotData.data}' });
+            const cv = document.createElement('canvas'); cv.width = img.width; cv.height = img.height;
+            const ctx = cv.getContext('2d', { willReadFrequently: true }); ctx.drawImage(img, 0, 0);
+            const lum = (c) => { const f = (v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4) }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]) }
+            // Canvas, not a regex: Tailwind v4 serialises colours as oklch()/color-mix(), which a
+            // rgb() matcher silently drops - that is what made 179 of 314 runs "unresolved" here,
+            // the same mistake the visual mode already fixed.
+            const pcv = document.createElement('canvas').getContext('2d', { willReadFrequently: true })
+            const parse = (s) => {
+              if (!s || s === 'transparent' || s === 'none') return null
+              pcv.fillStyle = '#010203'; pcv.fillStyle = s
+              const norm = String(pcv.fillStyle)
+              if (norm === '#010203' || norm === 'rgb(1, 2, 3)') return null
+              pcv.clearRect(0, 0, 1, 1); pcv.fillStyle = norm; pcv.fillRect(0, 0, 1, 1)
+              const d = pcv.getImageData(0, 0, 1, 1).data
+              return [d[0], d[1], d[2], d[3] / 255]
+            }
+            const rows = ${JSON.stringify(texts)}.map((t) => {
+              const px = ctx.getImageData(t.x, t.y, 1, 1).data
+              const bg = [px[0], px[1], px[2]]
+              const f = parse(t.color)
+              if (!f) return { ...t, bg: bg.join(','), ratio: null, why: 'unparsable colour' }
+              const a = f[3]
+              const over = [f[0] * a + bg[0] * (1 - a), f[1] * a + bg[1] * (1 - a), f[2] * a + bg[2] * (1 - a)]
+              const l1 = Math.max(lum(over), lum(bg)), l2 = Math.min(lum(over), lum(bg))
+              return { ...t, bg: bg.join(','), fg: over.map((v) => Math.round(v)).join(','), ratio: Math.round(((l1 + 0.05) / (l2 + 0.05)) * 100) / 100 }
+            })
+            return rows
+          })()`)
+          const below = sampled.filter((s) => s.ratio !== null && s.ratio < s.threshold)
+          const unresolved = sampled.filter((s) => s.ratio === null)
+          const worst = sampled.filter((s) => s.ratio !== null).sort((a, b) => a.ratio - b.ratio)[0]
+          rows.push({ theme: themeName, wallpaper: wallName, route: label, measured: sampled.length, below: below.length, unresolved: unresolved.length, worstRatio: worst ? worst.ratio : null, worstText: worst ? worst.text : null, worstBg: worst ? worst.bg : null, tokens })
+          if (below.length) failures.push(`CONTRAST ${themeName}/${wallName}/${label}: ${below.length}/${sampled.length} readable runs below their threshold - worst ${worst.ratio}:1 (need ${worst.threshold}) "${worst.text}" ${worst.size}px ${worst.bold ? 'bold' : 'regular'} fg rgb(${worst.fg}) on sampled rgb(${worst.bg})`)
+        }
+      }
+    }
+    await evaluate(`(function(){delete document.documentElement.dataset.theme;document.documentElement.style.setProperty('--wallpaper','none');delete document.documentElement.dataset.wallpaper;return true})()`)
+    writeFileSync(`${OUT}/contrast-tier.json`, JSON.stringify({ provenance: buildProvenance(), note: 'backgrounds are sampled from a screenshot taken with glyphs hidden, so gradients, backdrop-filter and the wallpaper scrim are all included; wallpaper envelope is an all-black and an all-white image', themes: THEMES.map((t) => t[0]), wallpapers: WALLS.map((w) => w[0]), rows }, null, 2))
+    for (const f of failures) console.log(`FAIL ${f}`)
+    console.log('TOKENS ' + JSON.stringify(rows.filter((r, i, a) => a.findIndex((x) => x.theme === r.theme) === i).map((r) => ({ theme: r.theme, ...r.tokens }))))
+    console.log(`CONTRAST_GATE combos=${rows.length} measured=${rows.reduce((a, r) => a + r.measured, 0)} below=${failures.length} unresolved=${rows.reduce((a, r) => a + r.unresolved, 0)}`)
+    console.log(failures.length ? `contrast: ${failures.length} failure(s) across ${rows.length} theme/wallpaper/route combinations` : `contrast: every readable run meets its threshold in all ${rows.length} combinations`)
+    finish(failures.length ? 1 : 0)
+  }
+
   if (MODE === 'layout') {
     // The geometry floor. `pages` proves a route painted; it measures no box, so horizontal
     // overflow, silently clipped text, sub-threshold touch targets, an invisible focus ring and a
