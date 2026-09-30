@@ -90,7 +90,64 @@ export function table() {
 }
 
 const argv = process.argv.slice(2)
+
+// The comparison, split out so it can be fed a table it did not produce. A verifier that has only
+// ever printed mismatch=0 has never been shown a mismatch, and "0 of them" is only evidence if the
+// instrument is known to be able to count one.
+function compare(have, want) {
+  const wantLines = want.split('\n')
+  const haveLines = have.split('\n')
+  const bad = []
+  wantLines.forEach((line, i) => {
+    if (haveLines[i] !== line) bad.push({ i, doc: haveLines[i] ?? '(absent)', code: line })
+  })
+  return { bad, docLines: haveLines.length, checked: wantLines.length - 2 }
+}
+
+function selftestResult() {
+  const want = table()
+  const lines = want.split('\n')
+  const cases = []
+  const push = (name, got, expect) => cases.push({ name, got, expect, ok: got === expect })
+  // Fixture 1: the table it just generated must verify clean. If this fails, the doc round-trip and
+  // the generator disagree for a reason unrelated to any edit.
+  push('its own output verifies clean', compare(want, want).bad.length, 0)
+  // Fixture 2: exactly one digit changed in exactly one cell - the drift class this gate exists to
+  // catch - must be reported as exactly one line, at that index. Bumping the first number of the
+  // totals row rather than searching for a literal keeps the fixture alive when the counts change;
+  // asserting 1 (not ">0") is what stops a comparison that reports every line as wrong from passing
+  // as "it caught something".
+  const last = lines[lines.length - 1]
+  const tampered = [...lines]
+  tampered[tampered.length - 1] = last.replace(/\d+/, (m) => String(Number(m) + 1))
+  const one = compare(tampered.join('\n'), want)
+  push('one changed digit is reported as exactly one line', one.bad.length, 1)
+  push('and it names the line that changed', one.bad[0]?.i === lines.length - 1 ? 1 : 0, 1)
+  // Fixture 3: a doc whose table was cut short must not read as "the rows that are there all match".
+  push('a truncated table is reported', compare(lines.slice(0, 5).join('\n'), want).bad.length, lines.length - 5)
+  return { cases, failed: cases.filter((c) => !c.ok) }
+}
+
+if (argv[0] === '--selftest') {
+  const st = selftestResult()
+  console.log(`THEME_FACE_SELFTEST cases=${st.cases.length} failed=${st.failed.length}`)
+  for (const c of st.cases) console.log(`  ${c.ok ? 'ok  ' : 'FAIL'} ${c.name}: got=${c.got} expect=${c.expect}`)
+  if (st.failed.length) {
+    console.log('theme_face_inventory: the verifier cannot see the drift it claims to gate, so its mismatch=0 means nothing')
+    process.exit(2)
+  }
+  process.exit(0)
+}
 if (argv[0] === '--verify') {
+  // Self-test before verdict: an instrument that cannot see a planted change cannot license a claim
+  // that nothing changed.
+  const st = selftestResult()
+  console.log(`THEME_FACE_SELFTEST cases=${st.cases.length} failed=${st.failed.length}`)
+  for (const c of st.cases) console.log(`  ${c.ok ? 'ok  ' : 'FAIL'} ${c.name}: got=${c.got} expect=${c.expect}`)
+  if (st.failed.length) {
+    console.log('theme_face_inventory: the verifier cannot see the drift it claims to gate, so its mismatch=0 means nothing')
+    process.exit(2)
+  }
   const doc = readFileSync(DOC, 'utf8')
   const b = doc.indexOf(MARK_BEGIN), e = doc.indexOf(MARK_END)
   if (b === -1 || e === -1 || e < b) {
@@ -99,15 +156,10 @@ if (argv[0] === '--verify') {
   }
   const want = table()
   const have = doc.slice(b + MARK_BEGIN.length, e).replace(/^\n/, '').replace(/\n$/, '')
-  const checked = want.split('\n').length - 2
-  const mismatch = want.split('\n').filter((line, i) => {
-    const other = have.split('\n')[i]
-    return other !== line
-  })
-  console.log(`THEME_FACE_VERIFY faces=${checked} docLines=${have.split('\n').length} mismatch=${mismatch.length}`)
-  if (mismatch.length) {
-    for (const m of mismatch.slice(0, 8)) console.log(`  doc says: ${(have.split('\n')[want.split('\n').indexOf(m)] || '(absent)').slice(0, 110)}`)
-    for (const m of mismatch.slice(0, 8)) console.log(`  code says: ${m.slice(0, 110)}`)
+  const { bad, docLines, checked } = compare(have, want)
+  console.log(`THEME_FACE_VERIFY faces=${checked} docLines=${docLines} mismatch=${bad.length}`)
+  if (bad.length) {
+    for (const m of bad.slice(0, 8)) console.log(`  MISMATCH line ${m.i}\n    doc says: ${m.doc.slice(0, 110)}\n    code says: ${m.code.slice(0, 110)}`)
     console.log('theme_face_inventory: the table in VISUAL_BASELINE.md no longer matches the source. Re-run: node scripts/theme_face_inventory.mjs')
     process.exit(1)
   }

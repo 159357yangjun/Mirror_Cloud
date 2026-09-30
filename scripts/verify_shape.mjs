@@ -19,6 +19,7 @@
  *   - the count of decision points per family (a moved `failures.push(` is still counted, so the
  *     totals hold; a deleted one lowers them and the file that gained it raises nothing)
  */
+import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { MODES, DISPATCH_RE } from './verify_modes.mjs'
 
@@ -91,22 +92,61 @@ export function shape() {
 
 const fmt = (o) => JSON.stringify(o, null, 2)
 
-function diff(baseline, now) {
-  const problems = []
+// One comparison rule for every problem: `value !== expect` fails. The first version carried a
+// second, optional `exact` flag and judged anything without it against zero - so the four extraction
+// problems, which expect ONE, were compared against zero and a fully broken extraction (git show
+// failing, all three bodies unmatched) printed no mismatch at all. An expectation written into the
+// label but not into the comparison is a display, not a gate: it cannot redden anything. Dropping
+// the flag makes that shape unrepresentable.
+function problems(baseline, now, ex) {
+  const out = []
+  const push = (check, value, expect) => out.push({ check, value, expect })
   const idSum = (setA, setB) => setA.filter((x) => !setB.includes(x)).length + setB.filter((x) => !setA.includes(x)).length
   const m0 = baseline.modes, m1 = now.modes
-  const reach = idSum(m0.reachable, m1.reachable)
-  const decl = idSum(m0.declared, m1.declared)
-  problems.push({ check: 'mode-set symmetric difference (reachable)', value: reach, expect: 0 })
-  problems.push({ check: 'mode-set symmetric difference (declared)', value: decl, expect: 0 })
-  problems.push({ check: 'total lines across harness files', value: now.totals.lines, expect: baseline.totals.lines, exact: true })
-  problems.push({ check: 'total bytes across harness files', value: now.totals.bytes, expect: baseline.totals.bytes, exact: true })
-  problems.push({ check: 'modes reachable but not in the help list', value: m1.undeclared.length, expect: 0 })
-  problems.push({ check: 'modes in the help list but not dispatchable', value: m1.undispatchable.length, expect: 0 })
-  for (const [name] of FAMILIES) {
-    problems.push({ check: `decision points: ${name}`, value: now.totals.families[name], expect: baseline.totals.families[name], exact: true })
+  push('mode-set symmetric difference (reachable)', idSum(m0.reachable, m1.reachable), 0)
+  push('mode-set symmetric difference (declared)', idSum(m0.declared, m1.declared), 0)
+  push('total lines across harness files', now.totals.lines, baseline.totals.lines)
+  push('total bytes across harness files', now.totals.bytes, baseline.totals.bytes)
+  push('modes reachable but not in the help list', m1.undeclared.length, 0)
+  push('modes in the help list but not dispatchable', m1.undispatchable.length, 0)
+  for (const [name] of FAMILIES) push(`decision points: ${name}`, now.totals.families[name], baseline.totals.families[name])
+  push(`pre-split source available at ${ex.before}`, ex.beforeAvailable ? 1 : 0, 1)
+  push(`post-split module available at ${ex.at}`, ex.probesAvailable ? 1 : 0, 1)
+  for (const b of ex.bodies) push(`extracted body ${b.name} still byte-identical to the pre-split file`, b.verbatim ? 1 : 0, 1)
+  return out
+}
+
+const isBad = (p) => p.value !== p.expect
+
+// Two opposing fixtures, run before any verdict is printed: the ledger is only an instrument if a
+// planted loss reddens it, and the shape that broke the first version was a check whose expectation
+// lived in prose. Case 3 is that exact hole - it fabricates "extraction found nothing" and requires
+// the four expect-1 problems to be counted, which is precisely what the old comparison could not do.
+function selftest() {
+  const now = shape()
+  const copy = () => JSON.parse(JSON.stringify(now))
+  const healthy = { beforeAvailable: true, probesAvailable: true, before: 'x', at: 'y', bodies: ['HELPERS', 'VISUAL_PROBE', 'LAYOUT_PROBE'].map((name) => ({ name, present: true, verbatim: true, bytes: 1 })) }
+  const dead = { beforeAvailable: false, probesAvailable: false, before: 'x', at: 'y', bodies: ['HELPERS', 'VISUAL_PROBE', 'LAYOUT_PROBE'].map((name) => ({ name, present: true, verbatim: false, bytes: 0 })) }
+  const cases = []
+  const run = (name, wantBad, bl, ex) => {
+    const list = problems(bl, now, ex)
+    const bad = list.filter(isBad)
+    cases.push({ name, bad: bad.length, want: wantBad, ok: bad.length === wantBad, names: bad.map((p) => p.check).slice(0, 4) })
   }
-  return problems
+  run('identical baseline reports no drift', 0, copy(), healthy)
+  run('one lost byte reports drift', 1, (() => { const b = copy(); b.totals.bytes -= 1; return b })(), healthy)
+  run('a dead extraction reports every extraction problem', 5, copy(), dead)
+  // The bug this case exists for: the bodies used to be read out of the working file, so a legitimate
+  // later edit to a probe looked like the split had destroyed content. Each availability flag is now
+  // its own problem, and a broken one reddens exactly the claim it invalidates.
+  run('only the post-split blob unreadable', 1, copy(), { ...healthy, probesAvailable: false })
+  run('both blobs readable but a body not verbatim', 1, copy(), { ...healthy, bodies: healthy.bodies.map((b, i) => (i === 1 ? { ...b, verbatim: false } : b)) })
+  run('a mode removed from the dispatch reports the set difference', 1, (() => {
+    const b = copy()
+    b.modes.reachable = b.modes.reachable.filter((m) => m !== b.modes.reachable[0])
+    return b
+  })(), healthy)
+  return cases
 }
 
 const now = shape()
@@ -114,20 +154,27 @@ const now = shape()
 // 58be53f, and git history keeps the pre-split blob forever, so "nothing was rewritten on the way
 // out" is a byte comparison rather than a claim. SPLIT_COMMIT is the commit that did the cut; if the
 // history is ever rewritten this check fails loudly instead of silently skipping.
-const SPLIT_COMMIT = '58be53f^'
+//
+// BOTH sides are read from git, not from the working copy. The first version read the bodies out of
+// the file on disk, which made a permanent claim about the split ("the move was verbatim") answerable
+// with "the probe has been edited since" - and it was: the per-axis clipper fix landed in
+// verify_probes.mjs afterwards, and the ledger reported the split as having lost LAYOUT_PROBE. A
+// history property must be checked against history; what the working copy did to the totals is the
+// ledger's OTHER half.
+const SPLIT_COMMIT = '58be53f'
+const SPLIT_BEFORE = `${SPLIT_COMMIT}^`
 export function extraction() {
-  const src = existsSync(BASELINE) ? null : null
-  const pre = gitShow(`${SPLIT_COMMIT}:scripts/verify_dialog_interactions.mjs`)
-  const probes = existsSync(`${ROOT}scripts/verify_probes.mjs`) ? readFileSync(`${ROOT}scripts/verify_probes.mjs`, 'utf8') : ''
+  const pre = gitShow(`${SPLIT_BEFORE}:scripts/verify_dialog_interactions.mjs`)
+  const probes = gitShow(`${SPLIT_COMMIT}:scripts/verify_probes.mjs`)
   const out = []
   for (const name of ['HELPERS', 'VISUAL_PROBE', 'LAYOUT_PROBE']) {
-    const at = probes.indexOf(`export const ${name}`)
+    const at = probes === null ? -1 : probes.indexOf(`export const ${name}`)
     if (at === -1) { out.push({ name, present: false, verbatim: false, bytes: 0 }); continue }
     const s = probes.indexOf('`', at), e = probes.indexOf('`', s + 1)
     const body = probes.slice(s + 1, e)
     out.push({ name, present: true, bytes: Buffer.byteLength(body, 'utf8'), verbatim: pre !== null && pre.indexOf(body) !== -1 })
   }
-  return { before: SPLIT_COMMIT, beforeAvailable: pre !== null, bodies: out }
+  return { before: SPLIT_BEFORE, at: SPLIT_COMMIT, beforeAvailable: pre !== null, probesAvailable: probes !== null, bodies: out }
 }
 
 const gitShow = (spec) => {
@@ -138,22 +185,62 @@ const gitShow = (spec) => {
   }
 }
 
+const gitRev = (rev) => {
+  try {
+    return execFileSync('git', ['rev-parse', rev], { cwd: ROOT, encoding: 'utf8' }).trim()
+  } catch {
+    return null
+  }
+}
+
+// Same shape as the harness's parser: --k v and --k=v, and nothing is silently ignored - an option
+// that is typed but not read is how a snapshot gets taken believing it carried a reason that was
+// attached to the wrong flag.
+function opt(name) {
+  const eq = argv.find((a) => a.startsWith(`--${name}=`))
+  if (eq) return eq.slice(name.length + 3)
+  const i = argv.indexOf(`--${name}`)
+  return i === -1 ? null : (argv[i + 1] ?? null)
+}
+
 const argv = process.argv.slice(2)
 if (argv[0] === '--snapshot') {
-  writeFileSync(BASELINE, fmt(now) + '\n')
-  console.log(`SPLIT_SHAPE snapshot written: files=${now.totals.files} lines=${now.totals.lines} bytes=${now.totals.bytes} modes=${now.modes.reachable.length}`)
+  // Signing a new baseline is a signature act, not a refresh: it erases the record of what the
+  // previous one promised. So it refuses without a reason, and stores the reason next to the commit
+  // it was taken at - which is what makes a later "why did this stop catching X" answerable.
+  const reason = opt('reason')
+  if (!reason) {
+    console.error('SPLIT_SHAPE SNAPSHOT REFUSED: --snapshot overwrites the promise the old baseline made. Pass --reason "<what changed and why it is intended>".')
+    process.exit(2)
+  }
+  const head = gitRev('HEAD')
+  const payload = { _meta: { takenAt: new Date().toISOString().slice(0, 19), head: head || 'unknown', reason }, ...now }
+  writeFileSync(BASELINE, fmt(payload) + '\n')
+  console.log(`SPLIT_SHAPE snapshot written: files=${now.totals.files} lines=${now.totals.lines} bytes=${now.totals.bytes} modes=${now.modes.reachable.length} reason="${reason}"`)
   process.exit(0)
 }
 if (argv[0] === '--verify') {
   if (!existsSync(BASELINE)) { console.log('SPLIT_SHAPE no baseline at scripts/verify_shape.baseline.json - run --snapshot first'); process.exit(1) }
+  // The instrument proves itself before it is allowed to report on the tree: a ledger that cannot
+  // redden on a planted loss is a display, and its "OK" is worth nothing.
+  const cases = selftest()
+  const broken = cases.filter((c) => !c.ok)
+  console.log(`SHAPE_SELFTEST cases=${cases.length} failed=${broken.length}`)
+  for (const c of cases) console.log(`  ${c.ok ? 'ok  ' : 'FAIL'} ${c.name}: bad=${c.bad} expect ${c.want}${c.names.length ? ` [${c.names.join('; ')}]` : ''}`)
+  if (broken.length) {
+    for (const c of broken) console.log(`  self-test "${c.name}" got bad=${c.bad}, expected ${c.want} - the ledger itself is wrong, so its verdict on the tree means nothing`)
+    process.exit(2)
+  }
   const baseline = JSON.parse(readFileSync(BASELINE, 'utf8'))
-  const problems = diff(baseline, now)
+  const meta = baseline._meta
+  console.log(`SPLIT_SHAPE_BASELINE takenAt=${meta?.takenAt ?? 'none'} head=${(meta?.head ?? 'unknown').slice(0, 8)} reason="${meta?.reason ?? 'this baseline predates provenance tracking'}"`)
   const ex = extraction()
-  problems.push({ check: `pre-split source available at ${ex.before}`, value: ex.beforeAvailable ? 1 : 0, expect: 1 })
-  for (const b of ex.bodies) problems.push({ check: `extracted body ${b.name} still byte-identical to the pre-split file`, value: b.verbatim ? 1 : 0, expect: 1 })
-  const bad = problems.filter((p) => (p.exact ? p.value !== p.expect : p.value !== 0))
-  console.log(`SPLIT_SHAPE ${bad.length ? 'DRIFT' : 'OK'} checked=${problems.length} failed=${bad.length}`)
-  for (const p of problems) console.log(`  ${p.exact ? `${p.check}: ${p.value} (expect ${p.expect})` : `${p.check}: ${p.value}`}${p.value === (p.exact ? p.expect : 0) ? '' : '   <-- MISMATCH'}`)
+  const list = problems(baseline, now, ex)
+  const bad = list.filter(isBad)
+  console.log(`SPLIT_SHAPE ${bad.length ? 'DRIFT' : 'OK'} checked=${list.length} failed=${bad.length}`)
+  // A count without names is a verdict nobody can act on, so the offenders print on the failing path
+  // (and only there - the green run stays two lines).
+  for (const p of bad) console.log(`  MISMATCH ${p.check}: ${p.value} (expect ${p.expect})`)
   if (bad.length) {
     console.log('shape drifted; to accept a deliberate change re-run --snapshot AFTER the split is proven complete')
     process.exit(1)

@@ -1,10 +1,15 @@
 {
+  "_meta": {
+    "takenAt": "2026-09-30T12:16:25",
+    "head": "fad34e38ff365f5b33441005f24dbb7aa9abc0c6",
+    "reason": "third signing: the per-axis criterion comment landed in verify_probes.mjs (amended into the same commit); no logic, no mode, no assertion changed"
+  },
   "files": [
     {
       "file": "scripts/verify_all.mjs",
       "exists": true,
-      "lines": 219,
-      "bytes": 15827,
+      "lines": 333,
+      "bytes": 23627,
       "families": {
         "failures.push": 0,
         "emitGate": 0,
@@ -17,12 +22,12 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 2360,
-      "bytes": 180100,
+      "lines": 2487,
+      "bytes": 190800,
       "families": {
         "failures.push": 15,
-        "emitGate": 10,
-        "harness-fault exit": 28,
+        "emitGate": 11,
+        "harness-fault exit": 33,
         "gate line": 8,
         "positive control": 11,
         "throw": 16
@@ -31,12 +36,12 @@
     {
       "file": "scripts/verify_guard_mutations.mjs",
       "exists": true,
-      "lines": 212,
-      "bytes": 16588,
+      "lines": 259,
+      "bytes": 20848,
       "families": {
         "failures.push": 0,
         "emitGate": 0,
-        "harness-fault exit": 1,
+        "harness-fault exit": 2,
         "gate line": 0,
         "positive control": 0,
         "throw": 0
@@ -59,8 +64,8 @@
     {
       "file": "scripts/verify_probes.mjs",
       "exists": true,
-      "lines": 547,
-      "bytes": 32512,
+      "lines": 554,
+      "bytes": 33262,
       "families": {
         "failures.push": 0,
         "emitGate": 0,
@@ -73,8 +78,8 @@
     {
       "file": "scripts/verify_shape.mjs",
       "exists": true,
-      "lines": 187,
-      "bytes": 10388,
+      "lines": 274,
+      "bytes": 15745,
       "families": {
         "failures.push": 1,
         "emitGate": 0,
@@ -87,12 +92,12 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 3562,
-    "bytes": 256864,
+    "lines": 3944,
+    "bytes": 285731,
     "families": {
       "failures.push": 16,
-      "emitGate": 10,
-      "harness-fault exit": 29,
+      "emitGate": 11,
+      "harness-fault exit": 35,
       "gate line": 8,
       "positive control": 12,
       "throw": 16
