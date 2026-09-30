@@ -375,6 +375,28 @@ require(re.search(r'<p[^>]*\bbreak-words\b[^>]*>', confirm_dialog) is not None, 
 require("event.key === 'Escape'" in confirm_dialog and 'settle(false)' in confirm_dialog, 'Escape cancels the confirm request')
 require('cancelRef.current?.focus()' in confirm_dialog, 'the dialog focuses Cancel, so Enter cannot fire the destructive action')
 
+# docs/VISUAL_BASELINE.md measured six defects in the onboarding dialog. These are the four that
+# hold without a browser; the runtime half (contrast below 4.5:1, size utilities discarded on
+# <button>) is asserted by `verify_dialog_interactions.mjs visual`, which fails rather than only
+# printing when the dialog regresses.
+help_dialog = text('apps/desktop/src/components/HelpCenterDialog.tsx')
+steps = re.findall(r'step="(\d)"', help_dialog)
+require(steps == [str(i) for i in range(1, 7)], f'the onboarding dialog keeps exactly one 6-step sequence ({steps})')
+require('推荐的第一次使用顺序' not in help_dialog, 'the duplicated five-chip ordering block stays deleted')
+require('--text-muted' not in help_dialog, 'the dialog avoids the muted grey measured at 2.45:1 / 2.56:1')
+require(re.search(r'Microsoft YaHei|PingFang|Noto Sans CJK', help_dialog) is not None, 'the dialog names a CJK face rather than relying on the system fallback')
+require('tabular-nums' in help_dialog, 'the STEP ordinals are tabular')
+# `button, input, select, textarea { font: inherit }` in styles.css is written outside Tailwind's
+# @layer utilities, and unlayered declarations outrank layered ones - so a plain text-xs on a
+# <button> silently computes to the inherited 16px/400. 23 buttons across 10 surfaces were measured
+# losing their declared size this way; the dialog's buttons must stay marked important.
+checked_buttons = 0
+for button_tag in re.finditer(r'<button[^>]*?className="([^"]*)"', help_dialog, re.S):
+    checked_buttons += 1
+    discarded = re.findall(r'(?<![\w-])(?:text-\[\d+(?:\.\d+)?px\]|font-(?:medium|semibold|normal))(?!!)', button_tag.group(1))
+    require(not discarded, f'a non-important size/weight utility on a button is discarded by styles.css ({discarded})')
+require(checked_buttons >= 2, f'the button-utility rule actually inspected the dialog ({checked_buttons} buttons found)')
+
 # Every docs / external link used to be `void openExternalUrl(...)`. Measured with an unreachable
 # and then a malformed baked base: the click opened a tab to an error page, or nothing at all, and
 # the app showed no toast, no inline error and no console entry the user could act on.
