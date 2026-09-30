@@ -471,17 +471,18 @@ for rel in measured_files:
     if want is None:
         continue
     blob = blob_of(f'HEAD:{rel}')
-    if blob is None:
-        require(False, f'{rel}: no committed blob to compare the fingerprint table against')
-        continue
-    committed = fingerprint(blob)
-    # Both halves matter. The blob comparison is what another person reproduces after cloning; the
-    # working-tree comparison is what catches the drift while it is still uncommitted - without it a
-    # one-byte edit to a measured tool stayed green here, because HEAD had not moved.
+    committed = fingerprint(blob) if blob is not None else {'lines': -1, 'bytes': -1, 'sha256': 'no committed blob'}
+    # Always exactly two checks per file. The first version short-circuited with an extra require()
+    # when a blob was missing, so the total check count changed with tree state and the baseline
+    # number recorded in the table could not be relied on.
+    require(blob is not None and committed == want,
+            f'fingerprint row for {rel} matches its HEAD blob '
+            f'(table {want["lines"]}L/{want["bytes"]}B/{want["sha256"]}; blob {committed["lines"]}L/{committed["bytes"]}B/{committed["sha256"]})')
     on_disk = working_fingerprint(rel)
-    label = f'fingerprint row for {rel} matches the file (table {want["lines"]}L/{want["bytes"]}B/{want["sha256"][:12]}'
-    require(committed == want, label + f'; HEAD blob {committed["lines"]}L/{committed["bytes"]}B/{committed["sha256"][:12]})')
-    require(on_disk == want, label + f'; working copy {on_disk["lines"]}L/{on_disk["bytes"]}B/{on_disk["sha256"][:12]})')
+    # Full hashes on both sides: a truncated pair prints identically when the difference is in the
+    # tail, which is exactly what a one-character typo in the table looks like.
+    require(on_disk == want, f'fingerprint row for {rel} matches the working copy '
+                             f'(table {want["lines"]}L/{want["bytes"]}B/{want["sha256"]}; on disk {on_disk["lines"]}L/{on_disk["bytes"]}B/{on_disk["sha256"]})')
 
 # Encoding integrity for the change record. A latin1 read + utf8 write turns every CJK character
 # into a two-byte mojibake sequence; the result still decodes as UTF-8, so "it parsed" proves
