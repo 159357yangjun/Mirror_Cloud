@@ -32,6 +32,7 @@ const HARNESS = 'scripts/verify_dialog_interactions.mjs'
 const FIXTURE = 'scripts/__fixtures__/impostor_dev_server.mjs'
 const DIALOG = 'apps/desktop/src/components/HelpCenterDialog.tsx'
 const THEME = 'apps/desktop/src/lib/theme.ts'
+const PROBES = 'scripts/verify_probes.mjs'
 const OUT = (process.env.TEMP || '/tmp').replace(/\\/g, '/').replace(/\/+$/, '') + `/image-hosting-probes/${new Date().toISOString().slice(0, 10)}`
 mkdirSync(OUT, { recursive: true })
 
@@ -78,6 +79,9 @@ const mutations = [
   // red does not prove the other is load-bearing.
   { id: 'M18', file: THEME, from: 'if (isThemeKey(preferences.theme)) {', to: 'if (true) {', oracle: 'settings', expect: 'unknown theme written straight into the DOM' },
   { id: 'M19', file: THEME, from: 'theme: isThemeKey(parsed.theme) ? parsed.theme : DEFAULT_THEME_PREFERENCES.theme,', to: 'theme: parsed.theme,', oracle: 'guard', expect: 'the load boundary rejects an unknown stored theme key' },
+  // The probe module is only safe to extract because it stays inert. Smuggle logic in and the
+  // assertion that says so must fire - otherwise "it is just data" is a claim with nothing behind it.
+  { id: 'M20', file: PROBES, from: 'export const HELPERS = `', to: 'export function smuggledLogic() { return 1 }\nexport const HELPERS = `', oracle: 'guard', expect: 'the probe module exports no logic of its own' },
 ]
 
 const selected = only ? mutations.filter((m) => only.has(m.id)) : mutations
