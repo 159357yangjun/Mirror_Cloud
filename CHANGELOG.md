@@ -179,7 +179,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
 | `scripts/verify_all.mjs` | 343 | 24,602 | `73969ca984be9334d55ff4cfbd66efb504afea416934f8591f8e9ad23595ef1f` | 18 stages：七道静态守卫 + 两份台账（`theme_face_inventory`、`verify_shape`）+ 七个测具模式（新增 `contrast-tier`、`theme-surfaces`）+ `red-demo` + 变异套件；`layout` 仍不接入，原因见其注释 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行）；`node scripts/verify_all.mjs selftest`（往 stage 表里粘一行重复名字，必须被点名） |
-| `scripts/verify_dialog_interactions.mjs` | 2588 | 199,443 | `c33159c857f2573b62690357370a1689f3e9507824bdf2ebdf796febe4147f47` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
+| `scripts/verify_dialog_interactions.mjs` | 2616 | 201,574 | `c13350c7b8c7ae9a366951963d2c3f95d9fa3f55a7aa6c46946e1c87c80a4adc` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
 | `scripts/verify_guard_mutations.mjs` | 288 | 23,220 | `c909de97ff370ed6e0593e519b7d21728d459030966788dc4a2c2df694edf52f` | 24 个变异（M1–M24），每个都必须被它指定的那台 oracle 抓到；本轮 M18/M19/M21/M22/M23/M24 的逐条读数见下面"本轮末次运行读数"一节 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
 | `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 553 | 33,262 | `1edc005d5f8c6bacb4921d45eca4781e3b0122f67d895ba87b011c9315c5e01e` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
@@ -774,24 +774,32 @@ run 在第一个故障处停下，所以 `CONTRAST_GATE` 那行根本没印 —�
 3. **23 条几何缺陷、25 处 `text-muted` 调用点归类、sr-only 的应用内路径**：都还挂着，本批一条没修。
 4. **没给 M25 留位**（理由在上面撤回那条里）。
 
-### 追加一轮：把门自己加速一倍，结果量出两个门一直在指错元素
+### 追加一轮：一次假的加速，和它顺出来的两个"门一直在指错元素"
 
 `verify:all` 印出每个 stage 的成本之后（`verify:all | wall=… cost (slowest first): …`），最贵的一格是
 `contrast-tier=63.3s / 140.2s`。它自己那行再拆一层 `PHASE-COST`，结论跟我的猜测相反：
+**取样 + 拍照合计 6.7s，页面加载一个人 32.5s。** 我原本准备动的是前者。
 
-| 阶段 | 改前 | 改后 |
-|---|---|---|
-| nav（页面加载） | 32.5s | 15.6s |
-| prep（等待 + 断言） | 9.4s | 1.9s |
-| collect | 1.0s | 1.0s |
-| shot（拍照） | 5.0s | 4.8s |
-| sample（逐点取样） | 1.7s | 1.7s |
-| **整轮** | **59s** | **34s** |
+改了两处：① 循环顺序改成"路由在外、壁纸在内"（壁纸只是 `documentElement` 上一个自定义属性，
+不值得为它重载页面：576 次加载 → 192 次）；② 固定 `sleep(120)` 换成"等到那一帧真的画出来"。
 
-我原本准备动的是取样和拍照（合计 6.5s）。**不印这一行，下一步就会去稀采样密度** —— 那是把门弄瞎的方向，
-也是你上一轮明确划的线（要稀的是组合数，不是每个面上的密度）。真正的两处改动是：
-① 循环顺序改成"路由在外、壁纸在内"（壁纸只是 `documentElement` 上一个自定义属性，不值得为它重载页面：
-576 次加载 → 192 次）；② 固定 `sleep(120)` 换成"等到那一帧真的画出来"。
+**"整轮 59s → 34s" 这个结果随后被我自己作废了。** 连跑两次得到 `measured=1890` 与 `measured=1921` ——
+**候选集每次不一样**。原因在这个 app：它给"到目前为止每一个失败的查询"都画一条错误横幅，
+浏览器态里这些失败异步落地，所以这一门的分母取决于哪场赛跑赢了。`--doc` 当场把生成的表判成
+"手写的"，就是这件事的证据。补上 quiescence 等待（文本长度连续三次相同才拍；每次页面加载只等一轮，
+壁纸第 2/3 趟只做一次比较）之后，连跑两次 `measured=1929 points=121632` 逐字相同。
+
+| 阶段 | 改前 | 只加速 | 加速 + 可重跑 |
+|---|---|---|---|
+| nav（页面加载） | 32.5s | 15.6s | 17.0s |
+| quiet（等页面停止变化） | —— | —— | 11.7s |
+| prep（断言 + 清覆盖层） | 9.4s | 1.9s | 2.6s |
+| collect / shot / sample | 7.7s | 7.5s | 18.9s（同机有别的量具在跑） |
+| **整轮** | **59s** | **34s（不可重跑）** | **68–71s** |
+
+**净结果比原始版本慢 9 秒。** 原来那 59s 之所以便宜，正是因为它在页面还在变的时候就把照拍了 ——
+**便宜本身就是症状**。所以本轮"优化"交的不是那 25 秒，是"同一棵树重跑得到同一个数"；
+`PHASE-COST` 那一行如果不印，我下一步就会去稀采样密度，那正是把门弄瞎的方向。
 
 **加速没改结论，但把两个漏看顶出来了**（详见 `docs/VISUAL_BASELINE.md` 4.36）：
 

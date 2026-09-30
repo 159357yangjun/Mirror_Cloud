@@ -1144,7 +1144,9 @@ async function main() {
     const cpu0 = process.cpuUsage()
     // The sweep's own wall clock, split by phase. Without this, "make the gate faster" can only be
     // answered by guessing, and the guess is usually wrong about which half costs anything.
-    const cost = { nav: 0, prep: 0, collect: 0, fixtures: 0, shot: 0, sample: 0 }
+    const cost = { nav: 0, quiet: 0, prep: 0, collect: 0, fixtures: 0, shot: 0, sample: 0 }
+    // Which page load the quiescence wait was last satisfied for, and the text length it settled at.
+    let quietFor = '', quietLen = -1
     // Contrast measured off rendered pixels, not off token pairs. The wallpaper is a user-supplied
     // image, so no fixed foreground can be reasoned about analytically; the envelope is the two
     // extreme images a user could pick - entirely black and entirely white - and the real page is
@@ -1512,6 +1514,32 @@ async function main() {
             finish(2)
           }
           cost.prep += Date.now() - mark; mark = Date.now()
+          // Wait for the page to stop changing before it is photographed. The sweep's own denominator
+          // was drifting run to run (1890 / 1921 / 1923 readable rows) because this app renders an error
+          // banner for every query that has failed so far, and in a browser-only harness those failures
+          // land asynchronously. A gate whose candidate set depends on which races won cannot have its
+          // output pinned in a document, so the reading is taken from a quiet page: three consecutive
+          // samples of the same text length, or the run says so and stops.
+          // The full wait runs once per page load, not once per wallpaper pass - what moves is the
+          // async error state, and the wallpaper is a custom property on the same mounted document.
+          // Later passes pay one comparison and fall back to the full wait if the text moved anyway.
+          let quiet = null
+          if (quietFor === `${themeName}|${label}` && quietLen === await evaluate(`document.body.innerText.length`)) {
+            quiet = { stable: true, waited: 0, len: quietLen }
+          }
+          if (!quiet) {
+            let last = -1, stable = 0, waited = 0
+            while (waited < 4000) {
+              const len = await evaluate(`document.body.innerText.length`)
+              if (len === last) { if (++stable >= 3) { quiet = { stable: true, waited, len }; break } } else { stable = 0; last = len }
+              await sleep(120); waited += 120
+            }
+            if (!quiet) quiet = { stable: false, waited, len: last }
+            quietFor = `${themeName}|${label}`
+            quietLen = quiet.len
+          }
+          if (!quiet.stable) { console.log(`HARNESS FAULT: the page was still changing after ${quiet.waited}ms of quiet-waiting on ${themeName}/${wallName}/${label} (text length ${quiet.len}); the candidate set is not stable enough to sample.`); finish(2) }
+          cost.quiet += Date.now() - mark; mark = Date.now()
           await assertRealViewport(`contrast:${themeName}/${wallName}/${label}`)
           const dpr = await evaluate(`window.devicePixelRatio`)
           if (dpr !== 1) { console.log(`HARNESS FAULT: devicePixelRatio is ${dpr}, not 1 - pixel sampling would be offset. Aborting.`); finish(2) }

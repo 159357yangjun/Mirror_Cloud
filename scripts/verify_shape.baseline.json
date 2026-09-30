@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-09-30T14:31:27",
-    "head": "239d7d0c9b1604921adb0202edb30532f4610300",
-    "reason": "fifth signing this round: contrast-tier loop inversion + frame waits + dialog scoping + painter attribution in theme-surfaces; no mode added or removed"
+    "takenAt": "2026-09-30T14:55:09",
+    "head": "91cfe3eebaba0b45bdc7f31ce616066dd8bbd499",
+    "reason": "sixth signing: quiescence wait added to contrast-tier so the candidate set is reproducible"
   },
   "files": [
     {
@@ -22,12 +22,12 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 2589,
-      "bytes": 199443,
+      "lines": 2617,
+      "bytes": 201574,
       "families": {
         "failures.push": 13,
         "emitGate": 11,
-        "harness-fault exit": 34,
+        "harness-fault exit": 35,
         "gate line": 8,
         "positive control": 11,
         "throw": 16
@@ -92,12 +92,12 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 4087,
-    "bytes": 298009,
+    "lines": 4115,
+    "bytes": 300140,
     "families": {
       "failures.push": 14,
       "emitGate": 11,
-      "harness-fault exit": 36,
+      "harness-fault exit": 37,
       "gate line": 8,
       "positive control": 12,
       "throw": 16
