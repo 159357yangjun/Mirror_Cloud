@@ -179,7 +179,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
 | `scripts/verify_all.mjs` | 343 | 24,602 | `73969ca984be9334d55ff4cfbd66efb504afea416934f8591f8e9ad23595ef1f` | 18 stages：七道静态守卫 + 两份台账（`theme_face_inventory`、`verify_shape`）+ 七个测具模式（新增 `contrast-tier`、`theme-surfaces`）+ `red-demo` + 变异套件；`layout` 仍不接入，原因见其注释 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行）；`node scripts/verify_all.mjs selftest`（往 stage 表里粘一行重复名字，必须被点名） |
-| `scripts/verify_dialog_interactions.mjs` | 2616 | 201,574 | `c13350c7b8c7ae9a366951963d2c3f95d9fa3f55a7aa6c46946e1c87c80a4adc` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
+| `scripts/verify_dialog_interactions.mjs` | 2635 | 203,290 | `50c099fc41dbc2abadf659567d691d198178918ca86a60c76c354d12d184c0d9` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
 | `scripts/verify_guard_mutations.mjs` | 288 | 23,220 | `c909de97ff370ed6e0593e519b7d21728d459030966788dc4a2c2df694edf52f` | 24 个变异（M1–M24），每个都必须被它指定的那台 oracle 抓到；本轮 M18/M19/M21/M22/M23/M24 的逐条读数见下面"本轮末次运行读数"一节 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
 | `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 553 | 33,262 | `1edc005d5f8c6bacb4921d45eca4781e3b0122f67d895ba87b011c9315c5e01e` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
@@ -867,6 +867,17 @@ C 的 2 行假象是 label 套 input 那一族（`PublishPage.tsx:217` 的 `<lab
 现在被并进"这一页有多少可点目标"的计数，于是每路由那个 23/18/15/16/17/14/20 **不是页面的属性，是当时飘几条吐司的属性**。
 D 的两个候选因反都能解释"4px 垂直"：真下缘裁切，或 `Range.getClientRects()` 给行盒而非墨迹；分辨它只要一次
 `height`/`line-height`/`scrollHeight` 读数，本轮没做，所以留"分不清"。
+
+### 二·五、我自己上一条里有一句说过头了，当场改
+
+写"连跑两次 `measured=1929 points=121632` 逐字相同 ⇒ 可重跑"之后，一小时再跑是 `1902 / 121602`。
+区分清楚了：**quiescence 等待保证"拍照那一刻不在重排"，不保证"这一页每次装同样的字"** ——
+浏览器态里哪些查询失败、页面上因此有几条错误横幅，是**内容**不是**时序**。
+所以"可重跑"要说准：**同批次内可重跑，跨批次候选集会漂**。
+
+处置不是假装分母恒定：`--doc` 的比对**只取比值列**（那才是这一节要钉的不变量），
+`判读文字数` 照常生成给人看但不进断言。这条投影带两面夹具，任一方向不成立就报红：
+**改一个比值必须仍被抓到**、**只改计数必须不报**。当前同批次两次连跑 `below=0 docDrift=0`。
 
 ### 三、本轮明确不做的
 

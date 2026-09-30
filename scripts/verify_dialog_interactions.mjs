@@ -1796,7 +1796,26 @@ async function main() {
         const b = doc.indexOf(`<!-- ${tag}:BEGIN -->`), e = doc.indexOf(`<!-- ${tag}:END -->`)
         if (b === -1 || e === -1 || e < b) { docDrift.push(`${tag} the markers <!-- ${tag}:BEGIN --> / <!-- ${tag}:END --> are not both present in ${docPath}`); continue }
         const have = doc.slice(b + (`<!-- ${tag}:BEGIN -->`).length, e).replace(/^\n/, '').replace(/\n$/, '')
-        const diff = want.split('\n').filter((line, i) => have.split('\n')[i] !== line).length
+        // Pin the ratios, not the row counts. Two runs minutes apart agree exactly (measured=1902
+        // points=121602 twice), but a run an hour earlier gave 1929 - the quiescence wait guarantees
+        // "the page is not mid-render when photographed", not "the page contains the same text next
+        // time", and in a browser-only harness which error banners exist is content, not timing. The
+        // worst-ratio columns are what this section is about and they did not move, so the count
+        // column prints for humans and is dropped from the comparison.
+        const stripCount = (text) => text.split('\n').map((l) => l.split('|').slice(0, -2).join('|'))
+        const wantLines = stripCount(want)
+        const haveLines = stripCount(have)
+        const diff = wantLines.filter((line, i) => haveLines[i] !== line).length
+        // Both directions, or "ignore one column" is just a quieter gate:
+        //  - a changed RATIO must still be reported (the thing this table exists to pin),
+        //  - a changed COUNT alone must not be (the drift this run is proving is content, not defect).
+        const probe = wantLines.slice()
+        probe[probe.length - 1] = probe[probe.length - 1].replace(/(\d+\.\d+)/, '1.00')
+        const ratioCaught = probe.filter((l, i) => stripCount(want)[i] !== l).length > 0
+        const countIgnored = stripCount(want).join('\n') === stripCount(want.replace(/(\| )\d+\/\d+\/\d+( \|)$/, '$1999/999/999$2')).join('\n')
+        if (!ratioCaught || !countIgnored) {
+          docDrift.push(`${tag} DOC-TABLE SELF-TEST FAILED in ${docPath}'s comparison: ratioCaught=${ratioCaught} countIgnored=${countIgnored} - a projection that cannot see a changed ratio is not pinning anything, and one that still sees a changed count did not drop the column.`)
+        }
         if (diff) docDrift.push(`${tag} ${diff} row(s) in ${docPath} do not match this run - the table was typed, not generated. Re-run: node scripts/verify_dialog_interactions.mjs contrast-tier --doc=${docPath} --doc-write`)
       }
       console.log(`${docDrift.some((f) => f.startsWith('CONTRAST_')) ? 'DOC-TABLE mismatch' : 'DOC-TABLE ok'} for ${docPath}`)

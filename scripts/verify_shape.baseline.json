@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-09-30T14:55:09",
-    "head": "91cfe3eebaba0b45bdc7f31ce616066dd8bbd499",
-    "reason": "sixth signing: quiescence wait added to contrast-tier so the candidate set is reproducible"
+    "takenAt": "2026-09-30T16:57:46",
+    "head": "76fab3c9cdde35d8768452d56f1f67067437e46b",
+    "reason": "seventh signing: doc-table comparison projects to ratio columns only, with a two-sided fixture on the projection"
   },
   "files": [
     {
@@ -22,8 +22,8 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 2617,
-      "bytes": 201574,
+      "lines": 2636,
+      "bytes": 203290,
       "families": {
         "failures.push": 13,
         "emitGate": 11,
@@ -92,8 +92,8 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 4115,
-    "bytes": 300140,
+    "lines": 4134,
+    "bytes": 301856,
     "families": {
       "failures.push": 14,
       "emitGate": 11,
