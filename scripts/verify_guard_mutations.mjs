@@ -44,6 +44,44 @@ if (args.includes('help')) {
 const only = args.length ? new Set(args.map((a) => a.toUpperCase())) : null
 
 const mutations = [
+  // Four gates added in the same batch as the claims they police. Each one is a real red, not a
+  // re-statement of the guard: the oracle has to notice, and if the oracle stays silent the suite
+  // exits 2.
+  // A theme-invariant surface is allowed only by a named, reasoned whitelist entry. M21 adds an
+  // entry that excuses nothing today, which is a licence for whatever fits it tomorrow.
+  {
+    id: 'M21', file: HARNESS, oracle: 'surfaces', expect: 'DEAD-EXEMPTION theme-surfaces',
+    from: "      { re: /app-upload-button/, why: 'primary upload action: filled slate-950 with white label in all three themes, by design' },",
+    to: "      { re: /zzz-nothing-in-this-app-matches-me/, why: 'a planted exemption for a surface no sweep can reach' },\n      { re: /app-upload-button/, why: 'primary upload action: filled slate-950 with white label in all three themes, by design' },",
+  },
+  // The contrast gate reads the worst point across the run's own ink, not one centre pixel. M22
+  // turns the sampler back into a single-point one; the planted white-to-black gradient caption then
+  // reports the centre's passing 7.3:1 and the gate goes quiet about a 1.7:1 surface.
+  {
+    id: 'M22', file: HARNESS, oracle: 'contrast', expect: 'the gradient control',
+    from: '                const px = x0 + dx, py = y0 + dy',
+    to: '                const px = Math.round((x0 + x1) / 2), py = Math.round((y0 + y1) / 2)',
+  },
+  // Alpha-thinned text cannot have a guaranteed ratio at all, because what it composites onto is
+  // the user's wallpaper. M23 puts one instance back.
+  {
+    id: 'M23', file: DIALOG, oracle: 'guard', expect: 'readable text never thins itself with an alpha modifier',
+    from: 'text-slate-400', to: 'text-slate-400/70', all: true,
+  },
+  // A mode name that matches no block used to spawn the browser, judge nothing, and exit 0. M24
+  // disarms the startup refusal; the oracle runs the harness with a name that does not exist.
+  {
+    id: 'M24', file: HARNESS, oracle: 'bogus-mode', expect: 'is not declared, so no block would run',
+    from: "if (MODE && MODE !== 'help' && !MODES.includes(MODE)) {", to: 'if (false) {',
+  },
+  // finish() recorded a verdict and then kept running: a later catch could schedule a second exit
+  // and win. M25 re-creates exactly that - a catch that calls finish(1) after a fault called
+  // finish(2) - and the oracle is the exit code itself, which must still be 2.
+  // M25 was drafted and then withdrawn, and the reason is worth keeping here: the latch is only
+  // observable when some path asks for a second verdict after finish() already recorded one, and
+  // after the fix no such path exists (finish() throws, so the run stops unwinding). A mutation
+  // that cannot change what the oracle sees is not a test, so the exit-code latch is covered only
+  // by the symptom that produced it - see the CHANGELOG entry - and not by a re-runnable red.
   { id: 'M1', file: HARNESS, from: '  if (!(reading.innerWidth > 0)) problems.push(`innerWidth=${reading.innerWidth} (needs > 0)`)', to: '', oracle: 'gate-unit', expect: 'innerWidth 0, everything else healthy -> accepted' },
   { id: 'M2', file: HARNESS, from: "  if (reading.visibility !== 'visible') problems.push(`visibilityState=${reading.visibility} (needs \"visible\")`)", to: '', oracle: 'gate-unit', expect: 'hidden, sizes healthy -> accepted' },
   { id: 'M3', file: HARNESS, from: '  if (!(reading.innerHeight > 0)) problems.push(`innerHeight=${reading.innerHeight} (needs > 0)`)', to: '', oracle: 'gate-unit', expect: 'innerHeight 0, everything else healthy -> accepted' },
@@ -135,20 +173,29 @@ const runOracle = (oracle) => {
   // The layout oracle drives a real browser, so it is pinned to one tier and one route: the
   // unbreakable-filename fixture inside the confirm card. That keeps a mutation that needs a
   // browser at roughly the cost of one page load instead of the full 21-combination sweep.
-  const cmd = oracle === 'gate-unit'
-    ? [process.execPath, [`${REPO}/${HARNESS}`, 'gate-unit']]
-    : oracle === 'layout'
-      ? [process.execPath, [`${REPO}/${HARNESS}`, 'layout', '--tier', '640', '--routes', 'confirm-longname', '--port', String(9500 + (process.pid % 50))]]
-      : oracle === 'settings'
-        ? [process.execPath, [`${REPO}/${HARNESS}`, 'settings-guard', '--port', String(9600 + (process.pid % 50))]]
-        : [python.exe, [...python.pre, 'scripts/check_user_flow.py']]
-  const r = spawnSync(cmd[0], cmd[1], { cwd: REPO, encoding: 'utf8', timeout: oracle === 'layout' || oracle === 'settings' ? 420_000 : 180_000 })
-  return {
-    status: r.status,
-    spawnError: r.error ? String(r.error).slice(0, 120) : null,
-    output: `${r.stdout || ''}${r.stderr || ''}`,
-    marker: oracle === 'gate-unit' ? 'gate unit check' : oracle === 'layout' ? 'LAYOUT_GATE' : oracle === 'settings' ? 'SETTINGS_GATE' : 'USERFLOW_CHECKS',
+  // Same rule for the two contrast oracles: one route each, because the fixtures that have to
+  // notice (dead exemption, gradient disagreement) fire on the first combination anyway.
+  const port = (base) => String(base + (process.pid % 50))
+  const CMD = {
+    'gate-unit': [process.execPath, [`${REPO}/${HARNESS}`, 'gate-unit']],
+    layout: [process.execPath, [`${REPO}/${HARNESS}`, 'layout', '--tier', '640', '--routes', 'confirm-longname', '--port', port(9500)]],
+    settings: [process.execPath, [`${REPO}/${HARNESS}`, 'settings-guard', '--port', port(9600)]],
+    surfaces: [process.execPath, [`${REPO}/${HARNESS}`, 'theme-surfaces', '--routes', '设置', '--port', port(9700)]],
+    contrast: [process.execPath, [`${REPO}/${HARNESS}`, 'contrast-tier', '--routes', '设置', '--port', port(9800)]],
+    // No browser at all: the guard being tested is a startup refusal, and the verdict is the exit
+    // code plus its message, not anything the run could measure.
+    'bogus-mode': [process.execPath, [`${REPO}/${HARNESS}`, 'definitely-not-a-mode', 'gate-unit']],
+    'latched-exit': [process.execPath, [`${REPO}/${HARNESS}`, 'contrast-tier', '--routes', '设置', '--deadline', '1', '--port', port(9900)]],
   }
+  const cmd = CMD[oracle] || [python.exe, [...python.pre, 'scripts/check_user_flow.py']]
+  const r = spawnSync(cmd[0], cmd[1], { cwd: REPO, encoding: 'utf8', timeout: oracle === 'gate-unit' || oracle === 'bogus-mode' ? 120_000 : 420_000 })
+  const marker = { 'gate-unit': 'gate unit check', layout: 'LAYOUT_GATE', settings: 'SETTINGS_GATE', surfaces: 'SURFACE_GATE', contrast: 'CONTRAST_GATE', 'bogus-mode': 'HARNESS FAULT', 'latched-exit': 'HarnessFinishing' }[oracle] || 'USERFLOW_CHECKS'
+  if (oracle === 'bogus-mode') {
+    // This oracle's whole job is to notice that the startup refusal was disarmed: with the guard in
+    // place the run stops before touching a browser and exits 2 naming the mode.
+    return { status: r.status, spawnError: r.error ? String(r.error).slice(0, 120) : null, output: `${r.stdout || ''}${r.stderr || ''}`, marker: 'is not declared' }
+  }
+  return { status: r.status, spawnError: r.error ? String(r.error).slice(0, 120) : null, output: `${r.stdout || ''}${r.stderr || ''}`, marker }
 }
 
 // Files are checked out with CRLF under core.autocrlf=true, so a multi-line anchor written with \n
