@@ -42,6 +42,13 @@
      and the eight border-slate-400 usages, which want to be more visible anyway. */
   --color-slate-400: #5b6b80;
   --color-slate-500: #4a5768;
+  /* 33 call sites use text-red-600, most of them error copy sitting on the 38 bg-red-50 panels.
+     Tailwind v4's own red-600 is oklch(57.7% .245 27.3) = rgb(231,0,11), which measures 4.36:1 on
+     that panel under a white wallpaper - the one pair in the app that sat under the 4.5:1 floor and
+     was never seen, because the sweep used to have an error toast over these rows. Set to the same
+     red the filled danger control already uses, so "danger" is one colour in the light themes
+     instead of two that differ by whether they are a fill or a label. */
+  --color-red-600: #b91c1c;
 }
 
 :root[data-theme="midnight"] {

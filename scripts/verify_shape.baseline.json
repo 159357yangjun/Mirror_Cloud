@@ -1,15 +1,15 @@
 {
   "_meta": {
-    "takenAt": "2026-09-30T12:24:57",
-    "head": "92d6509908d5a0f7e83b2720fe8d517d6d9d97af",
-    "reason": "fourth signing: verify_guard_mutations.mjs repaired (stale anchor, wrong expected alarm, baseline taken after the mutation)"
+    "takenAt": "2026-09-30T14:31:27",
+    "head": "239d7d0c9b1604921adb0202edb30532f4610300",
+    "reason": "fifth signing this round: contrast-tier loop inversion + frame waits + dialog scoping + painter attribution in theme-surfaces; no mode added or removed"
   },
   "files": [
     {
       "file": "scripts/verify_all.mjs",
       "exists": true,
-      "lines": 333,
-      "bytes": 23627,
+      "lines": 344,
+      "bytes": 24602,
       "families": {
         "failures.push": 0,
         "emitGate": 0,
@@ -22,12 +22,12 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 2487,
-      "bytes": 190800,
+      "lines": 2589,
+      "bytes": 199443,
       "families": {
-        "failures.push": 15,
+        "failures.push": 13,
         "emitGate": 11,
-        "harness-fault exit": 33,
+        "harness-fault exit": 34,
         "gate line": 8,
         "positive control": 11,
         "throw": 16
@@ -92,12 +92,12 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 3974,
-    "bytes": 288391,
+    "lines": 4087,
+    "bytes": 298009,
     "families": {
-      "failures.push": 16,
+      "failures.push": 14,
       "emitGate": 11,
-      "harness-fault exit": 35,
+      "harness-fault exit": 36,
       "gate line": 8,
       "positive control": 12,
       "throw": 16

@@ -36,6 +36,7 @@ import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 
 const REPO = fileURLToPath(new URL('..', import.meta.url)).replace(/\\/g, '/').replace(/\/+$/, '')
+const RUN_STARTED = Date.now()
 const NODE_MODE = 'scripts/verify_dialog_interactions.mjs'
 const APP = process.env.VERIFY_APP || 'http://127.0.0.1:1420/'
 
@@ -265,7 +266,7 @@ function runBounded(exe, args, { budget, env }) {
 const results = []
 for (const stage of stages) {
   if (stage.needsServer && !serverUp) {
-    results.push({ name: stage.name, status: 'skipped', detail: 'no dev server, nothing was measured' })
+    results.push({ name: stage.name, status: 'skipped', wall: 0, detail: 'no dev server, nothing was measured' })
     console.log(`\n--- ${stage.name}: SKIPPED (no dev server at ${APP}; start it with \`npm run dev\`)`)
     continue
   }
@@ -277,10 +278,12 @@ for (const stage of stages) {
   // with no statement of what was and was not measured, which is the failure mode this whole file is
   // built to avoid.
   const env = { ...process.env, VERIFY_DEADLINE_MS: String(Math.max(30_000, budget - 60_000)) }
+  const stageStarted = Date.now()
   const { r, timedOut, killed } = runBounded(cmd[0], cmd[1], { budget, env })
+  const wall = Date.now() - stageStarted
   if (timedOut) {
     console.log(`    TIMEOUT after ${Math.round(budget / 1000)}s: stage process ${r.pid} was still alive; tree kill ${killed.status === 0 ? 'succeeded' : `reported status ${killed.status} (${String(killed.stderr || killed.stdout).trim().slice(0, 120)})`}`)
-    results.push({ name: stage.name, status: 'failed', detail: `TIMED OUT at ${Math.round(budget / 1000)}s - nothing was measured by this stage` })
+    results.push({ name: stage.name, status: 'failed', wall, detail: `TIMED OUT at ${Math.round(budget / 1000)}s - nothing was measured by this stage` })
     continue
   }
   const output = `${r.stdout || ''}${r.stderr || ''}`
@@ -318,15 +321,23 @@ for (const stage of stages) {
     : problems.length ? problems.join(' | ')
     : gate ? `${gate.gate} checked=${gate.checked} failed=${gate.failed}`
     : (output.match(stage.count) || ['count present but no GATE_JSON'])[0].trim()
-  results.push({ name: stage.name, status: r.status === 0 && problems.length === 0 ? 'passed' : 'failed', exit: r.status, detail })
-  console.log(`    => ${results[results.length - 1].status} (exit ${r.status}) ${detail}`)
+  results.push({ name: stage.name, status: r.status === 0 && problems.length === 0 ? 'passed' : 'failed', exit: r.status, wall, detail })
+  console.log(`    => ${results[results.length - 1].status} (exit ${r.status}) ${wall / 1000 >= 10 ? `${(wall / 1000).toFixed(1)}s ` : ''}${detail}`)
 }
 
 const failed = results.filter((x) => x.status === 'failed')
 const skipped = results.filter((x) => x.status === 'skipped')
 console.log('\n===== verify:all summary =====')
 for (const x of results) console.log(`${x.status.toUpperCase().padEnd(7)} ${x.name}  ${x.detail}`)
-console.log(`verify:all | ${results.length} stages: ${results.length - failed.length - skipped.length} passed, ${failed.length} failed, ${skipped.length} skipped`)
+// Cost, printed on the aggregate's own line rather than left to whoever thinks to time it. This is
+// the same rule every gate here already follows - a gate too expensive to run dies the same way a
+// blind one does - and the aggregate is the one number nobody was measuring. The stage walls sum to
+// more than the run because each stage also pays interpreter and browser startup.
+const totalWall = Date.now() - RUN_STARTED
+const byCost = [...results].sort((a, b) => b.wall - a.wall)
+console.log(`verify:all | wall=${(totalWall / 1000).toFixed(1)}s stages=${results.length} sumOfStageWalls=${(results.reduce((a, x) => a + x.wall, 0) / 1000).toFixed(1)}s`)
+console.log(`verify:all | cost (slowest first): ${byCost.slice(0, 6).map((x) => `${x.name}=${(x.wall / 1000).toFixed(1)}`).join(' ')}`)
+console.log(`verify:all | ${results.length - failed.length - skipped.length} passed, ${failed.length} failed, ${skipped.length} skipped of ${results.length}`)
 if (failed.length) console.error('At least one stage failed. Read its FAIL lines above; each stage prints all of them.')
 else if (skipped.length) console.error('Nothing failed, but stages were skipped: this run did NOT reproduce the browser-backed conclusions.')
 process.exit(failed.length ? 2 : skipped.length ? 3 : 0)

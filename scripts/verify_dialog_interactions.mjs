@@ -1142,6 +1142,9 @@ async function main() {
   if (MODE === 'contrast-tier') {
     const t0 = Date.now()
     const cpu0 = process.cpuUsage()
+    // The sweep's own wall clock, split by phase. Without this, "make the gate faster" can only be
+    // answered by guessing, and the guess is usually wrong about which half costs anything.
+    const cost = { nav: 0, prep: 0, collect: 0, fixtures: 0, shot: 0, sample: 0 }
     // Contrast measured off rendered pixels, not off token pairs. The wallpaper is a user-supplied
     // image, so no fixed foreground can be reasoned about analytically; the envelope is the two
     // extreme images a user could pick - entirely black and entirely white - and the real page is
@@ -1151,6 +1154,10 @@ async function main() {
     const ROUTES = routeList()
     const rows = []
     const failures = []
+    // Document drift and app defects are different buckets and were printed as one number: a stale
+    // row in VISUAL_BASELINE.md made CONTRAST_GATE say `below=3` when one surface was actually under
+    // threshold. Both still stop the run; they just no longer borrow each other's count.
+    const docDrift = []
     const combosTotal = THEMES.length * WALLS.length * (ROUTES.length + 1)
     let comboIndex = 0
     const allControls = []
@@ -1173,12 +1180,18 @@ async function main() {
     // One predicate, used by the text sweep, by the control sweep and by the control that proves
     // the sweep's own skip counters are live. Written as a string with a flag argument so the
     // control cannot end up testing a copy of the logic.
-    const COLLECT_TEXTS = `(function(controls){
+    const COLLECT_TEXTS = `(function(controls, dialogOnly){
             // Monotonic and page-global: the text sweep and the control sweep are two calls over the same page, and a
             // per-call counter plus a clear-at-start wiped the first call marks, so every text row came back
             // with "no sampled point belonged to this run" - the ownership test was rejecting its own rows.
             const out=[]; let offcanvas=0, occluded=0, clipped=0, offscreen=0, nonText=0, containers=0, foreignOnly=0; const occlBy={};
-            for (const e of document.querySelectorAll(controls ? 'main button, main input, main a, main select, aside button, aside input, header button, [role=dialog] button, [role=dialog] input, [role=dialog] a, [role=dialog] select' : 'main *, aside *, header *, [role=dialog] *')) {
+            // dialogOnly narrows the sweep to the dialog subtree. Without it the "对话框" face also collected
+            // the page behind the dialog, because main/aside/header are in the base selector list - which went
+            // unnoticed while an error-toast stack was occluding most of that page, and showed up the moment the
+            // toasts stopped being re-raised: the row went from 5 runs to 37 and its worst ratio moved with it.
+            const SEL_TEXT = dialogOnly ? '[role=dialog] *' : 'main *, aside *, header *, [role=dialog] *'
+            const SEL_CTL = dialogOnly ? '[role=dialog] button, [role=dialog] input, [role=dialog] a, [role=dialog] select' : 'main button, main input, main a, main select, aside button, aside input, header button, [role=dialog] button, [role=dialog] input, [role=dialog] a, [role=dialog] select'
+            for (const e of document.querySelectorAll(controls ? SEL_CTL : SEL_TEXT)) {
               if (!controls && e.children.length) continue;
               // A form control has no rendered ink of its own in the text sense: an input's textContent is
               // empty and its value is a string the browser may not paint at all (a checkbox's value is
@@ -1389,6 +1402,10 @@ async function main() {
 
     const applyTheme = (t) => evaluate(`(function(){const r=document.documentElement;if(${JSON.stringify(t)})r.dataset.theme=${JSON.stringify(t)};else delete r.dataset.theme;return r.dataset.theme||'default'})()`)
     const applyWall = (w) => evaluate(`(function(){const r=document.documentElement;if(${JSON.stringify(w)}==='none'){r.style.setProperty('--wallpaper','none');delete r.dataset.wallpaper}else{r.style.setProperty('--wallpaper',${JSON.stringify(w)});r.dataset.wallpaper='true'}return r.dataset.wallpaper==='true'?'on':'off'})()`)
+    // Resolve after n painted frames. Used instead of a fixed sleep wherever the thing being waited
+    // for is "the browser has drawn the change": a constant has to be sized for the slowest machine
+    // and still returns too early on that machine, while paying on every fast one.
+    const frames = (n) => evaluate(`new Promise(function(r){var left=${n || 1};function step(){if(--left<=0){r(1)}else{requestAnimationFrame(step)}}requestAnimationFrame(step)})`)
 
     const EXPECTED_BG = { default: '#f6f7fb', midnight: '#090d16', sakura: '#fff8fb' }
     for (const [themeName, themeValue] of THEMES) {
@@ -1421,22 +1438,40 @@ async function main() {
         const g=(n)=>cs.getPropertyValue(n).trim();
         return { muted: g('--text-muted'), secondary: g('--text-secondary'), primary: g('--text-primary'), surface: g('--surface'), soft: g('--surface-soft'), appBg: g('--app-bg') };
       })()`)
-      for (const [wallName, wallValue] of WALLS) {
+      // Route-major, wallpaper-minor. A wallpaper is a custom property on documentElement, so the
+      // page stays mounted and only repaints; navigating between surfaces is what actually costs.
+      // The first version looped wallpaper-major and paid 576 page loads for what 192 measure
+      // identically - PHASE-COST put nav at 32.5s of 49.8s, which is why the loops are ordered this
+      // way and not the other. Readings to prove "identically": measured/points/below must not move.
+      for (const label of ROUTES.concat(['对话框'])) {
         if (budgetHits) break
-        await applyWall(wallValue)
         // The confirm dialog is appended as an eighth surface rather than a separate pass because
         // it is the only place this app puts a filled primary button, a filled danger button and an
         // icon-only button all together; without it three of the six control kinds are unmeasured
         // and the table reports n/a, which is not a pass.
-        for (const label of ROUTES.concat(['对话框'])) {
+        const tNav = Date.now()
+        const dialogFace = label === '对话框'
+        // The dialog face is not navigated here: openConfirm() does its own goto plus click, and a
+        // page load resets the wallpaper, so it has to run inside the pass that sets it. Measured,
+        // not assumed - with the open hoisted out of the wallpaper loop, pass 1 saw the dialog
+        // (rows=5) and pass 2 saw none, and the assertion below stopped the run.
+        if (!dialogFace) await goto(label)
+        cost.nav += Date.now() - tNav
+        for (const [wallName, wallValue] of WALLS) {
           if (DEADLINE_MS && Date.now() - RUN_STARTED > DEADLINE_MS) {
             budgetHits++
             console.log(`BUDGET: stopping the grid after ${comboIndex}/${combosTotal} combinations at ${Math.round((Date.now() - RUN_STARTED) / 1000)}s of a ${Math.round(DEADLINE_MS / 1000)}s budget. The remaining ${combosTotal - comboIndex} are UNMEASURED, not clean.`)
             break
           }
-          if (label === '对话框') await openConfirm()
-          else await goto(label)
+          // Where the sweep's own wall clock goes. Printed as PHASE-COST on its line, because the
+          // alternative is guessing which of "navigate / wait / collect / photograph / sample" to
+          // optimise - and the guess (sampling, for anyone reading this) was wrong: it is navigation.
+          let mark = Date.now()
+          if (dialogFace) await openConfirm()
+          await applyWall(wallValue)
+          cost.nav += Date.now() - mark; mark = Date.now()
           await evaluate(`window.__L ? window.__L.settle() : document.getAnimations().forEach(a=>{try{a.finish()}catch(e){}});true`)
+          await frames(2)
           // A toast is a transient overlay whose drop shadow paints onto whatever is underneath it.
           // The six "settings caption at 4.12:1" findings this sweep printed were exactly that: four
           // `invoke is undefined` error toasts sit over the page in a browser-only harness, and their
@@ -1450,11 +1485,24 @@ async function main() {
               const s = m.useToastStore.getState();
               const before = s.toasts.length;
               s.toasts.slice().forEach(function(t){ s.dismiss(t.id) });
+              // A query that has not failed yet can raise a toast after this call returns, so
+              // dismissing alone is a race: one run printed "1 toast node still painted after
+              // dismissing 0". The store is emptied to keep the DOM from accumulating, and the
+              // overlay is taken out of the paint so the property being asserted is one the sweep
+              // actually controls.
+              var st = document.getElementById('sweep-no-overlay');
+              if (!st) { st = document.createElement('style'); st.id = 'sweep-no-overlay'; st.textContent = '[role=alert],[role=status]{display:none !important}'; document.head.appendChild(st) }
               return { before: before, after: m.useToastStore.getState().toasts.length };
             } catch (e) { return { error: String(e) } }
           })()`)
-          await sleep(120)
-          const toastNodes = await evaluate(`document.querySelectorAll('[role=alert],[role=status]').length`)
+          // Wait for the thing the next line asserts, not for a fixed 120ms.
+          let toastNodes = 0
+          for (let attempt = 0; attempt < 20; attempt++) {
+            await frames(1)
+            toastNodes = await evaluate(`Array.prototype.filter.call(document.querySelectorAll('[role=alert],[role=status]'), function(n){ return n.offsetParent !== null }).length`)
+            if (!toastNodes) break
+            await sleep(25)
+          }
           if (toastClear.error) {
             console.log(`HARNESS FAULT: cannot dismiss the toast stack before sampling (${toastClear.error}); an overlay's shadow would be measured as if it were the page's surface.`)
             finish(2)
@@ -1463,14 +1511,21 @@ async function main() {
             console.log(`HARNESS FAULT: ${toastNodes} toast node(s) still painted on ${themeName}/${wallName}/${label} after dismissing ${toastClear.before}; this combination's surface readings are taken under an overlay and are not attributable to the theme.`)
             finish(2)
           }
+          cost.prep += Date.now() - mark; mark = Date.now()
           await assertRealViewport(`contrast:${themeName}/${wallName}/${label}`)
           const dpr = await evaluate(`window.devicePixelRatio`)
           if (dpr !== 1) { console.log(`HARNESS FAULT: devicePixelRatio is ${dpr}, not 1 - pixel sampling would be offset. Aborting.`); finish(2) }
-          const texts = await evaluate(`(function(){window.__COLLECT=${COLLECT_TEXTS};return window.__COLLECT(false)})()`)
+          if (dialogFace) {
+            // The face is named for the dialog, so it is only that face if a dialog is actually up.
+            const open = await evaluate(`document.querySelectorAll('[role=dialog]').length`)
+            if (!open) { console.log(`HARNESS FAULT: the 对话框 face ran with ${open} [role=dialog] elements on screen in ${themeName}/${wallName}; whatever it measured, it was not the confirm dialog.`); finish(2) }
+          }
+          const texts = await evaluate(`(function(){window.__COLLECT=${COLLECT_TEXTS};return window.__COLLECT(false, ${dialogFace})})()`)
           if (texts.truncated) { console.log(`HARNESS FAULT: ${texts.truncated} more readable runs beyond the ${texts.rows.length} sampled in ${themeName}/${wallName}/${label}; the tally would be a partial one.`); finish(2) }
           // Controls are the item 1.4.11 object: a button or field judged against the surface it
           // actually sits on, not against a neighbouring panel of convenience.
-          const ctl = await evaluate(`window.__COLLECT(true)`)
+          const ctl = await evaluate(`window.__COLLECT(true, ${dialogFace})`)
+          cost.collect += Date.now() - mark; mark = Date.now()
           // The three sampling fixtures run once per theme: each takes its own screenshot, so running
           // them on all 72 combinations would double the sweep for no additional evidence.
           if (!controlDone) {
@@ -1584,12 +1639,15 @@ async function main() {
             if (bad.length) { console.log(`HARNESS FAULT: the contrast sweep cannot see its own blind spots: ${bad.join('; ')}`); finish(2) }
             console.log(`SWEEP-CONTROL clipped ${c.before.clipped}->${c.after.clipped} offscreen ${c.before.offscreen}->${c.after.offscreen} occluded ${c.before.occluded}->${c.after.occluded} control-rows=${c.controlRows} (all skip counters proven live; the sweep only vouches for what it can see)`)
           }
+          cost.fixtures += Date.now() - mark; mark = Date.now()
           // Hide the glyphs, photograph what is left: that photograph IS the background the text
           // sits on, gradients, blur and wallpaper included.
           await evaluate(`(function(){const s=document.createElement('style');s.id='lctl-hide';s.textContent='*{color:transparent !important;-webkit-text-fill-color:transparent !important;text-shadow:none !important}';document.head.appendChild(s);return true})()`)
           const shotData = await send('Page.captureScreenshot', { format: 'png' })
           await evaluate(`(function(){const s=document.getElementById('lctl-hide');if(s)s.remove();return true})()`)
+          cost.shot += Date.now() - mark; mark = Date.now()
           const sampled = await evaluate(`(${SAMPLE_FN})(${JSON.stringify(shotData.data)}, ${JSON.stringify(texts.rows.concat(ctl.rows))})`)
+          cost.sample += Date.now() - mark; mark = Date.now()
           if (!sampled.length) { console.log(`HARNESS FAULT: ${themeName}/${wallName}/${label} yielded 0 readable runs - an empty sweep is not a pass.`); finish(2) }
           const below = sampled.filter((s) => s.ratio !== null && s.ratio < s.threshold)
           // When a row fails, say what is actually stacked under it. Guessing at a colour from its
@@ -1708,16 +1766,16 @@ async function main() {
       const doc = readFileSync(docPath, 'utf8')
       for (const [tag, want] of Object.entries(tables)) {
         const b = doc.indexOf(`<!-- ${tag}:BEGIN -->`), e = doc.indexOf(`<!-- ${tag}:END -->`)
-        if (b === -1 || e === -1 || e < b) { failures.push(`${tag} the markers <!-- ${tag}:BEGIN --> / <!-- ${tag}:END --> are not both present in ${docPath}`); continue }
+        if (b === -1 || e === -1 || e < b) { docDrift.push(`${tag} the markers <!-- ${tag}:BEGIN --> / <!-- ${tag}:END --> are not both present in ${docPath}`); continue }
         const have = doc.slice(b + (`<!-- ${tag}:BEGIN -->`).length, e).replace(/^\n/, '').replace(/\n$/, '')
         const diff = want.split('\n').filter((line, i) => have.split('\n')[i] !== line).length
-        if (diff) failures.push(`${tag} ${diff} row(s) in ${docPath} do not match this run - the table was typed, not generated. Re-run: node scripts/verify_dialog_interactions.mjs contrast-tier`)
+        if (diff) docDrift.push(`${tag} ${diff} row(s) in ${docPath} do not match this run - the table was typed, not generated. Re-run: node scripts/verify_dialog_interactions.mjs contrast-tier --doc=${docPath} --doc-write`)
       }
-      console.log(`${failures.some((f) => f.startsWith('CONTRAST_')) ? 'DOC-TABLE mismatch' : 'DOC-TABLE ok'} for ${docPath}`)
+      console.log(`${docDrift.some((f) => f.startsWith('CONTRAST_')) ? 'DOC-TABLE mismatch' : 'DOC-TABLE ok'} for ${docPath}`)
     }
     writeFileSync(`${OUT}/contrast-tier.json`, JSON.stringify({ provenance: buildProvenance(), note: 'backgrounds are sampled from a screenshot taken with glyphs hidden, so gradients, backdrop-filter and the wallpaper composite are all included; wallpaper envelope is an all-black and an all-white image; controls are judged against their own rendered surface', themes: THEMES.map((t) => t[0]), wallpapers: WALLS.map((w) => w[0]), perControl, faceTable: faceTable.join('\n'), ctlTable: ctlTable.join('\n'), rows }, null, 2))
     if (budgetHits) { console.log(`CONTRAST_GATE INCOMPLETE: covered ${comboIndex}/${combosTotal} combinations inside the ${DEADLINE_MS}ms budget; the unmeasured remainder is not a pass.`); finish(2) }
-    for (const f of failures) console.log(`FAIL ${f}`)
+    for (const f of failures.concat(docDrift)) console.log(`FAIL ${f}`)
     console.log('TOKENS ' + JSON.stringify(rows.filter((r, i, a) => a.findIndex((x) => x.theme === r.theme) === i).map((r) => ({ theme: r.theme, ...r.tokens }))))
     // The planted gradient proves the grid CAN disagree with a single pixel. This proves it does so on
     // this app's real surfaces: if no row's worst point ever differed from its centre point, the
@@ -1739,14 +1797,17 @@ async function main() {
       finish(2)
     }
     const occlTop = Object.entries(rows.reduce((a, r) => { for (const [k, v] of Object.entries(r.occlBy || {})) a[k] = (a[k] || 0) + v; return a }, {})).sort((x, y) => y[1] - x[1]).slice(0, 3).map(([k, v]) => `${k}=${v}`).join(' ')
+    console.log(`PHASE-COST ${Object.entries(cost).map(([k, v]) => `${k}=${(v / 1000).toFixed(1)}s`).join(' ')} of ${((Object.values(cost).reduce((a, b) => a + b, 0)) / 1000).toFixed(1)}s accounted for ${combosTotal} combinations (the rest is theme/wallpaper switching and reporting)`)
     console.log(`COVERAGE judged=${judgedTotal} dropped=${droppedTotal} (${cov.pct}% of candidates) ceiling=75% topOccluders=${occlTop || '-'}`)
     // Computed, not a literal: this line used to print `unresolved=0` unconditionally, which is the
     // one number on the row that could never disagree with the run that produced it.
-    console.log(`CONTRAST_GATE combos=${rows.length} routes=${ROUTES.length} measured=${judgedTotal} below=${failures.length} unresolved=${unresolvedTotal} gridDisagreed=${gridStats.disagreed} points=${gridStats.points} nodeWall=${Math.round((Date.now() - t0) / 1000)}s nodeCpu=${(() => { const c = process.cpuUsage(cpu0); return ((c.user + c.system) / 1e6).toFixed(1) })()}s skipped=${JSON.stringify(skipped)}`)
+    console.log(`CONTRAST_GATE combos=${rows.length} routes=${ROUTES.length} measured=${judgedTotal} below=${failures.length} docDrift=${docDrift.length} unresolved=${unresolvedTotal} gridDisagreed=${gridStats.disagreed} points=${gridStats.points} nodeWall=${Math.round((Date.now() - t0) / 1000)}s nodeCpu=${(() => { const c = process.cpuUsage(cpu0); return ((c.user + c.system) / 1e6).toFixed(1) })()}s skipped=${JSON.stringify(skipped)}`)
+    // The identity is printed so a reader can see the two buckets were not merged anywhere downstream.
+    console.log(`CONTRAST_TALLY below=${failures.length} + docDrift=${docDrift.length} = stopping=${failures.length + docDrift.length}`)
 
-    emitGate('contrast-tier', rows.reduce((a, r) => a + r.measured, 0), failures.length, { combos: rows.length, routes: ROUTES.length, unresolved: rows.reduce((a, r) => a + r.unresolved, 0), gridDisagreed: gridStats.disagreed, inkFallbacks: gridStats.fallbacks, skipped })
+    emitGate('contrast-tier', rows.reduce((a, r) => a + r.measured, 0), failures.length + docDrift.length, { combos: rows.length, routes: ROUTES.length, below: failures.length, docDrift: docDrift.length, unresolved: rows.reduce((a, r) => a + r.unresolved, 0), gridDisagreed: gridStats.disagreed, inkFallbacks: gridStats.fallbacks, skipped })
     console.log(failures.length ? `contrast: ${failures.length} failure(s) across ${rows.length} theme/wallpaper/route combinations` : `contrast: every readable run meets its threshold in all ${rows.length} combinations`)
-    finish(failures.length ? 1 : 0)
+    finish(failures.length + docDrift.length ? 1 : 0)
   }
 
   if (MODE === 'settings-guard') {
@@ -1938,6 +1999,7 @@ async function main() {
     console.log(`CONTROL surfaces -> var(--surface) panel changed across themes=${ctl.followsMoves} (${ctl.detail.default.follows} -> ${ctl.detail.midnight.follows} -> ${ctl.detail.sakura.follows}); #ffffff panel stayed frozen=${ctl.ignoresFrozen} (${ctl.detail.default.ignores})`)
     const failures = []
     const rows = []
+    let unownedTotal = 0
 
     for (const label of SURFACES) {
       await applyTheme('')
@@ -1948,7 +2010,12 @@ async function main() {
       await assertRealViewport(`surfaces:${label}`)
       const marked = await evaluate(`(function(){
         let i = 0;
-        for (const e of document.querySelectorAll('main *, aside *, section *, [role=dialog] *')) {
+        // An overlay occludes what is under it, and the sampler reads the pixel, not the element:
+        // with the confirm dialog up, a card on the page behind it was being judged on the dialog's
+        // red button and reported as "this card does not follow the theme". So a face that is an
+        // overlay is enumerated as that overlay and nothing else.
+        const SEL = ${JSON.stringify(label === '对话框' ? '[role=dialog] *' : label === '提示' ? '[role=alert], [role=status]' : 'main *, aside *, section *')};
+        for (const e of document.querySelectorAll(SEL)) {
           const r = e.getBoundingClientRect();
           if (r.width < 120 || r.height < 48) continue;
           if (!(e.textContent || '').trim()) continue;
@@ -1980,6 +2047,7 @@ async function main() {
           const cv = document.createElement('canvas'); cv.width = img.width; cv.height = img.height;
           const ctx = cv.getContext('2d', { willReadFrequently: true }); ctx.drawImage(img, 0, 0);
           const out = {};
+          let unowned = 0;
           for (const e of document.querySelectorAll('[data-tsid]')) {
             const r = e.getBoundingClientRect();
             // A sample point outside the viewport is clamped onto the canvas edge and reads the
@@ -1991,25 +2059,54 @@ async function main() {
             const y = Math.max(0, Math.min(img.height - 1, sy));
             const p = ctx.getImageData(x, y, 1, 1).data;
             const cs = getComputedStyle(e);
+            // The pixel at a box's corner is not necessarily that box's paint: an overlapping
+            // sibling was being charged to a card that merely shared its coordinates, and reported
+            // under the card's class. So the reading is attributed to whoever actually paints the
+            // point, and the row is labelled with THAT element - an alarm then names the surface that
+            // does not follow the theme instead of an innocent one it happens to sit under.
+            const painterOf = (node) => {
+              let n = node;
+              while (n && n.nodeType === 1) {
+                const s = getComputedStyle(n);
+                const bg = s.backgroundColor;
+                const paints = (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') || (s.backgroundImage && s.backgroundImage !== 'none');
+                if (paints) return n;
+                n = n.parentElement;
+              }
+              return null;
+            }
+            const hitEl = document.elementFromPoint(sx, sy);
+            const painter = hitEl ? painterOf(hitEl) : null;
+            const owner = painter || e;
+            const oc = getComputedStyle(owner);
+            const clsText = (owner.className || '').toString().trim();
+            unowned += painter && painter !== e && !painter.hasAttribute('data-tsid') ? 1 : 0;
             out[e.getAttribute('data-tsid')] = {
               bg: [p[0], p[1], p[2]].join(','),
-              cls: (e.className || '').toString().slice(0, 60),
-              text: (e.textContent || '').trim().slice(0, 24),
-              fg: cs.color,
-              sel: e.tagName.toLowerCase() + '.' + (e.className || '').toString().trim().split(/\\s+/).slice(0, 2).join('.'),
+              cls: clsText.slice(0, 60),
+              text: (owner.textContent || '').trim().slice(0, 24),
+              fg: oc.color,
+              point: [sx, sy],
+              // Kept so a reader can see when the box and the painter differ, which is the whole
+              // reason this attribution exists.
+              box: (e.className || '').toString().trim().slice(0, 40),
+              attributed: owner === e ? 'self' : 'painter',
+              sel: owner.tagName.toLowerCase() + '.' + clsText.split(/\\s+/).slice(0, 2).join('.'),
             }
           }
-          return out;
+          return { surfaces: out, unowned };
         })()`)
       }
-      for (const id of Object.keys(samples.default || {})) {
-        const d = samples.default[id], m = samples.midnight[id], s = samples.sakura[id]
+      unownedTotal += Object.values(samples).reduce((a, v) => a + ((v && v.unowned) || 0), 0)
+      const owned = Object.fromEntries(Object.entries(samples).map(([k, v]) => [k, (v && v.surfaces) || {}]))
+      for (const id of Object.keys(owned.default || {})) {
+        const d = owned.default[id], m = owned.midnight[id], s = owned.sakura[id]
         if (!m || !s) continue
         const same = (a, b) => { const p = (v) => v.split(',').map(Number), x = p(a), y = p(b); return Math.abs(x[0] - y[0]) <= 2 && Math.abs(x[1] - y[1]) <= 2 && Math.abs(x[2] - y[2]) <= 2 }
         const frozen = same(d.bg, m.bg) && same(d.bg, s.bg)
         const wl = WHITELIST.find((w) => w.re.test(d.cls))
-        rows.push({ route: label, sel: d.sel, cls: d.cls, text: d.text, default: d.bg, midnight: m.bg, sakura: s.bg, frozen, whitelisted: wl ? wl.why : null })
-        if (frozen && !wl) failures.push(`OFF-THEME ${label}: ${d.sel} renders the identical rgb(${d.bg}) in all three themes (text "${d.text}") - it does not follow the theme and is not whitelisted`)
+        rows.push({ route: label, sel: d.sel, cls: d.cls, text: d.text, point: d.point, refused: d.refused, default: d.bg, midnight: m.bg, sakura: s.bg, frozen, whitelisted: wl ? wl.why : null })
+        if (frozen && !wl) failures.push(`OFF-THEME ${label}: ${d.sel} renders the identical rgb(${d.bg}) in all three themes (text "${d.text}"; sampled at ${d.point}, attributed to ${d.attributed}${d.box && d.box !== d.cls ? ` instead of the box under it ${d.box}` : ''}) - it does not follow the theme and is not whitelisted`)
       }
       if (label === '对话框') { await pressEscape(); await sleep(250) }
       if (label === '提示') { await evaluate(`(async function(){const m=await import('/src/store/useToastStore.ts');const s=m.useToastStore.getState();s.toasts.forEach(function(t){s.dismiss(t.id)});return true})()`); await sleep(150) }
@@ -2025,7 +2122,12 @@ async function main() {
     writeFileSync(`${OUT}/theme-surfaces.json`, JSON.stringify({ provenance: buildProvenance(), note: 'a surface is OFF-THEME when the pixel photographed 6px inside its top-left corner is identical (<=2/255 per channel) under default, midnight and sakura', whitelist: WHITELIST.map((w) => w.why), rows }, null, 2))
     if (budgetHits) { console.log(`CONTRAST_GATE INCOMPLETE: covered ${comboIndex}/${combosTotal} combinations inside the ${DEADLINE_MS}ms budget; the unmeasured remainder is not a pass.`); finish(2) }
     for (const f of failures) console.log(`FAIL ${f}`)
-    console.log(`SURFACE_GATE routes=${ROUTES.length} surfaces=${rows.length} frozen=${frozenCount} offThemeUnwhitelisted=${failures.length} whitelisted=${rows.filter((r) => r.frozen && r.whitelisted).length}`)
+    // Printed, not capped. A first version capped this at 25% and tripped immediately at 316/186,
+    // because the marked set is "boxes at least 120x48" while the element that actually paints a
+    // point is usually a small unmarked child - so the number measures the gate's own granularity,
+    // not a loss of coverage. A ceiling needs a denominator that means something; this one does not,
+    // so it reports and stays out of the exit code.
+    console.log(`SURFACE_GATE routes=${ROUTES.length} surfaces=${rows.length} frozen=${frozenCount} offThemeUnwhitelisted=${failures.length} whitelisted=${rows.filter((r) => r.frozen && r.whitelisted).length} paintedByUnmarked=${unownedTotal}`)
     emitGate('theme-surfaces', rows.length, failures.length, { frozen: frozenCount })
     console.log(failures.length ? `theme-surfaces: ${failures.length} surface(s) ignore the theme` : `theme-surfaces: every sampled surface follows the theme (${frozenCount} frozen, all whitelisted)`)
     finish(failures.length ? 1 : 0)
