@@ -35,7 +35,7 @@ export function WorkflowsPage() {
           <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-indigo-600 text-white"><Sparkles size={18} /></div>
           <div>
             <div className="text-sm font-semibold text-indigo-950">Recipe First</div>
-            <p className="mt-1 max-w-3xl text-xs leading-6 text-indigo-700/70">新用户不需要理解 WebP、命名模板或多云策略。先选一个场景 Recipe，再指定发布目标即可；高级用户仍然可以建立自己的方案。</p>
+            <p className="mt-1 max-w-3xl text-xs leading-6 text-indigo-700">新用户不需要理解 WebP、命名模板或多云策略。先选一个场景 Recipe，再指定发布目标即可；高级用户仍然可以建立自己的方案。</p>
           </div>
         </div>
       </section>

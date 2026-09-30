@@ -153,7 +153,7 @@ export function PluginsPage() {
 
       <section className="mt-4 overflow-hidden rounded-[26px] border border-indigo-100 bg-indigo-50/40">
         <button onClick={() => setShowAi((v) => !v)} className="flex w-full items-center justify-between gap-4 p-5 text-left">
-          <div className="flex items-center gap-3"><div className="grid size-9 place-items-center rounded-xl bg-indigo-100 text-indigo-700"><Bot size={16} /></div><div><div className="text-sm font-semibold text-indigo-950">AI 与自动化</div><div className="mt-0.5 text-xs text-indigo-700/60">配置 OpenAI-compatible 接口，并让 AI 根据已安装插件生成自动化建议。</div></div></div>
+          <div className="flex items-center gap-3"><div className="grid size-9 place-items-center rounded-xl bg-indigo-100 text-indigo-700"><Bot size={16} /></div><div><div className="text-sm font-semibold text-indigo-950">AI 与自动化</div><div className="mt-0.5 text-xs text-indigo-700">配置 OpenAI-compatible 接口，并让 AI 根据已安装插件生成自动化建议。</div></div></div>
           {showAi ? <ChevronUp size={17} className="text-indigo-400" /> : <ChevronDown size={17} className="text-indigo-400" />}
         </button>
         {showAi && <div className="grid grid-cols-2 gap-5 border-t border-indigo-100 p-5">

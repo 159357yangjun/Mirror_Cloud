@@ -6,6 +6,11 @@
   background: var(--app-bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  /* Native controls (checkbox, radio, range, select dropdown, the form-field canvas) are painted
+     by the browser from its own palette and ignore every token above: an unchecked checkbox under
+     midnight measured 1.53:1 because Chrome drew it on the light canvas colour. color-scheme is the
+     one container-level property the browser honours, so it is set per theme like the rest. */
+  color-scheme: light;
 
   /* v1.4 theme tokens: components should gradually depend on these instead of hard-coded palette values. */
   --app-bg: #f6f7fb;
@@ -15,7 +20,10 @@
   --surface-hover: rgba(248, 250, 252, .96);
   --text-primary: #0f172a;
   --text-secondary: #475569;
-  --text-muted: #94a3b8;
+  /* Readable-on-surface grey. The previous #94a3b8 measured 2.45:1 against the card colour,
+     below the 4.5:1 body-text floor; it now lives on as --text-faint for decoration only. */
+  --text-muted: #5b6b80;
+  --text-faint: #94a3b8;
   --border: rgba(226, 232, 240, .9);
   --accent: #4f46e5;
   --accent-soft: rgba(79, 70, 229, .1);
@@ -28,9 +36,16 @@
   --backdrop-blur: 18px;
   --glass-strength: 88%;
   --wallpaper: none;
+  /* 138 call sites use text-slate-400 and 43 use text-slate-500, and Tailwind compiles them to
+     var(--color-slate-N) - so the readable grey is set here once instead of at 181 places.
+     Neither rung is used as a background anywhere in the app, so darkening them only affects text
+     and the eight border-slate-400 usages, which want to be more visible anyway. */
+  --color-slate-400: #5b6b80;
+  --color-slate-500: #4a5768;
 }
 
 :root[data-theme="midnight"] {
+  color-scheme: dark;
   --app-bg: #090d16;
   --surface: rgba(15, 23, 42, .88);
   --surface-soft: rgba(30, 41, 59, .82);
@@ -38,12 +53,130 @@
   --surface-hover: rgba(30, 41, 59, .96);
   --text-primary: #f8fafc;
   --text-secondary: #cbd5e1;
-  --text-muted: #64748b;
+  --text-muted: #8d9bb3;
+  --text-faint: #64748b;
   --border: rgba(71, 85, 105, .55);
   --accent: #818cf8;
   --accent-soft: rgba(129, 140, 248, .14);
   --shadow-card: 0 12px 40px rgba(0, 0, 0, .26);
+  /* Pages ship roughly 580 hard-coded slate-* utilities (text-slate-400 alone: 138). Tailwind v4
+     compiles each of them to var(--color-slate-N), so redefining the ramp here moves every one of
+     those call sites with the theme instead of adding 580 dark: prefixes - which would then miss
+     the third theme anyway. The ramp stops at 700: slate-900/950 are used both as dark text and as
+     scrim/button fills, so they cannot be inverted by one variable and are handled by class below. */
+  --color-slate-50: #141c2b;
+  --color-slate-100: #1b2536;
+  --color-slate-200: #2b3a52;
+  /* slate-300 is a FOREGROUND rung in this app (11 call sites are placeholder/loader/chevron icon
+     ink, 3 are emphasis borders, 0 are fills), so it belongs with the text rungs, not the surface
+     rungs. At #3d4d68 it measured 1.6:1 against a midnight card - the empty-state folder glyph and
+     the "loading" spinner simply were not there. No gate sees this one: the contrast sweep only
+     samples text nodes and an svg carries no text, so it is fixed by role and recorded here. */
+  --color-slate-300: #64748b;
+  --color-slate-400: #8d9bb3;
+  --color-slate-500: #a9b7cd;
+  --color-slate-600: #c6d2e2;
+  --color-slate-700: #dde5f0;
+  /* Status banners pair a semantic hue with a PALE surface - about 100 sites use bg-red-50,
+     bg-emerald-50, bg-amber-50 and so on. Under a dark theme the hue is still the message but the
+     lightness is not: near-white text on bg-amber-50/70 measured 1.02:1, and the theme-surfaces
+     gate had been whitelisting it as "semantic colour", which was the wrong conclusion - semantic
+     covers the hue, never the luminance. Each tint keeps its hue and takes the theme's lightness,
+     and the matching text rungs move the other way so they stay readable on the new dark tint. */
+  --color-red-50: #2b1519;
+  --color-red-100: #3d1e24;
+  --color-red-500: #fda4a4;
+  --color-red-600: #f98c8c;
+  --color-red-700: #f57474;
+  --color-emerald-50: #0e2420;
+  --color-emerald-100: #14342d;
+  --color-emerald-500: #6ee7b7;
+  --color-emerald-600: #5be0ac;
+  --color-emerald-700: #48d6a0;
+  --color-amber-50: #2b2114;
+  --color-amber-100: #3b2d18;
+  --color-amber-500: #fcd34d;
+  --color-amber-600: #fbc93a;
+  --color-amber-700: #f7bf25;
+  --color-blue-50: #101e30;
+  --color-blue-100: #16283f;
+  --color-blue-500: #93c5fd;
+  --color-blue-600: #7db8fb;
+  --color-blue-700: #68abf9;
+  --color-indigo-50: #171a31;
+  --color-indigo-100: #1f2342;
+  --color-indigo-300: #3a4370;
+  --color-indigo-500: #a5b4fc;
+  --color-indigo-600: #97a7fb;
+  --color-indigo-700: #8b9cf9;
+  --color-indigo-900: #c7d2fe;
+  --color-indigo-950: #dbe2ff;
+  /* The remaining rungs are not decoration: the census of `text-<hue>-<rung>` call sites is what
+     decided this list. violet-800 (SettingsPage shortcut card) sat at 1.48:1 under midnight,
+     blue-800 (CloudIndexSyncBanner) at 1.57:1, amber-800 at 1.8:1 - all dark ink inherited from
+     the light theme, because only the rungs that happened to fail had been remapped. Any hue rung
+     used as a foreground has to appear here or midnight silently keeps the light-theme value. */
+  --color-violet-100: #2c2444;
+  --color-violet-50: #1d1733;
+  --color-violet-600: #b9a8fd;
+  --color-violet-700: #c4b5fd;
+  --color-violet-800: #d3c6fe;
+  --color-violet-900: #e2dbff;
+  --color-violet-950: #efeaff;
+  --color-sky-50: #0d2231;
+  --color-sky-100: #123244;
+  --color-sky-700: #7dd3fc;
+  --color-sky-800: #9adefc;
+  --color-sky-900: #bae6fd;
+  --color-sky-950: #dbeffe;
+  --color-rose-50: #2b1421;
+  --color-rose-100: #3d1e2c;
+  --color-rose-700: #fda4af;
+  --color-green-50: #0e2420;
+  --color-orange-50: #2b1d12;
+  --color-amber-800: #fcd34d;
+  --color-amber-900: #fde68a;
+  --color-amber-950: #fef3c7;
+  --color-amber-200: #4a3a1e;
+  --color-red-200: #4a2027;
+  --color-emerald-200: #1c443b;
+  --color-blue-400: #6ea8e8;
+  --color-blue-800: #93c5fd;
+  /* Solid fills that carry white ink. The ramp above exists to move *text*, and Tailwind compiles
+     a fill and a foreground to the same var(--color-hue-rung), so inverting the ramp also inverted
+     the buttons: bg-indigo-600 with text-white became 2.28:1 and bg-red-600 2.1:1. These two rungs
+     are fills only where a white label sits on them, so they are pinned back by class. */
+  --accent-solid: #4338ca;
+  --danger-solid: #b91c1c;
 }
+
+/* bg-white and text-white share one variable, so the ramp cannot reach them; and a dark-text
+   utility has to be matched by class because the same colour token is also a scrim fill.
+   These rules are deliberately unlayered: an unlayered declaration outranks Tailwind's layered
+   utilities, which is the same cascade fact that made `button { font: inherit }` swallow text-xs.
+   Here it is used on purpose, and only for these three class names. */
+:root[data-theme="midnight"] .bg-white { background-color: var(--surface); }
+:root[data-theme="midnight"] .bg-white\/80 { background-color: color-mix(in srgb, var(--surface) 80%, transparent); }
+/* Four settings cards are bg-gradient-to-br ... via-white to-white. Gradient stops are not a
+   background-color and not reachable by the .bg-white rule above, so a whole panel stayed white
+   under a dark theme - the numbers called it fixed (the sampler reads one point, which landed on a
+   transparent part of the ramp) and only the screenshot showed it. Overriding the stop variables
+   themselves is what works; --tw-gradient-stops resolves them at use time. */
+:root[data-theme="midnight"] .via-white { --tw-gradient-via: var(--surface); }
+:root[data-theme="midnight"] .to-white { --tw-gradient-to: var(--surface); }
+:root[data-theme="midnight"] .from-white { --tw-gradient-from: var(--surface); }
+:root[data-theme="midnight"] .text-slate-900,
+:root[data-theme="midnight"] .text-slate-950 { color: var(--text-primary); }
+/* The inverse case: three code/credential blocks are deliberately dark in every theme
+   (bg-slate-950) and carry LIGHT ink (text-slate-100/200). Raising those two rungs as surface
+   colours for the cards under midnight made their ink 1.76:1 - the same dual-role trap as
+   slate-900, met from the other side. They keep their light values by class. */
+:root[data-theme="midnight"] .text-slate-100 { color: #eef2f8; }
+:root[data-theme="midnight"] .text-slate-200 { color: #dde5f0; }
+:root[data-theme="midnight"] .text-slate-800 { color: var(--text-secondary); }
+:root[data-theme="midnight"] .bg-indigo-600 { background-color: var(--accent-solid); }
+:root[data-theme="midnight"] .bg-red-600,
+:root[data-theme="midnight"] .hover\:bg-red-700:hover { background-color: var(--danger-solid); }
 
 :root[data-theme="sakura"] {
   --app-bg: #fff8fb;
@@ -53,10 +186,16 @@
   --surface-hover: rgba(255, 247, 250, .98);
   --text-primary: #28151e;
   --text-secondary: #6f4a5b;
-  --text-muted: #ad8798;
+  --text-muted: #7a6472;
+  --text-faint: #ad8798;
   --border: rgba(244, 212, 226, .86);
   --accent: #db5b8b;
   --accent-soft: rgba(219, 91, 139, .11);
+  /* Sakura is a light theme, so only the text rungs need moving: the default slate-400/500 are
+     cool greys that sit at 3.1:1 on this near-white surface. Warmed and darkened to match the
+     palette, they clear 4.5:1 without touching the surface rungs. */
+  --color-slate-400: #7a6472;
+  --color-slate-500: #6b5260;
 }
 
 * { box-sizing: border-box; }
@@ -73,7 +212,7 @@ button { cursor: pointer; }
 ::selection { background: var(--accent-soft); }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--text-muted) 28%, transparent); border-radius: 999px; }
+::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--text-faint) 28%, transparent); border-radius: 999px; }
 ::-webkit-scrollbar-track { background: transparent; }
 
 .app-shell-root {
@@ -90,13 +229,50 @@ button { cursor: pointer; }
   transition: background-color .2s ease, background-image .2s ease;
 }
 
+/* Wallpaper floor, part 2 - the shell itself.
+   Panels are opaque in this mode (above), but page titles and section captions sit directly on
+   .app-shell-root, and the previous scrim was `color-mix(--app-bg 76%, transparent)` over an image
+   the user typed a URL for. Measured against an all-black wallpaper that put a "light" theme's
+   reading surface at rgb(189,190,193) - mid-grey, where no grey foreground can reach 4.5:1 (even
+   --text-secondary does 4.15) - and against an all-white one it put midnight at rgb(66,69,76).
+   Darkening the muted token to survive that band costs the type hierarchy its bottom rung
+   (muted would have to become near-body-text), so instead the wallpaper is composited with
+   background-blend-mode: soft-light over the theme's own opaque --app-bg. That bounds every
+   channel analytically: for base B and any source S the result lies between B-squared and
+   B-to-the-one-quarter-ish (sqrt branch), i.e. a light base stays light and a dark base stays
+   dark, whatever image is chosen. A 50% grey wallpaper leaves B exactly untouched. The image is
+   still visible as texture; it can no longer decide what a glyph sits on. */
 :root[data-wallpaper="true"] .app-shell-root {
-  background-image:
-    linear-gradient(
-      color-mix(in srgb, var(--app-bg) 76%, transparent),
-      color-mix(in srgb, var(--app-bg) 84%, transparent)
-    ),
-    var(--wallpaper);
+  background-image: var(--wallpaper);
+  background-blend-mode: soft-light;
+}
+
+/* Wallpaper floor. The scrim only covers the image with 76-84% of --app-bg, and the card surfaces
+   were translucent on top of that, so the colour a glyph actually sits on depended on a picture
+   the user typed a URL for. No fixed foreground can survive that: against an all-black wallpaper
+   the muted grey measured 1.42:1. Rather than tell people to pick a darker wallpaper, the panels
+   that carry text become opaque in this mode - the values below are each theme's own translucency
+   composited over its own background once, so the appearance barely moves while the contrast
+   becomes a fact instead of a hope. */
+:root[data-wallpaper="true"] {
+  --surface: #fbfcfe;
+  --surface-soft: #f3f5f9;
+  --surface-glass: #fbfcfe;
+  --surface-hover: #f7f9fc;
+}
+
+:root[data-wallpaper="true"][data-theme="midnight"] {
+  --surface: #101828;
+  --surface-soft: #1b2536;
+  --surface-glass: #101828;
+  --surface-hover: #1e293b;
+}
+
+:root[data-wallpaper="true"][data-theme="sakura"] {
+  --surface: #fffbfd;
+  --surface-soft: #fdf2f7;
+  --surface-glass: #fffbfd;
+  --surface-hover: #fff5f9;
 }
 
 /* Shared primitives for the skin system. */

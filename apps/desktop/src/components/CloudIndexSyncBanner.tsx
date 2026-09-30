@@ -51,7 +51,7 @@ export function CloudIndexSyncBanner({ onOpenGallery }: CloudIndexSyncBannerProp
           {syncMutation.isPending ? '同步中…' : '同步云端索引'}
         </button>
       </div>
-      <div className="mt-1 pl-7 text-[11px] text-blue-700/70">为避免首次同步过载，每个云端单次最多扫描 2000 个文件；重复同步会跳过已经索引的同一云端路径。</div>
+      <div className="mt-1 pl-7 text-[11px] text-blue-700">为避免首次同步过载，每个云端单次最多扫描 2000 个文件；重复同步会跳过已经索引的同一云端路径。</div>
       {message && (
         <div className={`mt-2 flex items-start gap-2 rounded-xl px-3 py-2 ${hasWarning ? 'bg-amber-50 text-amber-800' : 'bg-emerald-50 text-emerald-700'}`}>
           {hasWarning ? <AlertTriangle size={14} className="mt-1 shrink-0" /> : <CheckCircle2 size={14} className="mt-1 shrink-0" />}

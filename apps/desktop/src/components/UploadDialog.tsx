@@ -251,13 +251,13 @@ export function UploadDialog() {
               <div className="flex items-center justify-between"><label className="text-xs font-medium text-slate-500">当前自动上传链</label><button onClick={() => leaveDialog('storages')} className="text-[11px] font-medium text-indigo-600">更换默认云端 →</button></div>
               {workflowError && <div className="mt-2 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-xs text-red-700">自动上传链同步失败：{String(workflowError)}</div>}
               {selectedWorkflow ? <div className="mt-2 rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3">
-                <div className="flex items-center justify-between gap-3"><div><div className="text-xs font-semibold text-indigo-900">{selectedWorkflow.targetName}</div><div className="mt-1 text-[11px] text-indigo-700/70">图片处理：{selectedWorkflow.format.toUpperCase()} · Q{selectedWorkflow.quality}{selectedWorkflow.maxWidth ? ` · 最大 ${selectedWorkflow.maxWidth}px` : ''}</div></div><span className="rounded-full bg-white px-2 py-1 text-[10px] font-medium text-indigo-600">自动</span></div>
+                <div className="flex items-center justify-between gap-3"><div><div className="text-xs font-semibold text-indigo-900">{selectedWorkflow.targetName}</div><div className="mt-1 text-[11px] text-indigo-700">图片处理：{selectedWorkflow.format.toUpperCase()} · Q{selectedWorkflow.quality}{selectedWorkflow.maxWidth ? ` · 最大 ${selectedWorkflow.maxWidth}px` : ''}</div></div><span className="rounded-full bg-white px-2 py-1 text-[10px] font-medium text-indigo-600">自动</span></div>
                 <div className="mt-2 text-[11px] text-slate-400">上传成功后会按“插件”页面当前开关依次执行插件；本地文件、URL、剪贴板和 Typora 共用这一条链。</div>
               </div> : <div className="mt-2 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-700">还没有默认上传目标。先到“云端”连接一个存储，系统会自动创建上传链。</div>}
               {!storages.length && <div className="mt-2 text-xs text-amber-600">请先到“云端”连接至少一个存储。</div>}
             </div>
 
-            {publishMutation.error && <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs leading-5 text-red-600"><div className="font-medium">发布前检查没有通过</div><div className="mt-1">{String(publishMutation.error)}</div><div className="mt-1 text-red-500/80">不会创建“假成功”任务；修复云端凭据后再重试。</div></div>}
+            {publishMutation.error && <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs leading-5 text-red-600"><div className="font-medium">发布前检查没有通过</div><div className="mt-1">{String(publishMutation.error)}</div><div className="mt-1 text-red-700">不会创建“假成功”任务；修复云端凭据后再重试。</div></div>}
             <div className="mt-5 flex justify-end"><button disabled={!canPublish || publishMutation.isPending} onClick={() => publishMutation.mutate()} className="flex items-center gap-2 rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-30">{publishMutation.isPending && <LoaderCircle size={15} className="animate-spin" />}{publishMutation.isPending ? '检查目标…' : mode === 'urls' ? `发布 ${urls.length || ''} 个 URL` : mode === 'clipboard' ? '发布剪贴板图片' : '开始发布'}</button></div>
           </>
         ) : (

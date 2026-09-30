@@ -1,0 +1,138 @@
+{
+  "files": [
+    {
+      "file": "scripts/verify_all.mjs",
+      "exists": true,
+      "lines": 219,
+      "bytes": 15827,
+      "families": {
+        "failures.push": 0,
+        "emitGate": 0,
+        "harness-fault exit": 0,
+        "gate line": 0,
+        "positive control": 0,
+        "throw": 0
+      }
+    },
+    {
+      "file": "scripts/verify_dialog_interactions.mjs",
+      "exists": true,
+      "lines": 2360,
+      "bytes": 180100,
+      "families": {
+        "failures.push": 15,
+        "emitGate": 10,
+        "harness-fault exit": 28,
+        "gate line": 8,
+        "positive control": 11,
+        "throw": 16
+      }
+    },
+    {
+      "file": "scripts/verify_guard_mutations.mjs",
+      "exists": true,
+      "lines": 212,
+      "bytes": 16588,
+      "families": {
+        "failures.push": 0,
+        "emitGate": 0,
+        "harness-fault exit": 1,
+        "gate line": 0,
+        "positive control": 0,
+        "throw": 0
+      }
+    },
+    {
+      "file": "scripts/verify_modes.mjs",
+      "exists": true,
+      "lines": 37,
+      "bytes": 1449,
+      "families": {
+        "failures.push": 0,
+        "emitGate": 0,
+        "harness-fault exit": 0,
+        "gate line": 0,
+        "positive control": 0,
+        "throw": 0
+      }
+    },
+    {
+      "file": "scripts/verify_probes.mjs",
+      "exists": true,
+      "lines": 547,
+      "bytes": 32512,
+      "families": {
+        "failures.push": 0,
+        "emitGate": 0,
+        "harness-fault exit": 0,
+        "gate line": 0,
+        "positive control": 1,
+        "throw": 0
+      }
+    },
+    {
+      "file": "scripts/verify_shape.mjs",
+      "exists": true,
+      "lines": 187,
+      "bytes": 10388,
+      "families": {
+        "failures.push": 1,
+        "emitGate": 0,
+        "harness-fault exit": 0,
+        "gate line": 0,
+        "positive control": 0,
+        "throw": 0
+      }
+    }
+  ],
+  "totals": {
+    "files": 6,
+    "lines": 3562,
+    "bytes": 256864,
+    "families": {
+      "failures.push": 16,
+      "emitGate": 10,
+      "harness-fault exit": 29,
+      "gate line": 8,
+      "positive control": 12,
+      "throw": 16
+    }
+  },
+  "modes": {
+    "reachable": [
+      "ab",
+      "confirm",
+      "contrast",
+      "contrast-tier",
+      "external",
+      "gate",
+      "gate-unit",
+      "layout",
+      "links",
+      "pages",
+      "red-demo",
+      "settings-guard",
+      "theme-surfaces",
+      "visual"
+    ],
+    "declared": [
+      "ab",
+      "confirm",
+      "contrast",
+      "contrast-tier",
+      "external",
+      "gate",
+      "gate-unit",
+      "help",
+      "layout",
+      "links",
+      "pages",
+      "red-demo",
+      "settings-guard",
+      "theme-surfaces",
+      "visual"
+    ],
+    "undeclared": [],
+    "undispatchable": []
+  }
+}

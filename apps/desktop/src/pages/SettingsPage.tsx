@@ -216,7 +216,7 @@ export function SettingsPage() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-sm font-semibold text-indigo-950"><Workflow size={17} /> Typora 集成</div>
-            <p className="mt-1 max-w-2xl text-xs leading-6 text-indigo-700/70">Typora 的“自定义命令”会调用 图床自动维护的上传链，并在上传成功后依次执行当前已启用插件，再把最终公网 URL 返回给 Typora。</p>
+            <p className="mt-1 max-w-2xl text-xs leading-6 text-indigo-700">Typora 的“自定义命令”会调用 图床自动维护的上传链，并在上传成功后依次执行当前已启用插件，再把最终公网 URL 返回给 Typora。</p>
           </div>
           <button onClick={() => void refreshTypora()} className="flex items-center gap-1.5 rounded-xl border border-indigo-100 bg-white px-3 py-2 text-xs font-medium text-indigo-700">
             {typoraChecking ? <LoaderCircle size={13} className="animate-spin" /> : <RefreshCw size={13} />}重新检测
@@ -275,7 +275,7 @@ export function SettingsPage() {
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 text-sm font-semibold text-violet-950"><Keyboard size={17} /> 全局快捷上传</div>
-              <p className="mt-1 text-xs leading-6 text-violet-800/70">不切换窗口：截图复制到剪贴板后按快捷键，Publisher 后台上传并把最终 URL 重新写入剪贴板。</p>
+              <p className="mt-1 text-xs leading-6 text-violet-800">不切换窗口：截图复制到剪贴板后按快捷键，Publisher 后台上传并把最终 URL 重新写入剪贴板。</p>
             </div>
             <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
               <input
@@ -292,14 +292,14 @@ export function SettingsPage() {
             <div className="mt-1 flex items-center justify-between gap-3"><span className="font-mono text-sm font-semibold text-slate-900">{globalShortcut?.shortcut || (shortcutError ? '读取失败' : '读取中…')}</span><span className={`rounded-full px-2 py-1 text-[10px] font-medium ${!globalShortcut ? 'bg-slate-100 text-slate-500' : globalShortcut.registered ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{!globalShortcut ? (shortcutError ? '注册状态读取失败' : '正在检查…') : globalShortcut.registered ? '系统已注册' : '未占用系统快捷键'}</span></div>
             <div className="mt-2 text-[11px] leading-5 text-slate-400">{globalShortcut?.action || '上传剪贴板图片并复制最终 URL'}</div>
           </div>
-          <p className="mt-3 text-[11px] leading-5 text-violet-800/70">{globalShortcut?.note || '复用默认 Workflow、多云策略与插件链。'}</p>
+          <p className="mt-3 text-[11px] leading-5 text-violet-800">{globalShortcut?.note || '复用默认 Workflow、多云策略与插件链。'}</p>
         </div>
 
         <div className="rounded-[24px] border border-amber-100 bg-gradient-to-br from-amber-50/80 via-white to-white p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 text-sm font-semibold text-amber-950"><MousePointerClick size={17} /> Windows 右键上传</div>
-              <p className="mt-1 text-xs leading-6 text-amber-800/70">把 Publisher 安装到当前用户的图片右键菜单。无需管理员权限，右击图片即可后台发布。</p>
+              <p className="mt-1 text-xs leading-6 text-amber-800">把 Publisher 安装到当前用户的图片右键菜单。无需管理员权限，右击图片即可后台发布。</p>
             </div>
             <div className={`rounded-full px-3 py-1 text-[11px] font-medium ${contextMenu?.installed ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
               {contextMenu?.installed ? '已安装' : '未安装'}
@@ -323,7 +323,7 @@ export function SettingsPage() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-sm font-semibold text-sky-950"><Network size={17} /> Local HTTP API</div>
-            <p className="mt-1 max-w-2xl text-xs leading-6 text-sky-800/70">给 ShareX、脚本、Obsidian 插件和未来 Agent 使用的本机上传入口。它复用与 Typora 相同的默认 Workflow、插件和多云策略，不维护第二套上传逻辑。</p>
+            <p className="mt-1 max-w-2xl text-xs leading-6 text-sky-800">给 ShareX、脚本、Obsidian 插件和未来 Agent 使用的本机上传入口。它复用与 Typora 相同的默认 Workflow、插件和多云策略，不维护第二套上传逻辑。</p>
             {localApiGuideUrl && (
               <button type="button" onClick={() => openExternalUrlOrReport(localApiGuideUrl)} className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 hover:text-sky-900">
                 完整调用教程与状态码 <ExternalLink size={11} />
@@ -413,7 +413,7 @@ export function SettingsPage() {
         <p className="mt-2 text-xs leading-6 text-slate-500">Token 与 Secret 仍然保存在系统凭据库，Typora 命令本身不包含 Token。Typora 只把本地图片路径交给 Publisher，Publisher 再读取同一套上传配置、插件开关和凭据完成上传。</p>
       </div>
 
-      <div className="mt-6 rounded-[24px] border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-5"><div className="flex items-center gap-2 text-sm font-medium text-indigo-900"><Sparkles size={16} /> 现在的交互原则</div><p className="mt-2 max-w-2xl text-xs leading-6 text-indigo-700/70">不再放看起来可以点、实际却没有行为的“装饰设置”。页面上出现的按钮都对应真实操作；纯状态信息会明确以说明文本展示。</p></div>
+      <div className="mt-6 rounded-[24px] border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-5"><div className="flex items-center gap-2 text-sm font-medium text-indigo-900"><Sparkles size={16} /> 现在的交互原则</div><p className="mt-2 max-w-2xl text-xs leading-6 text-indigo-700">不再放看起来可以点、实际却没有行为的“装饰设置”。页面上出现的按钮都对应真实操作；纯状态信息会明确以说明文本展示。</p></div>
     </div>
   )
 }
