@@ -127,14 +127,19 @@ sawMinimizedReject: true   broken: []
 
 上面所有数字都出自这个探针。它此前只存在于会话目录（`cdp-dialog-probe.mjs`，34,750 字节 / 12:31），而仓库里已经有 11 个 `scripts/*` 检查器——**修搞出来了，别人重跑不了验证，会话目录一清测具就没了**。现在它、它的入口、以及"认证它的检查器"的指纹都在仓里。
 
-**指纹（改动这两个文件后必须回来更新这里，对不上就说明测具与结论不是同一份）**
+**指纹表（机器核对，见本节末；改完这些文件而没更新这张表，`check_user_flow.py` 直接红）**
 
-| 文件 | 行数 | 字节 | sha256 | 基线通过项数 |
-| --- | --- | --- | --- | --- |
-| `scripts/verify_dialog_interactions.mjs` | 965 | 61,019 | `9341e4ba1f65a8adc6f4a57b7e252e0cf48f4b069d140ee9bfa04694c9f7a78a` | `gate-unit` 6/6、`gate` 3 项 + `sawMinimizedReject: true`、`ab` `deltaOverflowX: 210`、`identity` 75 个导出全中 |
-| `scripts/check_user_flow.py`（认证上面这个测具的那份检查器，同址在 `scripts/`） | 411 | 38,849 | `53006acee34da1eae87d5ddfba629c9e1fb1c1da1ff0f3854892969fc15a5b1d` | `total checks: 159` |
+| 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
+| --- | --- | --- | --- | --- | --- |
+| `scripts/verify_dialog_interactions.mjs` | 1032 | 64,911 | `8aaf80b220fc2dbeeaecbc33d3aa702a89ad1a89ab72def06ac64ec96567afaf` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5` |
+| `scripts/verify_guard_mutations.mjs` | 149 | 10,153 | `b8118acf10309b4ebf51f02a7784434d5ef4699637dc641969d7e6248ee717bf` | 12/12 变异都被对应 oracle 抓到 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
+| `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,897 | `d54d83cb52a1f8489efa4c59162ce8d44f96f34505d3396a5d4e59675460833b` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
+| `scripts/check_user_flow.py`（认证上面三个的那份检查器，同址在 `scripts/`） | 470 | 43,105 | `adabfb322b669f62fb465b3d927adf1834c6a58e6933bcbf007a80261165d1aa` | `total checks: 173` | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12` |
 
-**指纹是对着 `git show <commit>:<path>` 的 blob 比的，不是对着工作区比的**——`core.autocrlf=true` 下工作区是 CRLF、库里是 LF，拿工作区算出的哈希别人复现不出来。
+**这张表现在是断言，不是纪律**：`check_user_flow.py` 解析上面每一行，对每个文件重算 `git show HEAD:<path>` 的行数/字节/sha256 并逐项比对，还断言"表里的行集合 == 磁盘上 `scripts/verify_*.mjs` + `scripts/__fixtures__/*.mjs` + `scripts/check_user_flow.py` 的集合"。所以：新加一个测具忘了上表 → 红；改了测具忘了更新表 → 红；哈希对不上 → 红，并附一句"该文件另有未提交改动"。上一版这张表就是**手写漂移了一笔提交**（记 965 行 / `9341e4ba…`，实际 1119 行 / `d9572a31…`），而它上面那句"改完必须回来更新"正是被漂移的那句——所以规则本身不解决问题，断言才解决。
+
+**哈希比的是 `git show HEAD:<path>` 的 blob，不是工作区**——`core.autocrlf=true` 下工作区是 CRLF、库里是 LF，拿工作区算出的哈希别人复现不出来（实测：文件干净时两者逐字节相等，所以提交前可先用"工作区 CRLF→LF 归一化"预计算，落盘后必须相等）。
+
 
 ### 本批自曝的一次损坏：CHANGELOG 被我自己的脚本改坏过
 
@@ -227,7 +232,19 @@ L3 那条红是**独立**抓到的：假 server 的标题和 `package.json` 都�
 
 
 
+### 本轮故意放弃的选项（写清楚"放弃 X，因为 Y"，别只写做了什么）
+
+1. **放弃把 `mutate` 做成测具自带模式**（一开始就是这么写的）——因为测具的守卫断言是**子串匹配**，而 mutation 表的字面量里就含那些子串：`from: 'async function assertProjectIdentity()'` 让"这个函数必须存在"的断言在函数被改名后**仍然绿**。已实测到：M8/M9/M10 在表内联时 exit 0。改成独立文件 `scripts/verify_guard_mutations.mjs`，并加了两条断言钉住这个不变式（测具里不得出现 mutation 表、runner 不得变异自己）。
+2. **放弃"根 package.json 加测试入口"**（你最初给的机制）——`git ls-files package.json` 返回 0，这个仓根本没有根清单；在 Rust workspace 根上新建一个没有 lock 的 npm 清单，与"只从已提交 lock 安装"的既有纪律相反。入口挂在已有的 `apps/desktop/package.json`，只加 `scripts` 一个键。
+3. **放弃用 `window.open` 返回值判断弹窗被拦**——规范规定带 `noopener` 时恒返回 `null`，实测三个本来正常打开的链接全部误报"浏览器拦截了新窗口"。宁可漏报，不可把正常路径判红。
+4. **放弃给确认框 `<section>` 加 `max-h` + 滚动**——撑到 14 行才可见的那个尺寸，现有 10 个调用点最长文案只有 2 行，构造不出可达路径；为中心化的模态框补滚动会引入新的焦点/滚动陷阱，属为假想需求改动产品行为。只登记数字（952px / 按钮出视口 / 遮罩 `overflowY: visible`）。
+5. **放弃把 L2/L3 升级成构建期 commit 标记**——那要动 vite 配置（`define` 注入），是待批项，继续挂着。当前诚实边界：身份门禁证明"server 根目录 = 当前工作树"，**不**证明"server 启动于哪个 commit"。
+6. **放弃顺手修 `StorageBrowserDialog.tsx:148/168/182` 三处 `void copyText(...)`**——和已修的 `void openExternalUrl` 同一类，但本轮拿不出它真会失败的证据（headless 下剪贴板写入不失败）。没有红过的证据就不动，避免把"看起来同类"当成"已验证"。
+7. **放弃让 `red-demo` 用纯 predicate 代替真浏览器**——那样只证明字符串比较，证明不了真页面 + 真门禁会拒绝。现在每个用例真起一次 headless Edge，代价约 40 秒，买到的是端到端。
+8. **放弃 `shell: true` 跑 python oracle**——cmd.exe 把 `python` 解析到一个死掉的 WindowsApps 转发，exit 1 且零输出，看起来"守卫报警了"其实是 oracle 没跑。改成探测真解释器，并要求输出里出现它自己的 `total checks:` 标记才算"跑过"。
+
 ### 本轮记录（仓库路径与实状态）
+
 
 - 仓库路径（绝对）：`D:image-hosting-platform`，分支 `dev`，远端 `origin/dev`。
 - **提交前** `git status -sb` 逐字输出（本文件即其中之一，所以它必然在列表里）：

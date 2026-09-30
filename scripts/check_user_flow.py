@@ -1,6 +1,8 @@
 from pathlib import Path
+import hashlib
 import json
 import re
+import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 checks = []
@@ -398,12 +400,61 @@ require('error.identityFault = true' in harness and 'e.identityFault ? 2 : 1' in
 require('exportNames' in harness and "function|const|class|enum" in harness, 'the export comparison ignores type exports that the TS transform erases')
 # A red demonstration that lives only in a chat log is not evidence. The impostor fixture and the
 # mutation runner have to stay in the repo and stay reachable from the same entry point.
-require("MODE === 'red-demo'" in harness and "__fixtures__/impostor_dev_server.mjs" in harness, 'the identity gate keeps a re-runnable red demonstration')
-require("MODE === 'mutate'" in harness and "refuses to run" in harness, 'the guard mutations are re-runnable and refuse to touch a dirty tree')
+require("MODE === 'red-demo'" in harness and '__fixtures__/impostor_dev_server.mjs' in harness, 'the identity gate keeps a re-runnable red demonstration')
+mutations_path = ROOT / 'scripts' / 'verify_guard_mutations.mjs'
+require(mutations_path.exists(), 'the guard mutations are version controlled')
+mutations_text = mutations_path.read_text(encoding='utf-8') if mutations_path.exists() else ''
+require('refusing to run' in mutations_text and 'writeFileSync(path, original)' in mutations_text,
+        'the mutation runner refuses dirty targets and restores every byte it touched')
+require('oracleRan' in mutations_text, 'the mutation runner distinguishes a silent oracle from an alarm')
+mutation_imports = re.findall(r"from '([^']+)'", mutations_text)
+require(all(i.startswith('node:') for i in mutation_imports), f'the mutation runner adds no third-party dependency ({mutation_imports})')
+# The invariant that makes the mutations meaningful: a guard that asserts on substrings of a file
+# must not have its own test plan inside that file, because the table's literals then satisfy the
+# very assertions they are supposed to break. So: no mutation table in the harness, and the runner
+# never mutates itself.
+require("id: 'M" not in harness, 'the harness contains no mutation table (it would satisfy its own assertions)')
+require(not re.search(r"file:\s*'scripts/verify_guard_mutations\.mjs'", mutations_text), 'the mutation runner never mutates itself')
 fixture_path = ROOT / 'scripts' / '__fixtures__' / 'impostor_dev_server.mjs'
 require(fixture_path.exists(), 'the impostor dev server fixture is version controlled')
 fixture_imports = re.findall(r"from '([^']+)'", fixture_path.read_text(encoding='utf-8')) if fixture_path.exists() else []
 require(all(i.startswith('node:') for i in fixture_imports), f'the fixture adds no third-party dependency ({fixture_imports})')
+
+# The fingerprint table in CHANGELOG.md is machine-checked now. It records filename + line count +
+# sha256 for the measurement chain, and the hand-maintained version drifted one commit after the
+# rule "come back and update this when you touch these files" was written down - a hand-written
+# table cannot bind the person who writes it.
+def blob_of(rev_spec):
+    proc = subprocess.run(['git', 'show', rev_spec], cwd=ROOT, capture_output=True)
+    return None if proc.returncode != 0 else proc.stdout
+
+def fingerprint(data):
+    return {'lines': data.count(b'\n'), 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
+
+table_rows = {}
+for line in (ROOT / 'CHANGELOG.md').read_text(encoding='utf-8').splitlines():
+    row = re.match(r'\|\s*`(scripts/[^`]+)`[^|]*\|\s*(\d+)\s*\|\s*([\d,]+)\s*\|\s*`([0-9a-f]{64})`\s*\|', line)
+    if row:
+        table_rows[row.group(1)] = {'lines': int(row.group(2)), 'bytes': int(row.group(3).replace(',', '')), 'sha256': row.group(4)}
+
+measured_files = sorted(
+    [str(path.relative_to(ROOT)).replace('\\', '/') for pattern in ('scripts/verify_*.mjs', 'scripts/__fixtures__/*.mjs') for path in ROOT.glob(pattern)]
+    + ['scripts/check_user_flow.py']
+)
+require(sorted(table_rows) == measured_files, f'the fingerprint table lists exactly the measured files (table={sorted(table_rows)}; on disk={measured_files})')
+for rel in measured_files:
+    want = table_rows.get(rel)
+    if want is None:
+        continue
+    blob = blob_of(f'HEAD:{rel}')
+    if blob is None:
+        require(False, f'{rel}: no committed blob to compare the fingerprint table against')
+        continue
+    got = fingerprint(blob)
+    uncommitted = subprocess.run(['git', 'status', '--porcelain', '--', rel], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    require(got == want, f'fingerprint row for {rel} matches its HEAD blob '
+                         f'(table {want["lines"]}L/{want["bytes"]}B/{want["sha256"][:12]} vs blob {got["lines"]}L/{got["bytes"]}B/{got["sha256"][:12]})'
+                         + (f'; note: this file also has uncommitted edits: {uncommitted.splitlines()[0]}' if uncommitted else ''))
 
 # Encoding integrity for the change record. A latin1 read + utf8 write turns every CJK character
 # into a two-byte mojibake sequence; the result still decodes as UTF-8, so "it parsed" proves
@@ -415,5 +466,5 @@ failed = [label for ok, label in checks if not ok]
 for ok, label in checks[-20:]:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
-    raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
+    raise SystemExit(f'User-flow contract FAILED: {len(failed)} of {len(checks)} check(s)')
 print(f'User-flow v1.3.5 task/observability/diagnostics hardening: OK | total checks: {len(checks)}')

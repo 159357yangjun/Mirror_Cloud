@@ -21,8 +21,6 @@
  *            rejection behaviour for a malformed value and a non-http scheme
  *   red-demo  starts scripts/__fixtures__/impostor_dev_server.mjs and asserts the identity gate
  *             refuses to measure it (exit 2 from the child is the expected outcome)
- *   mutate    applies each guard-mutation to a tracked file, shows the guard alarm, restores the
- *             bytes; refuses to start if a target file is already dirty
  *
  * Options
  *   --out DIR   default %TEMP%/image-hosting-probes/<date>; screenshots and JSON land there, never
@@ -60,7 +58,7 @@ const opt = (name, fallback) => {
 }
 if (!MODE || MODE === 'help') {
   console.log(readFileSync(new URL(import.meta.url), 'utf8').split('*/')[0].replace(/^\/\*\*/, ''))
-  console.log(`modes: confirm | ab | gate | gate-unit | links | pages | external | red-demo | mutate`)
+  console.log(`modes: confirm | ab | gate | gate-unit | links | pages | external | red-demo`)
   process.exit(MODE === 'help' ? 0 : 2)
 }
 
@@ -115,8 +113,8 @@ if (MODE === 'gate-unit') {
 }
 
 const profile = `${OUT.replace(/\/+$/, '')}/.profile-${Date.now()}`
-// The browser and the dev-server preflight are lazy: red-demo and mutate orchestrate child
-// processes and must not fail (or burn a browser launch) because the parent's default --app is down.
+// The browser and the dev-server preflight are lazy: red-demo orchestrates child processes and must
+// not fail (or burn a browser launch) because the parent's default --app is down.
 let browser = null
 function launchBrowser() {
   if (browser) return
@@ -404,91 +402,6 @@ if (MODE === 'red-demo') {
   process.exit(broken.length ? 2 : 0)
 }
 
-if (MODE === 'mutate') {
-  // Re-runnable proof that each guard actually bites, replacing the hand-edits these were first
-  // demonstrated with. Every mutation is applied to a tracked file, observed, then restored from the
-  // bytes held in memory; the run refuses to start if any target file is already dirty.
-  const G = 'scripts/verify_dialog_interactions.mjs'
-  const mutations = [
-    { id: 'M1', file: G, from: "  if (!(reading.innerWidth > 0)) problems.push(`innerWidth=${reading.innerWidth} (needs > 0)`)", to: '', oracle: 'gate-unit', expect: 'innerWidth 0, everything else healthy -> accepted' },
-    { id: 'M2', file: G, from: "  if (reading.visibility !== 'visible') problems.push(`visibilityState=${reading.visibility} (needs \"visible\")`)", to: '', oracle: 'gate-unit', expect: 'hidden, sizes healthy -> accepted' },
-    { id: 'M3', file: G, from: "  if (!(reading.innerHeight > 0)) problems.push(`innerHeight=${reading.innerHeight} (needs > 0)`)", to: '', oracle: 'gate-unit', expect: 'innerHeight 0, everything else healthy -> accepted' },
-    { id: 'M4', file: G, from: '  if (!(reading.clientWidth > 0) || !(reading.clientHeight > 0)) problems.push(`client=${reading.clientWidth}x${reading.clientHeight}`)', to: '', oracle: 'gate-unit', expect: 'clientWidth 0, everything else healthy -> accepted' },
-    { id: 'M5', file: G, from: '  return { ok: problems.length === 0, problems }', to: '  return { ok: true, problems }', oracle: 'gate-unit', expect: 'hidden, sizes healthy -> accepted' },
-    { id: 'M6', file: 'apps/desktop/package.json', from: ',\n    "verify:dialog": "node ../../scripts/verify_dialog_interactions.mjs"', to: '', oracle: 'guard', expect: 'the harness is reachable from an npm script entry' },
-    { id: 'M7', file: 'CHANGELOG.md', corrupt: 'double-encode', oracle: 'guard', expect: 'CHANGELOG.md still holds real CJK code points' },
-    { id: 'M8', file: G, from: 'async function assertProjectIdentity()', to: 'async function gateRemoved()', oracle: 'guard', expect: 'the harness verifies it is measuring this project' },
-    { id: 'M9', file: G, from: '    error.identityFault = true\n    throw error', to: '    finish(2)', oracle: 'guard', expect: 'an identity mismatch exits as a harness fault, not a pass or a regression' },
-    { id: 'M10', file: G, from: 'function|const|class|enum', to: 'function|const|class|type|interface|enum', oracle: 'guard', expect: 'the export comparison ignores type exports that the TS transform erases' },
-  ]
-  const touched = [...new Set(mutations.map((m) => m.file))]
-  const dirty = touched.filter((rel) => execFileSync('git', ['status', '--porcelain', '--', rel], { cwd: REPO, encoding: 'utf8' }).trim())
-  if (dirty.length) {
-    console.error(`mutate refuses to run: these files are already modified, and restoring them would destroy that work:\n  ${dirty.join('\n  ')}`)
-    process.exit(2)
-  }
-  // `python` is not launchable from node on this box (ENOENT without a shell, and cmd.exe resolves it
-  // to a dead WindowsApps stub that exits 1 with no output - which reads exactly like "the guard
-  // alarmed"). Probe for a real interpreter instead of trusting an exit code.
-  function resolvePython() {
-    for (const [exe, pre] of [[process.env.PYTHON, []], ['python', []], ['py', ['-3']], ['python3', []]]) {
-      if (!exe) continue
-      const probe = spawnSync(exe, [...pre, '-c', 'import sys; print(sys.version_info[0])'], { encoding: 'utf8', timeout: 30_000 })
-      if (probe.status === 0 && (probe.stdout || '').trim() === '3') return { exe, pre }
-    }
-    return null
-  }
-  const python = resolvePython()
-  if (!python) {
-    console.error('mutate cannot run: no Python 3 interpreter found (tried $PYTHON, python, py -3, python3).')
-    process.exit(2)
-  }
-  const runOracle = (oracle) => {
-    if (oracle === 'gate-unit') {
-      const r = spawnSync(process.execPath, [SELF, 'gate-unit'], { cwd: REPO, encoding: 'utf8', timeout: 60_000 })
-      return { status: r.status, spawnError: r.error ? String(r.error).slice(0, 120) : null, output: `${r.stdout || ''}${r.stderr || ''}`, marker: 'gate unit check' }
-    }
-    const r = spawnSync(python.exe, [...python.pre, 'scripts/check_user_flow.py'], { cwd: REPO, encoding: 'utf8', timeout: 180_000 })
-    return { status: r.status, spawnError: r.error ? String(r.error).slice(0, 120) : null, output: `${r.stdout || ''}${r.stderr || ''}`, marker: 'total checks:' }
-  }
-  // Files are checked out with CRLF under core.autocrlf=true, so a multi-line anchor written with
-  // \n matches nothing - and "anchor missing" is reported, not silently skipped as a pass.
-  const adapt = (text, needle) => (text.includes('\r\n') ? needle.replace(/\n/g, '\r\n') : needle)
-  const results = []
-  for (const m of mutations) {
-    const path = `${REPO}/${m.file}`
-    const original = readFileSync(path)
-    try {
-      const text = original.toString('utf8')
-      // The real corruption this guard exists for: read as latin1, write back as utf8. Every CJK
-      // character becomes two Latin-1 characters, and the file still decodes as UTF-8 afterwards.
-      let mutated
-      if (m.corrupt === 'double-encode') mutated = Buffer.from(text, 'latin1').toString('utf8')
-      else {
-        const needle = adapt(text, m.from)
-        mutated = text.includes(needle) ? text.replace(needle, adapt(text, m.to)) : undefined
-      }
-      if (mutated === undefined || mutated === text) { results.push({ id: m.id, file: m.file, applied: false, note: 'anchor missing - mutation definition is stale' }); continue }
-      writeFileSync(path, mutated)
-      const run = runOracle(m.oracle)
-      const oracleRan = run.output.includes(run.marker)
-      results.push({
-        id: m.id, file: m.file, oracle: m.oracle, applied: true, spawnError: run.spawnError, oracleRan,
-        guardAlarmed: oracleRan && run.status !== 0 && run.status !== null, namedExpectedFailure: run.output.includes(m.expect),
-        observedExit: run.status,
-        evidence: run.output.split('\n').filter((l) => l.startsWith('FAIL') || l.includes('-> accepted')).slice(0, 2).map((l) => l.trim().slice(0, 120)),
-      })
-    } finally {
-      writeFileSync(path, original)
-    }
-  }
-  const unrestored = touched.filter((rel) => execFileSync('git', ['status', '--porcelain', '--', rel], { cwd: REPO, encoding: 'utf8' }).trim())
-  const bad = results.filter((r) => !r.applied || !r.guardAlarmed || !r.namedExpectedFailure)
-  writeFileSync(`${OUT}/report-mutate.json`, JSON.stringify({ results, unrestored }, null, 2))
-  for (const r of results) console.log(`${r.applied && r.guardAlarmed && r.namedExpectedFailure ? 'OK  ' : 'FAIL'} ${r.id} ${r.file}${r.note ? ` (${r.note})` : ` -> oracle ran: ${r.oracleRan}, exit ${r.observedExit}, named expected failure: ${r.namedExpectedFailure}${r.spawnError ? `, spawnError: ${r.spawnError}` : ''}`}${r.evidence && r.evidence.length ? `\n      ${r.evidence.join('\n      ')}` : ''}`)
-  console.log(`guard mutations: ${results.length - bad.length}/${mutations.length} alarms reproduced | tree restored: ${unrestored.length === 0 ? 'clean' : `DIRTY ${unrestored.join(', ')}`}`)
-  process.exit(bad.length || unrestored.length ? 2 : 0)
-}
 
 async function main() {
   await requireDevServer()
