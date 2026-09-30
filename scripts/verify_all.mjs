@@ -81,7 +81,7 @@ const stages = [
   { name: 'gate', run: 'node', args: [NODE_MODE, 'gate'], needsServer: true, count: /"sawMinimizedReject": (true|false)/ },
   { name: 'ab', run: 'node', args: [NODE_MODE, 'ab'], needsServer: true, count: /"deltaOverflowX": (\d+)/ },
   { name: 'visual', run: 'node', args: [NODE_MODE, 'visual'], needsServer: true, timeout: 600_000, count: /VISUAL_GATE total=(\d+) failed=(\d+)/ },
-  { name: 'settings-guard', run: 'node', args: [NODE_MODE, 'settings-guard'], needsServer: true, timeout: 600_000, count: /SETTINGS_GATE checked=(\d+) failed=(\d+)/ },
+  { name: 'settings-guard', run: 'node', args: [NODE_MODE, 'settings-guard'], needsServer: true, timeout: 600_000, count: /SETTINGS_GATE checked=(\d+).*failed=(\d+)/ },
   // `layout` is deliberately NOT a stage yet. Standalone it reports 23 real geometry findings;
   // inside this aggregate the viewport override for the 1024 tier never applied and the injected
   // helpers disappeared before 640, which surfaced as 7 invented "navigation entry point not
@@ -128,10 +128,14 @@ for (const stage of stages) {
     if (line.startsWith('FAIL') || line.includes('FAILED') || line.startsWith('Traceback') || line.startsWith('Error')) console.log(`    ${line.trim()}`)
   }
   const match = output.match(stage.count)
+  // A stage whose tally this runner cannot read has not been verified, whatever it exited with.
+  // The exit code alone was not enough: adding fields to a gate's summary line silently broke the
+  // regex and the stage still reported PASSED. An unreadable count is now a failure in its own right.
+  const unreadable = Boolean(stage.count) && !match
   const detail = r.error ? `spawn error: ${String(r.error).slice(0, 120)}`
     : match ? `${stage.count.source.includes('sawMinimizedReject') ? 'sawMinimizedReject=' : ''}${match[0].trim()}`
     : 'count: NOT REPORTED by this stage - treat as a harness gap, not a pass'
-  results.push({ name: stage.name, status: r.status === 0 ? 'passed' : 'failed', exit: r.status, detail })
+  results.push({ name: stage.name, status: r.status === 0 && !unreadable ? 'passed' : 'failed', exit: r.status, detail })
   console.log(`    => ${results[results.length - 1].status} (exit ${r.status}) ${detail}`)
 }
 
