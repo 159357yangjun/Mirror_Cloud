@@ -1385,11 +1385,35 @@ window.__V = (function () {
       // transcript - including the mutation runner that checks this mode.
       console.log(`${bad.length ? 'FAIL' : 'OK  '} settings ${c.field}=${entry.illegal} -> mounted=${mounted} theme=${state.themeAttr} accent=${state.accent} blur=${state.blur} glass=${state.glass} wallpaper=${state.wallpaperAttr} textLen=${state.rootTextLen}${bad.length ? ' | ' + bad.join(' | ') : ''}`)
     }
+    // The load path above cannot see the apply boundary's own behaviour: once apply also rejects,
+    // a broken load guard is invisible through a reload. So drive apply directly, bypassing
+    // loadThemePreferences entirely - that is what a settings panel, a migration or a test does.
+    const DIRECT = ['banana', 42, '', 'MIDNIGHT', 'mist; background:url(#x)']
+    for (const value of DIRECT) {
+      const before = await evaluate(`document.documentElement.dataset.theme || '(absent)'`)
+      const r = await evaluate(`(async function(){
+        try {
+          const m = await import('/src/lib/theme.ts');
+          m.applyThemePreferences({ theme: ${JSON.stringify(value)}, accent: '#4f46e5', wallpaper: '', blur: 18, glass: 88 });
+          return { threw: false, err: '' };
+        } catch (e) { return { threw: true, err: String(e).slice(0, 120) }; }
+      })()`)
+      const after = await evaluate(`(function(){return {attr: document.documentElement.dataset.theme || '(absent)', accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()}})()`)
+      const bad = []
+      if (r.threw) bad.push(`apply threw instead of ignoring the bad value: ${r.err}`)
+      if (!['(absent)', 'mist', 'midnight', 'sakura'].includes(after.attr)) bad.push(`unknown theme written straight into the DOM: data-theme="${after.attr}"`)
+      if (after.accent !== '#4f46e5') bad.push(`a bad theme key also stopped the other fields applying: --accent=${after.accent}`)
+      const entry = { field: 'apply-direct', illegal: JSON.stringify(value), themeBefore: before, themeAfter: after.attr, threw: r.threw, note: 'calls applyThemePreferences without going through loadThemePreferences' }
+      results.push(entry)
+      for (const b of bad) failures.push(`SETTINGS apply(${JSON.stringify(value)}): ${b}`)
+      console.log(`${bad.length ? 'FAIL' : 'OK  '} settings apply(${JSON.stringify(value)}) direct -> threw=${r.threw} data-theme=${after.attr} accent=${after.accent}${bad.length ? ' | ' + bad.join(' | ') : ''}`)
+      await evaluate(`(function(){delete document.documentElement.dataset.theme;return true})()`)
+    }
     await evaluate(`(function(){${original === null ? `window.localStorage.removeItem(${JSON.stringify(KEY)})` : `window.localStorage.setItem(${JSON.stringify(KEY)}, ${JSON.stringify(original)})`};return true})()`)
     await send('Page.navigate', { url: APP })
     writeFileSync(`${OUT}/report-settings.json`, JSON.stringify({ provenance: buildProvenance(), cases: results, failures }, null, 2))
-    console.log(`SETTINGS_GATE checked=${CASES.length} failed=${failures.length}`)
-    console.log(failures.length ? `settings-guard: ${failures.length} failure(s) - an out-of-band value reached the UI or blanked it` : `settings-guard: all ${CASES.length} illegal values fell back or were refused, none blanked the app`)
+    console.log(`SETTINGS_GATE checked=${CASES.length + DIRECT.length} viaLoad=${CASES.length} viaApply=${DIRECT.length} failed=${failures.length}`)
+    console.log(failures.length ? `settings-guard: ${failures.length} failure(s) - an out-of-band value reached the UI or blanked it` : `settings-guard: all ${CASES.length + DIRECT.length} illegal values fell back or were refused (${CASES.length} through load, ${DIRECT.length} straight into apply), none blanked the app`)
     finish(failures.length ? 1 : 0)
   }
 

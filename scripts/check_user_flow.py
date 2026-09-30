@@ -397,6 +397,30 @@ for button_tag in re.finditer(r'<button[^>]*?className="([^"]*)"', help_dialog, 
     require(not discarded, f'a non-important size/weight utility on a button is discarded by styles.css ({discarded})')
 require(checked_buttons >= 2, f'the button-utility rule actually inspected the dialog ({checked_buttons} buttons found)')
 
+# Appearance settings are the one place this app takes a value from outside the render and writes
+# it onto documentElement, where it selects which CSS applies. Two boundaries guard it and each
+# needs its own assertion, because removing one is now invisible through the app: load rejects a
+# bad stored value, and apply - the only writer - rejects a bad argument. Deleting the load guard
+# alone changes nothing a browser can observe, which is exactly how a redundant-looking layer hides
+# that it is the last line of defence for a direct caller.
+def function_body(source, name):
+    marker = f'export function {name}('
+    start = source.find(marker)
+    if start == -1:
+        return ''
+    rest = source[start + len(marker):]
+    nxt = rest.find('export function ')
+    return rest if nxt == -1 else rest[:nxt]
+
+theme_lib = text('apps/desktop/src/lib/theme.ts')
+load_body = function_body(theme_lib, 'loadThemePreferences')
+apply_body = function_body(theme_lib, 'applyThemePreferences')
+require(load_body != '', 'loadThemePreferences still exists')
+require(apply_body != '', 'applyThemePreferences still exists')
+require('isThemeKey(parsed.theme)' in load_body, 'the load boundary rejects an unknown stored theme key')
+require('isThemeKey(preferences.theme)' in apply_body, 'the apply boundary, the only writer of data-theme, validates the key itself rather than trusting its caller')
+require('if (!isThemeKey(preferences.theme)) return' not in apply_body, 'the apply guard is per-field: an unknown theme must not abort the accent/blur/glass/wallpaper writes')
+
 # Every docs / external link used to be `void openExternalUrl(...)`. Measured with an unreachable
 # and then a malformed baked base: the click opened a tab to an error page, or nothing at all, and
 # the app showed no toast, no inline error and no console entry the user could act on.

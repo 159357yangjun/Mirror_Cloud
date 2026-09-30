@@ -57,8 +57,17 @@ export function loadThemePreferences(): ThemePreferences {
 
 export function applyThemePreferences(preferences: ThemePreferences) {
   const root = document.documentElement
-  if (preferences.theme === 'mist') delete root.dataset.theme
-  else root.dataset.theme = preferences.theme
+  // The only place that writes these attributes, so the only place that can decide whether a
+  // value is allowed to be written. loadThemePreferences rejecting a bad stored value protects one
+  // caller; a settings panel, a migration or a test calling apply directly would still put
+  // data-theme="banana" on the document - selecting no stylesheet rule at all, and nothing would
+  // ever report it. Rejected values are a no-op, not a throw: a bad appearance setting must not
+  // take the app down. Guarded per field, matching accent/blur/glass/wallpaper below, so one bad
+  // key does not silently stop the others from applying.
+  if (isThemeKey(preferences.theme)) {
+    if (preferences.theme === 'mist') delete root.dataset.theme
+    else root.dataset.theme = preferences.theme
+  }
 
   const accent = isHexColor(preferences.accent) ? preferences.accent : DEFAULT_THEME_PREFERENCES.accent
   root.style.setProperty('--accent', accent)

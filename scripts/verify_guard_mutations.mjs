@@ -31,6 +31,7 @@ const REPO = fileURLToPath(new URL('..', import.meta.url)).replace(/\\/g, '/').r
 const HARNESS = 'scripts/verify_dialog_interactions.mjs'
 const FIXTURE = 'scripts/__fixtures__/impostor_dev_server.mjs'
 const DIALOG = 'apps/desktop/src/components/HelpCenterDialog.tsx'
+const THEME = 'apps/desktop/src/lib/theme.ts'
 const OUT = (process.env.TEMP || '/tmp').replace(/\\/g, '/').replace(/\/+$/, '') + `/image-hosting-probes/${new Date().toISOString().slice(0, 10)}`
 mkdirSync(OUT, { recursive: true })
 
@@ -71,9 +72,12 @@ const mutations = [
   // overflow-wrap so a 64-character hashed filename stops running out of the 440px card. Take it
   // away and the layout sweep must see the text cut - the document-level number will not.
   { id: 'M17', file: 'apps/desktop/src/components/ConfirmDialog.tsx', from: 'mt-2 break-words text-xs', to: 'mt-2 text-xs', oracle: 'layout', expect: 'own-text run(s) cut with no ellipsis and no title' },
-  // Removes the theme whitelist so an out-of-band value reaches the DOM. This is the ?mode=xyz
-  // shape transplanted into the one place this app takes outside input: persisted appearance.
-  { id: 'M18', file: 'apps/desktop/src/lib/theme.ts', from: 'theme: isThemeKey(parsed.theme) ? parsed.theme : DEFAULT_THEME_PREFERENCES.theme,', to: 'theme: parsed.theme,', oracle: 'settings', expect: 'unknown theme written into the DOM' },
+  // Two boundaries now guard the same property, and each needs its own mutation: deleting the
+  // apply-side guard is observable in the browser, deleting the load-side one is not (apply still
+  // catches it), so only a static assertion can tell the second layer was removed. Proving one
+  // red does not prove the other is load-bearing.
+  { id: 'M18', file: THEME, from: 'if (isThemeKey(preferences.theme)) {', to: 'if (true) {', oracle: 'settings', expect: 'unknown theme written straight into the DOM' },
+  { id: 'M19', file: THEME, from: 'theme: isThemeKey(parsed.theme) ? parsed.theme : DEFAULT_THEME_PREFERENCES.theme,', to: 'theme: parsed.theme,', oracle: 'guard', expect: 'the load boundary rejects an unknown stored theme key' },
 ]
 
 const selected = only ? mutations.filter((m) => only.has(m.id)) : mutations
