@@ -1528,15 +1528,22 @@ window.__L = (function () {
   // would flag ordinary page content as cut. .app-main is overflow-y:auto, so a walk that continued
   // past rails reported 22 below-the-fold buttons at 1440x900 that a user reaches by scrolling.
   // A rail that is itself cut is caught when the rail is evaluated as its own subject.
-  const nearestClipper = (e) => {
+  // PER AXIS. overflow is two independent properties and Chrome resolves them independently
+  // (a visible axis paired with a non-visible one computes to auto). A single boolean that stops
+  // the whole chain when EITHER axis scrolls lets .app-main - overflow-y:auto, overflow-x:hidden -
+  // excuse horizontal cuts, because a vertical rail vouches for the horizontal axis. Each axis
+  // walks on its own and stops on its own.
+  const clipperForAxis = (e, axis) => {
+    const prop = axis === 'x' ? 'overflowX' : 'overflowY'
     let n = e.parentElement
     while (n && n.nodeType === 1) {
       const cs = getComputedStyle(n)
-      if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
+      const v = cs[prop]
+      if (v !== 'visible') {
         const r = n.getBoundingClientRect()
         return {
-          node: n, ox: cs.overflowX, oy: cs.overflowY,
-          rail: /auto|scroll/.test(cs.overflowX) || /auto|scroll/.test(cs.overflowY),
+          node: n, v, axis,
+          rail: v === 'auto' || v === 'scroll' || v === 'overlay',
           box: {
             left: r.left + (parseFloat(cs.borderLeftWidth) || 0),
             top: r.top + (parseFloat(cs.borderTopWidth) || 0),
@@ -1565,7 +1572,7 @@ window.__L = (function () {
         // Self-reporting counts. A sweep that examined nothing and a sweep that found nothing
         // clean must never print the same way.
         nodes: all.length, visibleNodes: 0, textLeaves: 0, measuredLeaves: 0,
-        skipSrOnly: 0, skipEllipsis: 0, skipTitle: 0, skipScrollRail: 0, skipFixed: 0, railClips: 0,
+        skipSrOnly: 0, skipEllipsis: 0, skipTitle: 0, skipScrollRail: 0, skipFixed: 0, railX: 0, railY: 0,
         docScrollWidth: doc.scrollWidth,
         bodyScrollWidth: document.body ? document.body.scrollWidth : 0,
         // Criterion DOC: does the document's own content box extend past the viewport? This is the
@@ -1585,22 +1592,25 @@ window.__L = (function () {
         }
         const cs = getComputedStyle(e)
         if (cs.position === 'fixed') { out.skipFixed++; continue }
-        const clip = nearestClipper(e)
-        if (!clip) continue
-        if (clip.rail) { out.railClips++; continue }
-        const loss = intersectLoss(r, clip.box)
-        const px = Math.max(loss.lostX, loss.lostY)
-        if (px <= 1) continue
-        const tag = e.tagName.toLowerCase()
-        const isTextLeaf = hasOwnText(e) && !!txt(e)
-        // The known false-positive sources only apply to text: a visually-hidden label, an
-        // ellipsis or line-clamp that truncates on purpose, and a title that carries the whole
-        // string for a tooltip.
-        if (isTextLeaf && (isVisualHiding(e, cs) || cs.textOverflow === 'ellipsis' || (cs.webkitLineClamp && cs.webkitLineClamp !== 'none') || e.title || e.closest('[title]'))) continue
-        const rec = { sel: sel(e), by: sel(clip.node), excess: px, axis: loss.lostX >= loss.lostY ? 'x' : 'y', overflow: clip.ox + '/' + clip.oy, text: txt(e).slice(0, 30) }
-        if (isTextLeaf) out.clippedByAncestor.push(rec)
-        else if (/^(button|a|input|select|textarea)$/.test(tag) || e.getAttribute('role')) out.controlsCut.push(rec)
-        else out.containersCut.push(rec)
+        const cx = clipperForAxis(e, 'x')
+        const cy = clipperForAxis(e, 'y')
+        if (cx && cx.rail) out.railX++
+        if (cy && cy.rail) out.railY++
+        let lostX = 0, lostY = 0, byX = null, byY = null
+        if (cx && !cx.rail) { const l = intersectLoss(r, cx.box); lostX = l.lostX; byX = cx }
+        if (cy && !cy.rail) { const l = intersectLoss(r, cy.box); lostY = l.lostY; byY = cy }
+        const px = Math.max(lostX, lostY)
+        if (px > 1) {
+          const cutter = lostX >= lostY ? byX : byY
+          const rec = { sel: sel(e), by: cutter ? sel(cutter.node) : 'unknown', excess: px, axis: lostX >= lostY ? 'x' : 'y', lostX, lostY, overflow: (cx ? cx.v : '-') + '/' + (cy ? cy.v : '-'), text: txt(e).slice(0, 30) }
+          const isText = hasOwnText(e) && !!txt(e)
+          const tag = e.tagName.toLowerCase()
+          if (isText && (isVisualHiding(e, cs) || cs.textOverflow === 'ellipsis' || (cs.webkitLineClamp && cs.webkitLineClamp !== 'none') || e.title || e.closest('[title]'))) {
+            // intended truncation
+          } else if (isText) out.clippedByAncestor.push(rec)
+          else if (/^(button|a|input|select|textarea)$/.test(tag) || e.getAttribute('role')) out.controlsCut.push(rec)
+          else out.containersCut.push(rec)
+        }
       }
       out.offenders.sort((a, b) => b.over - a.over)
       out.offenders = out.offenders.slice(0, 6)
@@ -1825,6 +1835,23 @@ true
       fb0.focus(); const stopB = window.__L.focusNow();
       probe.focus = { noRingRed: stopA.visible === false, wrapperRingGreen: stopB.visible === true, ringLevel: stopB.ringLevel, aChanged: stopA.changed, bChanged: stopB.changed };
       fa0.remove(); wrap.remove(); sheet.remove();
+      // Cross-axis control: a horizontal rail that also cuts vertically. A single boolean that
+      // stops the chain on "any axis scrolls" excuses the vertical cut as well - this shape is
+      // what distinguishes per-axis from per-element.
+      const xRail = document.createElement('div')
+      xRail.style.cssText = 'width:200px;height:26px;overflow-x:auto;overflow-y:hidden;font-size:12px;line-height:18px'
+      xRail.innerHTML = '<span id="lctl-yvictim">LCTLY' + ' y-brim ' + LONG + '</span>'
+      const tall = document.createElement('div'); tall.style.cssText = 'height:40px'
+      tall.appendChild(xRail); host.appendChild(tall)
+      const g5 = window.__L.geometry(0)
+      const vic = g5.clippedByAncestor.filter((c) => c.text && c.text.indexOf('LCTLY') === 0)
+      probe.crossAxis = {
+        yCaught: vic.some((c) => c.lostY > 1),
+        xExcused: vic.length > 0 && vic.every((c) => c.lostX <= 1),
+        lostY: vic.length ? Math.max(...vic.map((c) => c.lostY)) : null,
+        lostX: vic.length ? Math.max(...vic.map((c) => c.lostX)) : null,
+      }
+      tall.remove();
       const after = window.__L.geometry(0);
       probe.removedCleanly = after.clippedByAncestorTotal === baseline.clippedByAncestorTotal && after.docOverflowPx === baseline.docOverflowPx;
       probe.nodes = baseline.nodes; probe.textLeaves = baseline.textLeaves;
@@ -1840,6 +1867,8 @@ true
     if (!control.railThenOuter.railFlagged) bad.push(`the scroll rail itself was not reported although an outer overflow:hidden cuts it (worst container cut ${control.railThenOuter.worst}px)`)
     if (!control.focus.noRingRed) bad.push(`focus control failed: a button with outline:none and no box-shadow read as having a visible focus state (changed=${control.focus.aChanged})`)
     if (!control.focus.wrapperRingGreen) bad.push(`focus control failed: a ring drawn on the wrapper was missed, so real component-library rings would be false reds (changed=${control.focus.bChanged}, ringLevel=${control.focus.ringLevel})`)
+    if (!control.crossAxis.yCaught) bad.push(`cross-axis control failed: a vertical cut behind a horizontal rail was excused (lostY=${control.crossAxis.lostY}) - the stop rule is not per-axis`)
+    if (!control.crossAxis.xExcused) bad.push(`cross-axis control failed: the horizontal rail's own scrollable axis was reported as a cut (lostX=${control.crossAxis.lostX}) - now over-correcting`)
     for (const [k, why] of [['srOnlySkipped', 'a visually-hidden sr-only span was counted as cut-off text'], ['scrollRailSkipped', 'an overflow-x:auto rail was counted as a clip rather than a reachable scroll']]) {
       if (!control.negative[k]) bad.push(`negative control failed: ${why}`)
     }
@@ -1851,6 +1880,7 @@ true
     console.log(`CONTROL-C (c) self hidden -> SELF-CLIP +${control.negative.realCutDelta}px; overflow:hidden was NOT accepted as an escape hatch`)
     console.log(`CONTROL-negatives -> sr-only skipped=${control.negative.srOnlySkipped}, overflow-x:auto rail skipped=${control.negative.scrollRailSkipped}`)
     console.log(`CONTROL-D rail-then-outer -> leaf inside a scroll rail left alone=${control.railThenOuter.leafNotFlagged}; the rail itself reported when an outer overflow:hidden cuts it=${control.railThenOuter.railFlagged} (worst ${control.railThenOuter.worst}px)`)
+    console.log(`CONTROL-F cross-axis -> rail overflow-x:auto + overflow-y:hidden: vertical cut reported=${control.crossAxis.yCaught} (lostY ${control.crossAxis.lostY}px), horizontal excused=${control.crossAxis.xExcused} (lostX ${control.crossAxis.lostX}px)`)
     console.log(`CONTROL-E focus -> outline:none+no-shadow reads invisible=${control.focus.noRingRed}; ring drawn on a wrapper reads visible=${control.focus.wrapperRingGreen} (found at ancestor depth ${control.focus.ringLevel})`)
     console.log(`COVERAGE: the sr-only exclusion is proven only by the planted control. In a browser-only harness no plugin row renders, so the app's own .sr-only element (PluginsPage.tsx:175) is never reached - the branch works, the app path is unexercised.`)
     console.log(`COVERAGE: nodes=${control.nodes} textLeaves=${control.textLeaves} restored=${control.removedCleanly}`)
@@ -1940,7 +1970,7 @@ true
         if (g.clippedTotal) emit(`SELF-CLIP ${entry.tier} ${label}: ${g.clippedTotal} own-text run(s) cut with no ellipsis and no title - worst ${g.clipped[0].hDelta}px horizontal / ${g.clipped[0].vDelta}px vertical ink "${g.clipped[0].text}" at ${g.clipped[0].sel}`)
         if (g.smallTotal) emit(`TOUCH-TARGET ${entry.tier} ${label}: ${g.smallTotal} clickable target(s) under ${TOUCH}x${TOUCH} - smallest ${g.smallTargets[0].w}x${g.smallTargets[0].h} "${g.smallTargets[0].text}" at ${g.smallTargets[0].sel}`)
         if (g.brokenImages.length) emit(`BROKEN-IMAGE ${entry.tier} ${label}: ${g.brokenImages.length} image(s) with naturalWidth 0 - ${g.brokenImages.map((b) => b.src).join(', ')}`)
-        entry.exclusions = { srOnly: g.skipSrOnly, ellipsis: g.skipEllipsis, title: g.skipTitle, scrollRail: g.skipScrollRail, fixed: g.skipFixed, railClips: g.railClips, textLeaves: g.textLeaves, measuredLeaves: g.measuredLeaves }
+        entry.exclusions = { srOnly: g.skipSrOnly, ellipsis: g.skipEllipsis, title: g.skipTitle, scrollRail: g.skipScrollRail, fixed: g.skipFixed, railX: g.railX, railY: g.railY, textLeaves: g.textLeaves, measuredLeaves: g.measuredLeaves }
         if (tier.width === 640) {
           const seen = []
           entry.focusableCount = await evaluate(`window.__L.markFocusables()`)
