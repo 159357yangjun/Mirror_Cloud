@@ -472,8 +472,14 @@ change_log_text = (ROOT / 'CHANGELOG.md').read_bytes().decode('utf-8')
 require(any(ord(c) > 0x255 for c in change_log_text), 'CHANGELOG.md still holds real CJK code points (not double-encoded)')
 
 failed = [label for ok, label in checks if not ok]
-for ok, label in checks[-20:]:
-    print(('OK   ' if ok else 'FAIL ') + label)
+# Print every failure, then a short tail of passing checks for context. Printing only the last 20
+# checks meant a failing assertion outside that window exited 1 without ever naming itself, which the
+# mutation runner reported as "the oracle stayed silent" for guards that had caught the mutation.
+for label in failed:
+    print('FAIL ' + label)
+for ok, label in checks[-8:]:
+    if ok:
+        print('OK   ' + label)
 if failed:
     raise SystemExit(f'User-flow contract FAILED: {len(failed)} of {len(checks)} check(s)')
 print(f'User-flow v1.3.5 task/observability/diagnostics hardening: OK | total checks: {len(checks)}')
