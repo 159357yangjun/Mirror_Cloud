@@ -704,7 +704,53 @@ TIMEOUT_DEMO cases=6 failed=0 budget=4000ms
 但注释已按实测改写，因为一句"不加它就会漏"的错误机制说明，会把下一个人送去修错的那一行。
 夹具本身要两面：第 5 例（正常结束的 stage 不得被报成 timeout）是防"永远报超时也算对"的负对照。
 
-### 两处程序性自曝
+### 本轮末次运行读数（原文，非转述）
+
+聚合器（干净树、`0d98ff4` 之后 8 个提交之上）：
+
+```text
+verify:all | 18 stages: 18 passed, 0 failed, 0 skipped
+```
+
+其中与本轮相关的几行（`detail` 就是各 stage 自己那台计数，聚合器双向核对过退码）：
+
+```text
+PASSED  check_user_flow  USERFLOW_CHECKS total=222 failed=0
+PASSED  theme_face_inventory  THEME_FACE_VERIFY faces=23 docLines=25 mismatch=0
+PASSED  verify_shape  SPLIT_SHAPE OK checked=17 failed=0
+PASSED  gate-unit  gate-unit checked=11 failed=0
+PASSED  contrast-tier  contrast-tier checked=1890 failed=0
+PASSED  theme-surfaces  theme-surfaces checked=198 failed=0
+PASSED  red-demo  red-demo checked=2 failed=0
+PASSED  mutations  mutations checked=24 failed=0
+```
+
+`gate-unit` 从 6 例变 11 例（覆盖率上限那 5 例）；`contrast-tier` 是本轮**新接入**的一 stage；
+`mutations` 那格是全部 24 个变异，不只本轮新增的四个。
+
+单跑本轮那六个（同一棵干净树，逐条 oracle 归属）：
+
+```text
+OK   M21 scripts/verify_dialog_interactions.mjs -> oracle ran: true, exit 1, named expected failure: true
+OK   M22 scripts/verify_dialog_interactions.mjs -> oracle ran: false, exit 2, named expected failure: true
+OK   M23 apps/desktop/src/pages/SettingsPage.tsx -> oracle ran: true, exit 1, named expected failure: true
+OK   M24 scripts/verify_dialog_interactions.mjs -> guard-removal: pristine run exited 2 naming the guard, mutated run exited 0 and named nothing (baseline alarmed: true)
+OK   M18 apps/desktop/src/lib/theme.ts -> oracle ran: true, exit 1, named expected failure: true
+OK   M19 apps/desktop/src/lib/theme.ts -> oracle ran: true, exit 1, named expected failure: true
+GATE_JSON {"gate":"mutations","checked":6,"failed":0,"ok":true,"unrestored":0}
+guard mutations: 6/6 alarms reproduced | interpreter: D:/anaconda/python.exe  | tree restored: clean
+```
+
+M18 抓它的是 `settings-guard`（apply 侧：`banana`/`42`/`MIDNIGHT` 三个非法值被直接写进 `data-theme`），
+M19 抓它的是同一台 oracle 的 load 侧那条（`the load boundary rejects an unknown stored theme key`）。
+M22 那格 `oracle ran: false` 是**符合预期**的：它把取样器退回中心点后，先红的是 CHIP 夹具，
+run 在第一个故障处停下，所以 `CONTRAST_GATE` 那行根本没印 —— 判"抓到"的依据是"退码非 0 且点名了被破坏的性质"。
+
+反向自测（"拔了守卫仍全绿"这一类）现在只有 M24 一条是**按那个形状写的**，因为它的判据要求
+"未变异必须红 + 变异后必须绿"两半都在同一次里成立；其余 23 条是"弄坏性质 ⇒ 守卫必须响"。
+
+
+### 三处程序性自曝
 
 - **提交信息被 amend 过一次**（未推；旧→新：`7137196` → `bc53a45`，复算式 `git log --grep="4.5:1 floor"`）。
   第一条消息写着"调用点不用动"，而同一个提交里就含 13 处
@@ -713,10 +759,11 @@ TIMEOUT_DEMO cases=6 failed=0 budget=4000ms
 - **另有一次带内容的 amend**（`cd6e995` → `fad34e3`，同样未推）：那条提交的信息声称"逐轴判据在注释里写明了
   是否故意"，而我检查文件后发现注释只讲了"为什么逐轴对"、没讲"故意/顺手"这个裁决 —— 也就是说消息在替一件
   当时还没做的事领功。裁决与两边的证据补进 `verify_probes.mjs` 后 amend 进去（该提交尚未被任何后续提交依赖）。
-- **shape 台账这一轮签了三次**，每次都是先把旧基线跑红再 `--snapshot --reason`：
-  第一次 `DRIFT failed=3`（本轮新增的门改了 harness 体量）、第二次 `failed=2`（聚合器补 timeout-demo 与
-  python 绑定）、第三次 `failed=0→重签`（`verify_probes.mjs` 里那段逐轴判据注释并进了同一个提交）。
-  理由逐条存在基线 json 的 `_meta` 里，`--verify` 每次把 `takenAt/head/reason` 印出来 —— 重签是签字，不是刷新。
+- **shape 台账这一轮重签了四次**，每次 `--snapshot` 之前都先跑一次 `--verify` 看到 `SPLIT_SHAPE DRIFT` 才签
+  （漂移来源：本轮新增的门改了 harness 体量 → 聚合器补 `timeout-demo` 与 python 绑定 → 逐轴判据注释并进
+  同一提交 → 变异器修好之后又长了一次）。**但"签了几次"这件事不在盘上**：`--snapshot` 覆盖 `_meta`，
+  所以基线 json 里只有最后一次的理由，前几次只活在本节这段文字里。这是"重签即签字"的代价，
+  要真做成可审计的签字流水，得让快照累积成一个 append-only 的历史文件 —— 本轮没做，记在这里。
 
 ### 本批没做/放弃的（连理由）
 
