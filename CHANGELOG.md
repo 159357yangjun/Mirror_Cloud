@@ -178,13 +178,17 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
-| `scripts/verify_all.mjs` | 170 | 11,408 | `c69561efe0eb22d7a136fcb28a11a49af07e9b066e03577211a97503eba23c5c` | 14 stages，一条命令跑完七道守卫 + 六个测具模式（新增 `settings-guard`）+ 变异套件（`layout` 与 `theme-surfaces` 暂不接入，原因见下） | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行） |
-| `scripts/verify_dialog_interactions.mjs` | 1810 | 130,580 | `fbba5c85b336488294cb5ec52ba9f856b6a687393fc4883a5d563dc1f133b277` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
-| `scripts/verify_guard_mutations.mjs` | 211 | 16,377 | `efc80594895081a6577b25ccfda4ad26cc5683b46ad3e84ccfb7b6338a747bfe` | 20/20 变异都被对应 oracle 抓到 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
-| `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 540 | 31,922 | `bec6073b888a10ad50fabd8b5819d41021bda94f3a9dfcb0cf7f2678c0dc2cc3` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
+| `scripts/verify_all.mjs` | 332 | 23,627 | `ecb255d37155cb380691d330163c51b6a4b939b04f4933b5d5c3e73c684efee6` | 18 stages：七道静态守卫 + 两份台账（`theme_face_inventory`、`verify_shape`）+ 七个测具模式（新增 `contrast-tier`、`theme-surfaces`）+ `red-demo` + 变异套件；`layout` 仍不接入，原因见其注释 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行）；`node scripts/verify_all.mjs selftest`（往 stage 表里粘一行重复名字，必须被点名） |
+| `scripts/verify_dialog_interactions.mjs` | 2486 | 190,800 | `31a47d65209c9d1fae7a77e94d92b4cd6c84e169bbf3c7c35459b32f02668964` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
+| `scripts/verify_guard_mutations.mjs` | 258 | 20,590 | `9e1ee645f3915bacdb3305423ba34f3aa2e288ca09cf3886f421b1fdd9d67f98` | 24 个变异（M1–M24），每个都必须被它指定的那台 oracle 抓到；本轮 M18/M19/M21/M22/M23/M24 的逐条读数见下面"本轮末次运行读数"一节 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
+| `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 553 | 33,262 | `1edc005d5f8c6bacb4921d45eca4781e3b0122f67d895ba87b011c9315c5e01e` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
 | `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,897 | `d54d83cb52a1f8489efa4c59162ce8d44f96f34505d3396a5d4e59675460833b` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
-| `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 607 | 52,223 | `3bd99c5c7bb1b5e7486723fc6ef48585655a2abe215365d72d7c3c2a8f356047` | `total checks: 211` | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16 M19 M20` |
+| `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 635 | 54,555 | `d075f7c13968bf1d157f9d8af4f82d7f85f97a101e9a9b24b7da2890636ae0c4` | `USERFLOW_CHECKS total=222 failed=0`（落盘后；未提交时它必然报 10 条"HEAD blob 里没有这个文件"，见本节末） | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16 M19 M20` |
+| `scripts/__fixtures__/hanging_stage.mjs`（永不结束的假 stage，自己再 spawn 一个孙进程：`timeout-demo` 的靶子） | 20 | 1,155 | `16d702ee2dda998f2e7538d739f82d61656b075194ada2cb87fa014a80cf509a` | 只被 `verify_all.mjs timeout-demo` 生成，没有任何门读它 | `node scripts/verify_all.mjs timeout-demo`（六例，含"不调 taskkill 也不留孤儿"的消融与"正常结束不得报成 timeout"的负对照） |
+| `scripts/verify_modes.mjs`（模式名单 + 锚定的 dispatch 正则，纯数据、零控制流；runner 与 shape 台账读同一份） | 36 | 1,449 | `0b250811609418512489e3de9ffb70c1dbe24c7adc2d0b6cfe8da739bc6c2f87` | 每次启动三方核对：声明↔已派发用法块已文档化（15 个模式） | `node scripts/verify_guard_mutations.mjs M24`（把启动拒绝拔掉的变异，必须仍红） |
+| `scripts/verify_shape.mjs`（拆分对账台账：模式集合双向差、总行/字节、六族决策点数、以及"拆出去的探针是否仍逐字节等于拆之前"） | 273 | 15,745 | `7ee753466cae22ed1c4176e07f248227187c7265abfdb49c7a89d02053a4f8c7` | `SHAPE_SELFTEST cases=6 failed=0` + `SPLIT_SHAPE OK checked=17 failed=0` | 它自己先跑 6 例植入式夹具（改一个字节、删一个模式、把 extraction 弄瞎），任一抓不到就 exit 2；`--snapshot` 无 `--reason` 直接拒绝 |
+| `scripts/theme_face_inventory.mjs`（逐面三档清单的生成器，`docs/VISUAL_BASELINE.md` 4.1 那张表由它核对） | 173 | 9,327 | `3f4ca60138cdaa82b528894b402c3652595e9a57f1154ebc565ce05eda397396` | `THEME_FACE_VERIFY faces=23 docLines=25 mismatch=0` | `node scripts/theme_face_inventory.mjs --selftest`（4 例：自己的输出干净、改一个数字恰好报 1 行、截断要报、行号要点对；抓不到 exit 2） |
 
 **这张表现在是断言，不是纪律**：`check_user_flow.py` 解析上面每一行，对每个文件重算 `git show HEAD:<path>` 的行数/字节/sha256 并逐项比对，还断言"表里的行集合 == 磁盘上 `scripts/verify_*.mjs` + `scripts/__fixtures__/*.mjs` + `scripts/check_user_flow.py` 的集合"。所以：新加一个测具忘了上表 → 红；改了测具忘了更新表 → 红；哈希对不上 → 红，并附一句"该文件另有未提交改动"。上一版这张表就是**手写漂移了一笔提交**（记 965 行 / `9341e4ba…`，实际 1119 行 / `d9572a31…`），而它上面那句"改完必须回来更新"正是被漂移的那句——所以规则本身不解决问题，断言才解决。
 
@@ -576,7 +580,155 @@ guard mutations: 4/4 alarms reproduced | tree restored: clean
 4. **放弃把 `sr-only` 负对照做成"用夹具 DOM 命中应用真分支"** —— 造一行假插件数据要在浏览器态里伪造 Rust 返回的存储配置，那是"用测具的复制品测测具"；现在改成把这条覆盖缺口写进输出（`COVERAGE:` 行），让读日志的人知道那条排除在保护什么、以及它在应用里没被跑到。
 
 
+## Unreleased - 2026-09-30（第三批：门自己得先能被弄红）
+
+边界照旧：不新增依赖、不改依赖清单/lock/配置、不 push、不出包、不改版本号（仍 1.4.4）、不打 tag。
+
+### 一句话结论
+
+这一批没有改界面，改的是**量界面的那套东西**：给它补了"能被证明会红"的部件，然后用这些部件发现
+上一轮交给你的那条"具名未决缺陷"是测具自己造的。四件事收齐在下面，两件是撤回。
+
+### 队列四件
+
+**① 逐轴停 vs 整链停，定性：顺手，不是故意。** 已把这句话写进判据注释本体（`scripts/verify_probes.mjs`
+的 `clipperForAxis`），并写明为什么逐轴才是对的：Chrome 对 `overflow-x`/`overflow-y` 是**各自独立**解析的
+（一轴 visible 配另一轴非 visible 会算成 auto），用一个布尔走整链，`.app-main`（`overflow-y:auto` +
+`overflow-x:hidden`）就会替水平方向的裁切作保 —— 1440×900 下它替 22 个"看不见其实在滚得到"的按钮作了保。
+
+**② 逐面三档清单（23 个面，生成器在 `scripts/theme_face_inventory.mjs`）。** 合计
+**令牌可达 962 / 需 class 规则 121 / 设计上不分主题 44 / `dark:` 前缀 0 / 字面色值 0**，
+与你的计数（`bg-white 112`、`bg-slate-50 40`、`bg-slate-100 43`、`text-slate-950 4`、`text-slate-900 5`、`dark: 0`）同源。
+三档为什么各存在一次，写在 `docs/VISUAL_BASELINE.md` 4.1；`dark: 0` 不等于"没做暗色"，主题挂在
+`documentElement[data-theme]` 上，靠 `--color-*` 的层级变量整体翻转。表由 `--verify` 核对，改一个数字就 exit 1。
+
+**③ 六个控件比值，各自对它实际坐着的面（1.4.11 的对象）**，取三套壁纸极值 × 8 个面里最差的一次：
+
+| 控件 | mist | midnight | sakura |
+|---|---|---|---|
+| primary-fill | 20.16 | 20.16 | 20.16 |
+| danger-fill | 4.77 | 6.47 | 4.77 |
+| subtle-fill | 6.83 | 6.95 | 6.83 |
+| field | 17.39 | 16.96 | 16.83 |
+| icon | 5.17 | 6.31 | 5.04 |
+| ghost | 4.74 | 4.92 | 4.93 |
+
+背景一律从"隐藏字形后那张照片"里取，所以渐变、`backdrop-filter`、壁纸合成都在数里；
+`background-image` 面**不取单点**（取该行墨迹覆盖的整片区域的最差点，中心值同排印出来做对照）。
+
+**④ 拆分对账：交台账，不交一次性数字。** `scripts/verify_shape.mjs` 把"拆前拆后"变成一条可重跑的断言：
+模式集合双向对称差、跨文件总行/总字节、六族决策点数、以及三段页面侧探针是否仍逐字节等于 `58be53f^` 的那份。
+现状 `SHAPE_SELFTEST cases=6 failed=0` + `SPLIT_SHAPE OK checked=17 failed=0`。
+按关注点把 190 KB 的 harness 真正切开这件事**本批仍没做**，理由与台账一起写在 4.35/本节末。
+
+### 撤回的两条
+
+**第一条：上一轮那条"具名未决缺陷"不是缺陷，是我的测具。** `设置` 页那行 11px 说明文字报
+4.12:1（mist）/ 4.09:1（sakura），墨迹下方取到 `rgb(224,224,224)`。我当时的判断是"这个纯灰不是该渐变画得出来的值，
+所以真正的底另有其物"——后半句对，前半句把它当成了界面问题。**那块灰是当时叠在页面右下角的 4 条错误吐司的落影**：
+浏览器里没有 `invoke`，进 `设置` 就必然弹那 4 条，而这一行字的尾端伸进了它们的投影里。
+三条自证：纯灰（R=G=B）三套 token 里都不存在；全黑壁纸与全白壁纸下它是同一个 224（真表面不可能对壁纸极值无感）；
+midnight 下同一行不报红（因为它的字是浅色）。处置不是"把 `--text-muted` 压暗到数字过"，而是：
+每个面开拍前清空 toast 栈、断言 `[role=alert]/[role=status]` 归零，没归零该组合直接 `finish(2)`；
+`COMBO` 行加印 `toasts=N`。清空后 **72 组合 / 1,890 行 / 120,042 点，`below=0`**，
+`contrast-tier` 因此从"暂不作 stage"改回**接入**（`verify_all.mjs` 里那段注释原地改写，不删）。
+这条作废登记在 `docs/VISUAL_BASELINE.md` 0.1 第十行。它比"没红过"更值得留：红过一次、红的是测具的门，
+吐出来的数字带着元素、坐标和比值，看起来比谁都像证据。
+
+**第二条：M25 起草后撤回，不占功。** 退码 latch（`finish(2)` 被后面的 `catch` 降成 1）修好之后，
+**没有任何一条路径会在已定退码之后再去要第二个判据**，所以任何变异都改变不了 oracle 看得见的东西。
+"变异改不动判据"的测试不是测试。latch 只由产生它的那个症状覆盖（`red-demo` 必须退 2 而不是 1）。
+同理没给 `SHAPE_SELFTEST` / `THEME_FACE_SELFTEST` / `AGGREGATE_SELFTEST` / `gate-unit` 的覆盖率五例再补 M 号：
+它们长在门的必经路径上，每次绿跑都自带植入式反例，比外挂变异更难绕过。
+
+### 这一批新加的门，以及它们各自先证明自己能红
+
+| 门 | 判据 | 两面夹具 |
+|---|---|---|
+| stage 名唯一 | `verify_all.mjs` 里 `duplicateNames()` 非空即 exit 2 | `node scripts/verify_all.mjs selftest`：现状 0 重复；粘一行重复必须报"恰好 1 个名字且就是它"；粘两行必须报 2 |
+| 重复 stage 的实际事故 | 你报的 `contrast-tier`/`theme-surfaces` 两对，我恢复备份时又发现 `theme_face_inventory`/`verify_shape` 两对 —— 同一张表里 4 对重复 | 上表 selftest 的判据就是按这个事故形状写的 |
+| 覆盖率上限（`unknown` 三态不当逃生口） | 判据抽成 `coverageVerdict({judged, dropped})` | `gate-unit` 里 5 例：现状读数放行、400/1000 拦、恰好 25% 放行、`judged=0` 拦、`judged=0` 且全丢也拦 |
+| 台账自证 | `verify_shape --verify` 先跑 6 例才允许报树 | 改一个字节要红、删一个模式要红、把 extraction 弄瞎必须报 5 条（旧版报 0 条） |
+| 逐面清单自证 | `theme_face_inventory --verify` 先跑 4 例 | 自己的输出干净、改一个数字**恰好**报 1 行且行号对、表被截断要报 |
+| 重签基线 | `--snapshot` 无 `--reason` 直接 exit 2，并把 `takenAt`/`head`/`reason` 写进基线 | 本轮先让旧基线红（`DRIFT failed=3`）再 `--snapshot --reason "..."` |
+
+### 顺手抓到的四个"半坏的门"（都不是界面缺陷，第一个是我自己上一轮弄坏的）
+
+0. **`verify:all` 在工作树里根本跑不起来**：`const python = resolvePython()` 这一行在我上一轮的编辑中丢了
+   （HEAD 里还在，第 94 行；工作树里只剩 `if (!python)`），于是聚合器一启动就 `ReferenceError: python is not defined`。
+   **而 `node --check` 是过的** —— 少一个顶层绑定是运行时错误，语法检查看不见它。我这一轮已经对着这个坏掉的聚合器
+   跑过若干次"语法 OK"，然后把它的输出当成"门还在"。修法就是把那行补回来，并且让 `selftest` 去碰这个真实绑定
+   （多一条 case：`the preflight interpreter binding resolves`），这样"便宜的自检"走的是和真跑同一条启动路径；
+   聚合器现在 18 stages，`selftest` 若崩就说明启动路径本身断了。
+
+1. `verify_shape.mjs` 里 `execFileSync` **根本没用 import** —— `gitShow()` 每次抛 `ReferenceError` 被自己的
+   `catch` 吞掉返回 `null`，于是"pre-split 源可读"与三段探针是否逐字节等于拆前，四项全部读成 0。
+2. 同文件里那四项**永远不可能让退出码变红**：判据是 `p.exact ? value!==expect : value!==0`，
+   而它们只写了 `expect: 1`、没写 `exact` —— 期望写在标签里、没写进比较里。总数字一匹配就打印 `OK failed=0`。
+   修法不是补 `exact`，是**删掉这个开关**：所有判据一律 `value !== expect`，让"期望 1 却按 0 比"这个形状无法表达。
+3. `CONTRAST_GATE` 行里 `unresolved=0` 是**字面量**，不是读数 —— 唯一一个不可能与本行数据不一致的数字。
+   现在 `unresolvedTotal` 真算出来。同一类：`--doc-write` 第一次跑被自己的未知 flag 门禁拦下（它只认 `opt('…')`，
+   我用了 `process.argv.includes`），于是加了 `flag('…')` 并让名单推导同时读两种调用。
+
+### 指纹表：从"手写"变成"生成"
+
+`node scripts/fingerprint_rows.mjs --patch` 只重写每行的 行/字节/sha 三格，**散文两格留给人写**；
+表里没有该文件时它**拒绝**（本轮就拒了一次：三个新文件没有行）。理由写在文件头：上一版这张表漂移了一笔提交，
+而我这一批又复现了一次 —— 我手填的行数错了两个（`verify_modes` 37→36、`verify_shape` 274→273），是 `--patch` 改回来的。
+入表规则同时改了：以前按文件名前缀 `verify_*.mjs`，于是**接进聚合器的 `theme_face_inventory.mjs` 完全不在指纹集里**；
+现在按"是不是一个 stage"取（`verify_all.mjs` 里被引用的 `scripts/*.mjs` 一律入表），生成器与检查器各自实现同一条规则，
+两边不一致由"表集合 == 磁盘集合"那条断言抓住。
+
+### 孤儿浏览器进程：0（已查，无残留）；以及"timeout 会带走子进程"这句是怎么被证伪一半的
+
+`Get-CimInstance Win32_Process -Filter "Name='msedge.exe'"` 全量 **28 个**，其中命令行带
+`--user-data-dir=…image-hosting-*` 的 **0 个**（磁盘上留着 197 个 profile 目录，那是目录不是进程）。所以"杀子进程"
+不做成收尾断言。
+
+但聚合器那句 timeout 注释原本是错的。它写的是"外层 timeout 在 Windows 上就是 TerminateProcess，只杀 stage 自己，
+它起的浏览器会留着，所以必须 `taskkill /T /F` 扫树"。`node scripts/verify_all.mjs timeout-demo` 六例：
+
+```text
+TIMEOUT_DEMO cases=6 failed=0 budget=4000ms
+  ok   a hanging stage is stopped at its budget: timedOut=true wall=4163ms budget=4000ms
+  ok   it is stopped near the budget, not after it: wall=4163ms
+  ok   the stage process is gone after the tree kill: parent=26164 alive=false
+  ok   the GRANDCHILD is gone too (this is the orphan this exists for): grandchild=25812 alive=false taskkill status=128
+  ok   a stage that finishes in time is NOT reported as a timeout: timedOut=false exit=0
+  ok   control: the budget ALONE (no taskkill) leaves no orphan: grandchild=28836 survived=false (taskkill not called)
+```
+
+第 6 例是消融：同一个"挂死并自己再 spawn 一个孙进程"的夹具，**不调 taskkill**，孙进程照样没了 ——
+这台机器上 Node 的 `spawnSync({timeout})` 已经把整树带走了，`taskkill` 每次都返回 128（"没有这个进程"），
+即它到场时已经没东西可杀。所以显式扫树是**兜底不是承重**；留着它是因为"哪天 Node 改了行为"这一条我赌不起，
+但注释已按实测改写，因为一句"不加它就会漏"的错误机制说明，会把下一个人送去修错的那一行。
+夹具本身要两面：第 5 例（正常结束的 stage 不得被报成 timeout）是防"永远报超时也算对"的负对照。
+
+### 两处程序性自曝
+
+- **提交信息被 amend 过一次**（未推；旧→新：`7137196` → `bc53a45`，复算式 `git log --grep="4.5:1 floor"`）。
+  第一条消息写着"调用点不用动"，而同一个提交里就含 13 处
+  alpha 调用点的改动 —— 消息与自己的 diff 矛盾。amend 只改消息，且当场断言了 tree 未变：
+  `e2d855149df4c26342ac648f7b339b1c601daeea` 前后一致。
+- **另有一次带内容的 amend**（`cd6e995` → `fad34e3`，同样未推）：那条提交的信息声称"逐轴判据在注释里写明了
+  是否故意"，而我检查文件后发现注释只讲了"为什么逐轴对"、没讲"故意/顺手"这个裁决 —— 也就是说消息在替一件
+  当时还没做的事领功。裁决与两边的证据补进 `verify_probes.mjs` 后 amend 进去（该提交尚未被任何后续提交依赖）。
+- **shape 台账这一轮签了三次**，每次都是先把旧基线跑红再 `--snapshot --reason`：
+  第一次 `DRIFT failed=3`（本轮新增的门改了 harness 体量）、第二次 `failed=2`（聚合器补 timeout-demo 与
+  python 绑定）、第三次 `failed=0→重签`（`verify_probes.mjs` 里那段逐轴判据注释并进了同一个提交）。
+  理由逐条存在基线 json 的 `_meta` 里，`--verify` 每次把 `takenAt/head/reason` 印出来 —— 重签是签字，不是刷新。
+
+### 本批没做/放弃的（连理由）
+
+1. **190 KB harness 按关注点真拆**：基线与台账已就位（拆前形状已快照），但拆完要在同一预算里跑绿，
+   拆一半不能验，所以不动。
+2. **`layout` 仍不接进聚合器**：它 standalone 报 23 条真几何缺陷，聚合器里 1024 档视口覆盖没生效、
+   640 档注入助手提前消失，报出 7 条不存在的"入口不可达"。会造缺陷的门不接。
+3. **23 条几何缺陷、25 处 `text-muted` 调用点归类、sr-only 的应用内路径**：都还挂着，本批一条没修。
+4. **没给 M25 留位**（理由在上面撤回那条里）。
+
 ## 1.4.4 - Gallery Render Bound and Installer Publisher
+
 
 - Bound gallery rendering: past 600 revealed entries the page reports how many remain and asks you to narrow the directory or search instead of offering another batch forever. The cap is soft, so up to about 720 files stay fully reachable with no limit message. This also bounds what 全选本页文件 can select, which previously could reach every entry you had revealed.
 - Name the installer publisher. `bundle.publisher` was unset, so WiX fell back to the second segment of the identifier and the MSI reported `Manufacturer = multicloud`; publisher and copyright now carry the string from `LICENSE`. This affects Windows Installer metadata only - the `.exe` `CompanyName` version resource has no Tauri configuration key and stays empty.
