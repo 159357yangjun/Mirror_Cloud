@@ -209,16 +209,21 @@ function finish(code) {
 }
 
 async function waitForTarget() {
+  let last = []
   for (let i = 0; i < 60; i++) {
     try {
       const res = await fetch(`http://127.0.0.1:${PORT}/json/list`)
-      const list = await res.json()
-      const page = list.find((t) => t.type === 'page' && t.url.startsWith(APP))
+      last = await res.json()
+      const page = last.find((t) => t.type === 'page' && t.url.startsWith(APP))
       if (page) return page
     } catch {}
     await sleep(500)
   }
-  throw new Error('no page target')
+  // An Edge left behind by an earlier run keeps listening on the fixed default port, and this call
+  // happily attaches to that stranger instead of the browser just spawned. Naming the tabs makes
+  // "no page target" diagnosable; --port <other> is the workaround.
+  const seen = last.map((t) => t.url || t.type).slice(0, 4).join(', ') || 'no targets at all'
+  throw new Error(`no page target on port ${PORT}; that browser's tabs are: ${seen}. If a previous run's headless browser is still holding the port, rerun with --port <free>.`)
 }
 
 let idSeq = 0
@@ -888,6 +893,303 @@ async function main() {
     console.log(JSON.stringify({ attempts, sawMinimizedReject, broken: broken.map((b) => b.name) }, null, 2))
     ws.close(); browser.kill()
     process.exit(broken.length ? 4 : 0)
+  }
+
+  if (MODE === 'visual') {
+    // Visual baseline. Every number here is computed from the running app, not estimated from a
+    // screenshot, so "it looks better now" can be checked by diffing two runs of this mode.
+    await evaluate(`
+window.__V = (function () {
+  // Any CSS colour -> sRGB, using the canvas the browser already parses with. A regex over rgb()
+  // strings silently returns null for oklab()/color-mix() values, which made several buttons report
+  // a contrast of exactly 1.00 - an artefact of the reader, not of the UI.
+  const ctx = document.createElement('canvas').getContext('2d', { willReadFrequently: true })
+  const parse = (c) => {
+    if (!c || c === 'transparent' || c === 'none') return null
+    // Prime with a colour no CSS input can produce, so "the browser rejected this value" is
+    // distinguishable from "this colour happens to be black". Priming with #000 made every
+    // unsupported value parse as black, and two blacks cancelled out into a contrast of 1.00.
+    ctx.fillStyle = '#010203'
+    ctx.fillStyle = c
+    const norm = String(ctx.fillStyle)
+    if (norm === '#010203' || norm === 'rgb(1, 2, 3)') return null
+    ctx.clearRect(0, 0, 1, 1)
+    ctx.fillStyle = norm
+    ctx.fillRect(0, 0, 1, 1)
+    const d = ctx.getImageData(0, 0, 1, 1).data
+    return { r: d[0], g: d[1], b: d[2], a: d[3] / 255 }
+  }
+  const over = (fg, bg) => ({ r: fg.r * fg.a + bg.r * (1 - fg.a), g: fg.g * fg.a + bg.g * (1 - fg.a), b: fg.b * fg.a + bg.b * (1 - fg.a) })
+  const lum = (c) => {
+    const f = (v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4) }
+    return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b)
+  }
+  const bgOf = (el) => {
+    // The app shell paints a linear-gradient; treating "has a gradient" as "background unknown" made
+    // every contrast inside a dialog return null, so the failing close icon was never flagged. Fall
+    // back to the page's own base colour, which is what that gradient averages over here.
+    const base = parse(getComputedStyle(document.querySelector('.app-shell-root') || document.body).backgroundColor) || { r: 246, g: 247, b: 251, a: 1 }
+    let n = el
+    const stack = []
+    while (n && n.nodeType === 1) {
+      const cs = getComputedStyle(n)
+      const c = parse(cs.backgroundColor)
+      if (c && c.a > 0) { stack.push(c); if (c.a === 1) break }
+      else if (cs.backgroundImage && cs.backgroundImage !== 'none') { return { gradient: true, rgb: base } }
+      n = n.parentElement
+    }
+    if (!stack.length) return { rgb: { r: 255, g: 255, b: 255 } }
+    let acc = stack[stack.length - 1]
+    for (let i = stack.length - 2; i >= 0; i--) acc = over(stack[i], acc)
+    return { rgb: acc }
+  }
+  const ratio = (el) => {
+    const cs = getComputedStyle(el)
+    const fg = parse(cs.color)
+    const bg = bgOf(el)
+    if (!fg) return null
+    if (bg.gradient) return null // painted gradient: no single background colour exists to compare against
+    const fgc = over(fg, bg.rgb)
+    const l1 = Math.max(lum(fgc), lum(bg.rgb)), l2 = Math.min(lum(fgc), lum(bg.rgb))
+    return Math.round(((l1 + 0.05) / (l2 + 0.05)) * 100) / 100
+  }
+  const text = (el) => (el.textContent || '').trim().slice(0, 34)
+  const leaf = (root) => Array.from(root.querySelectorAll('*')).filter((e) => e.children.length === 0 && text(e))
+  const fontProbe = (family) => {
+    const cv = document.createElement('canvas'); const ctx = cv.getContext('2d')
+    const s = 'Handgloves 0123456789 Il10O'
+    ctx.font = '48px ' + family; const a = ctx.measureText(s).width
+    ctx.font = '48px sans-serif'; const b = ctx.measureText(s).width
+    ctx.font = '48px serif'; const c = ctx.measureText(s).width
+    return { sameAsSansSerif: Math.abs(a - b) < 0.5, sameAsSerif: Math.abs(a - c) < 0.5, width: Math.round(a) }
+  }
+  return {
+    ratio, text, leaf,
+    fonts: () => ({ inter: fontProbe('Inter'), segoe: fontProbe('"Segoe UI"'), yahei: fontProbe('"Microsoft YaHei"') }),
+    scale: (root) => {
+      const set = new Map()
+      for (const e of leaf(root)) {
+        const cs = getComputedStyle(e)
+        const k = cs.fontSize + '/' + cs.fontWeight
+        if (!set.has(k)) set.set(k, { fontSize: cs.fontSize, fontWeight: cs.fontWeight, sample: text(e), n: 0, contrast: ratio(e) })
+        set.get(k).n++
+      }
+      return Array.from(set.values()).sort((a, b) => parseFloat(b.fontSize) - parseFloat(a.fontSize))
+    },
+    shapes: (root) => {
+      const radii = new Map(), gaps = new Map(), muted = []
+      for (const e of [root, ...root.querySelectorAll('*')]) {
+        const cs = getComputedStyle(e)
+        if (cs.borderRadius !== '0px') radii.set(cs.borderRadius, (radii.get(cs.borderRadius) || 0) + 1)
+        if (cs.gap && cs.gap !== 'normal' && cs.gap !== '0px') gaps.set(cs.gap, (gaps.get(cs.gap) || 0) + 1)
+      }
+      const unresolved = []
+      for (const e of leaf(root)) {
+        const r = ratio(e)
+        if (r === null) { if (unresolved.length < 8) unresolved.push({ sample: text(e), fontSize: getComputedStyle(e).fontSize, why: 'gradient or unparsable background' }); continue }
+        if (r < 4.5) muted.push({ sample: text(e), fontSize: getComputedStyle(e).fontSize, color: getComputedStyle(e).color, contrast: r, cls: (e.className || '').toString().slice(0, 40) })
+      }
+      return { radii: Object.fromEntries(radii), gaps: Object.fromEntries(gaps), belowAA: muted, contrastUnresolved: unresolved }
+    },
+    deadSpace: (root, cardSel) => Array.from(root.querySelectorAll(cardSel)).slice(0, 8).map((card) => {
+      const kids = Array.from(card.children).filter((c) => c.offsetHeight > 0)
+      if (!kids.length) return null
+      const cr = card.getBoundingClientRect()
+      const lastBottom = Math.max(...kids.map((k) => k.getBoundingClientRect().bottom)) - cr.top
+      const trail = cr.height - lastBottom
+      // emptyPct alone overstates the complaint: a card's own padding-bottom is intended whitespace.
+      // stretchPct is what an equal-height grid actually added below the last element.
+      const pad = parseFloat(getComputedStyle(card).paddingBottom) || 0
+      const stretch = Math.max(0, trail - pad)
+      return { sample: text(card).slice(0, 18), cardH: Math.round(cr.height), contentBottom: Math.round(lastBottom), padBottom: Math.round(pad), emptyPct: Math.round((trail / cr.height) * 100), stretchPct: Math.round((stretch / cr.height) * 100), stretchPx: Math.round(stretch) }
+    }).filter(Boolean),
+    // A sequence is a run of >=3 sibling-ish items whose text opens with an ordinal. The first
+    // version of this matched /^\\d+$/ on a childless element, which counted 0 chips in the help
+    // dialog even with five on screen - the chip's visible text is "1.连接 GitHub" and it wraps a
+    // <span>, so both conditions failed. Anchoring on the leading ordinal is what actually bites.
+    // Does the class that says "12px" actually produce 12px on this element? The probe is a span
+    // carrying the identical class in the identical parent: if the span reads one size and the
+    // real element another, the utility is being out-cascaded by an element selector, not by the
+    // author's own class.
+    utilityDrift: (root) => {
+      // Backslashes are doubled because this source is embedded in a Node template literal: a
+      // single "\s" arrives at the page as "s", which silently matches nothing.
+      const re = /(?:^|\\s)(text-(?:xs|sm|base|lg|xl|2xl|[a-z]{0,3}\\[[0-9.]+(?:rem|px)\\]))(?=\\s|$)/
+      const out = {}
+      let checked = 0, matched = 0
+      const examples = []
+      for (const e of leaf(root)) {
+        const cls = (e.className || '').toString()
+        const m = re.exec(cls)
+        checked++
+        if (!m || !e.parentElement) continue
+        matched++
+        const probe = document.createElement('span')
+        probe.className = cls
+        probe.textContent = 'X'
+        probe.style.cssText = 'position:absolute;visibility:hidden'
+        e.parentElement.appendChild(probe)
+        const ps = getComputedStyle(probe), es = getComputedStyle(e)
+        const want = { size: ps.fontSize, weight: ps.fontWeight }
+        probe.remove()
+        if (examples.length < 4) examples.push(e.tagName.toLowerCase() + ' [' + m[1] + '] probe=' + want.size + '/' + want.weight + ' actual=' + es.fontSize + '/' + es.fontWeight + ' "' + text(e).slice(0, 12) + '"')
+        if (want.size !== es.fontSize || want.weight !== es.fontWeight) {
+          // Plain concatenation: this body is inside a Node template literal, so a nested backtick
+          // or a dollar-brace here would be evaluated by Node instead of reaching the page.
+          const k = e.tagName.toLowerCase() + '.' + m[1] + ' probe=' + want.size + '/' + want.weight + ' actual=' + es.fontSize + '/' + es.fontWeight
+          out[k] = (out[k] || 0) + 1
+        }
+      }
+      // checked/matched are reported so an empty drift map can be told apart from a probe that
+      // never matched anything - "no drift" and "no data" must not print the same.
+      return { drift: out, checked, matched, examples }
+    },
+    // Settles "is Tailwind's slate-400 the same grey as the --text-muted token" with the browser's
+    // own colour engine rather than a palette-conversion claim in prose.
+    palette: () => {
+      const cv = document.createElement('canvas'); const c = cv.getContext('2d')
+      const norm = (v) => { c.fillStyle = '#010203'; c.fillStyle = v; const n = String(c.fillStyle); c.clearRect(0, 0, 1, 1); c.fillStyle = n; c.fillRect(0, 0, 1, 1); const d = c.getImageData(0, 0, 1, 1).data; return { input: v, normalized: n, rgb: d[0] + ',' + d[1] + ',' + d[2] } }
+      const a = norm('oklch(70.4% 0.04 256.788)')
+      const b = norm('#94a3b8')
+      return { slate400: a, textMuted: b, identical: a.rgb === b.rgb }
+    },
+    sequences: (root) => {
+      const items = Array.from(root.querySelectorAll('*'))
+        .filter((e) => e.children.length <= 1 && !e.closest('button'))
+        .map((e) => ({ e, t: text(e) }))
+        .filter((x) => x.t.length > 0 && x.t.length <= 28 && /^\\d+\\s*[.、)]/.test(x.t))
+        .map((x) => x.t)
+      const steps = Array.from(root.querySelectorAll('*')).filter((e) => e.children.length === 0 && /^STEP\\s*\\d+$/i.test(text(e))).length
+      // Drop the bare "1." spans: the chip's own text already contains them, and counting both
+      // doubles the total.
+      const ordinals = items.filter((t) => !/^\\d+\\s*[.、)]$/.test(t))
+      return { steps, numberedItems: ordinals.length, stepLabels: Array.from(root.querySelectorAll('*')).filter((e) => e.children.length === 0 && /^STEP\\s*\\d+$/i.test(text(e))).map((e) => text(e.closest('article') || e.parentElement).slice(0, 30)).slice(0, 8), ordinals: ordinals.slice(0, 8) }
+    },
+    // Deepest matches only. An ancestor whose textContent is also "STEP 1" reports the inherited
+    // font-variant-numeric, so mixing ancestors into this list makes "set" and "not set" appear
+    // in the same array and the value becomes uninterpretable.
+    numeric: (root) => Array.from(root.querySelectorAll('*')).filter((e) => /^STEP\\s*\\d+$/i.test(text(e))).filter((e) => !Array.from(e.children).some((c) => /^STEP\\s*\\d+$/i.test(text(c)))).map((e) => ({ variant: getComputedStyle(e).fontVariantNumeric, size: getComputedStyle(e).fontSize, weight: getComputedStyle(e).fontWeight, family: getComputedStyle(e).fontFamily.slice(0, 40) })),
+  }
+})()
+`)
+    const surfaces = [
+      { name: 'publish', open: async () => { await goto('发布') } },
+      { name: 'help-center', open: async () => { await clickEl("(function(){return Array.from(document.querySelectorAll('button')).find(x=>(x.textContent||'').trim()==='教程与帮助')})()") } },
+      { name: 'confirm', open: async () => { await openConfirm() } },
+      { name: 'upload', open: async () => { await goto('发布'); await scrollToAndClick(`Array.from(document.querySelectorAll('main button')).find(b=>(b.textContent||'').includes('图片 URL'))`) } },
+      { name: 'assets', open: async () => { await goto('资源') } },
+      { name: 'storages', open: async () => { await goto('云端') } },
+      { name: 'gallery', open: async () => { await goto('图库') } },
+      { name: 'plugins', open: async () => { await goto('插件') } },
+      { name: 'tasks', open: async () => { await goto('任务') } },
+      { name: 'settings', open: async () => { await goto('设置') } },
+    ]
+    const clickEl = async (expr) => { await scrollToAndClick(expr); await sleep(400) }
+    const baseline = { provenance: buildProvenance(), viewport: await assertRealViewport('visual:start'), fonts: await evaluate(`window.__V.fonts()`), palette: await evaluate(`window.__V.palette()`), surfaces: [] }
+    for (const s of surfaces) {
+      try { await s.open() } catch (error) { baseline.surfaces.push({ name: s.name, error: String(error).slice(0, 140) }); continue }
+      await evaluate(`document.getAnimations().forEach(a=>{try{a.finish()}catch(e){}});true`)
+      await sleep(150)
+      await assertRealViewport('visual:' + s.name)
+      const rootSel = s.name === 'help-center' ? `Array.from(document.querySelectorAll('div.fixed.inset-0')).sort((a,b)=>getComputedStyle(b).zIndex-a.zIndex||0)[0]`
+        : s.name === 'confirm' ? `window.__H.overlay()`
+        : s.name === 'upload' ? `Array.from(document.querySelectorAll('div.fixed.inset-0')).find(d=>getComputedStyle(d).zIndex==='50')`
+        : `document.querySelector('main')`
+      const shotPath = await shot(`vis-${s.name}`)
+      const m = await evaluate(`(function(){
+        const root = ${rootSel};
+        if (!root) return { missing: true };
+        const cards = root.querySelectorAll('article, section').length;
+        return {
+          rootClass: (root.className||'').toString().slice(0,60),
+          cards,
+          scale: window.__V.scale(root).slice(0, 10),
+          shapes: window.__V.shapes(root),
+          deadSpace: window.__V.deadSpace(root, 'article'),
+          utilityDrift: window.__V.utilityDrift(root),
+          sequences: window.__V.sequences(root),
+          numeric: window.__V.numeric(root).slice(0, 8),
+          heading: (root.querySelector('h1,h2')||{}).textContent || null,
+        };
+      })()`)
+      // A dialog that scrolls hides half of its own evidence; capture the tail so the baseline
+      // document can be checked against a picture rather than against the sampler's word.
+      if (!m.missing) {
+        m.scroll = await evaluate(`(function(){
+          const root = ${rootSel}; if (!root) return null;
+          const sc = [root, ...root.querySelectorAll('*')].find((e) => e.scrollHeight > e.clientHeight + 8 && /auto|scroll/.test(getComputedStyle(e).overflowY));
+          if (!sc) return { scrollable: false, clientHeight: 0, scrollHeight: 0 };
+          sc.scrollTop = sc.scrollHeight;
+          return { scrollable: true, clientHeight: sc.clientHeight, scrollHeight: sc.scrollHeight, hiddenBelowPx: sc.scrollHeight - sc.clientHeight };
+        })()`)
+        if (m.scroll && m.scroll.scrollable) {
+          await sleep(120)
+          m.shotTail = await shot(`vis-${s.name}-tail`)
+          await evaluate(`(function(){const root=${rootSel};const sc=[root,...root.querySelectorAll('*')].find(e=>e.scrollHeight>e.clientHeight+8&&/auto|scroll/.test(getComputedStyle(e).overflowY));if(sc)sc.scrollTop=0;return true})()`)
+          await sleep(80)
+        }
+      }
+      baseline.surfaces.push({ name: s.name, shot: shotPath, ...m })
+      if (s.name === 'help-center' || s.name === 'confirm' || s.name === 'upload') { await pressAt(8, 8); await sleep(250) }
+    }
+    writeFileSync(`${OUT}/visual-baseline.json`, JSON.stringify(baseline, null, 2))
+    // A probe whose regex silently degrades (see the single-backslash trap in utilityDrift) reports
+    // "no drift" exactly like a working probe does. Refuse to distinguish the two: if no element on
+    // any surface carried a size utility, the probe is broken, not the app.
+    const blind = baseline.surfaces.filter((s) => s.utilityDrift && s.utilityDrift.checked > 0 && s.utilityDrift.matched === 0)
+    if (blind.length) {
+      console.log(`HARNESS FAULT: the size-utility probe matched 0 of ${blind.map((s) => `${s.name}(${s.utilityDrift.checked})`).join(', ')} leaves - the selector is broken, so "no drift" is not a result.`)
+      finish(2)
+    }
+    console.log('PALETTE', JSON.stringify(baseline.palette))
+    // The onboarding dialog is the one interface this round was allowed to change, so its baseline
+    // numbers are promoted from "reported" to "asserted": without this the mode measures a
+    // regression and still exits 0, and "it looks better now" stays unverifiable.
+    const hc = baseline.surfaces.find((s) => s.name === 'help-center')
+    const regressions = []
+    if (!hc || hc.missing) regressions.push('the onboarding dialog could not be opened')
+    else {
+      if (hc.shapes.belowAA.length) regressions.push(`${hc.shapes.belowAA.length} text runs below 4.5:1 (${hc.shapes.belowAA.map((x) => x.sample.slice(0, 10) + '@' + x.fontSize + '=' + x.contrast).join(', ')})`)
+      const drifted = Object.values(hc.utilityDrift.drift).reduce((a, b) => a + b, 0)
+      if (drifted) regressions.push(`${drifted} buttons render at a size their own class does not declare (${Object.keys(hc.utilityDrift.drift).join('; ')})`)
+      if (hc.sequences.numberedItems) regressions.push(`a second numbered sequence reappeared next to the ${hc.sequences.steps} steps (${hc.sequences.ordinals.join(', ')})`)
+      const tab = (hc.numeric || []).filter((n) => n.variant === 'tabular-nums').length
+      if (hc.sequences.steps && tab !== hc.sequences.steps) regressions.push(`${hc.sequences.steps - tab} of ${hc.sequences.steps} STEP ordinals are not tabular-nums`)
+    }
+    for (const r of regressions) console.log(`FAIL ${r}`)
+    // Machine-readable tally on every exit path, so verify:all can tell "4 regressions" from a run
+    // that never reached the assertions.
+    console.log(`VISUAL_GATE total=4 failed=${regressions.length}`)
+    if (regressions.length) console.log(`visual: ${regressions.length} regression(s) on the onboarding dialog`)
+    else console.log('visual: onboarding dialog holds its baseline (0 below 4.5:1, 0 discarded button sizes, 1 sequence, all ordinals tabular)')
+    console.log(JSON.stringify({ viewport: baseline.viewport, fonts: baseline.fonts, surfaces: baseline.surfaces.map((x) => ({ name: x.name, cards: x.cards, sizes: (x.scale || []).length, belowAA: (x.shapes?.belowAA || []).length })) }, null, 2))
+    finish(regressions.length ? 1 : 0)
+  }
+
+  if (MODE === 'contrast') {
+    // Colour chains for the elements the visual audit flagged, so the contrast numbers can be
+    // checked by hand rather than trusted from a formula.
+    await scrollToAndClick(`(function(){return Array.from(document.querySelectorAll('button')).find(x=>(x.textContent||'').trim()==='教程与帮助')})()`)
+    await sleep(400)
+    const chains = await evaluate(`(function(){
+      const parse=(c)=>{const m=/rgba?\\(([^)]+)\\)/.exec(c||'');if(!m)return null;const p=m[1].split(/[ ,\\/]+/).filter(Boolean).map(Number);return {r:p[0],g:p[1],b:p[2],a:p.length>3?p[3]:1}};
+      const chain=(el)=>{const rows=[];let n=el;while(n&&n.nodeType===1){const cs=getComputedStyle(n);rows.push({tag:n.tagName,cls:(n.className||'').toString().slice(0,44),color:cs.color,bg:cs.backgroundColor,bgi:cs.backgroundImage.slice(0,24),op:cs.opacity});n=n.parentElement}return rows};
+      const dlg=Array.from(document.querySelectorAll('div.fixed.inset-0')).pop();
+      // Both of these used to look up an exact leaf string ("连接 GitHub", "STEP") that the dialog
+      // never produces - the chip wraps its ordinal in a span and the label reads "STEP 1" - so the
+      // mode printed two empty arrays that looked like "nothing found" rather than "probe broken".
+      // Last match, not first: an ancestor's textContent satisfies these patterns too, and reading
+      // the ancestor reports its inherited colour instead of the one actually on screen.
+      const byText=(re)=>Array.from(dlg.querySelectorAll('*')).filter(e=>re.test((e.textContent||'').trim())).pop();
+      return {
+        closeX: chain(dlg.querySelector('button[aria-label="关闭教程"]')||dlg.querySelector('button[aria-label="关闭"]')).slice(0,5),
+        chip: chain(byText(/^\\d+\\.[\\u4e00-\\u9fa5]/)).slice(0,5),
+        stepWord: chain(byText(/^STEP\\s*\\d+$/i)).slice(0,5),
+        bodyP: chain(Array.from(dlg.querySelectorAll('p')).find(e=>(e.textContent||'').includes('填写 Owner'))).slice(0,4),
+      };
+    })()`)
+    console.log(JSON.stringify(chains, null, 1))
+    finish(0)
   }
 
   if (MODE === 'external') {
