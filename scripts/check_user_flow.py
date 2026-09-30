@@ -13,6 +13,15 @@ def text(rel: str) -> str:
 def require(ok: bool, label: str):
     checks.append((ok, label))
 
+def top_level_imports(source: str) -> list[str]:
+    """Only real import statements.
+
+    A bare `from '...'` search also matches text inside string literals. That is how a mutation
+    table describing a third-party import made the file *holding the table* look like it imported
+    that package - the scan was poisoned by its own test data.
+    """
+    return re.findall(r"^import\b.*?\bfrom '([^']+)'", source, re.MULTILINE)
+
 def slice_between(source: str, start_marker: str, end_marker: str, label: str) -> str:
     """A missing marker has to fail loudly. str.find() returns -1, which otherwise turns the
     slice into "everything up to the last character" and makes checks built on it pass while
@@ -387,7 +396,7 @@ require(harness_path.exists(), 'the dialog interaction harness is version contro
 harness = harness_path.read_text(encoding='utf-8') if harness_path.exists() else ''
 require('function assertRealViewport' in harness, 'the harness defines the viewport gate')
 require(harness.count('assertRealViewport(') >= 8, 'the viewport gate guards every geometry sample, not just startup')
-harness_imports = re.findall(r"from '([^']+)'", harness)
+harness_imports = top_level_imports(harness)
 require(all(i.startswith('node:') for i in harness_imports), f'the harness adds no third-party dependency ({harness_imports})')
 # Reachability: a tool nobody can discover is a tool that rots. It must stay wired to a real entry.
 desktop_pkg = json.loads(text('apps/desktop/package.json'))
@@ -407,7 +416,7 @@ mutations_text = mutations_path.read_text(encoding='utf-8') if mutations_path.ex
 require('refusing to run' in mutations_text and 'writeFileSync(path, original)' in mutations_text,
         'the mutation runner refuses dirty targets and restores every byte it touched')
 require('oracleRan' in mutations_text, 'the mutation runner distinguishes a silent oracle from an alarm')
-mutation_imports = re.findall(r"from '([^']+)'", mutations_text)
+mutation_imports = top_level_imports(mutations_text)
 require(all(i.startswith('node:') for i in mutation_imports), f'the mutation runner adds no third-party dependency ({mutation_imports})')
 # The invariant that makes the mutations meaningful: a guard that asserts on substrings of a file
 # must not have its own test plan inside that file, because the table's literals then satisfy the
@@ -417,7 +426,7 @@ require("id: 'M" not in harness, 'the harness contains no mutation table (it wou
 require(not re.search(r"file:\s*'scripts/verify_guard_mutations\.mjs'", mutations_text), 'the mutation runner never mutates itself')
 fixture_path = ROOT / 'scripts' / '__fixtures__' / 'impostor_dev_server.mjs'
 require(fixture_path.exists(), 'the impostor dev server fixture is version controlled')
-fixture_imports = re.findall(r"from '([^']+)'", fixture_path.read_text(encoding='utf-8')) if fixture_path.exists() else []
+fixture_imports = top_level_imports(fixture_path.read_text(encoding='utf-8')) if fixture_path.exists() else []
 require(all(i.startswith('node:') for i in fixture_imports), f'the fixture adds no third-party dependency ({fixture_imports})')
 
 # The fingerprint table in CHANGELOG.md is machine-checked now. It records filename + line count +

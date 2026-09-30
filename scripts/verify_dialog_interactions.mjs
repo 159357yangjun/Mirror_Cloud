@@ -1026,7 +1026,9 @@ async function main() {
 
 main().catch((e) => {
   console.error('FAILED', e)
-  try { browser?.kill() } catch {}
-  // 2 = the harness could not establish what it was pointed at. Never a pass, never an app regression.
-  process.exit(e && e.identityFault ? 2 : 1)
+  // Deferred exit, same reason as finish(): calling process.exit while the CDP socket and the browser
+  // child are still tearing down aborts the process on Windows (0xC0000409), which the red-demo
+  // parent then reads as "the gate did not reject". Safe here because this is the terminal handler -
+  // nothing after it can run, unlike the earlier fall-through bug.
+  finish(e && e.identityFault ? 2 : 1)
 })

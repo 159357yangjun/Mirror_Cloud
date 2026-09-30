@@ -131,10 +131,10 @@ sawMinimizedReject: true   broken: []
 
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
-| `scripts/verify_dialog_interactions.mjs` | 1032 | 64,911 | `8aaf80b220fc2dbeeaecbc33d3aa702a89ad1a89ab72def06ac64ec96567afaf` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5` |
+| `scripts/verify_dialog_interactions.mjs` | 1034 | 65,136 | `fe60f629ffc208f1a3da3221ad3051ed564414e87dbb4b8111316cc9b8248f5b` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5` |
 | `scripts/verify_guard_mutations.mjs` | 155 | 10,724 | `f4b0b81d8b9a3c901041addab572286364a89e61a9e0402529da994bb273d4e7` | 12/12 变异都被对应 oracle 抓到 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
 | `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,897 | `d54d83cb52a1f8489efa4c59162ce8d44f96f34505d3396a5d4e59675460833b` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
-| `scripts/check_user_flow.py`（认证上面三个的那份检查器，同址在 `scripts/`） | 485 | 43,964 | `0bf41b36a3fcf7d99098904479960cb03ebce088223657cdc3552ab5027a8c66` | `total checks: 177` | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12` |
+| `scripts/check_user_flow.py`（认证上面三个的那份检查器，同址在 `scripts/`） | 494 | 44,357 | `dcd8f17412c20af4dd2e6ae64b9954bbaddd03c6397b0432a736a384f3da3a6c` | `total checks: 177` | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12` |
 
 **这张表现在是断言，不是纪律**：`check_user_flow.py` 解析上面每一行，对每个文件重算 `git show HEAD:<path>` 的行数/字节/sha256 并逐项比对，还断言"表里的行集合 == 磁盘上 `scripts/verify_*.mjs` + `scripts/__fixtures__/*.mjs` + `scripts/check_user_flow.py` 的集合"。所以：新加一个测具忘了上表 → 红；改了测具忘了更新表 → 红；哈希对不上 → 红，并附一句"该文件另有未提交改动"。上一版这张表就是**手写漂移了一笔提交**（记 965 行 / `9341e4ba…`，实际 1119 行 / `d9572a31…`），而它上面那句"改完必须回来更新"正是被漂移的那句——所以规则本身不解决问题，断言才解决。
 
