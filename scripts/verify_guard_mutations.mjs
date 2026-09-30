@@ -55,7 +55,10 @@ const mutations = [
   // check while the edit is uncommitted, and the HEAD-blob half once it is committed without the
   // table being updated - the two halves the guard now compares.
   { id: 'M11', file: FIXTURE, from: ' * An impostor dev server, for proving the identity gate in', to: ' * An impostor dev server, for proving the identity gate in today', oracle: 'guard', expect: `fingerprint row for ${FIXTURE} matches the file` },
-  { id: 'M12', file: FIXTURE, from: ' * node:http only; no third-party dependency.', to: ' * node:http, node:fs and chalk only.', oracle: 'guard', expect: 'the fixture adds no third-party dependency' },
+  // Breaks the property itself - a non-node: import - rather than the prose that mentions it. The
+  // first version of this entry edited a comment saying "no third-party dependency" and correctly
+  // failed to alarm, because the guard reads the import list, not the comment.
+  { id: 'M12', file: FIXTURE, from: "import { readFileSync } from 'node:fs'", to: "import { readFileSync } from 'node:fs'\nimport chalk from 'chalk'", oracle: 'guard', expect: 'the fixture adds no third-party dependency' },
 ]
 
 const selected = only ? mutations.filter((m) => only.has(m.id)) : mutations
