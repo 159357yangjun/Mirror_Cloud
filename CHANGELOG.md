@@ -179,9 +179,9 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
 | `scripts/verify_all.mjs` | 353 | 25,495 | `448a0136e03306a42894397b48dba897e9686210d1f14c59d4a9c23cce1d0244` | 18 stages：七道静态守卫 + 两份台账（`theme_face_inventory`、`verify_shape`）+ 七个测具模式（新增 `contrast-tier`、`theme-surfaces`）+ `red-demo` + 变异套件；`layout` 仍不接入，原因见其注释 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行）；`node scripts/verify_all.mjs selftest`（往 stage 表里粘一行重复名字，必须被点名） |
-| `scripts/verify_dialog_interactions.mjs` | 2685 | 206,700 | `5cbe226f7d6bc46addacee5efbaa194d0ece0c947ce7d49d5c2a2988b11c7085` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
+| `scripts/verify_dialog_interactions.mjs` | 2697 | 207,936 | `45a6297111e1b0efa7fb86f55e6bd9cef32b0c2fdeed3b4b7b7a1a8f27053fbb` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
 | `scripts/verify_guard_mutations.mjs` | 288 | 23,220 | `c909de97ff370ed6e0593e519b7d21728d459030966788dc4a2c2df694edf52f` | 24 个变异（M1–M24），每个都必须被它指定的那台 oracle 抓到；本轮 M18/M19/M21/M22/M23/M24 的逐条读数见下面"本轮末次运行读数"一节 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
-| `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 553 | 33,262 | `1edc005d5f8c6bacb4921d45eca4781e3b0122f67d895ba87b011c9315c5e01e` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
+| `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 590 | 36,422 | `a690d31330fdc71c8bbcce549add46f930a74a1a94eb1726a508a24c1d67c6f4` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
 | `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,897 | `d54d83cb52a1f8489efa4c59162ce8d44f96f34505d3396a5d4e59675460833b` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
 | `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 635 | 54,555 | `d075f7c13968bf1d157f9d8af4f82d7f85f97a101e9a9b24b7da2890636ae0c4` | `USERFLOW_CHECKS total=222 failed=0`（落盘后；未提交时它必然报 10 条"HEAD blob 里没有这个文件"，见本节末） | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16 M19 M20` |
@@ -914,6 +914,19 @@ LAYOUT_FAMILIES pages_with_cuts=7 family_lines_before_grouping=14 distinct_root_
 两处恒等式当场 exit 2：`root_causes != distinct(by|axis)` 或 `members != listed`；
 以及 `listed + truncated != records_total` —— 最后这条拿的是探针**截断前**自己的计数，
 与这里的分组代码无关，所以"分组时漏了一条"会被独立数字抓到。**分档判断本身没变**（那 14 行仍是同一个 bug）。
+
+### 二·八、第二刀已落：侧栏在最小窗口下可滚
+
+改前（第一刀之后那版）`failures=16`（7 `CUT-ROOT` + 2 + 7）→ 改后 **`failures=9`（0 `CUT-ROOT`）**，
+`LAYOUT_FAMILIES … records_total=0`。选"给 `.app-sidebar` 上 overflow-y:auto"而不是"把底部块搬出侧栏"，
+理由：底部那块在层级上属于导航列尾端，搬走是改 IA；而 `.app-main` 已经是"固定高 + 自身滚动"的同一套模式。
+内层栏的 `h-full` 同时改成 `min-h-full`——写死 100% 时溢出的是子盒，滚动条没东西可滚。
+
+**"变成 rail"不等于"滚得到"**，所以判据改成真滚一遍：`RAIL-PROOF … 712 候选 / 712 滚到即见 / 0 unreachable`。
+这条判据连吃三个自己的坑才有对：要求整盒进视口（686 假红）→ 只滚到 rail 底端把中段推出去（301 假红）→
+`.app-main` 的 `scroll-behavior: smooth` 让 `scrollTop=` 变成动画、量到旧位置（683 假红，必须 `behavior:'instant'`）。
+**它目前没有反向夹具**（没种过"滚不到的 rail 必须被报"），所以 `unreachable=0` 只是读数、这条判据**不占功**，
+反向夹具排下一轮。另：本轮又踩了一次"注入模板字符串的注释里写反引号"⇒ 文件直接语法坏（第 4 次），已顺手清掉。
 
 ### 三、本轮明确不做的
 

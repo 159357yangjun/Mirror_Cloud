@@ -298,6 +298,17 @@ button { cursor: pointer; }
 .theme-muted { color: var(--text-muted); }
 
 .app-sidebar, .app-main { transition: width .18s ease, margin-left .18s ease; }
+/* The rail is `fixed inset-y-0`, so its box is exactly the viewport height - and at the product's own
+   minimum window (tauri.conf.json: minWidth 640 / minHeight 480) its content is taller than that,
+   which pushed "教程与帮助" and the version card 25-33px past a non-scrolling clipper. The rail
+   scrolls now, the same way .app-main already does; the inner column switched from h-full to
+   min-h-full so it can actually grow past 480 instead of overflowing a fixed-height box. */
+.app-sidebar {
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+}
 .app-main {
   height: 100vh;
   min-height: 0;

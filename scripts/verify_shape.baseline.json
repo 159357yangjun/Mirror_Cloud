@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-09-30T17:13:05",
-    "head": "fa912121bf2d1fc56f8d9cc023a2fd7d0dc82601",
-    "reason": "eighth signing: layout cut-findings grouped by clipping root cause with an accounting identity"
+    "takenAt": "2026-09-30T17:26:37",
+    "head": "5a947b2a5bbec2233200541ec0785710d171de16",
+    "reason": "ninth signing: rail reachability proof added to the layout probe (scroll the element, instant behaviour, grouped per rail)"
   },
   "files": [
     {
@@ -22,8 +22,8 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 2686,
-      "bytes": 206700,
+      "lines": 2698,
+      "bytes": 207936,
       "families": {
         "failures.push": 13,
         "emitGate": 11,
@@ -64,8 +64,8 @@
     {
       "file": "scripts/verify_probes.mjs",
       "exists": true,
-      "lines": 554,
-      "bytes": 33262,
+      "lines": 591,
+      "bytes": 36422,
       "families": {
         "failures.push": 0,
         "emitGate": 0,
@@ -92,8 +92,8 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 4194,
-    "bytes": 306159,
+    "lines": 4243,
+    "bytes": 310555,
     "families": {
       "failures.push": 14,
       "emitGate": 11,

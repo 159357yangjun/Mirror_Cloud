@@ -460,6 +460,29 @@ A 与 B 是同一次越界的两种口径（控件盒 +25px、容器盒 +33px）
   固定高度 + `items-center` 的按钮上会稳定虚报几像素垂直"裁切"。
 分辨它只要一次读数：该按钮的 `height` / `line-height` / `getClientRects()` 与 `scrollHeight`。本轮没做，所以留"分不清"。
 
+### 6.00 第二刀已落：侧栏在最小窗口下可滚，且"滚得到"是被滚出来的、不是被推断出来的
+
+改前（第一刀之后那一版，exit 1）：`failures=16` = 7 `CUT-ROOT` + 2 `SELF-CLIP` + 7 `TOUCH-TARGET`。
+改后：`failures=9` = 0 `CUT-ROOT` + 2 + 7，`LAYOUT_FAMILIES … records_total=0`（整页再没有一条"被不可滚祖先裁掉"的记录）。
+
+修法二选一里选了**给侧栏上滚动**：`.app-sidebar { overflow-y:auto; overflow-x:hidden; overscroll-behavior-y:contain; scrollbar-gutter:stable }`
+（`styles.css`）+ 内层栏 `h-full → min-h-full`（`AppShell.tsx:52`）。
+**选它的理由一行**：底部那块（教程与帮助 / 版本卡）在信息层级上属于导航列的尾端，把它搬出侧栏是改 IA；
+而 `.app-main` 早就是"固定高 + 自身滚动"的同一套模式，侧栏跟它一致不引入新范式。
+`h-full` 必须一起改：内层栏写死 100% 高度时内容溢出的是**子盒**，`min-h-full` 才让栏子真的长高、滚动条才有东西可滚。
+
+**"变成 rail" 本身不是可达性证明**，所以量具加了一条真滚一遍的判据（`RAIL-PROOF`）：
+把每个"底边超出视口且被某个 rail 挡住"的元素 `scrollIntoView({block:'center', behavior:'instant'})`，再量它是否真的有一段（≥8px）落在视口里。
+当前读数：**712 个候选，712 个滚到即见，0 个 unreachable**。
+
+这条判据是踩了三个自己的坑才对的，都记在代码注释里：
+① 第一版要求"整个盒落进视口"，于是**比视口还高的容器永远不合格**（686 条假红）；
+② 第二版只把 rail 滚到**底端**，于是中段元素反而被推到视口**上方**（301 条假红）——判"能不能滚到"必须滚**那个元素**；
+③ `.app-main` 带 `scroll-behavior: smooth`，普通 `scrollTop=` 赋值启动的是**动画**，紧接着量的还是旧位置
+（这一版把 683 条明明可达的报成不可达）；必须 `behavior:'instant'`。
+**诚实边界：这条 RAIL-PROOF 目前没有反向夹具**（没有"种一个滚不到的 rail 必须被报出来"的对照），
+所以 `unreachable=0` 是**读数**，不是"这条判据已被证明会红"——按本仓口径它**不占功**，反向夹具排在下一轮。
+
 ### 6.0 第一刀已落：同一个根因不再进两个家族
 
 改前原样读数（`node scripts/verify_dialog_interactions.mjs layout`，exit 1）：

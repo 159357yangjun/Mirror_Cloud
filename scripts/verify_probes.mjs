@@ -377,7 +377,9 @@ window.__L = (function () {
         // Criterion VIEWPORT: per-element rect past the viewport edge.
         viewportOverflowPx: 0,
         offenders: [], clipped: [], clippedByAncestor: [], controlsCut: [], containersCut: [], smallTargets: [], brokenImages: [], focusables: 0,
+        railProof: { proven: 0, rails: 0, unreachable: [] },
       }
+      const railCandidates = []
       for (const e of all) {
         if (!vis(e)) continue
         out.visibleNodes++
@@ -390,8 +392,8 @@ window.__L = (function () {
         if (cs.position === 'fixed') { out.skipFixed++; continue }
         const cx = clipperForAxis(e, 'x')
         const cy = clipperForAxis(e, 'y')
-        if (cx && cx.rail) out.railX++
-        if (cy && cy.rail) out.railY++
+        if (cx && cx.rail) { out.railX++; if (r.right > innerWidth + 1) railCandidates.push({ e, rail: cx.node, axis: 'x' }) }
+        if (cy && cy.rail) { out.railY++; if (r.bottom > innerHeight + 1) railCandidates.push({ e, rail: cy.node, axis: 'y' }) }
         let lostX = 0, lostY = 0, byX = null, byY = null
         if (cx && !cx.rail) { const l = intersectLoss(r, cx.box); lostX = l.lostX; byX = cx }
         if (cy && !cy.rail) { const l = intersectLoss(r, cy.box); lostY = l.lostY; byY = cy }
@@ -409,6 +411,41 @@ window.__L = (function () {
         }
       }
       out.offenders.sort((a, b) => b.over - a.over)
+      // A rail stops the clipping chain because "reachable by scrolling" is a real exemption - but
+      // the rail existing is not the same fact as the content being reachable, so every rail-stopped
+      // candidate is proven the only way that settles it: scroll the rail, re-measure, restore.
+      // Two things this had to get right, both learned by watching the first version fire 686 times
+      // on a page with nothing wrong with it: the test is whether the element becomes VISIBLE, not
+      // whether its whole box fits inside the viewport (a tall section can never fit, and calling
+      // that unreachable is the gate blaming the page for the shape of its own criterion); and the
+      // scroll happens once per rail, not once per descendant, or one overflowing subtree asks the
+      // same question hundreds of times and the run cost is meaningless.
+      const byRail = new Map()
+      for (const c of railCandidates) {
+        const key = c.axis + '|' + sel(c.rail)
+        if (!byRail.has(key)) byRail.set(key, { rail: c.rail, axis: c.axis, items: [] })
+        byRail.get(key).items.push(c)
+      }
+      for (const { rail, axis, items } of byRail.values()) {
+        const view = axis === 'y' ? innerHeight : innerWidth
+        const before = axis === 'y' ? rail.scrollTop : rail.scrollLeft
+        const past = items.filter((c) => { const r0 = c.e.getBoundingClientRect(); return (axis === 'y' ? r0.bottom : r0.right) > view + 1 })
+        if (!past.length) { out.railProof.proven += items.length; continue }
+        // Scroll the ELEMENT into view, not the rail to its extreme. The first version set
+        // scrollTop = scrollHeight, which brings the bottom of the content up and thereby pushes
+        // everything above it out of the viewport - so 301 perfectly reachable elements were
+        // reported unreachable because the one position the test tried happened to be the wrong end.
+        for (const c of past) {
+          try { c.e.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' }) } catch (e) { c.e.scrollIntoView() }
+          const rect = c.e.getBoundingClientRect()
+          const visible = axis === 'y' ? (rect.top < view - 8 && rect.bottom > 8) : (rect.left < view - 8 && rect.right > 8)
+          const moved = (axis === 'y' ? rail.scrollTop : rail.scrollLeft) !== before
+          if (visible) out.railProof.proven++
+          else out.railProof.unreachable.push({ sel: sel(c.e), rail: sel(rail), axis, moved, visible, scrollSize: axis === 'y' ? rail.scrollHeight : rail.scrollWidth, clientSize: axis === 'y' ? rail.clientHeight : rail.clientWidth, text: txt(c.e).slice(0, 24) })
+        }
+        out.railProof.rails++
+        try { rail.scrollTo({ [axis === 'y' ? 'top' : 'left']: before, behavior: 'instant' }) } catch (e) { if (axis === 'y') rail.scrollTop = before; else rail.scrollLeft = before }
+      }
       out.offenders = out.offenders.slice(0, 6)
       for (const key of ['clippedByAncestor', 'controlsCut', 'containersCut']) {
         out[key].sort((a, b) => b.excess - a.excess)

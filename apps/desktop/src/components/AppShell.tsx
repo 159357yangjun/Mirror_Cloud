@@ -49,7 +49,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="app-shell-root min-h-screen text-[var(--text-primary)]">
       <aside className="app-sidebar theme-glass fixed inset-y-0 left-0 z-30 w-[220px] border-r">
-        <div className="flex h-full flex-col p-4">
+        <div className="flex min-h-full flex-col p-4">
           <div className="flex items-center gap-3 px-2 py-3">
             <div className="grid size-9 place-items-center rounded-2xl bg-slate-950 text-white shadow-sm"><Zap size={17} /></div>
             <div className="app-brand-copy">

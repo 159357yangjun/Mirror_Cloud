@@ -2206,6 +2206,7 @@ async function main() {
     // causes there actually are. This is the number that stops a future reader adding the lines back
     // up and calling the total a defect count.
     const cutIdentity = []
+    const railProofTotals = []
     // Positive control with two placements, because the document-level criterion and the per-element
     // criterion must be shown to be different tests: a 2400px box planted inside a clipping ancestor
     // must be caught only by the per-element one. Without this, "0 failures" across 21 page/width
@@ -2443,6 +2444,15 @@ async function main() {
           console.log(`HARNESS FAULT: LAYOUT-IDENTITY ${entry.tier} ${label}: root_causes=${roots.size} distinct_keys=${distinctKeys} members=${membersSum} listed=${listed} - the grouping does not account for its own records, so its count is not a count.`)
           finish(2)
         }
+        // "A rail stops the chain" is only an exemption if the content is reachable by scrolling it.
+        // Without this line the sidebar fix could have passed by making the gate quiet instead of
+        // making the button reachable, and the two look identical from the failure count.
+        if (g.railProof && g.railProof.unreachable.length) {
+          for (const u of g.railProof.unreachable.slice(0, 3)) {
+            emit(`RAIL-UNREACHABLE ${entry.tier} ${label}: "${u.text}" at ${u.sel} hangs past the ${u.axis} edge and its rail ${u.rail} cannot bring it into view (rail moved=${u.moved}, visible after scrolling=${u.visible}, scrollSize=${u.scrollSize} clientSize=${u.clientSize})`)
+          }
+        }
+        if (g.railProof) railProofTotals.push({ tier: entry.tier, route: label, proven: g.railProof.proven, unreachable: g.railProof.unreachable.length })
         if (g.clippedTotal) emit(`SELF-CLIP ${entry.tier} ${label}: ${g.clippedTotal} own-text run(s) cut with no ellipsis and no title - worst ${g.clipped[0].hDelta}px horizontal / ${g.clipped[0].vDelta}px vertical ink "${g.clipped[0].text}" at ${g.clipped[0].sel}`)
         if (g.smallTotal) emit(`TOUCH-TARGET ${entry.tier} ${label}: ${g.smallTotal} clickable target(s) under ${TOUCH}x${TOUCH} - smallest ${g.smallTargets[0].w}x${g.smallTargets[0].h} "${g.smallTargets[0].text}" at ${g.smallTargets[0].sel}`)
         if (g.brokenImages.length) emit(`BROKEN-IMAGE ${entry.tier} ${label}: ${g.brokenImages.length} image(s) with naturalWidth 0 - ${g.brokenImages.map((b) => b.src).join(', ')}`)
@@ -2506,6 +2516,8 @@ async function main() {
       console.log(`HARNESS FAULT: LAYOUT-IDENTITY records_listed=${ci.listed} + truncated=${ci.truncated} != records_total=${ci.total} - cut records are unaccounted for, so distinct_root_causes under-reads.`)
       finish(2)
     }
+    const rp = railProofTotals.reduce((a, r) => ({ proven: a.proven + r.proven, unreachable: a.unreachable + r.unreachable }), { proven: 0, unreachable: 0 })
+    console.log(`RAIL-PROOF elements_past_viewport_needing_a_rail=${rp.proven + rp.unreachable} proven_reachable_by_scrolling=${rp.proven} unreachable=${rp.unreachable}`)
     console.log(`LAYOUT_GATE checked=${checked} matched=${matched} skipped=${skipped} failures=${failures.length}`)
     if (!matched) { console.log('layout: nothing was measured - this is NOT a pass.'); finish(3) }
     emitGate('layout', matched, failures.length, { checked: tiers.length * ROUTES.length, skipped })
