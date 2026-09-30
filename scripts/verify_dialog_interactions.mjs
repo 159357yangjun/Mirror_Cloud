@@ -103,6 +103,21 @@ if (!PORT) {
   console.error('Cannot obtain a free loopback port for the browser debug endpoint. Pass --port <free> explicitly; refusing to fall back to a fixed port, because a fixed port is how this harness once attached to the developer\'s own browser.')
   process.exit(2)
 }
+// Ownership is asserted, not assumed: if anything already answers on the port we are about to
+// hand to --remote-debugging-port, we are not the ones who will own that endpoint, and every
+// result would be measurements of somebody else's browser. Exiting here is the point.
+if (await portAlreadyOwned(PORT)) {
+  console.error(`HARNESS FAULT: something already serves CDP on port ${PORT} (/json/version answered). Refusing to attach to a browser we did not spawn - it could be a developer's real session.`)
+  process.exit(2)
+}
+async function portAlreadyOwned(port) {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/json/version`)
+    if (!res.ok) return false
+    const body = await res.json()
+    return Boolean(body && body.webSocketDebuggerUrl)
+  } catch { return false }
+}
 const APP = opt('app', 'http://127.0.0.1:1420/')
 const TAG = opt('tag', MODE)
 const OUT = opt('out', `${(process.env.TEMP || '/tmp').replace(/\\/g, '/')}/image-hosting-probes/${new Date().toISOString().slice(0, 10)}`)
@@ -1296,6 +1311,146 @@ window.__V = (function () {
     console.log('TOKENS ' + JSON.stringify(rows.filter((r, i, a) => a.findIndex((x) => x.theme === r.theme) === i).map((r) => ({ theme: r.theme, ...r.tokens }))))
     console.log(`CONTRAST_GATE combos=${rows.length} measured=${rows.reduce((a, r) => a + r.measured, 0)} below=${failures.length} unresolved=${rows.reduce((a, r) => a + r.unresolved, 0)}`)
     console.log(failures.length ? `contrast: ${failures.length} failure(s) across ${rows.length} theme/wallpaper/route combinations` : `contrast: every readable run meets its threshold in all ${rows.length} combinations`)
+    finish(failures.length ? 1 : 0)
+  }
+
+  if (MODE === 'theme-surfaces') {
+    // Which surfaces do not follow the theme at all. Not a grep for a class name: the same element
+    // is photographed under all three themes and compared to itself. A surface whose rendered
+    // pixels are identical in default, midnight and sakura is ignoring the theme, whatever its
+    // classes say - and a hard-coded white panel under a dark theme is not a contrast nit, it is
+    // a white block floating on a dark UI.
+    const applyTheme = (t) => evaluate(`(function(){const r=document.documentElement;if(${JSON.stringify(t)})r.dataset.theme=${JSON.stringify(t)};else delete r.dataset.theme;return r.dataset.theme||'default'})()`)
+    const THEMES = [['default', ''], ['midnight', 'midnight'], ['sakura', 'sakura']]
+    const ROUTES = (opt('routes', '') || '发布,资源,云端,图库,插件,任务,设置').split(',')
+    // Deliberately theme-invariant, each with the reason. Anything outside this list that fails to
+    // move is a finding.
+    const WHITELIST = [
+      { re: /bg-slate-950\/\d/, why: 'modal backdrop scrim: intentionally dark under every theme' },
+      { re: /(^|\s)bg-\[var\(--accent\)\]/, why: 'accent-filled control, text-white by design' },
+      { re: /bg-emerald-|bg-amber-|bg-red-|bg-blue-/, why: 'semantic status colour' },
+      // The sampled pixel belongs to an ancestor whose own class carries no colour hint, so these
+      // are matched by the identity of the element that paints them.
+      { re: /app-upload-button/, why: 'primary upload action: filled slate-950 with white label in all three themes, by design' },
+      { re: /^pointer-events-none fixed bottom-4/, why: 'toast layer backdrop - the semantic colour is painted by the child toast' },
+      { re: /^pointer-events-auto flex items-start/, why: 'toast body - error/success tint is semantic, not thematic' },
+    ]
+    // Control: plant one surface that follows the theme and one that does not, and require the
+    // test to tell them apart. Without this, "42 frozen" is indistinguishable from "the sampler
+    // cannot see a background change".
+    await goto(ROUTES[0])
+    await applyTheme('')
+    const ctl = await (async () => {
+      await evaluate(`(function(){
+        const host=document.querySelector('main')||document.body;
+        // Pinned into the viewport: appended at the end of main these two panels sit below the
+        // fold, the sample point falls outside the screenshot, and both read black - which made
+        // the "follows the theme" panel look frozen too. The control caught its own bug.
+        const a=document.createElement('div'); a.id='ctl-follows'; a.style.cssText='position:fixed;left:8px;top:8px;z-index:2147483000;background:var(--surface);width:200px;height:60px'; a.textContent='follows';
+        const b=document.createElement('div'); b.id='ctl-ignores'; b.style.cssText='position:fixed;left:8px;top:80px;z-index:2147483000;background:#ffffff;width:200px;height:60px'; b.textContent='ignores';
+        host.appendChild(a); host.appendChild(b); return true;
+      })()`)
+      const seen = {}
+      for (const [name, value] of THEMES) {
+        await applyTheme(value)
+        await sleep(120)
+        await evaluate(`(function(){const s=document.createElement('style');s.id='lctl-hide';s.textContent='*{color:transparent !important;-webkit-text-fill-color:transparent !important}';document.head.appendChild(s);return true})()`)
+        const sd = await send('Page.captureScreenshot', { format: 'png' })
+        await evaluate(`(function(){const s=document.getElementById('lctl-hide');if(s)s.remove();return true})()`)
+        seen[name] = await evaluate(`(async function(){
+          const img=new Image(); await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src='data:image/png;base64,${sd.data}'});
+          const cv=document.createElement('canvas'); cv.width=img.width; cv.height=img.height;
+          const ctx=cv.getContext('2d',{willReadFrequently:true}); ctx.drawImage(img,0,0);
+          const at=(sel)=>{const e=document.querySelector(sel); if(!e) return null; const r=e.getBoundingClientRect(); const p=ctx.getImageData(Math.round(r.left+6),Math.round(r.top+6),1,1).data; return [p[0],p[1],p[2]].join(',')};
+          return { follows: at('#ctl-follows'), ignores: at('#ctl-ignores') };
+        })()`)
+      }
+      await applyTheme('')
+      await evaluate(`(function(){['ctl-follows','ctl-ignores'].forEach(i=>{const e=document.getElementById(i); if(e)e.remove()}); return true})()`)
+      const same = (x, y) => { if (!x || !y) return false; const a = x.split(',').map(Number), b = y.split(',').map(Number); return Math.abs(a[0] - b[0]) <= 2 && Math.abs(a[1] - b[1]) <= 2 && Math.abs(a[2] - b[2]) <= 2 }
+      return {
+        followsMoves: !(same(seen.default.follows, seen.midnight.follows) && same(seen.default.follows, seen.sakura.follows)),
+        ignoresFrozen: same(seen.default.ignores, seen.midnight.ignores) && same(seen.default.ignores, seen.sakura.ignores),
+        detail: seen,
+      }
+    })()
+    if (!ctl.followsMoves || !ctl.ignoresFrozen) {
+      console.log(`HARNESS FAULT: the theme-surface test cannot tell a theme-following panel from a hard-coded one (followsMoves=${ctl.followsMoves}, ignoresFrozen=${ctl.ignoresFrozen}, samples=${JSON.stringify(ctl.detail)}). Its counts measure nothing.`)
+      finish(2)
+    }
+    console.log(`CONTROL surfaces -> var(--surface) panel changed across themes=${ctl.followsMoves} (${ctl.detail.default.follows} -> ${ctl.detail.midnight.follows} -> ${ctl.detail.sakura.follows}); #ffffff panel stayed frozen=${ctl.ignoresFrozen} (${ctl.detail.default.ignores})`)
+    const failures = []
+    const rows = []
+
+    for (const label of ROUTES) {
+      await applyTheme('')
+      await goto(label)
+      await evaluate(`window.__L ? window.__L.settle() : document.getAnimations().forEach(a=>{try{a.finish()}catch(e){}});true`)
+      await assertRealViewport(`surfaces:${label}`)
+      const marked = await evaluate(`(function(){
+        let i = 0;
+        for (const e of document.querySelectorAll('main *, aside *, section *')) {
+          const r = e.getBoundingClientRect();
+          if (r.width < 120 || r.height < 48) continue;
+          if (!(e.textContent || '').trim()) continue;
+          const cs = getComputedStyle(e);
+          if (cs.display === 'inline' || cs.visibility === 'hidden' || Number(cs.opacity) < 0.9) continue;
+          e.setAttribute('data-tsid', String(i++));
+        }
+        return i;
+      })()`)
+      if (!marked) { rows.push({ route: label, skipped: 'no surface candidates' }); continue }
+      const samples = {}
+      for (const [themeName, themeValue] of THEMES) {
+        await applyTheme(themeValue)
+        await sleep(120)
+        await evaluate(`(function(){const s=document.createElement('style');s.id='lctl-hide';s.textContent='*{color:transparent !important;-webkit-text-fill-color:transparent !important;text-shadow:none !important}';document.head.appendChild(s);return true})()`)
+        const sd = await send('Page.captureScreenshot', { format: 'png' })
+        await evaluate(`(function(){const s=document.getElementById('lctl-hide');if(s)s.remove();return true})()`)
+        samples[themeName] = await evaluate(`(async function(){
+          const img = new Image();
+          await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = 'data:image/png;base64,${sd.data}' });
+          const cv = document.createElement('canvas'); cv.width = img.width; cv.height = img.height;
+          const ctx = cv.getContext('2d', { willReadFrequently: true }); ctx.drawImage(img, 0, 0);
+          const out = {};
+          for (const e of document.querySelectorAll('[data-tsid]')) {
+            const r = e.getBoundingClientRect();
+            // A sample point outside the viewport is clamped onto the canvas edge and reads the
+            // same pixel in every theme - which would look exactly like a frozen surface.
+            if (r.width < 2 || r.height < 2) continue;
+            const sx = Math.round(r.left + 6), sy = Math.round(r.top + 6);
+            if (sx < 0 || sy < 0 || sx >= innerWidth || sy >= innerHeight) continue;
+            const x = Math.max(0, Math.min(img.width - 1, sx));
+            const y = Math.max(0, Math.min(img.height - 1, sy));
+            const p = ctx.getImageData(x, y, 1, 1).data;
+            const cs = getComputedStyle(e);
+            out[e.getAttribute('data-tsid')] = {
+              bg: [p[0], p[1], p[2]].join(','),
+              cls: (e.className || '').toString().slice(0, 60),
+              text: (e.textContent || '').trim().slice(0, 24),
+              fg: cs.color,
+              sel: e.tagName.toLowerCase() + '.' + (e.className || '').toString().trim().split(/\\s+/).slice(0, 2).join('.'),
+            }
+          }
+          return out;
+        })()`)
+      }
+      for (const id of Object.keys(samples.default || {})) {
+        const d = samples.default[id], m = samples.midnight[id], s = samples.sakura[id]
+        if (!m || !s) continue
+        const same = (a, b) => { const p = (v) => v.split(',').map(Number), x = p(a), y = p(b); return Math.abs(x[0] - y[0]) <= 2 && Math.abs(x[1] - y[1]) <= 2 && Math.abs(x[2] - y[2]) <= 2 }
+        const frozen = same(d.bg, m.bg) && same(d.bg, s.bg)
+        const wl = WHITELIST.find((w) => w.re.test(d.cls))
+        rows.push({ route: label, sel: d.sel, cls: d.cls, text: d.text, default: d.bg, midnight: m.bg, sakura: s.bg, frozen, whitelisted: wl ? wl.why : null })
+        if (frozen && !wl) failures.push(`OFF-THEME ${label}: ${d.sel} renders the identical rgb(${d.bg}) in all three themes (text "${d.text}") - it does not follow the theme and is not whitelisted`)
+      }
+    }
+    await applyTheme('')
+    const frozenCount = rows.filter((r) => r.frozen).length
+    writeFileSync(`${OUT}/theme-surfaces.json`, JSON.stringify({ provenance: buildProvenance(), note: 'a surface is OFF-THEME when the pixel photographed 6px inside its top-left corner is identical (<=2/255 per channel) under default, midnight and sakura', whitelist: WHITELIST.map((w) => w.why), rows }, null, 2))
+    for (const f of failures) console.log(`FAIL ${f}`)
+    console.log(`SURFACE_GATE routes=${ROUTES.length} surfaces=${rows.length} frozen=${frozenCount} offThemeUnwhitelisted=${failures.length} whitelisted=${rows.filter((r) => r.frozen && r.whitelisted).length}`)
+    console.log(failures.length ? `theme-surfaces: ${failures.length} surface(s) ignore the theme` : `theme-surfaces: every sampled surface follows the theme (${frozenCount} frozen, all whitelisted)`)
     finish(failures.length ? 1 : 0)
   }
 
