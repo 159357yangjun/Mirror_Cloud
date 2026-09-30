@@ -199,6 +199,9 @@ for (const r of results) {
   const head = `${r.applied && r.guardAlarmed && r.namedExpectedFailure ? 'OK  ' : 'FAIL'} ${r.id} ${r.file}`
   console.log(r.note ? `${head} (${r.note})` : `${head} -> oracle ran: ${r.oracleRan}, exit ${r.observedExit}, named expected failure: ${r.namedExpectedFailure}${r.spawnError ? `, spawnError: ${r.spawnError}` : ''}${r.evidence && r.evidence.length ? `\n      ${r.evidence.join('\n      ')}` : ''}`)
 }
+// Machine-readable tally for verify:all. Same schema as the harness modes' GATE_JSON line: checked
+// is what was actually attempted, so "0 attempted" can never be read as "0 failed".
+console.log(`GATE_JSON ${JSON.stringify({ gate: 'mutations', checked: selected.length, failed: bad.length, ok: bad.length === 0 && unrestored.length === 0, unrestored: unrestored.length })}`)
 console.log(`guard mutations: ${results.length - bad.length}/${selected.length} alarms reproduced | interpreter: ${python.exe} ${python.pre.join(' ')} | tree restored: ${unrestored.length === 0 ? 'clean' : `DIRTY ${unrestored.join(', ')}`}`)
 if (bad.length) console.error('Some oracle stayed silent while its property was broken. That is a harness fault, not a passing test.')
 process.exit(bad.length || unrestored.length ? 2 : 0)

@@ -77,11 +77,11 @@ const stages = [
   { name: 'check_workflow_action_pins', run: 'python', args: ['scripts/check_workflow_action_pins.py'], count: /passed for (\d+) external action reference/ },
   { name: 'check_release_version', run: 'python', args: ['scripts/check_release_version.py'], count: /Release version consistent: ([\d.]+)/ },
   { name: 'check_tauri_dependency_family', run: 'python', args: ['scripts/check_tauri_dependency_family.py'], count: /tauri=([\d.]+)/ },
-  { name: 'gate-unit', run: 'node', args: [NODE_MODE, 'gate-unit'], count: /gate unit check: (\d+\/\d+ correct)/ },
-  { name: 'gate', run: 'node', args: [NODE_MODE, 'gate'], needsServer: true, count: /"sawMinimizedReject": (true|false)/ },
-  { name: 'ab', run: 'node', args: [NODE_MODE, 'ab'], needsServer: true, count: /"deltaOverflowX": (\d+)/ },
-  { name: 'visual', run: 'node', args: [NODE_MODE, 'visual'], needsServer: true, timeout: 600_000, count: /VISUAL_GATE total=(\d+) failed=(\d+)/ },
-  { name: 'settings-guard', run: 'node', args: [NODE_MODE, 'settings-guard'], needsServer: true, timeout: 600_000, count: /SETTINGS_GATE checked=(\d+).*failed=(\d+)/ },
+  { name: 'gate-unit', run: 'node', args: [NODE_MODE, 'gate-unit'], gateJson: true, count: /gate unit check: (\d+\/\d+ correct)/ },
+  { name: 'gate', run: 'node', args: [NODE_MODE, 'gate'], needsServer: true, gateJson: true, count: /"sawMinimizedReject": (true|false)/ },
+  { name: 'ab', run: 'node', args: [NODE_MODE, 'ab'], needsServer: true, gateJson: true, count: /"deltaOverflowX": (\d+)/ },
+  { name: 'visual', run: 'node', args: [NODE_MODE, 'visual'], needsServer: true, gateJson: true, timeout: 600_000, count: /VISUAL_GATE total=(\d+) failed=(\d+)/ },
+  { name: 'settings-guard', run: 'node', args: [NODE_MODE, 'settings-guard'], needsServer: true, gateJson: true, timeout: 600_000, count: /SETTINGS_GATE checked=(\d+).*failed=(\d+)/ },
   // `layout` is deliberately NOT a stage yet. Standalone it reports 23 real geometry findings;
   // inside this aggregate the viewport override for the 1024 tier never applied and the injected
   // helpers disappeared before 640, which surfaced as 7 invented "navigation entry point not
@@ -127,15 +127,36 @@ for (const stage of stages) {
   for (const line of output.split('\n')) {
     if (line.startsWith('FAIL') || line.includes('FAILED') || line.startsWith('Traceback') || line.startsWith('Error')) console.log(`    ${line.trim()}`)
   }
-  const match = output.match(stage.count)
-  // A stage whose tally this runner cannot read has not been verified, whatever it exited with.
-  // The exit code alone was not enough: adding fields to a gate's summary line silently broke the
-  // regex and the stage still reported PASSED. An unreadable count is now a failure in its own right.
-  const unreadable = Boolean(stage.count) && !match
+  // The stage's own machine-readable tally, cross-checked against its exit code in BOTH
+  // directions. A summary line matched by a regex living in a different file than the print
+  // statement drifts silently - adding viaLoad/viaApply to one gate broke its own regex and the
+  // stage still scored PASSED. ok is the stage's own verdict; exit code and ok must agree, and
+  // checked must be positive or "nothing examined" reads as "nothing wrong".
+  const gateLine = output.split('\n').filter((l) => l.startsWith('GATE_JSON ')).pop()
+  const problems = []
+  let gate = null
+  if (gateLine) {
+    try { gate = JSON.parse(gateLine.slice('GATE_JSON '.length).trim()) } catch (error) { problems.push(`GATE_JSON unparseable: ${String(error).slice(0, 80)}`) }
+  }
+  if (gate) {
+    for (const key of ['gate', 'checked', 'failed', 'ok']) if (!(key in gate)) problems.push(`GATE_JSON missing required key "${key}"`)
+    if (gate.gate !== stage.name) problems.push(`GATE_JSON says gate="${gate.gate}" but this stage is "${stage.name}"`)
+    if (!Number.isInteger(gate.checked) || gate.checked <= 0) problems.push(`checked=${gate.checked}; nothing examined is not a pass`)
+    if (!Number.isInteger(gate.failed)) problems.push(`failed=${JSON.stringify(gate.failed)} is not an integer`)
+    if (gate.ok !== true && gate.failed === 0 && r.status !== 0) problems.push(`exit ${r.status} with failed=0 - the stage failed for a reason its tally does not carry`)
+    if (r.status === 0 && gate.ok !== true) problems.push(`exit 0 but the stage's own verdict is ok=${JSON.stringify(gate.ok)}`)
+    if (r.status !== 0 && gate.ok === true) problems.push(`exit ${r.status} but the stage claims ok=true - exit code and tally disagree`)
+    if (r.status === 0 && gate.failed > 0) problems.push(`exit 0 but failed=${gate.failed}`)
+  } else if (stage.gateJson) {
+    problems.push('no GATE_JSON line emitted by a stage that declares one')
+  } else if (!output.match(stage.count)) {
+    problems.push('count: NOT REPORTED by this stage - treat as a harness gap, not a pass')
+  }
   const detail = r.error ? `spawn error: ${String(r.error).slice(0, 120)}`
-    : match ? `${stage.count.source.includes('sawMinimizedReject') ? 'sawMinimizedReject=' : ''}${match[0].trim()}`
-    : 'count: NOT REPORTED by this stage - treat as a harness gap, not a pass'
-  results.push({ name: stage.name, status: r.status === 0 && !unreadable ? 'passed' : 'failed', exit: r.status, detail })
+    : problems.length ? problems.join(' | ')
+    : gate ? `${gate.gate} checked=${gate.checked} failed=${gate.failed}`
+    : (output.match(stage.count) || ['count present but no GATE_JSON'])[0].trim()
+  results.push({ name: stage.name, status: r.status === 0 && problems.length === 0 ? 'passed' : 'failed', exit: r.status, detail })
   console.log(`    => ${results[results.length - 1].status} (exit ${r.status}) ${detail}`)
 }
 

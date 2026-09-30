@@ -154,6 +154,7 @@ if (MODE === 'gate-unit') {
   const failed = results.filter((r) => !r.correct)
   writeFileSync(`${OUT}/report-gate-unit.json`, JSON.stringify(results, null, 2))
   for (const r of results) console.log(`${r.correct ? 'OK  ' : 'FAIL'} ${r.name} -> ${r.gateRejected ? 'rejected: ' + r.problems.join('; ') : 'accepted'}`)
+  emitGate('gate-unit', results.length, failed.length)
   console.log(`Viewport gate unit check: ${results.length - failed.length}/${results.length} correct | reports: ${OUT}`)
   process.exit(failed.length ? 1 : 0)
 }
@@ -245,6 +246,15 @@ function buildProvenance() {
   return { headCommitUnderTest: head, desktopPackageVersion: version, caveat: 'the dev server injects no build-time commit marker; identity is proven by /package.json and export-name equality with HEAD, not by a version the app itself reports' }
 }
 
+
+// The aggregate reads this line instead of pattern-matching a human-readable summary. Two reasons:
+// a field added to the prose line (viaLoad/viaApply did exactly that) silently breaks a regex in
+// another file, and a prose line cannot be schema-checked. checked must be the number of things
+// actually examined, so checked=0 is distinguishable from failed=0 by construction.
+function emitGate(name, checked, failed, extra) {
+  const payload = { gate: name, checked: Number(checked) || 0, failed: Number(failed) || 0, ok: (Number(failed) || 0) === 0, ...extra }
+  console.log(`GATE_JSON ${JSON.stringify(payload)}`)
+}
 
 // Exiting while a CDP socket or the browser child is still closing trips a libuv assertion on
 // Windows, so give both a moment to shut down first.
@@ -463,6 +473,7 @@ if (MODE === 'red-demo') {
     console.log(`      why this red is expected: ${r.whyThisRedIsExpected}`)
   }
   const broken = results.filter((r) => !r.gateRejected || !r.namedExpectedClause)
+  emitGate('red-demo', results.length, broken.length)
   console.log(`identity gate red demo: ${results.length - broken.length}/${results.length} alarms reproduced | reports: ${OUT}`)
   if (broken.length) console.error('The gate did NOT alarm. Treat this as a harness fault, not as a passing test.')
   process.exit(broken.length ? 2 : 0)
@@ -822,9 +833,18 @@ async function main() {
     const beforeSample = await evaluate(sample)
     await shot('ab-before-break-words')
     record('ab-wrap-paired', { afterFix: after, beforeFix: beforeSample, deltaOverflowX: beforeSample.pOverflowX - after.pOverflowX })
+    // ab used to exit 0 no matter what it measured - it reported a number and the aggregate's regex
+    // decided what it meant. The assertion belongs here: with the fix in place the paragraph must
+    // not overflow its own box, and the pre-fix sample must still show the overflow, otherwise the
+    // pair proved nothing.
+    const abBroken = []
+    if (after.pOverflowX > 1) abBroken.push(`fixed state still overflows by ${after.pOverflowX}px`)
+    if (beforeSample.pOverflowX - after.pOverflowX <= 1) abBroken.push(`the before/after pair is not discriminating (delta ${beforeSample.pOverflowX - after.pOverflowX}px)`)
+    for (const b of abBroken) console.log(`FAIL ab: ${b}`)
+    emitGate('ab', 1, abBroken.length, { deltaOverflowX: beforeSample.pOverflowX - after.pOverflowX })
     writeFileSync(`${OUT}/report-${MODE}.json`, JSON.stringify(report, null, 2))
     console.log(JSON.stringify(report, null, 2))
-    finish(0)
+    finish(abBroken.length ? 1 : 0)
   }
 
   if (MODE === 'links') {
@@ -953,6 +973,7 @@ async function main() {
     writeFileSync(`${OUT}/report-${MODE}.json`, JSON.stringify(report, null, 2))
     console.log(JSON.stringify({ attempts, sawMinimizedReject, broken: broken.map((b) => b.name) }, null, 2))
     ws.close(); browser.kill()
+    emitGate('gate', attempts.length, broken.length, { sawMinimizedReject })
     process.exit(broken.length ? 4 : 0)
   }
 
@@ -1224,6 +1245,7 @@ window.__V = (function () {
     if (regressions.length) console.log(`visual: ${regressions.length} regression(s) on the onboarding dialog`)
     else console.log('visual: onboarding dialog holds its baseline (0 below 4.5:1, 0 discarded button sizes, 1 sequence, all ordinals tabular)')
     console.log(JSON.stringify({ viewport: baseline.viewport, fonts: baseline.fonts, surfaces: baseline.surfaces.map((x) => ({ name: x.name, cards: x.cards, sizes: (x.scale || []).length, belowAA: (x.shapes?.belowAA || []).length })) }, null, 2))
+    emitGate('visual', 4, regressions.length)
     finish(regressions.length ? 1 : 0)
   }
 
@@ -1428,6 +1450,7 @@ window.__V = (function () {
     await send('Page.navigate', { url: APP })
     writeFileSync(`${OUT}/report-settings.json`, JSON.stringify({ provenance: buildProvenance(), cases: results, failures }, null, 2))
     console.log(`SETTINGS_GATE checked=${CASES.length + DIRECT.length} viaLoad=${CASES.length} viaApply=${DIRECT.length} failed=${failures.length}`)
+    emitGate('settings-guard', CASES.length + DIRECT.length, failures.length, { viaLoad: CASES.length, viaApply: DIRECT.length })
     console.log(failures.length ? `settings-guard: ${failures.length} failure(s) - an out-of-band value reached the UI or blanked it` : `settings-guard: all ${CASES.length + DIRECT.length} illegal values fell back or were refused (${CASES.length} through load, ${DIRECT.length} straight into apply), none blanked the app`)
     finish(failures.length ? 1 : 0)
   }
@@ -1568,6 +1591,7 @@ window.__V = (function () {
     writeFileSync(`${OUT}/theme-surfaces.json`, JSON.stringify({ provenance: buildProvenance(), note: 'a surface is OFF-THEME when the pixel photographed 6px inside its top-left corner is identical (<=2/255 per channel) under default, midnight and sakura', whitelist: WHITELIST.map((w) => w.why), rows }, null, 2))
     for (const f of failures) console.log(`FAIL ${f}`)
     console.log(`SURFACE_GATE routes=${ROUTES.length} surfaces=${rows.length} frozen=${frozenCount} offThemeUnwhitelisted=${failures.length} whitelisted=${rows.filter((r) => r.frozen && r.whitelisted).length}`)
+    emitGate('theme-surfaces', rows.length, failures.length, { frozen: frozenCount })
     console.log(failures.length ? `theme-surfaces: ${failures.length} surface(s) ignore the theme` : `theme-surfaces: every sampled surface follows the theme (${frozenCount} frozen, all whitelisted)`)
     finish(failures.length ? 1 : 0)
   }
@@ -2126,6 +2150,7 @@ true
     // claims: 0 looked and clean, 1 findings, 2 harness fault, 3 nothing was measured at all.
     console.log(`LAYOUT_GATE checked=${checked} matched=${matched} skipped=${skipped} failures=${failures.length}`)
     if (!matched) { console.log('layout: nothing was measured - this is NOT a pass.'); finish(3) }
+    emitGate('layout', matched, failures.length, { checked: tiers.length * ROUTES.length, skipped })
     console.log(failures.length ? `layout: ${failures.length} geometry failure(s) across ${matched} measured page/width combinations (${skipped} skipped)` : `layout: no horizontal overflow, no unflagged clipping, touch targets and focus rings hold at ${tiers.map((t) => t.width).join('/')} across ${matched} combinations (${skipped} skipped, not counted as passed)`)
     finish(failures.length ? 1 : 0)
   }
