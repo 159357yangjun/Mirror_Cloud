@@ -178,11 +178,11 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
-| `scripts/verify_all.mjs` | 138 | 8,496 | `7dabbe234e21aae15421ae91f9b1ebbfa49f86461f41dde7266dfbc88dbbc362` | 12 stages，一条命令跑完七道守卫 + 四个测具模式 + 变异套件 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行） |
-| `scripts/verify_dialog_interactions.mjs` | 1034 | 65,157 | `8b00c5383f8ceb25a422f7f2bb9209cbde85111d0bfd008edaf2cd343d351996` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5` |
-| `scripts/verify_guard_mutations.mjs` | 172 | 11,698 | `15b83caebe24269cf87722afa9de185153827f28a73dd7631e8b5d5302867464` | 12/12 变异都被对应 oracle 抓到 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
+| `scripts/verify_all.mjs` | 139 | 8,644 | `eba51ad31f6951ce6de8fb63874f6b00daae4808258bc53c338252dd0da65146` | 13 stages，一条命令跑完七道守卫 + 五个测具模式（新增 `visual`）+ 变异套件 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行） |
+| `scripts/verify_dialog_interactions.mjs` | 1336 | 86,335 | `68709506fb82ff0eb3cd5960c5665e387fd9f23afea3c9484e5cf99822048fa3` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0` | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归 |
+| `scripts/verify_guard_mutations.mjs` | 180 | 13,174 | `cdc231dcb5eeb8feeb6cd6455b80d207c329545341bf4ee0b37e60f8b7470b80` | 16/16 变异都被对应 oracle 抓到 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
 | `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,897 | `d54d83cb52a1f8489efa4c59162ce8d44f96f34505d3396a5d4e59675460833b` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
-| `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 508 | 45,799 | `7ef6a0d6a43c404b1d36dc68651fe7fe1dba1dfed11f8173afabeb1cc04981bb` | `total checks: 182` | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12` |
+| `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 530 | 47,703 | `61a3105c8af4f5cf09cd7f8a8fe89b4eff795b82ff4d57c23e171133662c02bc` | `total checks: 191` | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16` |
 
 **这张表现在是断言，不是纪律**：`check_user_flow.py` 解析上面每一行，对每个文件重算 `git show HEAD:<path>` 的行数/字节/sha256 并逐项比对，还断言"表里的行集合 == 磁盘上 `scripts/verify_*.mjs` + `scripts/__fixtures__/*.mjs` + `scripts/check_user_flow.py` 的集合"。所以：新加一个测具忘了上表 → 红；改了测具忘了更新表 → 红；哈希对不上 → 红，并附一句"该文件另有未提交改动"。上一版这张表就是**手写漂移了一笔提交**（记 965 行 / `9341e4ba…`，实际 1119 行 / `d9572a31…`），而它上面那句"改完必须回来更新"正是被漂移的那句——所以规则本身不解决问题，断言才解决。
 
@@ -416,8 +416,98 @@ JOB desktop-check | completed | success | steps=25 | non-green=[]
    - 因此这条的现状是"同构缺陷 + 两条分支都暂无本机证据"。**没有为了"修对称"而改代码**；要动的时候连同这三处一起，并先造出一次红。
 6. **默认分支 `main` 指向另一项目**：依旧只交方案、未执行任何分支操作，方案与影响面见上一批第 5 条。
 
-## 1.4.4 - Gallery Render Bound and Installer Publisher
+## Unreleased - 2026-09-30（视觉：先量再改，只改一个界面）
 
+新增的长期要求是"看得见的界面要高级"。这一批**没有为形容词写代码**：先出一份可重跑的基线（`docs/VISUAL_BASELINE.md`），再只改新手教程弹窗，改完用同一把尺子复量。
+
+### 你提的六条，逐条裁决（成立 / 程度修正 / 不成立）
+
+| # | 你的判断 | 实测裁决 |
+| --- | --- | --- |
+| 1 | 没有层级，6 张卡一样重 | **成立**，但准确说法是"没有从属关系"：6 张卡五件套完全相同，顺序信息只挂在全弹窗最弱的那个元素上（10px、2.56:1 的 `STEP n`） |
+| 2 | STEP 3/4/6 底部 30–40% 是空的 | **成立但程度高估**：卡片末尾留白 8–18%，其中等高网格真正拉伸出来的只有 **25px（10%）**，且只出现在 STEP 3 与 STEP 5；另外四张的"留白"就是卡片自己的 `padding-bottom: 20px` |
+| 3 | 主次分不清，链接按钮和标题一样大 | **成立，且根因是一条全局 CSS**：`styles.css:71` 的 `button { font: inherit }` 写在 Tailwind 的 `@layer utilities` 之外，未分层规则层叠优先，于是按钮上的 `text-xs font-medium` 整条被吞——动作按钮实际 **16px/400**，而它所属的卡片标题是 **14px/600**，主次正好颠倒。全站 10 屏共 **23 个按钮**如此 |
+| 4 | 底部 5 个 chip 与 6 步重复 | **成立**：`steps: 6` + `numberedItems: 5`，且两套编号不一致（chip 4 = step 5）。**裁决见下** |
+| 5 | 字体没显式指定，`STEP n` 缺 tabular-nums | **两条都成立**：字体栈首个候选 Inter **未安装**（canvas 探针：`Inter` 与 `sans-serif` 宽度同为 669），仓内无 `@font-face`、无 `<link>`，所以拉丁落到 Segoe UI（648）、中文落到系统兜底；栈里**一个中文字体都没列**。`STEP n` 的 `font-variant-numeric` 实测 `normal`，6/6 |
+| 6 | 关闭 × 与 chip 微文本可能低于 3:1 / 4.5:1 | **一处半对**：关闭 × 前景 `rgb(148,163,184)`，合成背景 ≈ `rgb(249,249,250)`，比值 **2.44:1**（图形阈值 3:1，不达标）；chip 微文本前景 `rgb(71,85,105)`，比值 **7.20:1**，达标——它的问题是 11px 太小太挤，不是对比度 |
+
+### 序列裁决：删掉底部 5 个 chip，保留 6 步（你让我定，我按证据定）
+
+理由四条：(a) 6 步是信息超集，chip 是它的有损缩写，删 chip 不丢内容、删步骤丢内容；(b) chip 的编号与步骤编号**冲突**（chip 4 = step 5），留着就仍在制造"两套顺序"这个原缺陷；(c) 弹窗实测 `scrollHeight 945 / clientHeight 612`，**333px 在折叠线以下**，删掉直接换回可读高度；(d) 那一块的标题挂着 `Keyboard` 图标，但 5 个 chip 里没有任何快捷键——它连自己的图标都在说谎。
+
+### 改前 / 改后（同一把尺子、同一视口 1406×803、`visible`、动画已清空）
+
+| 指标 | 改前 | 改后 |
+| --- | --- | --- |
+| 文本对比度 < 4.5:1 | 7 条（最差 2.45） | **0 条** |
+| 字号被 `font: inherit` 吞掉的按钮 | 6 个 | **0 个** |
+| 同一屏内的编号序列 | 6 步 + 5 chip | **6 步 + 0** |
+| `STEP n` tabular-nums | 0/6 | **6/6** |
+| 字号档数 | 6 档（含 16px/400 按钮） | 5 档（18/600、14/600、12/400、12/500、11/600） |
+| 圆角种数 | 5 种（30/22/16/12/full） | **3 种（24/16/12）**，其中 24 与 12 正是 `--radius-card` / `--radius-control` |
+| gap 种数 | 3 种（16/12/8） | **2 种（16/12）** |
+| 最大等高拉伸死白 | 25px | **1px**（动作按钮改为落在卡底，跨卡对齐） |
+| 卡片高度 | 226/226/250/250/250/250 | 204/204/228/228/228/228 |
+| 内容总高 / 折叠线以下 | 945px / 333px | **740px / 128px** |
+
+**哪个像素变了**：三处最明显。(1) 每张卡右下角那个灰色胶囊按钮（16px、和标题同宽同级）变成标题下方的 accent 色文字链 `去云端 →`，12px/500，标题重新是卡内最重的东西；(2) `STEP 1…6` 从 10px/2.56:1 提到 11px/7.56:1 并等宽数字；(3) 底部那一整块"推荐的第一次使用顺序"（含 5 个 chip 与其容器）整块消失，原本压在它上面的 STEP 5/6 两行提上来，头部副标题与关闭 × 从 2.45 提到 7.23。
+
+### 测具这一轮自己错了四次（全部写进基线文档的"作废"表）
+
+1. `numberedChips: 0` —— 探针要求元素无子节点且文本恰为纯数字，而 chip 文本是 `1.连接 GitHub` 且内部包了 `<span>`：**它报"没有重复序列"的同一刻，5 个 chip 就在截图里**。
+2. `utilityDrift: {}` —— 正则写进 Node 模板字符串时单反斜杠 `\s` 到达页面变成 `s`，一个元素都没匹配上，而"没有漂移"和"没看"打印得一模一样。现在自报 `checked/matched`，`checked>0 && matched===0` 直接判测具故障退 2。
+3. `contrast` 模式两条链返回 `[]` —— `find` 命中的是祖先元素，取到的是继承色。改成取最深匹配。
+4. 我**假设** Tailwind 的 `slate-400` 与 `--text-muted` 是同一个灰，并据此写下"这是一个 token 问题，合并成一个变量"。加了 `palette` 探针用浏览器颜色引擎归一化后自证：`oklch(70.4% 0.04 256.788)` 渲染为 `rgb(144,161,185)`，`#94a3b8` 是 `rgb(148,163,184)`，`identical: false`。**假设被自己的探针否掉，结论改回"同一层级的两个灰"**——合并变量不会让 2.45 变成 4.5。
+
+另外：`visual` 模式跑过一次 `no page target`，原因是上一轮遗留的 headless Edge 还占着固定默认端口 9333，探针连到了那个陌生浏览器。已把失败信息改成"那个浏览器现在开着哪几个标签页"并写明 `--port` 是绕法（本轮所有截图改用 9377+ 的端口）。
+
+### 登记但**不修**的两条全局缺陷（越出"只改一个界面"）
+
+1. `styles.css:71` 的 `button { font: inherit }` 吞掉全站 23 个按钮的字号/字重。修法是把这条规则放进 `@layer base`（或删掉，Tailwind 已有 preflight）——一次动 10 个界面，需要单独批准。
+2. `--text-muted`（12 条）与硬编码 `text-slate-400`（59 条）合计 **76 条 AA 失败里的 71 条**，比值 2.45–2.63。这是"弱化灰"这一层整体不达标，不是 76 个孤立问题；但改 token 同样一次动 10 个界面。
+
+### 红 / 绿证据原文
+
+运行时门禁（把弹窗换成 `ab13df8` 的旧组件即红，改回即绿）：
+
+```text
+$ node scripts/verify_dialog_interactions.mjs visual          # 旧组件
+FAIL 7 text runs below 4.5:1 (先完成第一次真实云端@12px=2.45, STEP 1@10px=2.56, ...)
+FAIL 6 buttons render at a size their own class does not declare (button.text-xs probe=12px/500 actual=16px/400)
+FAIL a second numbered sequence reappeared next to the 6 steps (1.连接 GitHub, 2.上传 1 张图, ...)
+FAIL 6 of 6 STEP ordinals are not tabular-nums
+visual: 4 regression(s) on the onboarding dialog              -> rc=1
+$ node scripts/verify_dialog_interactions.mjs visual          # 新组件
+visual: onboarding dialog holds its baseline (0 below 4.5:1, 0 discarded button sizes, 1 sequence, all ordinals tabular)   -> rc=0
+```
+
+静态门禁（M13–M16，各破一条性质、每次都还原）：
+
+```text
+$ node scripts/verify_guard_mutations.mjs M13 M14 M15 M16
+OK   M13 -> FAIL a non-important size/weight utility on a button is discarded by styles.css (['text-[12px]', 'font-medium'])
+OK   M14 -> FAIL the duplicated five-chip ordering block stays deleted
+OK   M15 -> FAIL the dialog avoids the muted grey measured at 2.45:1 / 2.56:1
+OK   M16 -> FAIL the STEP ordinals are tabular
+guard mutations: 4/4 alarms reproduced | tree restored: clean
+```
+
+`check_user_flow.py` 新增 8 条（序列唯一性 / chip 不得复现 / 不用 2.45 灰 / 显式 CJK 字面 / tabular / 逐个 `<button>` 的字号工具类必须带 `!` / 循环真的扫到过 ≥2 个按钮），计数 **183 → 191**，`USERFLOW_CHECKS total=191 failed=0`。`verify:all` 加了 `visual` 一道：**12 → 13 stages**。
+
+### 本批放弃的选项
+
+1. **放弃改 `styles.css:71` 根治 23 个按钮**——它一次改到 10 个界面，越出"只改一个界面"，且需要单独批准；弹窗内用 `!` 抵消，并在守卫里写明"这里的 `!` 是有承重作用的，不是装饰"。
+2. **放弃改 `--text-muted` 抬全站对比度**——同理；且 `midnight` / `sakura` 两套主题各自重新定义了这个 token，改一处要连带重测三套配色，本轮没有那三套的数据。
+3. **放弃挂 webfont（含自托管 Inter）**——新增依赖/改 lock 已禁；挂 Google Fonts 更糟：一个阻塞样式表在 CDN 不可达时就是白屏。改成**把栈写明确**（拉丁 Segoe UI、中文显式列微软雅黑 / 苹方 / Noto Sans CJK），这三个是探针确认机器上真有的。
+4. **放弃把弹窗改成 3 列以彻底消除滚动**——6 张卡改 3 列只剩 2 行、高度可再降，但 `tauri.conf.json` 的 `minWidth: 640` 下 3 列会挤；且"滚动"不在你列的六条里，不替它编一个缺陷。剩余 128px 折叠线以下如实记下。
+5. **放弃"删 6 步、留 5 个 chip"**——你倾向删 chip，我按证据也删 chip；但先真量过反向方案：chip 是缩写，删步骤会丢"资源页 vs 图库页复制的东西不同"这类只有正文才说得清的内容。
+6. **放弃把基线做成 HTML 一页纸**——它要能被守卫读到、要能进 diff，Markdown 表格够用，且 `check_docs_site.py` 不覆盖 `docs/` 的任意 md，不会引入新的文档站约束。
+7. **放弃给 `visual` 做"和上一次运行 JSON 做差"的自动对比**——两份 JSON 里 `sample` 字段是截断的 UI 文本，一旦文案改动，差值会同时报出真回归和纯文案变化，反而更难判。改成把关键数字断言成 4 条会退出的门禁。
+8. **放弃修 `no page target` 的端口分配**（改成 `listen(0)` 抢空闲端口）——`ab` 模式用 `PORT + c.port - 14570` 给子进程推导端口，换成语义会连带改动一个已经验绿的模式。买到的是"失败时能看见连到了谁的浏览器"，这条已经够诊断。
+
+
+
+## 1.4.4 - Gallery Render Bound and Installer Publisher
 
 - Bound gallery rendering: past 600 revealed entries the page reports how many remain and asks you to narrow the directory or search instead of offering another batch forever. The cap is soft, so up to about 720 files stay fully reachable with no limit message. This also bounds what 全选本页文件 can select, which previously could reach every entry you had revealed.
 - Name the installer publisher. `bundle.publisher` was unset, so WiX fell back to the second segment of the identifier and the MSI reported `Manufacturer = multicloud`; publisher and copyright now carry the string from `LICENSE`. This affects Windows Installer metadata only - the `.exe` `CompanyName` version resource has no Tauri configuration key and stays empty.
