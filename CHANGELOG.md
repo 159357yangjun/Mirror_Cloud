@@ -178,9 +178,9 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
-| `scripts/verify_all.mjs` | 139 | 8,644 | `eba51ad31f6951ce6de8fb63874f6b00daae4808258bc53c338252dd0da65146` | 13 stages，一条命令跑完七道守卫 + 五个测具模式（新增 `visual`）+ 变异套件 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行） |
-| `scripts/verify_dialog_interactions.mjs` | 1336 | 86,335 | `68709506fb82ff0eb3cd5960c5665e387fd9f23afea3c9484e5cf99822048fa3` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0` | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归 |
-| `scripts/verify_guard_mutations.mjs` | 180 | 13,174 | `cdc231dcb5eeb8feeb6cd6455b80d207c329545341bf4ee0b37e60f8b7470b80` | 16/16 变异都被对应 oracle 抓到 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
+| `scripts/verify_all.mjs` | 140 | 8,807 | `f1b43f14f7d67091c7f27ad19e82ff1def88dbe5b14faa22422932f14ded6ed5` | 14 stages，一条命令跑完七道守卫 + 六个测具模式（新增 `layout`）+ 变异套件 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行） |
+| `scripts/verify_dialog_interactions.mjs` | 1932 | 130,405 | `10d60308dbbe9f86b1d47b8f7c29f9e338d8947b47246b2a59b345fb875d1914` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` 五道控制全过 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17` |
+| `scripts/verify_guard_mutations.mjs` | 195 | 14,540 | `e149626757bd6f71cb01413d91e52591db50672f419068a33a99ed4775e9bf2c` | 17/17 变异都被对应 oracle 抓到 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
 | `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,897 | `d54d83cb52a1f8489efa4c59162ce8d44f96f34505d3396a5d4e59675460833b` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
 | `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 530 | 47,703 | `61a3105c8af4f5cf09cd7f8a8fe89b4eff795b82ff4d57c23e171133662c02bc` | `total checks: 191` | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16` |
 
