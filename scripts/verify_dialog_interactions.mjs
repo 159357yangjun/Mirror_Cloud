@@ -434,7 +434,7 @@ async function main() {
   // Gates run before anything is measured, and before waiting for the app to mount: an impostor
   // server never mounts it, so a gate placed after the mount wait spends 20s timing out first.
   for (let i = 0; i < 20; i++) {
-    if (await evaluate(`document.title !== '' || document.body.children.length > 0`)) break
+    if (await evaluate(`!!document.body && (document.title !== '' || document.body.children.length > 0)`)) break
     await sleep(250)
   }
   console.log('VIEWPORT', JSON.stringify(await assertRealViewport('after-navigation')))
