@@ -2202,6 +2202,10 @@ async function main() {
     const failures = []
     const skippedFindings = []
     const stuckLoading = []
+    // Per page/width: how many cut families were emitted before grouping, and how many clipping root
+    // causes there actually are. This is the number that stops a future reader adding the lines back
+    // up and calling the total a defect count.
+    const cutIdentity = []
     // Positive control with two placements, because the document-level criterion and the per-element
     // criterion must be shown to be different tests: a 2400px box planted inside a clipping ancestor
     // must be caught only by the per-element one. Without this, "0 failures" across 21 page/width
@@ -2405,9 +2409,40 @@ async function main() {
         }
         if (g.docOverflowPx > 1) emit(`DOC-OVERFLOW ${entry.tier} ${label}: documentElement.scrollWidth ${g.docScrollWidth} exceeds innerWidth ${g.innerWidth} by ${g.docOverflowPx}px (a scrollbar / unreachable content)`)
         if (g.viewportOverflowPx > 1) emit(`VIEWPORT-OVERFLOW ${entry.tier} ${label}: ${g.offenders.length} element(s) extend past the viewport edge, widest +${g.offenders[0].over}px at ${g.offenders[0].sel} "${g.offenders[0].text}"`)
-        if (g.clippedByAncestorTotal) emit(`CLIP-BY-ANCESTOR ${entry.tier} ${label}: ${g.clippedByAncestorTotal} text leaf(s) cut by a non-scrolling ancestor - ${g.clippedByAncestor.slice(0, 3).map((c) => `+${c.excess}px ${c.axis} "${c.text}" at ${c.sel} (cut by ${c.by}, overflow ${c.overflow})`).join(' | ')}`)
-        if (g.controlsCutTotal) emit(`CONTROL-CUT ${entry.tier} ${label}: ${g.controlsCutTotal} interactive element(s) cut by a non-scrolling ancestor, unreachable - ${g.controlsCut.slice(0, 3).map((c) => `+${c.excess}px ${c.axis} "${c.text}" at ${c.sel} (cut by ${c.by}, overflow ${c.overflow})`).join(' | ')}`)
-        if (g.containersCutTotal) emit(`CONTAINER-CUT ${entry.tier} ${label}: ${g.containersCutTotal} container(s) cut by a non-scrolling ancestor - ${g.containersCut.slice(0, 2).map((c) => `+${c.excess}px ${c.axis} at ${c.sel} (cut by ${c.by}, overflow ${c.overflow})`).join(' | ')}`)
+        // One clipping event, one finding. The three cut lists used to be emitted as three separate
+        // families, so a single overflowing subtree produced one line for the control it cut, one for
+        // its container and one for any text leaf - 14 lines for one bug, and the next reader counts
+        // 14 defects. They are now grouped by the thing that can only be shared by accident: which
+        // ancestor cut, on which axis.
+        const cutRecords = [
+          ...(g.clippedByAncestor || []).map((c) => ({ ...c, bucket: 'text' })),
+          ...(g.controlsCut || []).map((c) => ({ ...c, bucket: 'control' })),
+          ...(g.containersCut || []).map((c) => ({ ...c, bucket: 'container' })),
+        ]
+        const roots = new Map()
+        for (const c of cutRecords) {
+          const key = `${c.by}|${c.axis}`
+          if (!roots.has(key)) roots.set(key, { by: c.by, axis: c.axis, overflow: c.overflow, members: [] })
+          roots.get(key).members.push(c)
+        }
+        for (const rc of roots.values()) {
+          const tally = rc.members.reduce((a, m) => { a[m.bucket] = (a[m.bucket] || 0) + 1; return a }, {})
+          const worst = rc.members.reduce((a, m) => (m.excess > a.excess ? m : a), rc.members[0])
+          emit(`CUT-ROOT ${entry.tier} ${label}: ${Object.entries(tally).map(([k, v]) => `${k}=${v}`).join(' ')} element(s) cut by ${rc.by} on ${rc.axis} (overflow ${rc.overflow}) - worst +${worst.excess}px "${worst.text}" at ${worst.sel}`)
+        }
+        // The identity is printed because the whole point of grouping is a count a reader can trust,
+        // and a count that cannot disagree with its own input is not a count. Two independent ways to
+        // reach the same number must agree, and the listed records must add up to the pre-truncation
+        // totals or the grouping is hiding the difference.
+        const distinctKeys = new Set(cutRecords.map((c) => `${c.by}|${c.axis}`)).size
+        const membersSum = [...roots.values()].reduce((a, rc) => a + rc.members.length, 0)
+        const listed = cutRecords.length
+        const totals = (g.clippedByAncestorTotal || 0) + (g.controlsCutTotal || 0) + (g.containersCutTotal || 0)
+        cutIdentity.push({ tier: entry.tier, route: label, families_before: [g.clippedByAncestorTotal, g.controlsCutTotal, g.containersCutTotal].filter((n) => n).length, root_causes: roots.size, listed, membersSum, distinctKeys, records_total: totals, truncated: Math.max(0, totals - listed) })
+        if (roots.size !== distinctKeys || membersSum !== listed) {
+          console.log(`HARNESS FAULT: LAYOUT-IDENTITY ${entry.tier} ${label}: root_causes=${roots.size} distinct_keys=${distinctKeys} members=${membersSum} listed=${listed} - the grouping does not account for its own records, so its count is not a count.`)
+          finish(2)
+        }
         if (g.clippedTotal) emit(`SELF-CLIP ${entry.tier} ${label}: ${g.clippedTotal} own-text run(s) cut with no ellipsis and no title - worst ${g.clipped[0].hDelta}px horizontal / ${g.clipped[0].vDelta}px vertical ink "${g.clipped[0].text}" at ${g.clipped[0].sel}`)
         if (g.smallTotal) emit(`TOUCH-TARGET ${entry.tier} ${label}: ${g.smallTotal} clickable target(s) under ${TOUCH}x${TOUCH} - smallest ${g.smallTargets[0].w}x${g.smallTargets[0].h} "${g.smallTargets[0].text}" at ${g.smallTargets[0].sel}`)
         if (g.brokenImages.length) emit(`BROKEN-IMAGE ${entry.tier} ${label}: ${g.brokenImages.length} image(s) with naturalWidth 0 - ${g.brokenImages.map((b) => b.src).join(', ')}`)
@@ -2456,6 +2491,21 @@ async function main() {
     }
     // Three exit codes because "no problems found" and "did not look at anything" are different
     // claims: 0 looked and clean, 1 findings, 2 harness fault, 3 nothing was measured at all.
+    const ci = cutIdentity.reduce((a, r) => ({
+      pages: a.pages + (r.root_causes ? 1 : 0),
+      families_before: a.families_before + r.families_before,
+      root_causes: a.root_causes + r.root_causes,
+      listed: a.listed + r.listed,
+      total: a.total + r.records_total,
+      truncated: a.truncated + r.truncated,
+    }), { pages: 0, families_before: 0, root_causes: 0, listed: 0, total: 0, truncated: 0 })
+    console.log(`LAYOUT_FAMILIES pages_with_cuts=${ci.pages} family_lines_before_grouping=${ci.families_before} distinct_root_causes=${ci.root_causes} lines_not_double_counted=${ci.families_before - ci.root_causes} records_listed=${ci.listed} records_total=${ci.total} truncated=${ci.truncated}`)
+    // The identity that makes the previous line a count rather than a presentation choice: every
+    // record the probe found is either listed here or accounted for by the truncation, never neither.
+    if (ci.listed + ci.truncated !== ci.total) {
+      console.log(`HARNESS FAULT: LAYOUT-IDENTITY records_listed=${ci.listed} + truncated=${ci.truncated} != records_total=${ci.total} - cut records are unaccounted for, so distinct_root_causes under-reads.`)
+      finish(2)
+    }
     console.log(`LAYOUT_GATE checked=${checked} matched=${matched} skipped=${skipped} failures=${failures.length}`)
     if (!matched) { console.log('layout: nothing was measured - this is NOT a pass.'); finish(3) }
     emitGate('layout', matched, failures.length, { checked: tiers.length * ROUTES.length, skipped })

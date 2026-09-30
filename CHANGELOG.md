@@ -179,7 +179,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
 | `scripts/verify_all.mjs` | 353 | 25,495 | `448a0136e03306a42894397b48dba897e9686210d1f14c59d4a9c23cce1d0244` | 18 stages：七道静态守卫 + 两份台账（`theme_face_inventory`、`verify_shape`）+ 七个测具模式（新增 `contrast-tier`、`theme-surfaces`）+ `red-demo` + 变异套件；`layout` 仍不接入，原因见其注释 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行）；`node scripts/verify_all.mjs selftest`（往 stage 表里粘一行重复名字，必须被点名） |
-| `scripts/verify_dialog_interactions.mjs` | 2635 | 203,290 | `50c099fc41dbc2abadf659567d691d198178918ca86a60c76c354d12d184c0d9` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
+| `scripts/verify_dialog_interactions.mjs` | 2685 | 206,700 | `5cbe226f7d6bc46addacee5efbaa194d0ece0c947ce7d49d5c2a2988b11c7085` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
 | `scripts/verify_guard_mutations.mjs` | 288 | 23,220 | `c909de97ff370ed6e0593e519b7d21728d459030966788dc4a2c2df694edf52f` | 24 个变异（M1–M24），每个都必须被它指定的那台 oracle 抓到；本轮 M18/M19/M21/M22/M23/M24 的逐条读数见下面"本轮末次运行读数"一节 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
 | `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 553 | 33,262 | `1edc005d5f8c6bacb4921d45eca4781e3b0122f67d895ba87b011c9315c5e01e` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
@@ -897,6 +897,23 @@ D 的两个候选因反都能解释"4px 垂直"：真下缘裁切，或 `Range.g
 处置不是假装分母恒定：`--doc` 的比对**只取比值列**（那才是这一节要钉的不变量），
 `判读文字数` 照常生成给人看但不进断言。这条投影带两面夹具，任一方向不成立就报红：
 **改一个比值必须仍被抓到**、**只改计数必须不报**。当前同批次两次连跑 `below=0 docDrift=0`。
+
+### 二·七、第一刀已落：同一个根因不再进两个家族
+
+改前原样读数（exit 1）：`LAYOUT_GATE checked=21 matched=21 skipped=0 failures=23`
+= 7 `CONTROL-CUT` + 7 `CONTAINER-CUT` + 2 `SELF-CLIP` + 7 `TOUCH-TARGET`。
+改后：`failures=16` = **7 `CUT-ROOT`** + 2 + 7，并印恒等式：
+
+```text
+LAYOUT_FAMILIES pages_with_cuts=7 family_lines_before_grouping=14 distinct_root_causes=7
+                lines_not_double_counted=7 records_listed=21 records_total=21 truncated=0
+```
+
+分组键是 `by|axis`（哪个祖先切的、哪根轴）——这是唯一不可能巧合相同的两件事。每行仍带成员构成
+（`control=1 container=2`）和最坏超出量，所以信息没丢，只是行数不再冒充缺陷数。
+两处恒等式当场 exit 2：`root_causes != distinct(by|axis)` 或 `members != listed`；
+以及 `listed + truncated != records_total` —— 最后这条拿的是探针**截断前**自己的计数，
+与这里的分组代码无关，所以"分组时漏了一条"会被独立数字抓到。**分档判断本身没变**（那 14 行仍是同一个 bug）。
 
 ### 三、本轮明确不做的
 

@@ -460,9 +460,27 @@ A 与 B 是同一次越界的两种口径（控件盒 +25px、容器盒 +33px）
   固定高度 + `items-center` 的按钮上会稳定虚报几像素垂直"裁切"。
 分辨它只要一次读数：该按钮的 `height` / `line-height` / `getClientRects()` 与 `scrollHeight`。本轮没做，所以留"分不清"。
 
+### 6.0 第一刀已落：同一个根因不再进两个家族
+
+改前原样读数（`node scripts/verify_dialog_interactions.mjs layout`，exit 1）：
+`LAYOUT_GATE checked=21 matched=21 skipped=0 failures=23` = 7 `CONTROL-CUT` + 7 `CONTAINER-CUT` + 2 `SELF-CLIP` + 7 `TOUCH-TARGET`。
+
+改后：`failures=16` = **7 `CUT-ROOT`** + 2 `SELF-CLIP` + 7 `TOUCH-TARGET`，并印恒等式
+
+```text
+LAYOUT_FAMILIES pages_with_cuts=7 family_lines_before_grouping=14 distinct_root_causes=7
+                lines_not_double_counted=7 records_listed=21 records_total=21 truncated=0
+```
+
+分组键是**唯一不可能巧合相同的东西**：哪个祖先切的、在哪根轴（`by|axis`）。
+每行仍带成员构成（`control=1 container=2`）与最坏超出量，信息不丢、行数不再冒充缺陷数。
+恒等式两处当场判死：`root_causes != distinct(by|axis)` 或 `members != listed` ⇒ exit 2；
+`listed + truncated != records_total` ⇒ exit 2 —— 后一条用的是探针自己**截断前**的计数，
+与我这里的分组无关，所以"分组时漏记一条"会被独立数字抓住，而不是靠我自觉。
+
 ### 净结论
 
-**23 条 = 14 行真缺陷（A+B，同一个 bug）+ 2 行同族假象 + 5 行分不清（C 的吐司按钮）+ 2 行分不清（D）= 14 真 / 2 假 / 7 分不清。** 另：C 那 7 行里除"最小值"之外的整串计数还没逐条核，所以"14 真"这个数不会因为核完 C 而变小，只会让 C 的 5 行落定。
+**23 条 = 14 行真缺陷（A+B，同一个 bug）+ 2 行同族假象 + 5 行分不清（C 的吐司按钮）+ 2 行分不清（D）= 14 真 / 2 假 / 7 分不清。**（第一刀已落：那 14 行现在是一族 7 行 `CUT-ROOT`，见 6.0；分档判断不变。） 另：C 那 7 行里除"最小值"之外的整串计数还没逐条核，所以"14 真"这个数不会因为核完 C 而变小，只会让 C 的 5 行落定。
 本轮按边界**一条都没修**。下一步顺序：先把覆盖层从 `layout` 的页面计数里拆出来（C 的 5 条才能判），
 再给 `SELF-CLIP` 补行盒/墨迹的分辨读数（D 的 2 条才能判），A+B 那条可以直接修（给 `.app-sidebar` 上 `overflow-y:auto`
 或把底部块移出固定高度容器），但它会改变最小窗口下的侧栏行为，属于要你点头的界面改动。

@@ -1,15 +1,15 @@
 {
   "_meta": {
-    "takenAt": "2026-09-30T16:57:46",
-    "head": "76fab3c9cdde35d8768452d56f1f67067437e46b",
-    "reason": "seventh signing: doc-table comparison projects to ratio columns only, with a two-sided fixture on the projection"
+    "takenAt": "2026-09-30T17:13:05",
+    "head": "fa912121bf2d1fc56f8d9cc023a2fd7d0dc82601",
+    "reason": "eighth signing: layout cut-findings grouped by clipping root cause with an accounting identity"
   },
   "files": [
     {
       "file": "scripts/verify_all.mjs",
       "exists": true,
-      "lines": 344,
-      "bytes": 24602,
+      "lines": 354,
+      "bytes": 25495,
       "families": {
         "failures.push": 0,
         "emitGate": 0,
@@ -22,14 +22,14 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 2636,
-      "bytes": 203290,
+      "lines": 2686,
+      "bytes": 206700,
       "families": {
         "failures.push": 13,
         "emitGate": 11,
-        "harness-fault exit": 35,
+        "harness-fault exit": 37,
         "gate line": 8,
-        "positive control": 11,
+        "positive control": 10,
         "throw": 16
       }
     },
@@ -92,14 +92,14 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 4134,
-    "bytes": 301856,
+    "lines": 4194,
+    "bytes": 306159,
     "families": {
       "failures.push": 14,
       "emitGate": 11,
-      "harness-fault exit": 37,
+      "harness-fault exit": 39,
       "gate line": 8,
-      "positive control": 12,
+      "positive control": 11,
       "throw": 16
     }
   },
