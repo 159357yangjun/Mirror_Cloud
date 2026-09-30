@@ -71,6 +71,9 @@ const mutations = [
   // overflow-wrap so a 64-character hashed filename stops running out of the 440px card. Take it
   // away and the layout sweep must see the text cut - the document-level number will not.
   { id: 'M17', file: 'apps/desktop/src/components/ConfirmDialog.tsx', from: 'mt-2 break-words text-xs', to: 'mt-2 text-xs', oracle: 'layout', expect: 'own-text run(s) cut with no ellipsis and no title' },
+  // Removes the theme whitelist so an out-of-band value reaches the DOM. This is the ?mode=xyz
+  // shape transplanted into the one place this app takes outside input: persisted appearance.
+  { id: 'M18', file: 'apps/desktop/src/lib/theme.ts', from: 'theme: isThemeKey(parsed.theme) ? parsed.theme : DEFAULT_THEME_PREFERENCES.theme,', to: 'theme: parsed.theme,', oracle: 'settings', expect: 'unknown theme written into the DOM' },
 ]
 
 const selected = only ? mutations.filter((m) => only.has(m.id)) : mutations
@@ -128,13 +131,15 @@ const runOracle = (oracle) => {
     ? [process.execPath, [`${REPO}/${HARNESS}`, 'gate-unit']]
     : oracle === 'layout'
       ? [process.execPath, [`${REPO}/${HARNESS}`, 'layout', '--tier', '640', '--routes', 'confirm-longname', '--port', String(9500 + (process.pid % 50))]]
-      : [python.exe, [...python.pre, 'scripts/check_user_flow.py']]
-  const r = spawnSync(cmd[0], cmd[1], { cwd: REPO, encoding: 'utf8', timeout: oracle === 'layout' ? 420_000 : 180_000 })
+      : oracle === 'settings'
+        ? [process.execPath, [`${REPO}/${HARNESS}`, 'settings-guard', '--port', String(9600 + (process.pid % 50))]]
+        : [python.exe, [...python.pre, 'scripts/check_user_flow.py']]
+  const r = spawnSync(cmd[0], cmd[1], { cwd: REPO, encoding: 'utf8', timeout: oracle === 'layout' || oracle === 'settings' ? 420_000 : 180_000 })
   return {
     status: r.status,
     spawnError: r.error ? String(r.error).slice(0, 120) : null,
     output: `${r.stdout || ''}${r.stderr || ''}`,
-    marker: oracle === 'gate-unit' ? 'gate unit check' : oracle === 'layout' ? 'LAYOUT_GATE' : 'USERFLOW_CHECKS',
+    marker: oracle === 'gate-unit' ? 'gate unit check' : oracle === 'layout' ? 'LAYOUT_GATE' : oracle === 'settings' ? 'SETTINGS_GATE' : 'USERFLOW_CHECKS',
   }
 }
 

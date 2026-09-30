@@ -26,6 +26,11 @@
  *   contrast  the raw colour chain behind one flagged element, for hand-checking the ratio
  *   layout    the geometry floor: every route at 1440/1024/640 checked for horizontal overflow,
  *             clipped text, touch-target size, focus visibility, accessible names and broken images
+ *   theme-surfaces  photographs each surface under all three themes and reports the ones whose
+ *             rendered pixels never change - i.e. panels that ignore the selected theme
+ *   settings-guard  plants an illegal out-of-band value (unknown theme, CSS-injection accent,
+ *             out-of-range blur/glass, non-http wallpaper) and requires the app to mount, fall
+ *             back, and refuse to write the bad value into the DOM
  *
  * Options
  *   --out DIR   default %TEMP%/image-hosting-probes/<date>; screenshots and JSON land there, never
@@ -65,7 +70,7 @@ const opt = (name, fallback) => {
 }
 if (!MODE || MODE === 'help') {
   console.log(readFileSync(new URL(import.meta.url), 'utf8').split('*/')[0].replace(/^\/\*\*/, ''))
-  console.log(`modes: confirm | ab | gate | gate-unit | links | pages | external | red-demo | visual | contrast | layout`)
+  console.log(`modes: confirm | ab | gate | gate-unit | links | pages | external | red-demo | visual | contrast | layout | theme-surfaces | settings-guard`)
   process.exit(MODE === 'help' ? 0 : 2)
 }
 
@@ -1311,6 +1316,80 @@ window.__V = (function () {
     console.log('TOKENS ' + JSON.stringify(rows.filter((r, i, a) => a.findIndex((x) => x.theme === r.theme) === i).map((r) => ({ theme: r.theme, ...r.tokens }))))
     console.log(`CONTRAST_GATE combos=${rows.length} measured=${rows.reduce((a, r) => a + r.measured, 0)} below=${failures.length} unresolved=${rows.reduce((a, r) => a + r.unresolved, 0)}`)
     console.log(failures.length ? `contrast: ${failures.length} failure(s) across ${rows.length} theme/wallpaper/route combinations` : `contrast: every readable run meets its threshold in all ${rows.length} combinations`)
+    finish(failures.length ? 1 : 0)
+  }
+
+  if (MODE === 'settings-guard') {
+    // The URL-parameter shape does not exist in this app (no location.search / URLSearchParams /
+    // Astro.url anywhere in tracked sources). Its real equivalent is here: values that arrive from
+    // outside the render - localStorage, a user-typed wallpaper URL, a colour picker - are written
+    // straight into documentElement and decide which CSS applies. An unvalidated value there is the
+    // same defect as ?mode=xyz blanking a page: the UI silently selects a rule set that does not
+    // exist. Each case plants one illegal value, reloads through the real entry point, and asserts
+    // the app still mounts, reports, and refuses to write the bad value into the DOM.
+    const KEY = 'image-hosting-platform.appearance-v1'
+    const DEFAULTS = { theme: 'mist', accent: '#4f46e5', wallpaper: '', blur: 18, glass: 88 }
+    const CASES = [
+      { field: 'theme', illegal: 'banana', note: 'an unknown data-theme selects no CSS block and silently keeps :root values' },
+      { field: 'accent', illegal: 'red; } body { display:none', note: 'injected into a style property - must not reach the CSSOM' },
+      { field: 'blur', illegal: 9999, note: 'out of range must clamp, not disable all painting' },
+      { field: 'glass', illegal: -5, note: 'negative transparency' },
+      { field: 'wallpaper', illegal: 'javascript:alert(1)', note: 'non-http scheme must be refused' },
+      { field: 'theme', illegal: null, note: 'wrong type entirely', raw: '{"theme":42,"accent":null}' },
+    ]
+    const results = []
+    const failures = []
+    const original = await evaluate(`window.localStorage.getItem(${JSON.stringify(KEY)})`)
+    for (const c of CASES) {
+      const written = c.raw || JSON.stringify({ ...DEFAULTS, [c.field]: c.illegal })
+      await evaluate(`(function(){window.localStorage.setItem(${JSON.stringify(KEY)}, ${JSON.stringify(written)});return true})()`)
+      consoleErrors.length = 0
+      await send('Page.navigate', { url: APP })
+      let mounted = false
+      for (let i = 0; i < 40; i++) {
+        await sleep(250)
+        mounted = await evaluate(`(function(){const r=document.getElementById('root');return !!(r && r.children.length && (r.textContent||'').trim().length > 50)})()`)
+        if (mounted) break
+      }
+      const state = await evaluate(`(function(){
+        const root=document.documentElement, cs=getComputedStyle(root);
+        const acc=cs.getPropertyValue('--accent').trim(), bl=cs.getPropertyValue('--backdrop-blur').trim(), gl=cs.getPropertyValue('--glass-strength').trim();
+        return {
+          themeAttr: root.dataset.theme || '(absent)',
+          appBg: cs.getPropertyValue('--app-bg').trim(),
+          accent: acc, blur: bl, glass: gl,
+          wallpaperAttr: root.dataset.wallpaper || '(absent)',
+          wallpaperVar: cs.getPropertyValue('--wallpaper').trim().slice(0, 40),
+          rootTextLen: (document.getElementById('root')||{}).textContent ? document.getElementById('root').textContent.trim().length : 0,
+          bodyDisplay: getComputedStyle(document.body).display,
+          hiddenCount: Array.from(document.body.querySelectorAll('*')).filter((e)=>getComputedStyle(e).display==='none').length,
+        }
+      })()`)
+      const errs = consoleErrors.filter((e) => e.type === 'error' || e.exceptionDetails).slice(0, 3).map((e) => (e.text || e.exceptionDetails?.exception?.description || '').slice(0, 140))
+      const entry = { field: c.field, illegal: String(c.illegal ?? 'wrong-type'), wrote: written, mounted, state, errors: errs, note: c.note }
+      results.push(entry)
+      const bad = []
+      if (!mounted) bad.push('app did not mount (blank screen)')
+      if (state.bodyDisplay === 'none') bad.push('body was hidden by the injected value')
+      if (errs.length) bad.push(`uncaught error on load: ${errs[0]}`)
+      if (!['(absent)', 'mist', 'midnight', 'sakura'].includes(state.themeAttr)) bad.push(`unknown theme written into the DOM: data-theme="${state.themeAttr}"`)
+      if (!/^#[0-9a-f]{6}$/i.test(state.accent)) bad.push(`non-hex accent reached the CSSOM: --accent=${state.accent}`)
+      if (state.appBg !== '#f6f7fb' && state.themeAttr === '(absent)') bad.push(`theme attribute absent but --app-bg=${state.appBg} (half-applied state)`)
+      const blurNum = parseFloat(state.blur), glassNum = parseFloat(state.glass)
+      if (!(blurNum >= 0 && blurNum <= 36)) bad.push(`blur escaped its clamp: ${state.blur}`)
+      if (!(glassNum >= 45 && glassNum <= 100)) bad.push(`glass escaped its clamp: ${state.glass}`)
+      if (c.field === 'wallpaper' && state.wallpaperAttr === 'true') bad.push(`a non-http wallpaper value was accepted: ${state.wallpaperVar}`)
+      for (const b of bad) failures.push(`SETTINGS ${c.field}=${entry.illegal}: ${b}`)
+      // Print the reasons on the same line as the case. The first version only printed the state
+      // and kept the reasons in the JSON, so a real alarm was unmatchable by anything reading the
+      // transcript - including the mutation runner that checks this mode.
+      console.log(`${bad.length ? 'FAIL' : 'OK  '} settings ${c.field}=${entry.illegal} -> mounted=${mounted} theme=${state.themeAttr} accent=${state.accent} blur=${state.blur} glass=${state.glass} wallpaper=${state.wallpaperAttr} textLen=${state.rootTextLen}${bad.length ? ' | ' + bad.join(' | ') : ''}`)
+    }
+    await evaluate(`(function(){${original === null ? `window.localStorage.removeItem(${JSON.stringify(KEY)})` : `window.localStorage.setItem(${JSON.stringify(KEY)}, ${JSON.stringify(original)})`};return true})()`)
+    await send('Page.navigate', { url: APP })
+    writeFileSync(`${OUT}/report-settings.json`, JSON.stringify({ provenance: buildProvenance(), cases: results, failures }, null, 2))
+    console.log(`SETTINGS_GATE checked=${CASES.length} failed=${failures.length}`)
+    console.log(failures.length ? `settings-guard: ${failures.length} failure(s) - an out-of-band value reached the UI or blanked it` : `settings-guard: all ${CASES.length} illegal values fell back or were refused, none blanked the app`)
     finish(failures.length ? 1 : 0)
   }
 
