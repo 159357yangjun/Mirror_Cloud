@@ -55,23 +55,32 @@ const mutations = [
     to: "      { re: /zzz-nothing-in-this-app-matches-me/, why: 'a planted exemption for a surface no sweep can reach' },\n      { re: /app-upload-button/, why: 'primary upload action: filled slate-950 with white label in all three themes, by design' },",
   },
   // The contrast gate reads the worst point across the run's own ink, not one centre pixel. M22
-  // turns the sampler back into a single-point one; the planted white-to-black gradient caption then
-  // reports the centre's passing 7.3:1 and the gate goes quiet about a 1.7:1 surface.
+  // turns the sampler back into a single-point one. Which fixture notices was measured, not guessed:
+  // it is the CHIP control that fires first ("kept 66 points and rejected 0 as belonging to something
+  // else"), because a centre-only sampler stops looking at the fragment edges where the neighbour's
+  // pixels live. The gradient control would disagree too, but the run stops at the first fault, so the
+  // expectation names the alarm that actually goes off.
   {
-    id: 'M22', file: HARNESS, oracle: 'contrast', expect: 'the gradient control',
+    id: 'M22', file: HARNESS, oracle: 'contrast', expect: 'chip control',
     from: '                const px = x0 + dx, py = y0 + dy',
     to: '                const px = Math.round((x0 + x1) / 2), py = Math.round((y0 + y1) / 2)',
   },
   // Alpha-thinned text cannot have a guaranteed ratio at all, because what it composites onto is
-  // the user's wallpaper. M23 puts one instance back.
+  // the user's wallpaper. M23 puts one instance back. The anchor is SettingsPage, not the help
+  // dialog: the dialog has no `text-slate-400` left after this round's alpha sweep, and a stale
+  // anchor is reported as stale rather than skipped.
   {
-    id: 'M23', file: DIALOG, oracle: 'guard', expect: 'readable text never thins itself with an alpha modifier',
+    id: 'M23', file: 'apps/desktop/src/pages/SettingsPage.tsx', oracle: 'guard', expect: 'readable text never thins itself with an alpha modifier',
     from: 'text-slate-400', to: 'text-slate-400/70', all: true,
   },
-  // A mode name that matches no block used to spawn the browser, judge nothing, and exit 0. M24
-  // disarms the startup refusal; the oracle runs the harness with a name that does not exist.
+  // A mode name that matches no block used to spawn the browser, judge nothing, and exit 0.
+  // This one is the INVERSE shape of every other mutation here, and it has to be: M21-M23 break a
+  // property and require the guard to alarm, whereas this breaks the guard itself - so "the guard
+  // still alarms" is not achievable and was never a test. What proves the guard is load-bearing is
+  // both halves: unmutated, the run must refuse and name the mode; mutated, the same command must go
+  // quiet and exit 0. `removesGuard` makes the runner require that pair.
   {
-    id: 'M24', file: HARNESS, oracle: 'bogus-mode', expect: 'is not declared, so no block would run',
+    id: 'M24', file: HARNESS, oracle: 'bogus-mode', expect: 'is not declared, so no block would run', removesGuard: true,
     from: "if (MODE && MODE !== 'help' && !MODES.includes(MODE)) {", to: 'if (false) {',
   },
   // finish() recorded a verdict and then kept running: a later catch could schedule a second exit
@@ -222,14 +231,30 @@ for (const m of selected) {
       results.push({ id: m.id, file: m.file, applied: false, note: 'anchor missing - mutation definition is stale' })
       continue
     }
+    // The baseline has to be taken BEFORE the mutation is written. It was not, first time: both runs
+    // saw the same disarmed file, so the guard-removal case compared the mutant against itself and
+    // reported "pristine run exited 0" about a file that was never pristine.
+    const before = m.removesGuard ? runOracle(m.oracle) : null
     writeFileSync(path, mutated)
+    // For a guard-removal mutation the baseline run is the other half of the proof: if the guard does
+    // not alarm on the pristine file either, then "the mutated run went quiet" proves nothing about
+    // the line that was deleted.
     const run = runOracle(m.oracle)
     const oracleRan = run.output.includes(run.marker)
+    const baselineRan = before ? before.output.includes(before.marker) : true
+    const baselineAlarmed = before ? (baselineRan && before.status !== 0 && before.output.includes(m.expect)) : true
+    // "The oracle ran" is a diagnostic, not a gate: a fixture that catches its mutation stops the run
+    // with a fault before any gate line prints, so requiring the gate line would call M22's cleanest
+    // possible catch a non-run. What makes a mutation caught is the oracle going red AND naming the
+    // property the mutation broke.
+    const named = run.output.includes(m.expect)
     results.push({
       id: m.id, file: m.file, oracle: m.oracle, applied: true, spawnError: run.spawnError, oracleRan,
-      guardAlarmed: oracleRan && run.status !== 0 && run.status !== null,
-      namedExpectedFailure: run.output.includes(m.expect),
+      removesGuard: !!m.removesGuard, baselineAlarmed,
+      guardAlarmed: m.removesGuard ? baselineAlarmed && !named && run.status === 0 : (run.status !== 0 && run.status !== null && named),
+      namedExpectedFailure: m.removesGuard ? baselineAlarmed : named,
       observedExit: run.status,
+      baselineExit: before ? before.status : null,
       // Show the line that actually names the expected failure first. Slicing the raw FAIL list
       // printed the sidebar's unrelated-but-real complaints and hid the one being proved.
       evidence: (() => {
@@ -248,7 +273,12 @@ const bad = results.filter((r) => !r.applied || !r.guardAlarmed || !r.namedExpec
 writeFileSync(`${OUT}/report-guard-mutations.json`, JSON.stringify({ results, unrestored }, null, 2))
 for (const r of results) {
   const head = `${r.applied && r.guardAlarmed && r.namedExpectedFailure ? 'OK  ' : 'FAIL'} ${r.id} ${r.file}`
-  console.log(r.note ? `${head} (${r.note})` : `${head} -> oracle ran: ${r.oracleRan}, exit ${r.observedExit}, named expected failure: ${r.namedExpectedFailure}${r.spawnError ? `, spawnError: ${r.spawnError}` : ''}${r.evidence && r.evidence.length ? `\n      ${r.evidence.join('\n      ')}` : ''}`)
+  // A guard-removal case reads inverted on purpose: exit 0 there is the pass, so it has to be
+  // labelled or the next person will "fix" the one line that looks wrong.
+  const verdict = r.note ? `(${r.note})`
+    : r.removesGuard ? `-> guard-removal: pristine run exited ${r.baselineExit} naming the guard, mutated run exited ${r.observedExit} and named nothing (baseline alarmed: ${r.baselineAlarmed})`
+    : `-> oracle ran: ${r.oracleRan}, exit ${r.observedExit}, named expected failure: ${r.namedExpectedFailure}${r.spawnError ? `, spawnError: ${r.spawnError}` : ''}`
+  console.log(`${head} ${verdict}${r.evidence && r.evidence.length ? `\n      ${r.evidence.join('\n      ')}` : ''}`)
 }
 // Machine-readable tally for verify:all. Same schema as the harness modes' GATE_JSON line: checked
 // is what was actually attempted, so "0 attempted" can never be read as "0 failed".

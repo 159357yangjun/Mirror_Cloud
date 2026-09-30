@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-09-30T12:16:25",
-    "head": "fad34e38ff365f5b33441005f24dbb7aa9abc0c6",
-    "reason": "third signing: the per-axis criterion comment landed in verify_probes.mjs (amended into the same commit); no logic, no mode, no assertion changed"
+    "takenAt": "2026-09-30T12:24:57",
+    "head": "92d6509908d5a0f7e83b2720fe8d517d6d9d97af",
+    "reason": "fourth signing: verify_guard_mutations.mjs repaired (stale anchor, wrong expected alarm, baseline taken after the mutation)"
   },
   "files": [
     {
@@ -36,8 +36,8 @@
     {
       "file": "scripts/verify_guard_mutations.mjs",
       "exists": true,
-      "lines": 259,
-      "bytes": 20848,
+      "lines": 289,
+      "bytes": 23508,
       "families": {
         "failures.push": 0,
         "emitGate": 0,
@@ -92,8 +92,8 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 3944,
-    "bytes": 285731,
+    "lines": 3974,
+    "bytes": 288391,
     "families": {
       "failures.push": 16,
       "emitGate": 11,
