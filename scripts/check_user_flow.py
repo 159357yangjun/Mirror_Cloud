@@ -341,6 +341,28 @@ alerting = sorted(
 )
 require(not alerting, f'errors reach the user through toasts only, never a blocking native dialog ({alerting})')
 
+# An alpha-modified foreground (`text-amber-800/70`) has no fixed colour at all: what the reader
+# sees depends on whatever is behind it, and half of this app's surfaces are translucent panels over
+# a user-supplied wallpaper. Measured, the 13 such sites sat at 1.48-4.11:1 - the same sentence
+# changed value with the theme. De-emphasis is a colour choice (pick a lighter solid rung), not an
+# opacity choice, so the pattern is banned outright rather than re-tuned.
+ALPHA_TEXT = re.compile(r'text-(?:slate|gray|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-[0-9]+/[0-9]+')
+alpha_hits = {}
+for path in (ROOT / 'apps' / 'desktop' / 'src').rglob('*.tsx'):
+    n = sum(1 for line in path.read_text(encoding='utf-8').splitlines() if ALPHA_TEXT.search(line))
+    if n:
+        alpha_hits[str(path.relative_to(ROOT / 'apps' / 'desktop')).replace('\\', '/')] = n
+alpha_text = sorted(f'{f}({n})' for f, n in alpha_hits.items())
+require(not alpha_text, f'readable text never thins itself with an alpha modifier - it picks a solid rung instead ({alpha_text})')
+
+# The same argument in CSS: color-scheme is the only switch that reaches native form controls, and
+# a theme that forgets it paints checkboxes from the opposite palette. Checked at runtime too, by
+# contrast-tier comparing the resolved value to the theme's polarity; this half catches the case
+# where the property is deleted before the browser gate ever runs.
+styles_css = text('apps/desktop/src/styles.css')
+require('color-scheme: light' in styles_css, ':root declares a light color-scheme so native controls follow the light themes')
+require(re.search(r':root\[data-theme="midnight"\]\s*\{\s*color-scheme:\s*dark', styles_css) is not None, 'midnight sets color-scheme: dark as its first declaration')
+
 # Which providers can produce a public URL without the user typing a domain is a backend fact;
 # the form labels have to agree with it or people discover it as a failed publish plus rollback.
 opendal_storage = text('crates/storage-opendal/src/lib.rs')
@@ -560,10 +582,16 @@ for line in (ROOT / 'CHANGELOG.md').read_text(encoding='utf-8').splitlines():
     if row:
         table_rows[row.group(1)] = {'lines': int(row.group(2)), 'bytes': int(row.group(3).replace(',', '')), 'sha256': row.group(4)}
 
-measured_files = sorted(
+aggregate = (ROOT / 'scripts' / 'verify_all.mjs').read_text(encoding='utf-8').replace('\r\n', '\n')
+# Membership follows "is a stage", not "starts with verify_": a gate named anything else escaped the
+# table entirely (theme_face_inventory.mjs was wired into the aggregate and fingerprinted by nobody).
+# The same derivation lives in scripts/fingerprint_rows.mjs, which writes these rows.
+staged = sorted(set(re.findall(r"'scripts/([A-Za-z0-9_-]+\.mjs)'", aggregate)))
+measured_files = sorted(set(
     [str(path.relative_to(ROOT)).replace('\\', '/') for pattern in ('scripts/verify_*.mjs', 'scripts/__fixtures__/*.mjs') for path in ROOT.glob(pattern)]
+    + ['scripts/' + name for name in staged]
     + ['scripts/check_user_flow.py']
-)
+))
 require(sorted(table_rows) == measured_files, f'the fingerprint table lists exactly the measured files (table={sorted(table_rows)}; on disk={measured_files})')
 for rel in measured_files:
     want = table_rows.get(rel)
