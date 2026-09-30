@@ -72,7 +72,7 @@ function resolvePython() {
 const stages = [
   { name: 'validate', run: 'python', args: ['scripts/validate.py'], count: /SQLite migrations: (\d+ OK)/ },
   { name: 'check_contracts', run: 'python', args: ['scripts/check_contracts.py'], count: /frontend invokes: (\d+) \| Rust commands: (\d+) \| registered: (\d+)/ },
-  { name: 'check_user_flow', run: 'python', args: ['scripts/check_user_flow.py'], count: /^user-flow checker: OK \| total checks: (\d+)$/m },
+  { name: 'check_user_flow', run: 'python', args: ['scripts/check_user_flow.py'], count: /USERFLOW_CHECKS total=(\d+) failed=(\d+)/ },
   { name: 'check_docs_site', run: 'python', args: ['scripts/check_docs_site.py'], count: /Docs site contract OK \| total checks: (\d+)/ },
   { name: 'check_workflow_action_pins', run: 'python', args: ['scripts/check_workflow_action_pins.py'], count: /passed for (\d+) external action reference/ },
   { name: 'check_release_version', run: 'python', args: ['scripts/check_release_version.py'], count: /Release version consistent: ([\d.]+)/ },

@@ -54,7 +54,7 @@ const mutations = [
   // One byte changed in a measured file, table left stale. This trips the working-copy half of the
   // check while the edit is uncommitted, and the HEAD-blob half once it is committed without the
   // table being updated - the two halves the guard now compares.
-  { id: 'M11', file: FIXTURE, from: ' * An impostor dev server, for proving the identity gate in', to: ' * An impostor dev server, for proving the identity gate in today', oracle: 'guard', expect: `fingerprint row for ${FIXTURE} matches the file` },
+  { id: 'M11', file: FIXTURE, from: ' * An impostor dev server, for proving the identity gate in', to: ' * An impostor dev server, for proving the identity gate in today', oracle: 'guard', expect: `fingerprint row for ${FIXTURE} matches the working copy` },
   // Breaks the property itself - a non-node: import - rather than the prose that mentions it. The
   // first version of this entry edited a comment saying "no third-party dependency" and correctly
   // failed to alarm, because the guard reads the import list, not the comment.
@@ -117,7 +117,7 @@ const runOracle = (oracle) => {
     status: r.status,
     spawnError: r.error ? String(r.error).slice(0, 120) : null,
     output: `${r.stdout || ''}${r.stderr || ''}`,
-    marker: oracle === 'gate-unit' ? 'gate unit check' : 'total checks:',
+    marker: oracle === 'gate-unit' ? 'gate unit check' : 'USERFLOW_CHECKS',
   }
 }
 

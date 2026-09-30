@@ -499,7 +499,10 @@ for label in failed:
 for ok, label in checks[-8:]:
     if ok:
         print('OK   ' + label)
+print(f'user-flow section [v1.3.5 task/observability/diagnostics hardening] | checks so far: {len(checks)}')
+# Machine line, printed on every exit path: an aggregator that decides "did the oracle even run" by
+# looking for human prose breaks silently the moment that prose is reworded, which happened twice here.
+print(f'USERFLOW_CHECKS total={len(checks)} failed={len(failed)}')
 if failed:
     raise SystemExit(f'user-flow checker FAILED: {len(failed)} of {len(checks)} check(s)')
-print(f'user-flow section [v1.3.5 task/observability/diagnostics hardening] | checks so far: {len(checks)}')
 print(f'user-flow checker: OK | total checks: {len(checks)}')
