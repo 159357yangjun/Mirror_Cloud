@@ -1560,6 +1560,7 @@ true
 
     const results = []
     const failures = []
+    const skippedFindings = []
     const stuckLoading = []
     // Positive control with two placements, because the document-level criterion and the per-element
     // criterion must be shown to be different tests: a 2400px box planted inside a clipping ancestor
@@ -1603,6 +1604,7 @@ true
         srOnlySkipped: g3.skipSrOnly > baseline.skipSrOnly && !hit(LONG),
         scrollRailSkipped: g3.skipScrollRail > baseline.skipScrollRail,
         realCutStillCaught: g3.clippedTotal > baseline.clippedTotal,
+        realCutDelta: g3.clippedTotal > baseline.clippedTotal ? Math.max(...g3.clipped.map((c) => c.delta)) : null,
       };
       sr.remove(); rail.remove(); real.remove();
       // The reachability pair: a leaf inside a scroll rail is reachable, so it must NOT be reported;
@@ -1732,19 +1734,24 @@ true
           await send('Emulation.clearDeviceMetricsOverride').catch(() => {})
           finish(2)
         }
-        if (g.docOverflowPx > 1) failures.push(`DOC-OVERFLOW ${entry.tier} ${label}: documentElement.scrollWidth ${g.docScrollWidth} exceeds innerWidth ${g.innerWidth} by ${g.docOverflowPx}px (a scrollbar / unreachable content)`)
-        if (g.viewportOverflowPx > 1) failures.push(`VIEWPORT-OVERFLOW ${entry.tier} ${label}: ${g.offenders.length} element(s) extend past the viewport edge, widest +${g.offenders[0].over}px at ${g.offenders[0].sel} "${g.offenders[0].text}"`)
-        if (g.clippedByAncestorTotal) failures.push(`CLIP-BY-ANCESTOR ${entry.tier} ${label}: ${g.clippedByAncestorTotal} text leaf(s) cut by a non-scrolling ancestor - ${g.clippedByAncestor.slice(0, 3).map((c) => `+${c.excess}px ${c.axis} "${c.text}" at ${c.sel} (cut by ${c.by}, overflow ${c.overflow})`).join(' | ')}`)
-        if (g.controlsCutTotal) failures.push(`CONTROL-CUT ${entry.tier} ${label}: ${g.controlsCutTotal} interactive element(s) cut by a non-scrolling ancestor, unreachable - ${g.controlsCut.slice(0, 3).map((c) => `+${c.excess}px ${c.axis} "${c.text}" at ${c.sel} (cut by ${c.by}, overflow ${c.overflow})`).join(' | ')}`)
-        if (g.containersCutTotal) failures.push(`CONTAINER-CUT ${entry.tier} ${label}: ${g.containersCutTotal} container(s) cut by a non-scrolling ancestor - ${g.containersCut.slice(0, 2).map((c) => `+${c.excess}px ${c.axis} at ${c.sel} (cut by ${c.by}, overflow ${c.overflow})`).join(' | ')}`)
-        if (g.clippedTotal) failures.push(`SELF-CLIP ${entry.tier} ${label}: ${g.clippedTotal} own-text run(s) cut with no ellipsis and no title - worst +${g.clipped[0].delta}px "${g.clipped[0].text}" at ${g.clipped[0].sel}`)
-        if (g.smallTotal) failures.push(`TOUCH-TARGET ${entry.tier} ${label}: ${g.smallTotal} clickable target(s) under ${TOUCH}x${TOUCH} - smallest ${g.smallTargets[0].w}x${g.smallTargets[0].h} "${g.smallTargets[0].text}" at ${g.smallTargets[0].sel}`)
-        if (g.brokenImages.length) failures.push(`BROKEN-IMAGE ${entry.tier} ${label}: ${g.brokenImages.length} image(s) with naturalWidth 0 - ${g.brokenImages.map((b) => b.src).join(', ')}`)
-        entry.exclusions = { srOnly: g.skipSrOnly, ellipsis: g.skipEllipsis, title: g.skipTitle, scrollRail: g.skipScrollRail, fixed: g.skipFixed, railClips: g.railClips, textLeaves: g.textLeaves, measuredLeaves: g.measuredLeaves }
-        if (entry.spinnersAtMeasure) {
+        // A page still showing a spinner has not laid out its content, so whatever the sweep reads
+        // there describes a loading state. Those routes enter neither the findings nor the pass
+        // tally - they are reported as skipped, with their own count.
+        const skippedHere = !!entry.spinnersAtMeasure
+        const emit = (msg) => { if (skippedHere) skippedFindings.push(msg); else failures.push(msg) }
+        if (skippedHere) {
           entry.stuckLoading = true
           if (!stuckLoading.includes(`${entry.tier} ${label}`)) stuckLoading.push(`${entry.tier} ${label}`)
         }
+        if (g.docOverflowPx > 1) emit(`DOC-OVERFLOW ${entry.tier} ${label}: documentElement.scrollWidth ${g.docScrollWidth} exceeds innerWidth ${g.innerWidth} by ${g.docOverflowPx}px (a scrollbar / unreachable content)`)
+        if (g.viewportOverflowPx > 1) emit(`VIEWPORT-OVERFLOW ${entry.tier} ${label}: ${g.offenders.length} element(s) extend past the viewport edge, widest +${g.offenders[0].over}px at ${g.offenders[0].sel} "${g.offenders[0].text}"`)
+        if (g.clippedByAncestorTotal) emit(`CLIP-BY-ANCESTOR ${entry.tier} ${label}: ${g.clippedByAncestorTotal} text leaf(s) cut by a non-scrolling ancestor - ${g.clippedByAncestor.slice(0, 3).map((c) => `+${c.excess}px ${c.axis} "${c.text}" at ${c.sel} (cut by ${c.by}, overflow ${c.overflow})`).join(' | ')}`)
+        if (g.controlsCutTotal) emit(`CONTROL-CUT ${entry.tier} ${label}: ${g.controlsCutTotal} interactive element(s) cut by a non-scrolling ancestor, unreachable - ${g.controlsCut.slice(0, 3).map((c) => `+${c.excess}px ${c.axis} "${c.text}" at ${c.sel} (cut by ${c.by}, overflow ${c.overflow})`).join(' | ')}`)
+        if (g.containersCutTotal) emit(`CONTAINER-CUT ${entry.tier} ${label}: ${g.containersCutTotal} container(s) cut by a non-scrolling ancestor - ${g.containersCut.slice(0, 2).map((c) => `+${c.excess}px ${c.axis} at ${c.sel} (cut by ${c.by}, overflow ${c.overflow})`).join(' | ')}`)
+        if (g.clippedTotal) emit(`SELF-CLIP ${entry.tier} ${label}: ${g.clippedTotal} own-text run(s) cut with no ellipsis and no title - worst +${g.clipped[0].delta}px "${g.clipped[0].text}" at ${g.clipped[0].sel}`)
+        if (g.smallTotal) emit(`TOUCH-TARGET ${entry.tier} ${label}: ${g.smallTotal} clickable target(s) under ${TOUCH}x${TOUCH} - smallest ${g.smallTargets[0].w}x${g.smallTargets[0].h} "${g.smallTargets[0].text}" at ${g.smallTargets[0].sel}`)
+        if (g.brokenImages.length) emit(`BROKEN-IMAGE ${entry.tier} ${label}: ${g.brokenImages.length} image(s) with naturalWidth 0 - ${g.brokenImages.map((b) => b.src).join(', ')}`)
+        entry.exclusions = { srOnly: g.skipSrOnly, ellipsis: g.skipEllipsis, title: g.skipTitle, scrollRail: g.skipScrollRail, fixed: g.skipFixed, railClips: g.railClips, textLeaves: g.textLeaves, measuredLeaves: g.measuredLeaves }
         if (tier.width === 640) {
           const seen = []
           entry.focusableCount = await evaluate(`window.__L.markFocusables()`)
@@ -1761,8 +1768,8 @@ true
           const onControl = seen.filter((f) => !f.left)
           const noRing = onControl.filter((f) => f.visible === false)
           const noName = onControl.filter((f) => !f.name)
-          if (noRing.length) failures.push(`${entry.tier} ${label}: ${noRing.length}/${onControl.length} tab stops whose rendering does not change when focused (no outline, ring, border or background delta) - ${noRing.slice(0, 3).map((f) => f.sel + ' [resting ' + f.outline + ']').join('; ')}`)
-          if (noName.length) failures.push(`${entry.tier} ${label}: ${noName.length}/${onControl.length} tab stops with no accessible name (aria-label, text, alt, title, placeholder, wrapping or for= label, aria-labelledby all empty) - ${noName.slice(0, 3).map((f) => f.sel + '<' + f.tag + '>').join('; ')}`)
+          if (noRing.length) failures.push(`FOCUS-RING ${entry.tier} ${label}: ${noRing.length}/${onControl.length} tab stops whose rendering does not change when focused (no outline, ring, border or background delta) - ${noRing.slice(0, 3).map((f) => f.sel + ' [resting ' + f.outline + ']').join('; ')}`)
+          if (noName.length) failures.push(`FOCUS-NAME ${entry.tier} ${label}: ${noName.length}/${onControl.length} tab stops with no accessible name (aria-label, text, alt, title, placeholder, wrapping or for= label, aria-labelledby all empty) - ${noName.slice(0, 3).map((f) => f.sel + '<' + f.tag + '>').join('; ')}`)
         }
         await shot(`lay-${label}-${tier.width}`)
         if (label === 'confirm-longname') { await pressEscape(); await sleep(200) }
@@ -1773,9 +1780,16 @@ true
     const summary = { provenance: buildProvenance(), note: 'widths are Emulation.setDeviceMetricsOverride CSS viewports, not real device screens; 640x480 is the app minimum window from tauri.conf.json', stuckLoading, tiers: results, failures }
     writeFileSync(`${OUT}/layout-baseline.json`, JSON.stringify(summary, null, 2))
     for (const f of failures) console.log(`FAIL ${f}`)
-    if (stuckLoading.length) console.log(`STUCK-LOADING (geometry here describes a loading state, not the loaded page; browser-only harness, no Rust invoke): ${stuckLoading.join(' | ')}`)
-    console.log(`LAYOUT_GATE tiers=${tiers.length} routes=${ROUTES.length} failures=${failures.length} stuckLoading=${stuckLoading.length}`)
-    console.log(failures.length ? `layout: ${failures.length} geometry failure(s) across ${tiers.length * ROUTES.length} page/width combinations` : `layout: no horizontal overflow, no unflagged clipping, touch targets and focus rings hold at ${tiers.map((t) => t.width).join('/')}`)
+    if (stuckLoading.length) console.log(`STUCK-LOADING (excluded from both the findings and the pass tally; browser-only harness, no Rust invoke): ${stuckLoading.join(' | ')}`)
+    if (skippedFindings.length) console.log(`SKIPPED-FINDINGS ${skippedFindings.length} condition(s) seen only on stuck-loading pages, listed for the record and NOT counted as failures:\n  ${skippedFindings.map((s) => s.slice(0, 120)).join('\n  ')}`)
+    const checked = tiers.length * ROUTES.length
+    const matched = results.filter((r) => r.geom && !r.stuckLoading).length
+    const skipped = checked - matched
+    // Three exit codes because "no problems found" and "did not look at anything" are different
+    // claims: 0 looked and clean, 1 findings, 2 harness fault, 3 nothing was measured at all.
+    console.log(`LAYOUT_GATE checked=${checked} matched=${matched} skipped=${skipped} failures=${failures.length}`)
+    if (!matched) { console.log('layout: nothing was measured - this is NOT a pass.'); finish(3) }
+    console.log(failures.length ? `layout: ${failures.length} geometry failure(s) across ${matched} measured page/width combinations (${skipped} skipped)` : `layout: no horizontal overflow, no unflagged clipping, touch targets and focus rings hold at ${tiers.map((t) => t.width).join('/')} across ${matched} combinations (${skipped} skipped, not counted as passed)`)
     finish(failures.length ? 1 : 0)
   }
 
