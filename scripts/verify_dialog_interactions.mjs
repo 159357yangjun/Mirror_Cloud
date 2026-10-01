@@ -1779,7 +1779,17 @@ async function main() {
           for (const needle of watchNeedles) {
             const hits = sampled.filter((s) => s.kind === 'text' && (s.text || '').includes(needle))
             if (!watchSeen.has(needle)) watchSeen.set(needle, [])
-            for (const h of hits) watchSeen.get(needle).push({ combo: `${themeName}/${wallName}/${label}`, ratio: h.ratio, centre: h.centreRatio, spread: h.spread, bg: String(h.bg || ''), fg: String(h.fg || ''), size: h.size })
+            for (const h of hits) watchSeen.get(needle).push({
+              combo: `${themeName}/${wallName}/${label}`, ratio: h.ratio, centre: h.centreRatio, spread: h.spread,
+              bg: String(h.bg || ''), fg: String(h.fg || ''), size: h.size,
+              // Position and paint owner, so "the background under this element changed" can be split
+              // into two different claims instead of being guessed at: a moved sample point (rect
+              // differs) versus a genuinely repainted surface (same rect, different owner or paint).
+              box: Array.isArray(h.box) ? h.box.join(',') : String(h.box || ''),
+              ink: Array.isArray(h.ink) ? JSON.stringify(h.ink) : String(h.ink || ''),
+              hit: String(h.hit || ''),
+              chain: String(h.under || '').split(' < ').slice(0, 3).map((s) => s.split('{')[0].trim()).join('<'),
+            })
           }
           if (below.length) failures.push(`CONTRAST ${themeName}/${wallName}/${label}: ${below.length}/${sampled.length} readable runs below their threshold - worst ${worst.ratio}:1 (need ${worst.threshold}) "${worst.text}" ${worst.size}px ${worst.bold ? 'bold' : 'regular'} fg rgb(${worst.fg}) on sampled rgb(${worst.bg})`)
           // A palette re-tune across three themes is exactly the change where every number can
@@ -1918,7 +1928,15 @@ async function main() {
       // centre reading on ONE element in ONE combination (the instrument's own spread), and how far
       // the same element moves ACROSS combinations (which is what a floor margin has to survive).
       const spreadMax = Math.max(...got.map((g) => g.spread || 0))
-      console.log(`WATCH ${JSON.stringify(needle)} present=${got.length}/${rows.length} ratio min=${Math.round(lo * 100) / 100} max=${Math.round(hi * 100) / 100} crossComboAmplitude=${Math.round((hi - lo) * 100) / 100} withinRunMaxSpread=${Math.round(spreadMax * 100) / 100} perThemeFloor=${Object.entries(perTheme).map(([k, v]) => `${k}:${Math.round(v * 100) / 100}`).join(' ')} bg={${[...new Set(got.map((g) => g.bg))].join(' | ')}}`)
+      // The discriminator: same rect + different bg means the paint changed; different rect means the
+      // sample moved. Both are printed as counts so a claim about either is checkable, not inferred.
+      const rects = new Set(got.map((g) => g.box)), hitsSet = new Set(got.map((g) => g.hit)), chains = new Set(got.map((g) => g.chain))
+      const bgByRect = new Map()
+      for (const g of got) { if (!bgByRect.has(g.box)) bgByRect.set(g.box, new Set()); bgByRect.get(g.box).add(g.bg) }
+      const sameRectManyBg = [...bgByRect.entries()].filter(([, s]) => s.size > 1).length
+      console.log(`WATCH ${JSON.stringify(needle)} present=${got.length}/${rows.length} ratio min=${Math.round(lo * 100) / 100} max=${Math.round(hi * 100) / 100} crossComboAmplitude=${Math.round((hi - lo) * 100) / 100} withinRunMaxSpread=${Math.round(spreadMax * 100) / 100} perThemeFloor=${Object.entries(perTheme).map(([k, v]) => `${k}:${Math.round(v * 100) / 100}`).join(' ')} distinctRects=${rects.size} distinctPaintOwners=${hitsSet.size} distinctAncestorChains=${chains.size} rectsWithMoreThanOneBackground=${sameRectManyBg} bg={${[...new Set(got.map((g) => g.bg))].join(' | ')}}`)
+      if (sameRectManyBg) console.log(`WATCH-PAINT ${JSON.stringify(needle)}: ${sameRectManyBg} rect value(s) carry more than one sampled background while the element box did not move - that is a repaint, not a sample shift`)
+      else if (rects.size > 1) console.log(`WATCH-PAINT ${JSON.stringify(needle)}: ${rects.size} different boxes, one background per box - the readings come from different positions, so no repaint is demonstrated`)
     }
     if (watchNeedles.length) console.log(`WATCH_SUMMARY needles=${watchNeedles.length} withReadings=${[...watchSeen.values()].filter((v) => v.length).length} absent=${watchNeedles.filter((n) => !(watchSeen.get(n) || []).length).length}`)
     console.log(`DENOM_STABILITY combos=${rows.length} routeThemeGroups=${byRouteTheme.size} contentDifferences=${denomDrift.length} nonInjectiveIdentityReads=${identityFalse} unverifiedGroups=${unverifiedGroups.size}`)
@@ -1956,7 +1974,7 @@ async function main() {
       }
       console.log(`${docDrift.some((f) => f.startsWith('CONTRAST_')) ? 'DOC-TABLE mismatch' : 'DOC-TABLE ok'} for ${docPath}`)
     }
-    writeFileSync(`${OUT}/contrast-tier.json`, JSON.stringify({ provenance: buildProvenance(), note: 'backgrounds are sampled from a screenshot taken with glyphs hidden, so gradients, backdrop-filter and the wallpaper composite are all included; wallpaper envelope is an all-black and an all-white image; controls are judged against their own rendered surface', themes: THEMES.map((t) => t[0]), wallpapers: WALLS.map((w) => w[0]), perControl, faceTable: faceTable.join('\n'), ctlTable: ctlTable.join('\n'), rows }, null, 2))
+    writeFileSync(`${OUT}/contrast-tier.json`, JSON.stringify({ provenance: buildProvenance(), note: 'backgrounds are sampled from a screenshot taken with glyphs hidden, so gradients, backdrop-filter and the wallpaper composite are all included; wallpaper envelope is an all-black and an all-white image; controls are judged against their own rendered surface', themes: THEMES.map((t) => t[0]), wallpapers: WALLS.map((w) => w[0]), perControl, faceTable: faceTable.join('\n'), ctlTable: ctlTable.join('\n'), rows, watch: Object.fromEntries(watchSeen) }, null, 2))
     if (budgetHits) { console.log(`CONTRAST_GATE INCOMPLETE: covered ${comboIndex}/${combosTotal} combinations inside the ${DEADLINE_MS}ms budget; the unmeasured remainder is not a pass.`); finish(2) }
     for (const f of failures.concat(docDrift, denomFindings)) console.log(`FAIL ${f}`)
     console.log('TOKENS ' + JSON.stringify(rows.filter((r, i, a) => a.findIndex((x) => x.theme === r.theme) === i).map((r) => ({ theme: r.theme, ...r.tokens }))))
