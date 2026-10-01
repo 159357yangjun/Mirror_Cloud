@@ -1340,6 +1340,14 @@ async function main() {
     // ctid -> [left, top, width, height]. An id that is absent is a row whose element is no longer on
     // the page, which is the strongest form of the same finding and must not be read as a match.
     const RECHECK = `(function(){var m=document.querySelectorAll('[data-ctid]'),o={};for(var i=0;i<m.length;i++){var e=m[i],r=e.getBoundingClientRect();var vx=Math.max(r.left,0),vy=Math.max(r.top,0);o[e.getAttribute('data-ctid')]=[Math.round(vx),Math.round(vy),Math.round(Math.min(r.right,innerWidth)-vx),Math.round(Math.min(r.bottom,innerHeight)-vy)]}return o})()`
+    // One pixel of one photograph, read back the same way the sampler reads it. Used only on a
+    // combination already found stale, to ask the question the first screenshot cannot answer about
+    // itself: which layout does it actually show?
+    const PIXEL_AT = `(async function(b64,x,y){const img=new Image();await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src='data:image/png;base64,'+b64});const cv=document.createElement('canvas');cv.width=img.width;cv.height=img.height;const c=cv.getContext('2d');c.drawImage(img,0,0);const d=c.getImageData(Math.round(x),Math.round(y),1,1).data;return [d[0],d[1],d[2]]})`
+    // Name the block that appeared or vanished, instead of inferring it from "the only other thing
+    // that differs between combinations". Walks the moved element's own section and lists what sits
+    // above it with real heights and margins.
+    const BLOCKS_AROUND = `(function(el){let sec=null,n=el;for(let i=0;i<10&&n;i++){if(n.tagName==='SECTION'){sec=n;break}n=n.parentElement}if(!sec)return {found:false};const own=sec.getBoundingClientRect();const above=[];let p=sec.previousElementSibling;for(let j=0;j<4&&p;j++){const cs=getComputedStyle(p);const r=p.getBoundingClientRect();above.push(p.tagName.toLowerCase()+(typeof p.className==='string'&&p.className?'.'+p.className.trim().split(/\\s+/).slice(0,3).join('.'):'')+'{top:'+Math.round(r.top)+' h:'+Math.round(r.height)+' mt:'+cs.marginTop+' mb:'+cs.marginBottom+'}');p=p.previousElementSibling}return {found:true,secTop:Math.round(own.top),sec:sec.tagName.toLowerCase()+(typeof sec.className==='string'?'.'+sec.className.trim().split(/\\s+/).slice(0,3).join('.'):''),above:above}})`
     // `rectMoved` and `layoutDrift` are defined at module scope, next to their fixture tables, so the
     // sweep and `gate-unit` cannot drift apart into two copies of the same comparison.
     const COLLECT_TEXTS = `(function(controls, dialogOnly){
@@ -1876,7 +1884,7 @@ async function main() {
               else {
                 const movedBy = rectMoved(s.box, live)
                 if (movedBy === null) { verdict = 'uncomparable'; uncomparableRows.push(s) }
-                else if (movedBy > 0) { verdict = 'moved'; staleRows.push({ text: (s.text || '').slice(0, 24), kind: s.kind, movedBy, ratio: s.ratio, threshold: s.threshold, from: s.box, to: live, ctid: s.ctid, x: s.x, y: s.y }) }
+                else if (movedBy > 0) { verdict = 'moved'; staleRows.push({ text: (s.text || '').slice(0, 24), kind: s.kind, movedBy, ratio: s.ratio, threshold: s.threshold, bg: s.bg, from: s.box, to: live, ctid: s.ctid, x: s.x, y: s.y }) }
               }
             }
             s.layoutVerdict = verdict
@@ -1888,6 +1896,35 @@ async function main() {
           // one instrument, not a second copy of the hit-test logic.
           for (const s of staleRows.slice(0, 2)) s.ownerAtStalePoint = await paintChainAt(s.x, s.y)
           for (const s of staleRows.slice(0, 2)) if (s.ctid) s.ownerOfLiveBox = await paintChainAt(s.to[0] + 2, s.to[1] + 2)
+          // Which layout does the first photograph show? The reflow is known to land between the last
+          // read before the capture and the re-read after it, so the picture could belong to either
+          // side. A second photograph settles it - but only if the page has not moved AGAIN since the
+          // re-read, which is checked rather than assumed, and with the glyphs hidden again so the two
+          // photographs are comparable (a visible glyph would differ for an unrelated reason).
+          let photoTest = null
+          let blockAbove = null
+          if (staleRows.length) {
+            const first = staleRows[0]
+            const recheck2 = await evaluate(RECHECK)
+            const now = recheck2[String(first.ctid)]
+            const settled = !!now && rectMoved(now, first.to) === 0
+            await evaluate(`(function(){const s=document.createElement('style');s.id='lctl-hide2';s.textContent='*{color:transparent !important;-webkit-text-fill-color:transparent !important;text-shadow:none !important}';document.head.appendChild(s);return true})()`)
+            const shot2 = await send('Page.captureScreenshot', { format: 'png' })
+            const px2 = await evaluate(`(${PIXEL_AT})(${JSON.stringify(shot2.data)}, ${first.x}, ${first.y})`)
+            await evaluate(`(function(){const s=document.getElementById('lctl-hide2');if(s)s.remove();return true})()`)
+            blockAbove = await evaluate(`(${BLOCKS_AROUND})(document.querySelector('[data-ctid="${first.ctid}"]'))`)
+            const shot1 = String(first.bg || '').split(',').map((v) => Number(v))
+            const agrees = Array.isArray(px2) && shot1.length === 3 && px2.every((v, i) => Math.abs(v - shot1[i]) <= 1)
+            photoTest = {
+              at: [first.x, first.y], text: first.text, shot1: first.bg, shot2: Array.isArray(px2) ? px2.join(',') : null,
+              layoutSettledSinceRecheck: settled, sameAsFirstPhotograph: agrees,
+              verdict: !settled ? 'undecidable - the page moved again between the re-read and the second photograph'
+                : agrees ? 'the first photograph shows the CURRENT layout: the recorded coordinates are the stale side'
+                  : 'the first photograph shows the OTHER layout: coordinates and pixels agree, so the re-read is the odd one out',
+            }
+            console.log(`STALE-PHOTO ${themeName}/${wallName}/${label}: at (${first.x},${first.y}) "${first.text}" shot1=rgb(${first.bg}) shot2=rgb(${photoTest.shot2 || 'n/a'}) layoutSettled=${settled ? 1 : 0} -> ${photoTest.verdict}`)
+            if (blockAbove && blockAbove.found) console.log(`STALE-BLOCK ${themeName}/${wallName}/${label}: section ${blockAbove.sec} top=${blockAbove.secTop} above: ${blockAbove.above.join(' ') || '(none)'}`)
+          }
           const below = sampled.filter((s) => s.ratio !== null && s.ratio < s.threshold)
           // When a row fails, say what is actually stacked under it. Guessing at a colour from its
           // rgb triple is how I spent three rounds attributing this to chips, tiles and rounding.
@@ -1929,6 +1966,8 @@ async function main() {
             gone: goneRows.length,
             uncomparable: uncomparableRows.length,
             worstMovedBy: staleRows.length ? Math.max(...staleRows.map((s) => s.movedBy)) : 0,
+            photoTest,
+            blockAbove,
             examples: staleRows.slice(0, 3).concat(goneRows.slice(0, 2).map((g) => ({ text: (g.text || '').slice(0, 24), kind: g.kind, gone: true }))),
           }
           rows[rows.length - 1].keys = sampled.map((s) => `${s.kind}|${s.tag || ''} ${(s.cls || '').split(/\s+/).slice(0, 3).join('.')}|${(s.text || '').slice(0, 40)}`).sort()

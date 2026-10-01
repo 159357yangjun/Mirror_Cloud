@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-10-01T07:28:00",
-    "head": "8e85c737bb105531fef1b496cb8ba88f7f3b5a0a",
-    "reason": "twenty-fourth signing: the doc projection's row comparison normalises line endings before splitting (CRLF working copies shifted every row one slot), gate-unit gains 3 doc-table cases (29 total) covering CRLF-clean, leading-blank-clean and a moved ratio still caught under mixed endings; M28 disarms the normaliser. Product code untouched."
+    "takenAt": "2026-10-01T08:39:25",
+    "head": "81db04186b927a35e16614d94ef71c4d49bbe75b",
+    "reason": "twenty-fifth signing: on a stale combination the sweep now takes a SECOND glyph-hidden photograph and compares the same pixel, gated on a re-read that proves the layout did not move again; it also names the block above the moved element. Report-only - no gate, no threshold, no exit-code change. Product code untouched."
   },
   "files": [
     {
@@ -22,8 +22,8 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 3425,
-      "bytes": 281912,
+      "lines": 3464,
+      "bytes": 286480,
       "families": {
         "failures.push": 15,
         "emitGate": 13,
@@ -92,8 +92,8 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 5198,
-    "bytes": 399442,
+    "lines": 5237,
+    "bytes": 404010,
     "families": {
       "failures.push": 16,
       "emitGate": 13,
