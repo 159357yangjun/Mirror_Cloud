@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-10-01T04:29:36",
-    "head": "4c6f0b4ed86d5952808fbf7f4c5b23243d4fcb6f",
-    "reason": "sixteenth signing, and the reason is my own miss: 30f925f added maxSpread/textSpreadCount to the harness and I committed it without re-signing, so the aggregate caught a drift I had authored one commit earlier. lines/bytes/families move because of that addition only; no criterion changed"
+    "takenAt": "2026-10-01T04:42:11",
+    "head": "1f2d5aa9f7c4af9d83c1734c067e90180cb342fb",
+    "reason": "seventeenth signing: --watch added (named-element readings across all 72 combinations, plus the usage entry). Closes the gap that blocked the baseline re-sign: an element that passes stopped having any reading in the artifact, so the floor-margin rule could only be answered with a neighbour's number"
   },
   "files": [
     {
@@ -22,8 +22,8 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 3118,
-      "bytes": 248355,
+      "lines": 3148,
+      "bytes": 251460,
       "families": {
         "failures.push": 15,
         "emitGate": 12,
@@ -92,8 +92,8 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 4866,
-    "bytes": 363888,
+    "lines": 4896,
+    "bytes": 366993,
     "families": {
       "failures.push": 16,
       "emitGate": 12,

@@ -51,6 +51,10 @@
  *   --deadline MS  hard self-budget; also read from VERIFY_DEADLINE_MS. The harness stops itself and
  *               prints which combinations are UNMEASURED, rather than being killed from outside with
  *               no reading at all.
+ *   --watch TEXTS  comma-separated element texts to follow across every combination (contrast-tier).
+ *               Each named element gets its own min / max / cross-combination amplitude, whether or
+ *               not it passes - a floor margin has to be quoted against the wobble of the element
+ *               that was changed, not against whoever happens to be worst on that face.
  *   --doc PATH  check the marked tables in PATH against this run (contrast-tier), or against the
  *               source (theme_face_inventory.mjs).
  *   --doc-write  with --doc, regenerate those marked blocks from this run. Only the blocks move;
@@ -1186,6 +1190,13 @@ async function main() {
   if (MODE === 'contrast-tier') {
     const t0 = Date.now()
     const cpu0 = process.cpuUsage()
+    // Named-element readings. The floor-margin rule needs the wobble of the element that was
+    // actually changed, and once that element passes it stops being the worst run on its face - so
+    // the artifact kept the floor of some neighbour and the number the rule asks for did not exist.
+    // --watch=<text> records every matching run in every combination, passing or not, so the
+    // amplitude is that element's own and not borrowed from whoever happens to be worst.
+    const watchNeedles = opt('watch', '') ? opt('watch', '').split(',').map((s) => s.trim()).filter(Boolean) : []
+    const watchSeen = new Map()
     // The sweep's own wall clock, split by phase. Without this, "make the gate faster" can only be
     // answered by guessing, and the guess is usually wrong about which half costs anything.
     const cost = { nav: 0, quiet: 0, prep: 0, collect: 0, fixtures: 0, shot: 0, sample: 0 }
@@ -1765,6 +1776,11 @@ async function main() {
           const spreads = sampled.filter((s) => s.kind === 'text' && typeof s.spread === 'number').map((s) => ({ v: s.spread, t: (s.text || '').slice(0, 30), r: s.ratio, c: s.centreRatio })).sort((a, b) => b.v - a.v)
           rows[rows.length - 1].maxSpread = spreads.length ? spreads[0] : null
           rows[rows.length - 1].textSpreadCount = spreads.length
+          for (const needle of watchNeedles) {
+            const hits = sampled.filter((s) => s.kind === 'text' && (s.text || '').includes(needle))
+            if (!watchSeen.has(needle)) watchSeen.set(needle, [])
+            for (const h of hits) watchSeen.get(needle).push({ combo: `${themeName}/${wallName}/${label}`, ratio: h.ratio, centre: h.centreRatio, spread: h.spread, bg: String(h.bg || ''), fg: String(h.fg || ''), size: h.size })
+          }
           if (below.length) failures.push(`CONTRAST ${themeName}/${wallName}/${label}: ${below.length}/${sampled.length} readable runs below their threshold - worst ${worst.ratio}:1 (need ${worst.threshold}) "${worst.text}" ${worst.size}px ${worst.bold ? 'bold' : 'regular'} fg rgb(${worst.fg}) on sampled rgb(${worst.bg})`)
           // A palette re-tune across three themes is exactly the change where every number can
           // pass and the screen still looks wrong, so each combination is photographed as well.
@@ -1891,6 +1907,20 @@ async function main() {
         }
       }
     }
+    for (const needle of watchNeedles) {
+      const got = watchSeen.get(needle) || []
+      if (!got.length) { console.log(`WATCH ${JSON.stringify(needle)} present=0/${rows.length} - nothing matched, so this element contributes no amplitude and any margin quoted for it would be invented`); continue }
+      const rs = got.map((g) => g.ratio).filter((v) => typeof v === 'number')
+      const lo = Math.min(...rs), hi = Math.max(...rs)
+      const perTheme = {}
+      for (const g of got) { const t = g.combo.split('/')[0]; if (!perTheme[t] || g.ratio < perTheme[t]) perTheme[t] = g.ratio }
+      // Two different things called "wobble" here: how far the grid reading disagrees with the
+      // centre reading on ONE element in ONE combination (the instrument's own spread), and how far
+      // the same element moves ACROSS combinations (which is what a floor margin has to survive).
+      const spreadMax = Math.max(...got.map((g) => g.spread || 0))
+      console.log(`WATCH ${JSON.stringify(needle)} present=${got.length}/${rows.length} ratio min=${Math.round(lo * 100) / 100} max=${Math.round(hi * 100) / 100} crossComboAmplitude=${Math.round((hi - lo) * 100) / 100} withinRunMaxSpread=${Math.round(spreadMax * 100) / 100} perThemeFloor=${Object.entries(perTheme).map(([k, v]) => `${k}:${Math.round(v * 100) / 100}`).join(' ')} bg={${[...new Set(got.map((g) => g.bg))].join(' | ')}}`)
+    }
+    if (watchNeedles.length) console.log(`WATCH_SUMMARY needles=${watchNeedles.length} withReadings=${[...watchSeen.values()].filter((v) => v.length).length} absent=${watchNeedles.filter((n) => !(watchSeen.get(n) || []).length).length}`)
     console.log(`DENOM_STABILITY combos=${rows.length} routeThemeGroups=${byRouteTheme.size} contentDifferences=${denomDrift.length} nonInjectiveIdentityReads=${identityFalse} unverifiedGroups=${unverifiedGroups.size}`)
     for (const [k, n] of [...unverifiedGroups.entries()].sort()) denomFindings.push(`CONTRAST-DENOM-UNVERIFIED ${k}: ${n} combo(s) have runs the identity string cannot tell apart (distinct keys < measured runs), so this group's set equality was NOT established and it cannot count as verified`)
     if (denomDrift.length) {
