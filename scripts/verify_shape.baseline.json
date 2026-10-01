@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-10-01T01:47:46",
-    "head": "4687a702034d7367c575298f657431670e9b5ff1",
-    "reason": "twelfth signing (re-signed: the first attempt left the literal '+N lines' in a signed record): docTableDiff extracted to module scope + 5 planted gate-unit cases for the doc projection. lines 4722->4765 (+43), bytes 351064->354953 (+3889); failures.push 16, harness-fault exit 42, positive control 15 all unchanged - the new cases are gate-unit rows, not a new control family"
+    "takenAt": "2026-10-01T02:40:51",
+    "head": "e0f39cf0605fcbf127dc6ff86e528c068c99dabf",
+    "reason": "thirteenth signing: pit-3 restore assertion added to RAIL-CONTROL. lines 4765->4774 (+9), bytes 354953->356002 (+1049); failures.push 16, harness-fault exit 42, positive control 15 all unchanged - the new guard is one more ctlProblems.push inside an existing control, not a new family"
   },
   "files": [
     {
@@ -22,8 +22,8 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 3036,
-      "bytes": 240921,
+      "lines": 3045,
+      "bytes": 241970,
       "families": {
         "failures.push": 15,
         "emitGate": 12,
@@ -92,8 +92,8 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 4765,
-    "bytes": 354953,
+    "lines": 4774,
+    "bytes": 356002,
     "families": {
       "failures.push": 16,
       "emitGate": 12,
