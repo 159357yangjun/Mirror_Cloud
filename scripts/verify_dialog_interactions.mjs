@@ -2207,6 +2207,12 @@ async function main() {
     // up and calling the total a defect count.
     const cutIdentity = []
     const railProofTotals = []
+    // Distinct transient-overlay controls, aggregated across every route and tier that showed them.
+    const overlayTargets = new Map()
+    let overlayProbeTotal = 0
+    const fontSwallow = new Map()
+    const fontSwallowByRoute = []
+    let fontSwallowProbeTotal = 0
     // Positive control with two placements, because the document-level criterion and the per-element
     // criterion must be shown to be different tests: a 2400px box planted inside a clipping ancestor
     // must be caught only by the per-element one. Without this, "0 failures" across 21 page/width
@@ -2298,6 +2304,99 @@ async function main() {
         lostX: vic.length ? Math.max(...vic.map((c) => c.lostX)) : null,
       }
       tall.remove();
+      // Touch-target controls. Two exclusions were just added to the probe - measure the label
+      // instead of the control's own box, and count transient-overlay controls separately - and an
+      // exclusion that has never fired is indistinguishable from a page with nothing to exclude. So
+      // each is planted twice, once where it must apply and once where it must not swallow a defect:
+      // a 13px checkbox inside a 220x60 label is fine and must go quiet, a checkbox inside an 18px
+      // label is NOT fine (the label is the target and it is under the floor) and must still be
+      // reported, naming the label. The overlay pair checks both halves of the split: moved out of
+      // the page total, but still reported once.
+      const mkCtl = (tag, css) => { const x = document.createElement(tag); x.style.cssText = css; return x };
+      const bigL = mkCtl('label', 'display:flex;align-items:center;gap:6px;width:220px;height:60px;font-size:12px');
+      bigL.appendChild(document.createTextNode('LCTLbig'));
+      const bigIn = mkCtl('input', 'width:13px;height:13px'); bigL.appendChild(bigIn);
+      const smallL = mkCtl('label', 'display:inline-flex;align-items:center;width:60px;height:18px;font-size:10px');
+      smallL.appendChild(document.createTextNode('LCTLsmall'));
+      const smallIn = mkCtl('input', 'width:13px;height:13px'); smallL.appendChild(smallIn);
+      const forL = mkCtl('label', 'display:block;width:200px;height:50px;font-size:12px'); forL.textContent = 'LCTLfor';
+      forL.htmlFor = 'lctl-chk-for';
+      const forIn = mkCtl('input', 'width:13px;height:13px'); forIn.id = 'lctl-chk-for';
+      const ovWrap = mkCtl('div', 'position:fixed;bottom:8px;right:8px;width:260px');
+      ovWrap.setAttribute('role', 'status');
+      const ovBtn = mkCtl('button', 'width:16px;height:16px;padding:0;font-size:9px;overflow:hidden'); ovBtn.textContent = 'LCTLov';
+      ovWrap.appendChild(ovBtn);
+      const gT0 = window.__L.geometry(${TOUCH});
+      host.appendChild(bigL); host.appendChild(smallL); host.appendChild(forIn); host.appendChild(forL); host.appendChild(ovWrap);
+      const g6 = window.__L.geometry(${TOUCH});
+      const named = (needle) => g6.smallTargets.filter((c) => c.text && c.text.indexOf(needle) === 0);
+      // Delta against the same page with nothing planted, not an absolute: the real page contributes
+      // its own rescued targets, and an assertion written as ">= 2" would pass on those alone.
+      const dRescued = g6.rescuedByLabel - gT0.rescuedByLabel;
+      const dOverlay = g6.overlayInstances - gT0.overlayInstances;
+      probe.touch = {
+        pageTotal: g6.smallTotal,
+        bigLabelRescued: dRescued === 2 && named('LCTLbig').length === 0,
+        forLabelRescued: named('LCTLfor').length === 0 && dRescued === 2,
+        smallLabelCaught: named('LCTLsmall').length === 1 && named('LCTLsmall')[0].sel.indexOf('measured as label') !== -1,
+        smallLabelSize: named('LCTLsmall').length ? [named('LCTLsmall')[0].w, named('LCTLsmall')[0].h] : null,
+        overlaySplitOut: named('LCTLov').length === 0 && g6.overlaySmall.some((o) => o.text === 'LCTLov'),
+        overlayRecorded: dOverlay === 1,
+        dRescued, dOverlay,
+      };
+      bigL.remove(); smallL.remove(); forIn.remove(); forL.remove(); ovWrap.remove();
+      // SELF-CLIP pair. The vertical half of the criterion just gained a precondition (the element
+      // has to clip on the axis being judged), so both directions need a plant: a box that genuinely
+      // cuts its own text must still be caught, and the 刷新 shape - a line box taller than its own
+      // non-clipping box - must stop being reported. Without the second half, "the finding went away"
+      // and "the criterion was blinded" look identical.
+      const inkH = (el) => { const rg = document.createRange(); rg.selectNodeContents(el); return Math.round(rg.getBoundingClientRect().height * 10) / 10 };
+      const cutY = mkCtl('div', 'width:120px;height:14px;overflow:hidden;font-size:12px;line-height:24px');
+      cutY.textContent = 'LCTLclipy 两行文字';
+      const noClip = mkCtl('button', 'display:flex;align-items:center;height:40px;width:34px;padding:0;font-size:16px;line-height:24px;overflow:visible');
+      noClip.textContent = 'LCTLnoclip刷新文字';
+      host.appendChild(cutY); host.appendChild(noClip);
+      const g7 = window.__L.geometry(0);
+      const cutRec = (n) => g7.clipped.filter((c) => c.text && c.text.indexOf(n) === 0);
+      probe.selfClip = {
+        clipYCaught: cutRec('LCTLclipy').length === 1 && cutRec('LCTLclipy')[0].vDelta > 1 && cutRec('LCTLclipy')[0].hDelta === 0,
+        clipYDelta: cutRec('LCTLclipy').length ? [cutRec('LCTLclipy')[0].hDelta, cutRec('LCTLclipy')[0].vDelta] : null,
+        clipYOf: (function () { const c = getComputedStyle(cutY); return c.overflowX + '/' + c.overflowY })(),
+        noClipIgnored: cutRec('LCTLnoclip').length === 0,
+        // A green half only means something if the plant actually has the shape being excused. The
+        // first version of this plant used Latin text, which does not wrap, so it measured 21px of
+        // ink in a 40px box and "passed" by never reproducing the defect at all.
+        plantReproduces: inkH(noClip) > noClip.getBoundingClientRect().height,
+        noClipInkH: inkH(noClip),
+        noClipBoxH: Math.round(noClip.getBoundingClientRect().height * 10) / 10,
+        noClipOf: (function () { const c = getComputedStyle(noClip); return c.overflowX + '/' + c.overflowY })(),
+      };
+      cutY.remove(); noClip.remove();
+      // FONT-SWALLOW pair. The plant carries its own copy of the bug - an unlayered element rule that
+      // outranks the utility layer - so this control keeps proving the mechanism after the app's own
+      // reset is fixed, instead of freezing today's defect in place. The second plant declares the
+      // same utility with an inline size, which must agree, so the check cannot be "any button
+      // carrying text-xs is guilty".
+      const fsSheet = document.createElement('style');
+      fsSheet.textContent = 'button.lctl-swallow{font:inherit}';
+      document.head.appendChild(fsSheet);
+      const fsBad = mkCtl('button', ''); fsBad.className = 'lctl-swallow text-xs'; fsBad.textContent = 'LCTLfsBad';
+      const fsGood = mkCtl('button', 'font-size:12px'); fsGood.className = 'text-xs'; fsGood.textContent = 'LCTLfsGood';
+      const fsRef = mkCtl('span', 'position:absolute;left:-9999px;top:0'); fsRef.className = 'text-xs'; fsRef.textContent = 'r';
+      const gF0 = window.__L.geometry(${TOUCH});
+      host.appendChild(fsBad); host.appendChild(fsGood); host.appendChild(fsRef);
+      const gF1 = window.__L.geometry(${TOUCH});
+      const refWant = getComputedStyle(fsRef).fontSize;
+      probe.fontChain = {
+        dTotal: gF1.fontSwallowTotal - gF0.fontSwallowTotal,
+        caught: gF1.fontSwallowTotal - gF0.fontSwallowTotal === 1,
+        refWant,
+        gotBad: getComputedStyle(fsBad).fontSize,
+        gotGood: getComputedStyle(fsGood).fontSize,
+        badIsSwallowed: getComputedStyle(fsBad).fontSize !== refWant,
+        goodAgrees: getComputedStyle(fsGood).fontSize === refWant,
+      };
+      fsBad.remove(); fsGood.remove(); fsRef.remove(); fsSheet.remove();
       const after = window.__L.geometry(0);
       probe.removedCleanly = after.clippedByAncestorTotal === baseline.clippedByAncestorTotal && after.docOverflowPx === baseline.docOverflowPx;
       probe.nodes = baseline.nodes; probe.textLeaves = baseline.textLeaves;
@@ -2318,6 +2417,19 @@ async function main() {
     for (const [k, why] of [['srOnlySkipped', 'a visually-hidden sr-only span was counted as cut-off text'], ['scrollRailSkipped', 'an overflow-x:auto rail was counted as a clip rather than a reachable scroll']]) {
       if (!control.negative[k]) bad.push(`negative control failed: ${why}`)
     }
+    // The two touch-target exclusions added this round, each with the half that must NOT fire.
+    if (!control.touch.bigLabelRescued) bad.push(`touch control failed: a 13px checkbox inside a 220x60 label was still charged to the page (rescued delta=${control.touch.dRescued}) - the count would fault the app for a box no finger aims at`)
+    if (!control.touch.forLabelRescued) bad.push(`touch control failed: a label associated by for= was not treated as the control's touch target (rescued delta=${control.touch.dRescued})`)
+    if (!control.touch.smallLabelCaught) bad.push(`touch control failed: a checkbox whose own label is 18px tall was NOT reported (found ${JSON.stringify(control.touch.smallLabelSize)}) - the label rule is swallowing a real sub-floor target`)
+    if (control.touch.smallLabelCaught && control.touch.smallLabelSize.join('x') !== '60x18') bad.push(`touch control: the sub-floor label was reported at ${JSON.stringify(control.touch.smallLabelSize)} instead of the label box 60x18 - the finding would name the wrong element to fix`)
+    if (!control.touch.overlaySplitOut) bad.push('touch control failed: a button inside a [role=status] overlay was counted in the page total')
+    if (!control.touch.overlayRecorded) bad.push(`touch control failed: the overlay button was dropped rather than aggregated (overlay instance delta=${control.touch.dOverlay}) - splitting it out must report it once, not lose it`)
+    if (!control.selfClip.clipYCaught) bad.push(`SELF-CLIP precondition blinded the vertical half: a 14px box with overflow ${control.selfClip.clipYOf} cutting a 24px line was not reported (h/v delta ${JSON.stringify(control.selfClip.clipYDelta)})`)
+    if (!control.selfClip.noClipIgnored) bad.push(`SELF-CLIP still charges a box that does not clip: ink ${control.selfClip.noClipInkH}px inside a ${control.selfClip.noClipBoxH}px box with overflow ${control.selfClip.noClipOf} was reported as cut text`)
+    if (!control.selfClip.plantReproduces) bad.push(`SELF-CLIP green-half plant is vacuous: its ink box (${control.selfClip.noClipInkH}px) never exceeded its ${control.selfClip.noClipBoxH}px box, so it does not reproduce the shape the precondition excuses`)
+    if (!control.fontChain.caught) bad.push(`FONT-SWALLOW counted ${control.fontChain.dTotal} control(s) for a plant pair that should move it by exactly 1 - the declared-versus-rendered check is not tracking its own input`)
+    if (!control.fontChain.badIsSwallowed) bad.push(`FONT-SWALLOW plant is not a real swallow: the planted button rendered ${control.fontChain.gotBad}, same as its declared ${control.fontChain.refWant} - the control proves nothing`)
+    if (!control.fontChain.goodAgrees) bad.push(`FONT-SWALLOW green half broken: the plant that declares text-xs and sets its size inline rendered ${control.fontChain.gotGood} while the utility itself measures ${control.fontChain.refWant} - the check would report controls that are behaving`)
     // The divergence is the point, not a failure: the clip placement leaves the document-level
     // number untouched while the per-element one fires. Recorded so nobody re-merges them later.
     const docBlindToClip = control.clippedPlacement.caught && control.clippedPlacement.docOverflowPx === control.baselineDocOverflow
@@ -2328,6 +2440,9 @@ async function main() {
     console.log(`CONTROL-D rail-then-outer -> leaf inside a scroll rail left alone=${control.railThenOuter.leafNotFlagged}; the rail itself reported when an outer overflow:hidden cuts it=${control.railThenOuter.railFlagged} (worst ${control.railThenOuter.worst}px)`)
     console.log(`CONTROL-F cross-axis -> rail overflow-x:auto + overflow-y:hidden: vertical cut reported=${control.crossAxis.yCaught} (lostY ${control.crossAxis.lostY}px), horizontal excused=${control.crossAxis.xExcused} (lostX ${control.crossAxis.lostX}px)`)
     console.log(`CONTROL-E focus -> outline:none+no-shadow reads invisible=${control.focus.noRingRed}; ring drawn on a wrapper reads visible=${control.focus.wrapperRingGreen} (found at ancestor depth ${control.focus.ringLevel})`)
+    console.log(`CONTROL-T touch -> 13px checkbox inside a 220x60 label excused=${control.touch.bigLabelRescued}; for=-associated label excused=${control.touch.forLabelRescued}; 13px checkbox inside an 18px label still RED=${control.touch.smallLabelCaught} (measured ${control.touch.smallLabelSize ? control.touch.smallLabelSize.join('x') : 'n/a'} = the label box, which is the element to fix); [role=status] button out of the page count=${control.touch.overlaySplitOut} and reported once rather than lost=${control.touch.overlayRecorded} (rescued delta=${control.touch.dRescued}, overlay instances delta=${control.touch.dOverlay})`)
+    console.log(`CONTROL-G self-clip -> a 14px overflow:${control.selfClip.clipYOf} box cutting a 24px line is still reported=${control.selfClip.clipYCaught} (h/v delta ${JSON.stringify(control.selfClip.clipYDelta)}); a ${control.selfClip.noClipBoxH}px button whose ink box is ${control.selfClip.noClipInkH}px with overflow ${control.selfClip.noClipOf} is no longer reported=${control.selfClip.noClipIgnored} - nothing clips there, so nothing was cut`)
+    console.log(`CONTROL-H font -> planted an unlayered element rule over a text-xs utility: swallowed plant renders ${control.fontChain.gotBad} against the utility's own ${control.fontChain.refWant} (reported=${control.fontChain.badIsSwallowed}), inline-sized plant renders ${control.fontChain.gotGood} (not reported=${control.fontChain.goodAgrees}), count moved by ${control.fontChain.dTotal} for a pair that must move it by 1`)
     console.log(`COVERAGE: the sr-only exclusion is proven only by the planted control. In a browser-only harness no plugin row renders, so the app's own .sr-only element (PluginsPage.tsx:175) is never reached - the branch works, the app path is unexercised.`)
     console.log(`COVERAGE: nodes=${control.nodes} textLeaves=${control.textLeaves} restored=${control.removedCleanly}`)
     if (bad.length) {
@@ -2453,10 +2568,37 @@ async function main() {
           }
         }
         if (g.railProof) railProofTotals.push({ tier: entry.tier, route: label, proven: g.railProof.proven, unreachable: g.railProof.unreachable.length })
-        if (g.clippedTotal) emit(`SELF-CLIP ${entry.tier} ${label}: ${g.clippedTotal} own-text run(s) cut with no ellipsis and no title - worst ${g.clipped[0].hDelta}px horizontal / ${g.clipped[0].vDelta}px vertical ink "${g.clipped[0].text}" at ${g.clipped[0].sel}`)
-        if (g.smallTotal) emit(`TOUCH-TARGET ${entry.tier} ${label}: ${g.smallTotal} clickable target(s) under ${TOUCH}x${TOUCH} - smallest ${g.smallTargets[0].w}x${g.smallTargets[0].h} "${g.smallTargets[0].text}" at ${g.smallTargets[0].sel}`)
+        if (g.clippedTotal) emit(`SELF-CLIP ${entry.tier} ${label}: ${g.clippedTotal} own-text run(s) cut with no ellipsis and no title - worst ${g.clipped[0].hDelta}px horizontal / ${g.clipped[0].vDelta}px vertical ink "${g.clipped[0].text}" at ${g.clipped[0].sel} [box ${g.clipped[0].m.height}px (client ${g.clipped[0].m.clientHeight} / scroll ${g.clipped[0].m.scrollHeight}), line-height ${g.clipped[0].m.lineHeight} on font ${g.clipped[0].m.fontSize}, padding ${g.clipped[0].m.pad}, overflow ${g.clipped[0].m.overflow}, ink box ${g.clipped[0].m.inkH}px tall extending ${JSON.stringify(g.clipped[0].m.inkOver)} past the border box]`)
+        if (g.smallTotal) emit(`TOUCH-TARGET ${entry.tier} ${label}: ${g.smallTotal} page-owned clickable target(s) under ${TOUCH}x${TOUCH} (${Object.entries(g.smallByKind).map(([k, v]) => `${k}=${v}`).join(' ') || 'none'}) - smallest ${g.smallTargets[0].w}x${g.smallTargets[0].h} "${g.smallTargets[0].text}" at ${g.smallTargets[0].sel}`)
+        // Transient overlays are counted, not dropped: they collect into one finding per distinct
+        // control, naming every route that showed it. The alternative - one line per route - charged
+        // five routes with the toast component's own close button.
+        for (const o of (g.overlaySmall || [])) {
+          const key = `${entry.tier}|${o.sel}|${o.w}x${o.h}`
+          if (!overlayTargets.has(key)) overlayTargets.set(key, { tier: entry.tier, sel: o.sel, w: o.w, h: o.h, text: o.text, instances: 0, routes: new Set() })
+          const agg = overlayTargets.get(key)
+          agg.instances += o.occurrences
+          agg.routes.add(label)
+        }
+        overlayProbeTotal += g.overlayInstances || 0
+        if (g.rescuedByLabel || g.overlayInstances) entry.overlayExcluded = { rescuedByLabel: g.rescuedByLabel, overlayInstances: g.overlayInstances }
+        if (g.fontSwallowTotal) {
+          // One CSS rule, not one defect per route: the sidebar and every shared control reappear on
+          // all seven, so seven lines would be summed by the next reader as seven problems. The
+          // per-route numbers survive as a census line; the finding is emitted once, below.
+          for (const f of (g.fontSwallowedAll || [])) {
+            const key = `${f.sel}|${f.util}|${f.want}->${f.got}`
+            if (!fontSwallow.has(key)) fontSwallow.set(key, { sel: f.sel, util: f.util, want: f.want, got: f.got, wantLH: f.wantLH, gotLH: f.gotLH, text: f.text, n: 0, tiers: new Set(), routes: new Set() })
+            const agg = fontSwallow.get(key)
+            agg.n++
+            agg.routes.add(label)
+            agg.tiers.add(entry.tier)
+          }
+          fontSwallowProbeTotal += g.fontSwallowTotal
+          fontSwallowByRoute.push({ tier: entry.tier, route: label, n: g.fontSwallowTotal })
+        }
         if (g.brokenImages.length) emit(`BROKEN-IMAGE ${entry.tier} ${label}: ${g.brokenImages.length} image(s) with naturalWidth 0 - ${g.brokenImages.map((b) => b.src).join(', ')}`)
-        entry.exclusions = { srOnly: g.skipSrOnly, ellipsis: g.skipEllipsis, title: g.skipTitle, scrollRail: g.skipScrollRail, fixed: g.skipFixed, railX: g.railX, railY: g.railY, textLeaves: g.textLeaves, measuredLeaves: g.measuredLeaves }
+        entry.exclusions = { srOnly: g.skipSrOnly, ellipsis: g.skipEllipsis, title: g.skipTitle, scrollRail: g.skipScrollRail, fixed: g.skipFixed, railX: g.railX, railY: g.railY, textLeaves: g.textLeaves, measuredLeaves: g.measuredLeaves, targetRescuedByLabel: g.rescuedByLabel, targetInOverlay: g.overlayInstances }
         if (tier.width === 640) {
           const seen = []
           entry.focusableCount = await evaluate(`window.__L.markFocusables()`)
@@ -2482,6 +2624,29 @@ async function main() {
       }
     }
     await send('Emulation.clearDeviceMetricsOverride').catch(() => {})
+    // The overlay targets became their own findings: one line per distinct control, carrying the
+    // route count and instance count with it. Identity: instances is what the probe saw, routes is
+    // where - if instances were spread over more keys than this map holds, the aggregation lost one.
+    const ov = [...overlayTargets.values()].filter((o) => o.instances > 0)
+    const ovDropped = overlayTargets.size - ov.length
+    for (const o of ov) failures.push(`TOUCH-TARGET ${o.tier} overlay(toast): ${o.w}x${o.h} "${o.text}" at ${o.sel} - ${o.instances} instance(s) across ${o.routes.size} route(s) [${[...o.routes].join(' ')}]; transient, so charged to the toast component rather than to those routes`)
+    const ovInstances = ov.reduce((a, o) => a + o.instances, 0)
+    console.log(`LAYOUT_OVERLAY distinct_controls=${ov.length} instances=${ovInstances} probe_reported=${overlayProbeTotal} routes_involved=${new Set(ov.flatMap((o) => [...o.routes])).size} keys_seen_only_on_skipped_pages=${ovDropped}`)
+    // The probe's own per-page count is the denominator the aggregation has to account for. A merge
+    // that silently loses an instance, or a bucket that skips a page it should not have, shows up
+    // here as a mismatch instead of as a smaller, tidier number.
+    if (ovInstances !== overlayProbeTotal) { console.log(`HARNESS FAULT: LAYOUT-OVERLAY-IDENTITY aggregated instances=${ovInstances} != probe reported=${overlayProbeTotal} - the overlay aggregation does not account for what the probe counted`); finish(2) }
+    // The font finding, emitted once for the whole app rather than once per route, with the per-route
+    // census printed beside it. Identity: the distinct-control occurrence sum has to equal what the
+    // probe counted page by page, or the dedupe quietly dropped a control.
+    const fsOccurrences = [...fontSwallow.values()].reduce((a, f) => a + f.n, 0)
+    const fsRoutes = new Set(fontSwallowByRoute.map((r) => r.route))
+    if (fontSwallow.size) {
+      const worst = [...fontSwallow.values()].sort((a, b) => (b.routes.size - a.routes.size) || a.sel.localeCompare(b.sel))[0]
+      failures.push(`FONT-SWALLOW app-wide (read at 640x480, ${ROUTES.length === ALL_ROUTES.length ? 'every route' : `a ${fsRoutes.size}-route subset`}): ${fontSwallow.size} distinct control(s) on ${fsRoutes.size} route(s) whose own text-* class is not the rendered font-size - e.g. "${worst.text}" at ${worst.sel} declares ${worst.util} (${worst.want}) and renders ${worst.got}, line-height ${worst.wantLH} -> ${worst.gotLH}; cause is one unlayered element reset outranking the utility layer, not ${fontSwallow.size} call sites`)
+    }
+    console.log(`FONT_SWALLOW distinct_controls=${fontSwallow.size} per_route=${fontSwallowByRoute.map((r) => `${r.route}=${r.n}`).join(' ')} instances_sum=${fontSwallowProbeTotal} deduped_occurrences=${fsOccurrences}`)
+    if (fsOccurrences !== fontSwallowProbeTotal) { console.log(`HARNESS FAULT: FONT-SWALLOW-IDENTITY deduped_occurrences=${fsOccurrences} != probe instances_sum=${fontSwallowProbeTotal} - the dedupe lost a control, so distinct_controls under-reads`); finish(2) }
     const summary = { provenance: buildProvenance(), note: 'widths are Emulation.setDeviceMetricsOverride CSS viewports, not real device screens; 640x480 is the app minimum window from tauri.conf.json', stuckLoading, tiers: results, failures }
     writeFileSync(`${OUT}/layout-baseline.json`, JSON.stringify(summary, null, 2))
     if (budgetHits) { console.log(`CONTRAST_GATE INCOMPLETE: covered ${comboIndex}/${combosTotal} combinations inside the ${DEADLINE_MS}ms budget; the unmeasured remainder is not a pass.`); finish(2) }
