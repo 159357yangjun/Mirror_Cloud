@@ -179,7 +179,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
 | `scripts/verify_all.mjs` | 351 | 25,424 | `538d75d3f61b94fe33d2563200b59292470bc2938ef9db30a69976ffad301ebf` | 18 stages：七道静态守卫 + 两份台账（`theme_face_inventory`、`verify_shape`）+ 七个测具模式（新增 `contrast-tier`、`theme-surfaces`）+ `red-demo` + 变异套件；`layout` 仍不接入，原因见其注释 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行）；`node scripts/verify_all.mjs selftest`（往 stage 表里粘一行重复名字，必须被点名） |
-| `scripts/verify_dialog_interactions.mjs` | 3463 | 283,017 | `25768c25f5a613232a016511700f934b40e0afb9b77c2f4664266d27d3b528ef` | `gate-unit` 29/29（viewport 6 + coverage 5 + doc-table 8 + **staleness 10**，后者含植入 470px 位移与"缺盒子必须回 null"）；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18`；`node scripts/verify_guard_mutations.mjs M26 M27`（把逐元素比较循环拔空、把"比不了"当"没动"，两条都必须被 `gate-unit` 点名） |
+| `scripts/verify_dialog_interactions.mjs` | 3488 | 285,861 | `da46eb96f3a0bf56559414376f9ad76ec4b99cf2d5cc37219e4f7ad0599a1175` | `gate-unit` 29/29（viewport 6 + coverage 5 + doc-table 8 + **staleness 10**，后者含植入 470px 位移与"缺盒子必须回 null"）；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18`；`node scripts/verify_guard_mutations.mjs M26 M27`（把逐元素比较循环拔空、把"比不了"当"没动"，两条都必须被 `gate-unit` 点名） |
 | `scripts/verify_guard_mutations.mjs` | 319 | 25,797 | `1d48c874923c110ccd469f6bc99879afbb071ed36058bacbae8da3e3dedd727e` | 24 个变异（M1–M24），每个都必须被它指定的那台 oracle 抓到；本轮 M18/M19/M21/M22/M23/M24 的逐条读数见下面"本轮末次运行读数"一节 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
 | `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 770 | 47,295 | `5c4466e2c831de43b533063e19127d934e0b70747e9eb3459570ce63d827b8b7` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
@@ -189,7 +189,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | `scripts/__fixtures__/hanging_stage.mjs`（永不结束的假 stage，自己再 spawn 一个孙进程：`timeout-demo` 的靶子） | 20 | 1,155 | `16d702ee2dda998f2e7538d739f82d61656b075194ada2cb87fa014a80cf509a` | 只被 `verify_all.mjs timeout-demo` 生成，没有任何门读它 | `node scripts/verify_all.mjs timeout-demo`（六例，含"不调 taskkill 也不留孤儿"的消融与"正常结束不得报成 timeout"的负对照） |
 | `scripts/verify_modes.mjs`（模式名单 + 锚定的 dispatch 正则，纯数据、零控制流；runner 与 shape 台账读同一份） | 36 | 1,449 | `0b250811609418512489e3de9ffb70c1dbe24c7adc2d0b6cfe8da739bc6c2f87` | 每次启动三方核对：声明↔已派发用法块已文档化（15 个模式） | `node scripts/verify_guard_mutations.mjs M24`（把启动拒绝拔掉的变异，必须仍红） |
 | `scripts/verify_shape.mjs`（拆分对账台账：模式集合双向差、总行/字节、六族决策点数、以及"拆出去的探针是否仍逐字节等于拆之前"） | 292 | 17,246 | `b2e4824ca146f6858f6d0782efaa88b91350f53c07c2bfe95881e90fbb729559` | `SHAPE_SELFTEST cases=6 failed=0` + `SPLIT_SHAPE OK checked=17 failed=0` | 它自己先跑 6 例植入式夹具（改一个字节、删一个模式、把 extraction 弄瞎），任一抓不到就 exit 2；`--snapshot` 无 `--reason` 直接拒绝 |
-| `scripts/verify_shape.baseline.json`（上一行那本台账**签过的基线**：文件清单、总行/字节、六族决策点数、模式集合、extraction 长度与 `--snapshot --reason` 的原文） | 143 | 3,202 | `202dcdf7ef800854804be7cc5322152f446cb852ca8ca15669f86f9200bbdd07` | `SPLIT_SHAPE OK checked=17 failed=0`（它变了而代码没变 ⇒ 要么有人重签，要么有人偷改） | 它自己不会报红，是 `verify_shape.mjs --verify` 报红；本轮把它纳入指纹表，是因为"改基线"这件事此前只存在于 JSON 被碰过这一种痕迹里 |
+| `scripts/verify_shape.baseline.json`（上一行那本台账**签过的基线**：文件清单、总行/字节、六族决策点数、模式集合、extraction 长度与 `--snapshot --reason` 的原文） | 143 | 3,097 | `8f0e07d7d5448e46100398999343ec39961db170c5ee67666138da797bb5ada7` | `SPLIT_SHAPE OK checked=17 failed=0`（它变了而代码没变 ⇒ 要么有人重签，要么有人偷改） | 它自己不会报红，是 `verify_shape.mjs --verify` 报红；本轮把它纳入指纹表，是因为"改基线"这件事此前只存在于 JSON 被碰过这一种痕迹里 |
 | `scripts/theme_face_inventory.mjs`（逐面三档清单的生成器，`docs/VISUAL_BASELINE.md` 4.1 那张表由它核对） | 204 | 12,424 | `8eee9bedb20ce49f30d61f30f23b69b9e92da624c1564709fa9e1208a6c702b9` | `THEME_FACE_VERIFY faces=23 docLines=25 mismatch=0`（`faces=23` = **22 个面 + 1 合计行**，2026-10-01 起该行把拆解一并印出，比对定义未改） | `node scripts/theme_face_inventory.mjs --selftest`（7 例：自己的输出干净、改一个数字恰好报 1 行、截断要报、行号要点对，加 **CRLF 整表必须干净 / 开头一个空行必须干净 / 混合行尾下改一个数字仍报 1 行**；抓不到 exit 2。后三例是 2026-10-01 那次"内容一致却 25 行全报红"的现场，见十六节） |
 
 **这张表现在是断言，不是纪律**：`check_user_flow.py` 解析上面每一行，对每个文件重算 `git show HEAD:<path>` 的行数/字节/sha256 并逐项比对，还断言"表里的行集合 == 磁盘上成员集合"，成员由四条规则导出而不是由名字导出：`scripts/verify_*.mjs`、`scripts/__fixtures__/*.mjs`、`verify_all.mjs` 里被当作 stage 引用的 `scripts/*.mjs`、以及 `scripts/*.baseline.json`（外加 `check_user_flow.py` 自己）。所以：新加一个测具忘了上表 → 红；改了测具忘了更新表 → 红；哈希对不上 → 红，并附一句"该文件另有未提交改动"。上一版这张表就是**手写漂移了一笔提交**（记 965 行 / `9341e4ba…`，实际 1119 行 / `d9572a31…`），而它上面那句"改完必须回来更新"正是被漂移的那句——所以规则本身不解决问题，断言才解决。`.baseline.json` 这一类是本轮补的：`verify_shape.baseline.json` 早就在仓里、早就被 `--snapshot` 重签过十次，而指纹表按名字匹配 `.mjs` 一直没看见它——**门禁自己的输入清单漏了门禁签过的那张纸**。
@@ -1439,6 +1439,41 @@ user-flow checker FAILED: 3 of 253 check(s)
 被外层 timeout 抓到（日志停在第 6 行）。**探针自己死锁时不会报错，只会让上一行读数变成
 "最后一次成功运行的输出"**——所以这类跨进程取证的每一段都得带 timeout，没有 timeout 就等于没有证人。
 判据一行未动：`drift` 桶的处置仍在 owner 名下，本轮只加取证。
+
+### 二十、`CONTRAST-DENOM` 的机制我写错了：不是 2.5s 轮询来回开关，是一次性 settle
+
+§十一 那行根因写的是"`PluginsPage.tsx:18` 的 `plugin-execution-logs` 是 `refetchInterval: 2500` 轮询查询；
+哪几个组合恰好拍在'查询已失败'的时刻，就多带那两行"。**"哪几个组合拍到"这个结论对，机制不对**——
+它不是被轮询来回开关的。新探针 `--churn=<text>`（每 250ms 采一次存在性，窗口 20.5s，只进报告行、不进退码）
+两轮 × 三主题 = **6 个窗口、123.3 秒观测**：
+
+```text
+RUN4  default  window=20642ms first=0 last=1 transitions=1 at=[3021ms:0->1]
+RUN4  midnight window=20575ms first=0 last=1 transitions=1 at=[31042ms:0->1]
+RUN4  sakura   window=20568ms first=0 last=1 transitions=1 at=[59033ms:0->1]
+RUN5  default  window=20549ms first=0 last=1 transitions=1 at=[2856ms:0->1]
+RUN5  midnight window=20527ms first=0 last=1 transitions=1 at=[30771ms:0->1]
+RUN5  sakura   window=20594ms first=0 last=1 transitions=1 at=[58195ms:0->1]
+```
+
+⇒ **翻转 6 次全是 `0->1`，`1->0` 零次。** 若真是 2.5s 轮询在开关内容，20.5 秒窗口里该有约 8 次、且双向。
+所以那两行是"进入路由后出现一次、之后常驻"；组合之间看到 26 还是 28，取决于**那次访问距它自己的挂载过了多久**，
+不是轮询相位。
+
+**我第一版把 3021/2856ms 说成"与默认重试退避 `100+1000+2000=3100ms` 吻合"，这句是错的，两处错**：
+① `main.tsx:22-26` 的实际配置是 `staleTime: 10_000` + **`retry: 1`** + `refetchOnWindowFocus: false`，
+默认三次重试的算术前提根本不存在；② 那三个数是 `performance.now()` 的**累计值（距文档加载）**，
+SPA 不重载文档，所以它不等于"距路由挂载"。补上锚点（导航后立刻读一次页面时钟）重测两轮，真数是：
+
+```text
+RUN6 default/none/插件  at=[3024ms[距挂载919ms]:0->1]   RUN6 midnight/none/插件 at=[31427ms[距挂载698ms]:0->1]
+RUN6 sakura/none/插件   at=[59740ms[距挂载663ms]:0->1]
+```
+
+⇒ 面板在**挂载后约 0.66–0.92 秒**出现一次并常驻，与 `retry: 1`（一次失败 + 一次约 100ms 退避重试）一致。
+**这才是 `CONTRAST-DENOM` 与 58px 过期采样的共同上游**：静默等待在第一次 fetch 落地之前就判了"稳"，
+所以它保证的是"拍照那一刻页面没有在动画"，不保证"这一页的查询已经定下来"。
+判据一行未动；`denom`/`drift` 两个桶的处置仍在 owner 名下。
 
 ## 1.4.5 - Legible Read-Failure Panels and Measured Contrast Floors
 

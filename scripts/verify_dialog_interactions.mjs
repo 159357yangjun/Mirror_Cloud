@@ -1313,6 +1313,7 @@ async function main() {
     const allControls = []
     const gridStats = { text: 0, disagreed: 0, centreWouldHaveMissed: 0, fallbacks: 0, worstDelta: 0, points: 0 }
     let controlDone = false
+    let churnTheme = null
     // Six named control kinds, each measured against the surface it actually sits on (the pixel
     // photographed at its own centre), never against a neighbouring panel: a primary button's
     // background IS its surface. Classification reads the element's own classes/tag, so a new
@@ -1638,6 +1639,11 @@ async function main() {
         // not assumed - with the open hoisted out of the wallpaper loop, pass 1 saw the dialog
         // (rows=5) and pass 2 saw none, and the assertion below stopped the run.
         if (!dialogFace) await goto(label)
+        // Anchor for --churn: the page clock at the moment this route was entered. Without it the
+        // probe's timestamps mean "since the document loaded", and an SPA that never reloads makes
+        // that a different quantity from "since this route mounted" - which is exactly the difference
+        // between reading a 3.1s settle and reading a 2.5s poll.
+        const navT0 = opt('churn', '') ? await evaluate(`performance.now()`) : null
         cost.nav += Date.now() - tNav
         for (const [wallName, wallValue] of WALLS) {
           if (DEADLINE_MS && Date.now() - RUN_STARTED > DEADLINE_MS) {
@@ -1721,6 +1727,25 @@ async function main() {
           if (!quiet.stable) { console.log(`HARNESS FAULT: the page was still changing after ${quiet.waited}ms of quiet-waiting on ${themeName}/${wallName}/${label} (text length ${quiet.len}); the candidate set is not stable enough to sample.`); finish(2) }
           cost.quiet += Date.now() - mark; mark = Date.now()
           await assertRealViewport(`contrast:${themeName}/${wallName}/${label}`)
+          // --churn=<text>: is the denominator moving because of the wallpaper, or because of a clock?
+          // Samples the presence of one piece of text every 250ms for twenty seconds on a page treated
+          // exactly as the sweep treats it, and prints where it flips. A flip near the 2.5s poll period
+          // makes CONTRAST-DENOM's content difference a function of WHEN the combination was
+          // photographed, not of what it was photographed against - which is the claim the bucket
+          // currently only implies. Report-only: this line never reaches the exit code.
+          const churnNeedle = opt('churn', '')
+          if (churnNeedle && churnTheme !== themeName) {
+            churnTheme = themeName
+            const churn = await evaluate(`(async function(){var t=${JSON.stringify(churnNeedle)},s=[];for(var i=0;i<80;i++){var n=0;var all=document.querySelectorAll('main *, [role=dialog] *');for(var j=0;j<all.length;j++){var e=all[j];if((e.textContent||'').indexOf(t)!==-1&&e.getBoundingClientRect().height>0&&e.children.length===0)n++}s.push([Math.round(performance.now()),n]);await new Promise(function(r){setTimeout(r,250)})}return s})()`)
+            const transitions = []
+            for (let i = 1; i < churn.length; i++) if (churn[i][1] !== churn[i - 1][1]) transitions.push(`${churn[i][0]}ms${navT0 !== null ? `[距挂载${Math.round(churn[i][0] - navT0)}ms]` : ''}:${churn[i - 1][1]}->${churn[i][1]}`)
+            const distinct = [...new Set(churn.map((c) => c[1]))].sort()
+            // `atMs` is time since navigation, because performance.now() is - so this says when after a
+            // page load the content appears or vanishes, which is the number that separates a periodic
+            // poll from a one-shot settle. The first version printed the sampling interval instead and
+            // labelled it `medianGap`, which is how a 255ms number turned up next to a 2500ms theory.
+            console.log(`CHURN ${themeName}/${wallName}/${label} needle=${JSON.stringify(churnNeedle)} window=${churn[churn.length - 1][0] - churn[0][0]}ms samples=${churn.length} first=${churn[0][1]} last=${churn[churn.length - 1][1]} distinctPresence={${distinct.join(',')}} transitions=${transitions.length}${transitions.length ? ` at=[${transitions.join(' ')}]` : ' (content never changed inside this window)'}`)
+          }
           const dpr = await evaluate(`window.devicePixelRatio`)
           if (dpr !== 1) { console.log(`HARNESS FAULT: devicePixelRatio is ${dpr}, not 1 - pixel sampling would be offset. Aborting.`); finish(2) }
           if (dialogFace) {
