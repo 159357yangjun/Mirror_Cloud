@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-10-01T02:40:51",
-    "head": "e0f39cf0605fcbf127dc6ff86e528c068c99dabf",
-    "reason": "thirteenth signing: pit-3 restore assertion added to RAIL-CONTROL. lines 4765->4774 (+9), bytes 354953->356002 (+1049); failures.push 16, harness-fault exit 42, positive control 15 all unchanged - the new guard is one more ctlProblems.push inside an existing control, not a new family"
+    "takenAt": "2026-10-01T03:12:17",
+    "head": "6c34cc5c7a43bba28778f23e7d2eb358293a54a2",
+    "reason": "fourteenth signing: shape ledger now asserts per-file rows (lines/bytes/six families) and file-set membership, not just aggregates; denominator gate + identity keys added to contrast-tier; RAIL-CONTROL plant/page counts split"
   },
   "files": [
     {
@@ -22,14 +22,14 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 3045,
-      "bytes": 241970,
+      "lines": 3101,
+      "bytes": 246677,
       "families": {
         "failures.push": 15,
         "emitGate": 12,
         "harness-fault exit": 40,
         "gate line": 8,
-        "positive control": 14,
+        "positive control": 15,
         "throw": 16
       }
     },
@@ -78,8 +78,8 @@
     {
       "file": "scripts/verify_shape.mjs",
       "exists": true,
-      "lines": 274,
-      "bytes": 15745,
+      "lines": 293,
+      "bytes": 17246,
       "families": {
         "failures.push": 1,
         "emitGate": 0,
@@ -92,14 +92,14 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 4774,
-    "bytes": 356002,
+    "lines": 4849,
+    "bytes": 362210,
     "families": {
       "failures.push": 16,
       "emitGate": 12,
       "harness-fault exit": 42,
       "gate line": 8,
-      "positive control": 15,
+      "positive control": 16,
       "throw": 16
     }
   },

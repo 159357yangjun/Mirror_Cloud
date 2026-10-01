@@ -110,6 +110,20 @@ function problems(baseline, now, ex) {
   push('modes reachable but not in the help list', m1.undeclared.length, 0)
   push('modes in the help list but not dispatchable', m1.undispatchable.length, 0)
   for (const [name] of FAMILIES) push(`decision points: ${name}`, now.totals.families[name], baseline.totals.families[name])
+  // Per-file rows used to be recorded and never compared: only totals and families were, so flipping
+  // a digit in one file's line count changed nothing the gate read. That made the claim "this file
+  // is a gate input, so it is fingerprinted" false for every field except the aggregate.
+  const bFiles = new Map((baseline.files || []).map((f) => [f.file, f]))
+  for (const f of now.files) {
+    const e = bFiles.get(f.file)
+    if (!e) { push(`baseline row exists for ${f.file}`, 'missing', 'present'); continue }
+    push(`${f.file} lines`, f.lines, e.lines)
+    push(`${f.file} bytes`, f.bytes, e.bytes)
+    for (const [name] of FAMILIES) push(`${f.file} decision points: ${name}`, f.families[name], e.families[name])
+  }
+  for (const e of baseline.files || []) {
+    if (!now.files.some((f) => f.file === e.file)) push(`baseline row ${e.file} is still in the census`, 'measured as gone', 'present')
+  }
   push(`pre-split source available at ${ex.before}`, ex.beforeAvailable ? 1 : 0, 1)
   push(`post-split module available at ${ex.at}`, ex.probesAvailable ? 1 : 0, 1)
   for (const b of ex.bodies) push(`extracted body ${b.name} still byte-identical to the pre-split file`, b.verbatim ? 1 : 0, 1)
@@ -135,6 +149,11 @@ function selftest() {
   }
   run('identical baseline reports no drift', 0, copy(), healthy)
   run('one lost byte reports drift', 1, (() => { const b = copy(); b.totals.bytes -= 1; return b })(), healthy)
+  // The case that was missing: a per-file row edited by one digit while every aggregate still agrees.
+  // Before the per-file comparison existed this reported 0 problems - the file looked fingerprinted
+  // and was not.
+  run('one per-file row tampered, aggregates untouched', 1, (() => { const b = copy(); b.files[0].lines += 1; return b })(), healthy)
+  run('one per-file family count tampered', 1, (() => { const b = copy(); const f = b.files.find((x) => x.families['gate line'] > 0) || b.files[0]; f.families['gate line'] = (f.families['gate line'] || 0) + 1; return b })(), healthy)
   run('a dead extraction reports every extraction problem', 5, copy(), dead)
   // The bug this case exists for: the bodies used to be read out of the working file, so a legitimate
   // later edit to a probe looked like the split had destroyed content. Each availability flag is now
