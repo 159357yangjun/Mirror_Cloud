@@ -2839,6 +2839,15 @@ async function main() {
     }
     if (railCtl.railMoved) ctlProblems.push(`the planted rail scrolled (moved=true, scrollSize=${railCtl.scrollSize} clientSize=${railCtl.clientSize}) - it was meant to be a rail that cannot reach its content`)
     if (!railCtlProbe.unreachable.length) ctlProblems.push(`RAIL-PROOF did not report the planted unreachable element at all (unreachable total=${railCtlProbe.total}) - the proof cannot fail, so its 0 is not evidence`)
+    // Pit ③, the third of the three this control was written for. The proof scrolls every scrollable
+    // ancestor to prove reachability; if it does not put them back, the SECOND geometry() call on the
+    // same page measures a scrolled page - which is how one run came out proven=123 and the next 100.
+    // Two calls are taken here on purpose (bare then g), so a lost restore shows up as disagreement
+    // between them rather than as a number nobody can check. Until this line existed the restore was
+    // guarded by nothing but the printed diagnostic.
+    if (railCtlProbe.diag.railDelta !== 0 || railCtlProbe.diag.proven_without !== railCtlProbe.diag.proven_with) {
+      ctlProblems.push(`the reachability proof does not restore what it scrolled: two geometry() calls on one page disagree (proven_without=${railCtlProbe.diag.proven_without} proven_with=${railCtlProbe.diag.proven_with} railDelta=${railCtlProbe.diag.railDelta}) - whichever one the sweep happened to take is the number you get, and 712/0 is not reproducible`)
+    }
     console.log(`RAIL-CONTROL diag ${JSON.stringify(railCtlProbe.diag)} | criteria side by side: whole-box-fits=${railCtl.wholeBox} after-rail-extreme-scroll=${railCtl.afterRailExtreme} after-element-scroll(shipped)=${railCtl.afterElementScroll} | rail moved=${railCtl.railMoved} scrollSize=${railCtl.scrollSize}/clientSize=${railCtl.clientSize} | probe flagged it=${railCtlProbe.unreachable.length > 0} (proven=${railCtlProbe.proven} unreachable_total=${railCtlProbe.total})`)
     // Both halves in one artifact: the red side (plant present, proof must name it) and the green
     // side (plant gone, back to the page's own reading). A file with only the failure would let the
