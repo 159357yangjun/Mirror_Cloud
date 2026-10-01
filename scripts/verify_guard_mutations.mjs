@@ -145,7 +145,7 @@ const mutations = [
   // oracle sees. Renumbering it here would make the old note point at a different test.
   {
     id: 'M26', file: HARNESS, oracle: 'gate-unit', expect: 'rectMoved planted 470px shift -> 0 (expected 470)',
-    from: '  let worst = 0\n      for (let i = 0; i < 4; i++) {', to: '  let worst = 0\n      for (let i = 0; i < 0; i++) {',
+    from: '  let worst = 0\n  for (let i = 0; i < 4; i++) {', to: '  let worst = 0\n  for (let i = 0; i < 0; i++) {',
   },
   {
     id: 'M27', file: HARNESS, oracle: 'gate-unit', expect: 'rectMoved live box missing (element unmounted) -> 0 (expected null)',
