@@ -377,6 +377,7 @@ window.__L = (function () {
         // Criterion VIEWPORT: per-element rect past the viewport edge.
         viewportOverflowPx: 0,
         offenders: [], clipped: [], clippedByAncestor: [], controlsCut: [], containersCut: [], smallTargets: [], brokenImages: [], focusables: 0,
+        smallByKind: {}, rescuedByLabel: 0, overlaySmall: [], overlayInstances: 0, fontSwallowed: [],
         railProof: { proven: 0, rails: 0, unreachable: [] },
       }
       const railCandidates = []
@@ -505,17 +506,43 @@ window.__L = (function () {
         // The text's own ink rect against the element's content box is what actually answers
         // "did a glyph get eaten".
         const r2 = e.getBoundingClientRect()
-        const hDelta = Math.max(0, e.scrollWidth - e.clientWidth)
+        // A box that does not clip cannot cut its own text. The vertical excursion this criterion
+        // was reporting on the 刷新 button was the line box (45px of two wrapped lines) poking past a
+        // 40px box whose overflow is visible - it paints, so nothing was eaten. Overflow on the axis
+        // being judged is now a precondition, not an assumption.
+        const clipsX = cs.overflowX !== 'visible'
+        const clipsY = cs.overflowY !== 'visible'
+        const hDelta = clipsX ? Math.max(0, e.scrollWidth - e.clientWidth) : 0
         let vDelta = 0
+        let ink = null
         try {
           const rg = document.createRange(); rg.selectNodeContents(e)
-          const ink = rg.getBoundingClientRect()
-          const top = r2.top + (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.paddingTop) || 0)
-          const bottom = r2.bottom - (parseFloat(cs.borderBottomWidth) || 0) - (parseFloat(cs.paddingBottom) || 0)
-          vDelta = Math.max(0, Math.round(Math.max(top - ink.top, ink.bottom - bottom)))
+          ink = rg.getBoundingClientRect()
+          if (clipsY) {
+            const top = r2.top + (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.paddingTop) || 0)
+            const bottom = r2.bottom - (parseFloat(cs.borderBottomWidth) || 0) - (parseFloat(cs.paddingBottom) || 0)
+            vDelta = Math.max(0, Math.round(Math.max(top - ink.top, ink.bottom - bottom)))
+          }
         } catch (err) { vDelta = 0 }
         if (hDelta > 1 || vDelta > 1) {
-          out.clipped.push({ sel: sel(e), text: txt(e), delta: Math.max(hDelta, vDelta), hDelta, vDelta, overflowX: cs.overflowX })
+          // The box arithmetic rides along with the finding. Whether a 4px vertical excursion is a
+          // cut glyph or just half-leading is settled by line-height against the content height and
+          // by whether the element clips at all - a reader should not have to re-run anything to
+          // check which, and "overflow:visible means nothing was cut" is the answer this exposes.
+          const m = {
+            height: Math.round(r2.height * 10) / 10,
+            clientHeight: e.clientHeight,
+            scrollHeight: e.scrollHeight,
+            clientWidth: e.clientWidth,
+            scrollWidth: e.scrollWidth,
+            lineHeight: cs.lineHeight,
+            fontSize: cs.fontSize,
+            pad: (cs.paddingTop + '/' + cs.paddingBottom),
+            overflow: cs.overflowX + '/' + cs.overflowY,
+            inkH: ink ? Math.round(ink.height * 10) / 10 : null,
+            inkOver: ink ? [Math.round(Math.max(0, r2.top - ink.top) * 10) / 10, Math.round(Math.max(0, ink.bottom - r2.bottom) * 10) / 10] : null,
+          }
+          out.clipped.push({ sel: sel(e), text: txt(e), delta: Math.max(hDelta, vDelta), hDelta, vDelta, overflowX: cs.overflowX, m })
         }
       }
       out.clipped.sort((a, b) => b.delta - a.delta)
@@ -525,16 +552,96 @@ window.__L = (function () {
       if (touchMin) {
         const nodes = Array.from(doc.querySelectorAll('button, a[href], input:not([type=hidden]), select, [role=button], [role=tab]'))
         out.focusables = nodes.filter((e) => vis(e)).length
+        // An unlayered rule outranks Tailwind's layered utilities, so a bare element reset can
+        // silently swallow a class the markup clearly declares. Only unprefixed utilities count: a
+        // hover:/sm: variant is not a claim about this element's current rendered size.
+        // This runs on the 640 tier only, which is sound while no rendered size depends on width -
+        // check_user_flow.py asserts the source keeps containing zero responsive font utilities,
+        // because the day one appears this reading stops describing the other two tiers.
+        const REF = {}
+        const fontUtilOf = (e) => {
+          const m = (' ' + (e.getAttribute('class') || '') + ' ').match(/ (text-(?:xs|sm|base|lg|xl))(?: |$)/)
+          return m ? m[1] : null
+        }
+        const refOf = (util) => {
+          if (REF[util]) return REF[util]
+          const s = document.createElement('span')
+          s.className = util
+          s.style.cssText = 'position:absolute;left:-9999px;top:0'
+          s.textContent = 'x'
+          document.body.appendChild(s)
+          const cs2 = getComputedStyle(s)
+          REF[util] = { fontSize: cs2.fontSize, lineHeight: cs2.lineHeight }
+          s.remove()
+          return REF[util]
+        }
+        // The HITTABLE area is the touch target, not the control's own box. Activating a label
+        // activates the control it wraps or points at with for=, so a 13px checkbox inside a
+        // full-width label has a full-width target - blaming the input's box faults the app for a
+        // box no finger aims at. Where the label is itself under the floor the finding has to name
+        // the label, because the label is the element whose height must change.
+        const hitBox = (e) => {
+          let r = e.getBoundingClientRect()
+          let via = null
+          if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.tagName)) {
+            const cands = []
+            const wrap = e.closest('label')
+            if (wrap) cands.push(wrap)
+            if (e.id) for (const lb of doc.querySelectorAll('label')) if (lb.htmlFor === e.id && cands.indexOf(lb) === -1) cands.push(lb)
+            for (const lb of cands) {
+              const lr = lb.getBoundingClientRect()
+              if (lr.width * lr.height > r.width * r.height) { r = lr; via = sel(lb) }
+            }
+          }
+          return { r, via }
+        }
         for (const e of nodes) {
           if (!vis(e)) continue
-          const r = e.getBoundingClientRect()
-          if (r.width + 0.5 < touchMin || r.height + 0.5 < touchMin) {
-            out.smallTargets.push({ sel: sel(e), w: Math.round(r.width * 10) / 10, h: Math.round(r.height * 10) / 10, text: txt(e) || nameOf(e) })
+          if (/^(BUTTON|INPUT|SELECT|TEXTAREA)$/.test(e.tagName)) {
+            const util = fontUtilOf(e)
+            if (util) {
+              const ref = refOf(util)
+              const cs2 = getComputedStyle(e)
+              // Declared versus rendered, with the reference measured from the same stylesheet rather
+              // than a hard-coded table: a span carrying only text-xs cannot be reached by the
+              // unlayered control reset, so it reports what the utility actually means here.
+              if (cs2.fontSize !== ref.fontSize) {
+                out.fontSwallowed.push({ sel: sel(e), text: txt(e) || nameOf(e), util, want: ref.fontSize, got: cs2.fontSize, wantLH: ref.lineHeight, gotLH: cs2.lineHeight })
+              }
+            }
           }
+          const box = hitBox(e)
+          if (box.r.width + 0.5 >= touchMin && box.r.height + 0.5 >= touchMin) { if (box.via) out.rescuedByLabel++; continue }
+          const rec = {
+            sel: box.via ? sel(e) + ' (measured as label ' + box.via + ')' : sel(e),
+            w: Math.round(box.r.width * 10) / 10,
+            h: Math.round(box.r.height * 10) / 10,
+            text: txt(e) || nameOf(e),
+            kind: e.tagName.toLowerCase(),
+          }
+          // A toast is transient and the same component on every route. Counting its close button
+          // inside each route's total produced five findings for one control and made four routes
+          // look broken by something they do not own. It is still a real target, so it is reported -
+          // once, under its own label - instead of being deleted.
+          if (e.closest('[role=alert],[role=status]')) {
+            out.overlayInstances++
+            const seen = out.overlaySmall.filter((o) => o.sel === rec.sel && o.w === rec.w && o.h === rec.h)[0]
+            if (seen) seen.occurrences++
+            else out.overlaySmall.push({ ...rec, occurrences: 1 })
+            continue
+          }
+          out.smallTargets.push(rec)
+          out.smallByKind[rec.kind] = (out.smallByKind[rec.kind] || 0) + 1
         }
         out.smallTotal = out.smallTargets.length
         out.smallTargets.sort((a, b) => (a.w * a.h) - (b.w * b.h))
+        // The full census goes into the artifact; only the printed line is capped. A route-level
+        // count a reader cannot check element by element is a number, not an finding.
+        out.smallTargetsAll = out.smallTargets.slice()
         out.smallTargets = out.smallTargets.slice(0, 8)
+        out.fontSwallowTotal = out.fontSwallowed.length
+        out.fontSwallowedAll = out.fontSwallowed.slice()
+        out.fontSwallowed = out.fontSwallowed.slice(0, 6)
       }
       for (const im of doc.querySelectorAll('img')) {
         if (im.complete && im.naturalWidth === 0 && (im.getAttribute('src') || '')) out.brokenImages.push({ sel: sel(im), src: (im.getAttribute('src') || '').slice(0, 70) })
