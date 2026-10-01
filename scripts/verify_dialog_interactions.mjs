@@ -395,6 +395,81 @@ if (MODE === 'gate-unit') {
 }
 
 
+// One measured run's identity inside a combination. tag+class+text is NOT injective - two elements
+// on one page can share all three (云端 measured 38 runs against 37 distinct keys), and a group whose
+// runs cannot be told apart cannot have its set equality established. So every key carries its
+// 1-based ordinal among identical predecessors. The ordinal is an occurrence count, not a position:
+// unique elements keep a stable `#1`, and `#2` can only appear when a second identical run really
+// exists on the page - which is content, and survives anything above it moving.
+function identityBase(s) {
+  return `${s.kind}|${s.tag || ''} ${(s.cls || '').split(/\s+/).slice(0, 3).join('.')}|${(s.text || '').slice(0, 40)}`
+}
+function identityKeys(sampled) {
+  const seen = new Map()
+  return sampled.map((s) => {
+    const base = identityBase(s)
+    const n = (seen.get(base) || 0) + 1
+    seen.set(base, n)
+    return `${base}#${n}`
+  }).sort()
+}
+// The denominator audit, as a pure function of the rows, so a fixture can prove it bites. A
+// (route|theme) group is quarantined when any of its combos has fewer distinct keys than measured
+// runs; combos inside a group are then compared as multisets, and a difference is content, not paint.
+function auditDenominators(rows) {
+  const byRouteTheme = new Map()
+  for (const r of rows) {
+    if (!Array.isArray(r.keys)) continue
+    const k = `${r.route}|${r.theme}`
+    if (!byRouteTheme.has(k)) byRouteTheme.set(k, [])
+    byRouteTheme.get(k).push(r)
+  }
+  const denomDrift = []
+  let identityFalse = 0
+  const unverifiedGroups = new Map()
+  for (const [k, list] of [...byRouteTheme.entries()].sort()) {
+    for (const r of list) {
+      if (new Set(r.keys).size !== r.measured) {
+        identityFalse++
+        unverifiedGroups.set(k, (unverifiedGroups.get(k) || 0) + 1)
+      }
+    }
+    const base = list[0]
+    for (const o of list.slice(1)) {
+      const a = [...base.keys].sort(), b = [...o.keys].sort()
+      const onlyA = a.filter((x) => { const i = b.indexOf(x); if (i === -1) return true; b.splice(i, 1); return false })
+      const onlyB = [...b]
+      if (onlyA.length || onlyB.length) {
+        denomDrift.push(`${k}: ${base.wallpaper} measured ${base.measured} and ${o.wallpaper} measured ${o.measured} - the difference is content, not paint. only in ${base.wallpaper}: ${onlyA.slice(0, 2).join(' ; ') || '(none)'} ; only in ${o.wallpaper}: ${onlyB.slice(0, 2).join(' ; ') || '(none)'}`)
+      }
+    }
+  }
+  return { groups: byRouteTheme.size, denomDrift, identityFalse, unverifiedGroups }
+}
+const IDENTITY_CASES = [
+  { name: 'twins become distinct', sampled: [{ kind: 'text', tag: 'span', cls: 'a b c', text: 'x' }, { kind: 'text', tag: 'span', cls: 'a b c', text: 'x' }], expect: 2 },
+  { name: 'different elements stay distinct', sampled: [{ kind: 'text', tag: 'p', cls: 'q', text: 'one' }, { kind: 'control', tag: 'button', cls: 'r s t u v', text: 'two' }], expect: 2 },
+  { name: 'class beyond the third rung is ignored', sampled: [{ kind: 'text', tag: 'p', cls: 'a b c zz', text: 'x' }, { kind: 'text', tag: 'p', cls: 'a b c yy', text: 'x' }], expect: 2 },
+  { name: 'no runs, no keys', sampled: [], expect: 0 },
+]
+const DENOM_CASES = [
+  {
+    name: 'colliding keys quarantine the group',
+    rows: [{ route: '云端', theme: 'default', wallpaper: 'black', measured: 2, keys: ['k1', 'k1'] }, { route: '云端', theme: 'default', wallpaper: 'white', measured: 2, keys: ['k1', 'k1'] }],
+    expect: { identityFalse: 2, unverifiedGroups: 1, denomDrift: 0 },
+  },
+  {
+    name: 'injective keys across combos still catch missing content',
+    rows: [{ route: '云端', theme: 'default', wallpaper: 'black', measured: 2, keys: ['k1#1', 'k1#2'] }, { route: '云端', theme: 'default', wallpaper: 'white', measured: 1, keys: ['k1#1'] }],
+    expect: { identityFalse: 0, unverifiedGroups: 0, denomDrift: 1 },
+  },
+  {
+    name: 'a lone combo is quarantined only by its own collision',
+    rows: [{ route: '云端', theme: 'sakura', wallpaper: 'black', measured: 1, keys: ['k1#1'] }],
+    expect: { identityFalse: 0, unverifiedGroups: 0, denomDrift: 0 },
+  },
+]
+
 const profile = `${OUT.replace(/\/+$/, '')}/.profile-${Date.now()}`
 // The browser and the dev-server preflight are lazy: red-demo orchestrates child processes and must
 // not fail (or burn a browser launch) because the parent's default --app is down.
@@ -1172,6 +1247,15 @@ async function main() {
     // Visual baseline. Every number here is computed from the running app, not estimated from a
     // screenshot, so "it looks better now" can be checked by diffing two runs of this mode.
     await evaluate(VISUAL_PROBE)
+    // Appearance evidence has to be renderable per theme: a change that moves one theme's pixels only
+    // photographs identical if the mode shoots whatever the app booted with. An unknown value falls
+    // back to the app's own theme rather than painting an undefined data-theme, which would keep every
+    // :root value and read like a theme.
+    const vThemeRaw = opt('theme', '')
+    const vThemeKnown = ['', 'default', 'mist', 'midnight', 'sakura'].includes(vThemeRaw)
+    const vTheme = !vThemeKnown || vThemeRaw === 'default' ? '' : vThemeRaw
+    if (vThemeRaw && !vThemeKnown) console.log(`VISUAL_THEME ${JSON.stringify(vThemeRaw)} is not a data-theme this app defines (mist|midnight|sakura|absent=default); shooting the app's own theme instead`)
+    const applyTheme = (t) => evaluate(`(function(){const r=document.documentElement;if(${JSON.stringify(t)})r.dataset.theme=${JSON.stringify(t)};else delete r.dataset.theme;return r.dataset.theme||'default'})()`)
     const surfaces = [
       { name: 'publish', open: async () => { await goto('发布') } },
       { name: 'help-center', open: async () => { await clickEl("(function(){return Array.from(document.querySelectorAll('button')).find(x=>(x.textContent||'').trim()==='教程与帮助')})()") } },
@@ -1195,7 +1279,8 @@ async function main() {
         : s.name === 'confirm' ? `window.__H.overlay()`
         : s.name === 'upload' ? `Array.from(document.querySelectorAll('div.fixed.inset-0')).find(d=>getComputedStyle(d).zIndex==='50')`
         : `document.querySelector('main')`
-      const shotPath = await shot(`vis-${s.name}`)
+      if (vTheme) await applyTheme(vTheme)
+      const shotPath = await shot(`vis-${s.name}${vTheme ? '-' + vTheme : ''}`)
       const m = await evaluate(`(function(){
         const root = ${rootSel};
         if (!root) return { missing: true };
@@ -1229,7 +1314,7 @@ async function main() {
           await sleep(80)
         }
       }
-      baseline.surfaces.push({ name: s.name, shot: shotPath, ...m })
+      baseline.surfaces.push({ name: s.name, theme: vTheme || 'default', shot: shotPath, ...m })
       if (s.name === 'help-center' || s.name === 'confirm' || s.name === 'upload') { await pressAt(8, 8); await sleep(250) }
     }
     writeFileSync(`${OUT}/visual-baseline.json`, JSON.stringify(baseline, null, 2))
@@ -2004,7 +2089,7 @@ async function main() {
             blockAbove,
             examples: staleRows.slice(0, 3).concat(goneRows.slice(0, 2).map((g) => ({ text: (g.text || '').slice(0, 24), kind: g.kind, gone: true }))),
           }
-          rows[rows.length - 1].keys = sampled.map((s) => `${s.kind}|${s.tag || ''} ${(s.cls || '').split(/\s+/).slice(0, 3).join('.')}|${(s.text || '').slice(0, 40)}`).sort()
+          rows[rows.length - 1].keys = identityKeys(sampled)
           // The grid-vs-centre disagreement, kept for PASSING runs too. The floor margin rule is
           // "at least the measured wobble", and before this line the only spreads in the artifact
           // belonged to runs that had already failed - so the number the rule needs was unavailable
@@ -2133,42 +2218,15 @@ async function main() {
     // photographed while that query has failed show two extra runs (the error panel) that the others
     // do not. Consequence measured today: which (theme,wallpaper) carries the failing ratio changes
     // from batch to batch, so a 0 is not evidence that nothing is below threshold.
-    // Multiset comparison, not Set: the identity string is built from tag+class+text and two runs on
-    // one page can share it (云端 shows 38 measured against 37 distinct keys), which the printed
-    // identity line below reports as false rather than hiding.
-    const denomDrift = []
-    const byRouteTheme = new Map()
-    for (const r of rows) {
-      if (!Array.isArray(r.keys)) continue
-      const k = `${r.route}|${r.theme}`
-      if (!byRouteTheme.has(k)) byRouteTheme.set(k, [])
-      byRouteTheme.get(k).push(r)
-    }
-    let identityFalse = 0
-    const unverifiedGroups = new Map()
-    for (const [k, list] of [...byRouteTheme.entries()].sort()) {
-      for (const r of list) {
-        const uniq = new Set(r.keys).size
-        if (uniq !== r.measured) {
-          identityFalse++
-          // Quarantined, not smoothed: the identity string is tag+class+text, and two runs on one
-          // page can share it. Making it injective would need a position, and a position shifts when
-          // anything above is added - which turns every real content change into a false diff and
-          // gets this gate muted inside a week. So a group whose runs cannot be told apart is one
-          // this sweep did NOT verify, and that refusal has to cost the run something.
-          unverifiedGroups.set(k, (unverifiedGroups.get(k) || 0) + 1)
-        }
-      }
-      const base = list[0]
-      for (const o of list.slice(1)) {
-        const a = [...base.keys].sort(), b = [...o.keys].sort()
-        const onlyA = a.filter((x) => { const i = b.indexOf(x); if (i === -1) return true; b.splice(i, 1); return false })
-        const onlyB = [...b]
-        if (onlyA.length || onlyB.length) {
-          denomDrift.push(`${k}: ${base.wallpaper} measured ${base.measured} and ${o.wallpaper} measured ${o.measured} - the difference is content, not paint. only in ${base.wallpaper}: ${onlyA.slice(0, 2).join(' ; ') || '(none)'} ; only in ${o.wallpaper}: ${onlyB.slice(0, 2).join(' ; ') || '(none)'}`)
-        }
-      }
-    }
+    // Multiset comparison, not Set: for one route under one theme the three wallpaper combos must
+    // measure the SAME multiset of runs. Wallpaper is supposed to change paint, not content - and
+    // PluginsPage.tsx:18 polls plugin-execution-logs every 2.5s, so whichever combos happen to be
+    // photographed while that query has failed carry the error panel's extra runs. That is a content
+    // difference and it is reported as one, never smoothed into a pass.
+    const denom = auditDenominators(rows)
+    const denomDrift = denom.denomDrift
+    const identityFalse = denom.identityFalse
+    const unverifiedGroups = denom.unverifiedGroups
     for (const needle of watchNeedles) {
       const got = watchSeen.get(needle) || []
       if (!got.length) { console.log(`WATCH ${JSON.stringify(needle)} present=0/${rows.length} - nothing matched, so this element contributes no amplitude and any margin quoted for it would be invented`); continue }
@@ -2218,7 +2276,28 @@ async function main() {
       else if (rects.size > 1) console.log(`WATCH-PAINT ${JSON.stringify(needle)}: ${rects.size} different boxes, one background per box - the readings come from different positions, so no repaint is demonstrated`)
     }
     if (watchNeedles.length) console.log(`WATCH_SUMMARY needles=${watchNeedles.length} withReadings=${[...watchSeen.values()].filter((v) => v.length).length} absent=${watchNeedles.filter((n) => !(watchSeen.get(n) || []).length).length}`)
-    console.log(`DENOM_STABILITY combos=${rows.length} routeThemeGroups=${byRouteTheme.size} contentDifferences=${denomDrift.length} nonInjectiveIdentityReads=${identityFalse} unverifiedGroups=${unverifiedGroups.size}`)
+    // The predicate's own fixtures, in the same pass and through the same functions. A quarantine is
+    // easy to kill silently: if the ordinal stopped disambiguating, or the audit stopped counting, the
+    // zero on the line below would read exactly like a clean sweep. So a zero is evidence only when
+    // these cases pass - the same reason GEOMETRY_DRIFT carries its planted move.
+    const idBad = []
+    for (const c of IDENTITY_CASES) {
+      const keys = identityKeys(c.sampled)
+      const distinct = new Set(keys).size
+      if (distinct !== c.expect || keys.length !== c.sampled.length) idBad.push(`${c.name}: distinct=${distinct} expect=${c.expect} keys=${keys.length} of ${c.sampled.length} runs`)
+    }
+    const denBad = []
+    for (const c of DENOM_CASES) {
+      const got = auditDenominators(c.rows)
+      const read = { identityFalse: got.identityFalse, unverifiedGroups: got.unverifiedGroups.size, denomDrift: got.denomDrift.length }
+      for (const [f, want] of Object.entries(c.expect)) { if (read[f] !== want) denBad.push(`${c.name}: ${f}=${read[f]} expect=${want}`) }
+    }
+    if (idBad.length || denBad.length) {
+      console.log(`HARNESS FAULT: the denominator audit disagrees with its own fixtures (${idBad.concat(denBad).join('; ')}); a quarantine that cannot flag a planted collision cannot flag a real one.`); finish(2)
+    }
+    console.log(`DENOM_INJECTIVE selftest identityCases=${IDENTITY_CASES.length} denomCases=${DENOM_CASES.length} allAsExpected=1`)
+    console.log(`DENOM_STABILITY combos=${rows.length} routeThemeGroups=${denom.groups} contentDifferences=${denomDrift.length} nonInjectiveIdentityReads=${identityFalse} unverifiedGroups=${unverifiedGroups.size}`)
+    if (!identityFalse) console.log(`DENOM_INJECTIVE-NULL nonInjectiveIdentityReads=0: nothing needed quarantining this run, and the selftest above is what shows the audit would have caught it.`)
     // Layout drift across the geometry -> photograph window, counted before anything reads it. The two
     // halves are not the same claim: geomToShot is the one that can stale the sampled pixels, while
     // preToGeom only says at which stage the page reflowed, so it locates and is not gated.
