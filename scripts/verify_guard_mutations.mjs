@@ -119,7 +119,13 @@ const mutations = [
   // The geometry tier's own red proof, using the shape this repo really shipped: 534cc15 added
   // overflow-wrap so a 64-character hashed filename stops running out of the 440px card. Take it
   // away and the layout sweep must see the text cut - the document-level number will not.
-  { id: 'M17', file: 'apps/desktop/src/components/ConfirmDialog.tsx', from: 'mt-2 break-words text-xs', to: 'mt-2 text-xs', oracle: 'layout', expect: 'own-text run(s) cut with no ellipsis and no title' },
+  // M17's oracle had to be re-pointed this round, and the reason is recorded rather than smoothed
+  // over: SELF-CLIP used to catch this shape only because it did not require the element to clip, so
+  // it reported "4px of cut ink" on boxes that cut nothing (void reading #13). Narrowing it blinded
+  // M17 completely - with the mutation applied, no criterion fired. TEXT-ESCAPE is the criterion that
+  // describes what actually happens to an unbreakable 64-character hash in a 440px card: nothing is
+  // cut, the glyphs paint past the edge. Verified red-on-mutation and green-on-pristine.
+  { id: 'M17', file: 'apps/desktop/src/components/ConfirmDialog.tsx', from: 'mt-2 break-words text-xs', to: 'mt-2 text-xs', oracle: 'layout', expect: 'text run(s) wider than their own box with nothing clipping' },
   // Two boundaries now guard the same property, and each needs its own mutation: deleting the
   // apply-side guard is observable in the browser, deleting the load-side one is not (apply still
   // catches it), so only a static assertion can tell the second layer was removed. Proving one
