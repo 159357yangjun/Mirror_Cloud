@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-10-01T09:08:51",
-    "head": "20a98cec3800a3f35ee40e46742b7dac494dddb3",
-    "reason": "twenty-seventh signing: the quiescence wait now demands 1440ms of silence (12 consecutive equal samples) instead of 360ms, because the plugin error panel lands 663-1027ms after mount and the pending-query stretch is itself silent; waited is printed per page load. Measured effect: contentDifferences 6-9 -> 0, stale combinations 7/360 -> 0/72, plugin rows 26/28 mixed -> 29 uniform. Product code untouched."
+    "takenAt": "2026-10-01T12:23:51",
+    "head": "291349e38937e62a0ef0aa69db25e5ef1409cc02",
+    "reason": "twenty-eighth signing: the measured-run identity now carries an occurrence ordinal (#1/#2 within one base key) instead of tag+class+text alone, so the three 云端 groups are judged rather than quarantined; auditDenominators() became a pure function so 3 fixtures can run the real predicate, adding one harness-fault exit. visual gained --theme= for per-theme appearance evidence. Harness only: +69 lines / +4329 bytes in verify_dialog_interactions.mjs, +1 harness-fault exit. The product change in this range (styles.css danger fill) is not a harness file and is covered by contrast-tier, theme-surfaces and token_policy."
   },
   "files": [
     {
@@ -22,12 +22,12 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 3498,
-      "bytes": 286771,
+      "lines": 3577,
+      "bytes": 292174,
       "families": {
         "failures.push": 15,
         "emitGate": 13,
-        "harness-fault exit": 42,
+        "harness-fault exit": 43,
         "gate line": 8,
         "positive control": 15,
         "throw": 16
@@ -92,12 +92,12 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 5271,
-    "bytes": 404301,
+    "lines": 5350,
+    "bytes": 409704,
     "families": {
       "failures.push": 16,
       "emitGate": 13,
-      "harness-fault exit": 44,
+      "harness-fault exit": 45,
       "gate line": 8,
       "positive control": 16,
       "throw": 16
