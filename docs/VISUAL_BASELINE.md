@@ -480,13 +480,28 @@ A 与 B 是同一次越界的两种口径（控件盒 +25px、容器盒 +33px）
 ② 第二版只把 rail 滚到**底端**，于是中段元素反而被推到视口**上方**（301 条假红）——判"能不能滚到"必须滚**那个元素**；
 ③ `.app-main` 带 `scroll-behavior: smooth`，普通 `scrollTop=` 赋值启动的是**动画**，紧接着量的还是旧位置
 （这一版把 683 条明明可达的报成不可达）；必须 `behavior:'instant'`。
-**诚实边界：这条 RAIL-PROOF 目前没有反向夹具**（没有"种一个滚不到的 rail 必须被报出来"的对照），
-所以 `unreachable=0` 是**读数**，不是"这条判据已被证明会红"——按本仓口径它**不占功**，反向夹具排在下一轮。
+**反向夹具已补，而它第一次跑抓到的是我自己三个 bug**（不是页面 bug）：
+① 第一版靶子把元素放在 rail 内容原点**之下**，但 `scrollIntoView` 会向外连滚祖先滚动容器，所以它其实滚得到——
+真滚不到的形状是被 `overflow` 裁到**负方向**（没有滚动条能滚到负位置）；
+② 判据原先只看 rect 与视口**是否相交**，于是被祖先裁到**零高度**的盒子照样判"可见"。现在先逐层与所有
+非 visible 祖先求交，再要求**至少 8px 的一条带**，不是相交即可；
+③ 夹具还拓出一个副作用 bug：`scrollIntoView` 滚了外层却没还原，同一次跑里连着两次 `geometry()` 得到
+`proven=123` 与 `proven=100`——**判据自己把要量的页面挪走了**。现在每个被滚的祖先先记后原，
+修完后连续两次 `proven` 相等（122/122）。
 
-### 6.0 第一刀已落：同一个根因不再进两个家族
+红绿两面都落文件（`layout-rail-control.json`，路径印在 `RAIL-CONTROL artifact` 行）：
 
-改前原样读数（`node scripts/verify_dialog_interactions.mjs layout`，exit 1）：
-`LAYOUT_GATE checked=21 matched=21 skipped=0 failures=23` = 7 `CONTROL-CUT` + 7 `CONTAINER-CUT` + 2 `SELF-CLIP` + 7 `TOUCH-TARGET`。
+```text
+RAIL-CONTROL diag {"childRect":[1033,1051],"railRect":[1063,1103],"railOverflowY":"auto","pastViewport":true,
+  "proven_without":122,"proven_with":122} | criteria side by side:
+  whole-box-fits=false after-rail-extreme-scroll=false after-element-scroll(shipped)=false |
+  rail moved=false scrollSize=40/clientSize=40 | probe flagged it=true (proven=122 unreachable_total=1)
+RAIL-CONTROL artifact .../layout-rail-control.json red_flagged=true green_proven=712
+RAIL-PROOF elements_past_viewport_needing_a_rail=712 proven_reachable_by_scrolling=712 unreachable=0
+```
+
+三个判据并排印出来就是为了归因：红时必须**三条全 false**（不是退回"整盒进视口"或"只滚到底"那两个旧坑），
+且 `rail moved=false` 证明它确实滚不动。拆掉靶子回到 712/0。**这条判据现在占功。**
 
 改后：`failures=16` = **7 `CUT-ROOT`** + 2 `SELF-CLIP` + 7 `TOUCH-TARGET`，并印恒等式
 
