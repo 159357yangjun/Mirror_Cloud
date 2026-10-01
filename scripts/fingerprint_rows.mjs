@@ -34,7 +34,10 @@ function measuredFiles() {
   // same derivation in check_user_flow.py; the table==disk assertion catches the two disagreeing.
   const aggregate = readFileSync(`${ROOT}/scripts/verify_all.mjs`).toString('utf8')
   const staged = [...aggregate.matchAll(/'scripts\/([A-Za-z0-9_-]+\.mjs)'/g)].map((m) => `scripts/${m[1]}`)
-  return [...new Set([...verify, ...fixtures, ...staged, 'scripts/check_user_flow.py'])].sort()
+  // A gate's signed baseline is a gate input: rewriting it changes what "drift" means while every
+  // line of code stays put. Matched by shape so a second baseline cannot join invisibly.
+  const baselines = listed.filter((p) => /\.baseline\.json$/.test(p)).map((p) => `scripts/${p}`)
+  return [...new Set([...verify, ...fixtures, ...staged, ...baselines, 'scripts/check_user_flow.py'])].sort()
 }
 
 const kb = (n) => n.toLocaleString('en-US')

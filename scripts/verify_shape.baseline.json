@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-10-01T00:10:53",
-    "head": "30607854c063ca17c58a3711719a9e1696e11819",
-    "reason": "tenth signing: rail reachability negative control, ancestor-clip-aware visibility, scroll-state restore, backtick-in-template guard"
+    "takenAt": "2026-10-01T01:15:06",
+    "head": "8ee2c148a2137ec771019dee0080212a7f0f8ad8",
+    "reason": "eleventh signing (re-signed: first attempt quoted +272 lines, taken before TEXT-ESCAPE landed): overlay split + label hit-box + clip precondition + FONT-SWALLOW + TEXT-ESCAPE. lines 4378->4722 (+344), bytes 321038->351064, failures.push 14->16 (overlay and font aggregate findings), harness-fault exit 40->42 (two new identities), positive control 11->15 (CONTROL-T/G/H/I)"
   },
   "files": [
     {
@@ -22,22 +22,22 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 2797,
-      "bytes": 216013,
+      "lines": 2993,
+      "bytes": 237032,
       "families": {
-        "failures.push": 13,
+        "failures.push": 15,
         "emitGate": 11,
-        "harness-fault exit": 38,
+        "harness-fault exit": 40,
         "gate line": 8,
-        "positive control": 10,
+        "positive control": 14,
         "throw": 16
       }
     },
     {
       "file": "scripts/verify_guard_mutations.mjs",
       "exists": true,
-      "lines": 289,
-      "bytes": 23508,
+      "lines": 295,
+      "bytes": 24119,
       "families": {
         "failures.push": 0,
         "emitGate": 0,
@@ -64,8 +64,8 @@
     {
       "file": "scripts/verify_probes.mjs",
       "exists": true,
-      "lines": 629,
-      "bytes": 38899,
+      "lines": 771,
+      "bytes": 47295,
       "families": {
         "failures.push": 0,
         "emitGate": 0,
@@ -92,14 +92,14 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 4378,
-    "bytes": 321038,
+    "lines": 4722,
+    "bytes": 351064,
     "families": {
-      "failures.push": 14,
+      "failures.push": 16,
       "emitGate": 11,
-      "harness-fault exit": 40,
+      "harness-fault exit": 42,
       "gate line": 8,
-      "positive control": 11,
+      "positive control": 15,
       "throw": 16
     }
   },

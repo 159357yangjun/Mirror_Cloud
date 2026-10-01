@@ -638,8 +638,11 @@ aggregate = (ROOT / 'scripts' / 'verify_all.mjs').read_text(encoding='utf-8').re
 # table entirely (theme_face_inventory.mjs was wired into the aggregate and fingerprinted by nobody).
 # The same derivation lives in scripts/fingerprint_rows.mjs, which writes these rows.
 staged = sorted(set(re.findall(r"'scripts/([A-Za-z0-9_-]+\.mjs)'", aggregate)))
+# A gate's signed baseline is as much a gate input as the gate itself: editing it changes what
+# "drift" means without touching a line of code. It is matched by shape rather than by name so a
+# second baseline cannot join the chain invisibly.
 measured_files = sorted(set(
-    [str(path.relative_to(ROOT)).replace('\\', '/') for pattern in ('scripts/verify_*.mjs', 'scripts/__fixtures__/*.mjs') for path in ROOT.glob(pattern)]
+    [str(path.relative_to(ROOT)).replace('\\', '/') for pattern in ('scripts/verify_*.mjs', 'scripts/__fixtures__/*.mjs', 'scripts/*.baseline.json') for path in ROOT.glob(pattern)]
     + ['scripts/' + name for name in staged]
     + ['scripts/check_user_flow.py']
 ))
