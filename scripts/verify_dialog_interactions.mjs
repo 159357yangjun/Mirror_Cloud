@@ -2516,6 +2516,105 @@ async function main() {
       console.log(`HARNESS FAULT: LAYOUT-IDENTITY records_listed=${ci.listed} + truncated=${ci.truncated} != records_total=${ci.total} - cut records are unaccounted for, so distinct_root_causes under-reads.`)
       finish(2)
     }
+    // RAIL-PROOF negative control. Until this exists, `unreachable=0` is a reading and not a gate:
+    // nothing has shown the proof can report a failure, and three earlier versions of this criterion
+    // were each wrong in a way that produced *more* unreachable rows, not fewer. So the control
+    // plants a rail that genuinely cannot reach its content and requires the proof to name it -
+    // while printing all three candidate criteria side by side, so a red here can only be read as
+    // "unreachable because scrolling cannot bring it into view", never as a regression to one of the
+    // three old bugs.
+    const railCtl = await evaluate(`(function(){
+      const host = document.createElement('div')
+      host.id = 'rail-ctl'
+      host.style.cssText = 'position:absolute;left:8px;top:' + Math.round(innerHeight + 260) + 'px;width:240px;z-index:1'
+      const rail = document.createElement('div')
+      rail.style.cssText = 'height:40px;overflow-y:auto;position:relative'
+      const child = document.createElement('div')
+      child.id = 'rail-ctl-child'
+      // Negative offset: the rail clips upward and no scroller can scroll to a negative position,
+      // so this is the shape that is genuinely unreachable. The first version of this plant parked
+      // the child below the rail's origin and the control failed - not the proof - because
+      // scrollIntoView walks outwards and an ancestor scroller could still bring it into view. That
+      // is the right behaviour for the criterion and the wrong shape for a negative control.
+      child.style.cssText = 'position:absolute;left:0;top:-30px;height:18px;width:200px;background:rgb(1,2,3)'
+      child.textContent = 'LCTLRAIL'
+      rail.appendChild(child); host.appendChild(rail); document.body.appendChild(host)
+      const view = innerHeight
+      const rect0 = child.getBoundingClientRect()
+      // criterion 1 (wrong): the whole box must sit inside the viewport
+      const wholeBox = rect0.top >= -1 && rect0.bottom <= view + 1
+      // criterion 2 (wrong): scroll the RAIL to its extreme and look again
+      const before = rail.scrollTop
+      try { rail.scrollTo({ top: rail.scrollHeight, behavior: 'instant' }) } catch (e) { rail.scrollTop = rail.scrollHeight }
+      const railMoved = rail.scrollTop > before
+      const rect1 = child.getBoundingClientRect()
+      const band1 = Math.min(rect1.bottom, view) - Math.max(rect1.top, 0)
+      const afterRailExtreme = (rect1.top >= -1 && rect1.bottom <= view + 1) || band1 >= 8
+      // criterion 3 (the one shipped): scroll the ELEMENT into view
+      try { child.scrollIntoView({ block: 'center', behavior: 'instant' }) } catch (e) { child.scrollIntoView() }
+      const rect2 = (function(){ let r = child.getBoundingClientRect(); let n = child.parentElement
+        while (n) { const cs = getComputedStyle(n)
+          if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') { const q = n.getBoundingClientRect()
+            const top = Math.max(r.top, q.top), left = Math.max(r.left, q.left)
+            r = { top, left, bottom: Math.max(top, Math.min(r.bottom, q.bottom)), right: Math.max(left, Math.min(r.right, q.right)) } }
+          n = n.parentElement } return r })()
+      const band2 = Math.min(rect2.bottom, view) - Math.max(rect2.top, 0)
+      const afterElementScroll = band2 >= 8
+      const scrollSize = rail.scrollHeight, clientSize = rail.clientHeight
+      host.remove()
+      return { rect0: [Math.round(rect0.top), Math.round(rect0.bottom)], wholeBox, railMoved, afterRailExtreme, afterElementScroll, scrollSize, clientSize, view }
+    })()`)
+    // Re-measure the page with the plant still in place would need the plant to survive the evaluate,
+    // so the shipped criterion is run against a second, identical plant inside the probe's own path.
+    const railCtlProbe = await evaluate(`(async function(){
+      // Park at the document origin first: an absolute top offset is measured from the containing
+      // block, so planting while the page is scrolled puts the plant somewhere other than where the
+      // control intended, and it silently lands inside the viewport instead of past it.
+      window.scrollTo(0, 0)
+      const host = document.createElement('div')
+      host.id = 'rail-ctl2'
+      host.style.cssText = 'position:absolute;left:8px;top:' + Math.round(window.scrollY + innerHeight + 260) + 'px;width:240px;z-index:1'
+      const rail = document.createElement('div')
+      rail.style.cssText = 'height:40px;overflow-y:auto;position:relative'
+      const child = document.createElement('div')
+      child.style.cssText = 'position:absolute;left:0;top:-30px;height:18px;width:200px;background:rgb(1,2,3)'
+      child.textContent = 'LCTLRAIL2'
+      rail.appendChild(child); host.appendChild(rail); document.body.appendChild(host)
+      const bare = await window.__L.geometry(0)
+      const g = await window.__L.geometry(0)
+      const railEl = host.firstElementChild, childEl = railEl.firstElementChild
+      const cr = childEl.getBoundingClientRect(), rr = railEl.getBoundingClientRect()
+      const diag = {
+        childRect: [Math.round(cr.top), Math.round(cr.bottom)], railRect: [Math.round(rr.top), Math.round(rr.bottom)],
+        railOverflowY: getComputedStyle(railEl).overflowY, childPosition: getComputedStyle(childEl).position,
+        pastViewport: cr.bottom > innerHeight + 1, docTopBefore: 0, inAll: document.contains(child),
+        railY_without: bare.railY, railY_with: g.railY, railDelta: g.railY - bare.railY,
+        proven_without: bare.railProof.proven, proven_with: g.railProof.proven,
+      }
+      host.remove()
+      return { unreachable: g.railProof.unreachable.filter((u) => u.text.indexOf('LCTLRAIL2') === 0), total: g.railProof.unreachable.length, proven: g.railProof.proven, diag }
+    })()`)
+    const ctlProblems = []
+    if (railCtl.wholeBox || railCtl.afterRailExtreme || railCtl.afterElementScroll) {
+      ctlProblems.push(`the plant is not actually unreachable (wholeBox=${railCtl.wholeBox} afterRailExtreme=${railCtl.afterRailExtreme} afterElementScroll=${railCtl.afterElementScroll}) - a control that passes cannot prove anything fails`)
+    }
+    if (railCtl.railMoved) ctlProblems.push(`the planted rail scrolled (moved=true, scrollSize=${railCtl.scrollSize} clientSize=${railCtl.clientSize}) - it was meant to be a rail that cannot reach its content`)
+    if (!railCtlProbe.unreachable.length) ctlProblems.push(`RAIL-PROOF did not report the planted unreachable element at all (unreachable total=${railCtlProbe.total}) - the proof cannot fail, so its 0 is not evidence`)
+    console.log(`RAIL-CONTROL diag ${JSON.stringify(railCtlProbe.diag)} | criteria side by side: whole-box-fits=${railCtl.wholeBox} after-rail-extreme-scroll=${railCtl.afterRailExtreme} after-element-scroll(shipped)=${railCtl.afterElementScroll} | rail moved=${railCtl.railMoved} scrollSize=${railCtl.scrollSize}/clientSize=${railCtl.clientSize} | probe flagged it=${railCtlProbe.unreachable.length > 0} (proven=${railCtlProbe.proven} unreachable_total=${railCtlProbe.total})`)
+    // Both halves in one artifact: the red side (plant present, proof must name it) and the green
+    // side (plant gone, back to the page's own reading). A file with only the failure would let the
+    // passing state go unrecorded, and "I ran it twice" is not recomputable.
+    const railAfter = railProofTotals.reduce((a, r) => a + r.proven, 0)
+    writeFileSync(`${OUT}/layout-rail-control.json`, JSON.stringify({
+      red_side: { plant: railCtl, probe: railCtlProbe, flagged: railCtlProbe.unreachable.length > 0 },
+      green_side: { pages: railProofTotals.length, proven: railAfter, unreachable: railProofTotals.reduce((a, r) => a + r.unreachable, 0) },
+      problems: ctlProblems,
+    }, null, 2))
+    console.log(`RAIL-CONTROL artifact ${OUT}/layout-rail-control.json red_flagged=${railCtlProbe.unreachable.length > 0} green_proven=${railAfter}`)
+    if (ctlProblems.length) {
+      for (const m of ctlProblems) console.log(`HARNESS FAULT: RAIL-CONTROL: ${m}`)
+      finish(2)
+    }
     const rp = railProofTotals.reduce((a, r) => ({ proven: a.proven + r.proven, unreachable: a.unreachable + r.unreachable }), { proven: 0, unreachable: 0 })
     console.log(`RAIL-PROOF elements_past_viewport_needing_a_rail=${rp.proven + rp.unreachable} proven_reachable_by_scrolling=${rp.proven} unreachable=${rp.unreachable}`)
     console.log(`LAYOUT_GATE checked=${checked} matched=${matched} skipped=${skipped} failures=${failures.length}`)

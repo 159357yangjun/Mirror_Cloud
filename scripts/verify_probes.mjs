@@ -420,6 +420,26 @@ window.__L = (function () {
       // that unreachable is the gate blaming the page for the shape of its own criterion); and the
       // scroll happens once per rail, not once per descendant, or one overflowing subtree asks the
       // same question hundreds of times and the run cost is meaningless.
+      // getBoundingClientRect() reports the LAYOUT box, which is not what a user sees: an element
+      // clipped by an ancestor with a non-visible overflow keeps a perfectly on-screen rect while
+      // painting nowhere. The first negative control for this proof caught exactly that - a child at
+      // top:-30px inside a 40px overflow-y:auto rail is unreachable (no scroller can scroll to a
+      // negative position) and the plain rect test still called it visible. So visibility is measured
+      // on the box that survives every clipping ancestor.
+      const visibleBox = (el) => {
+        let r = el.getBoundingClientRect()
+        let n = el.parentElement
+        while (n) {
+          const cs = getComputedStyle(n)
+          if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
+            const q = n.getBoundingClientRect()
+            const top = Math.max(r.top, q.top), left = Math.max(r.left, q.left)
+            r = { top, left, bottom: Math.max(top, Math.min(r.bottom, q.bottom)), right: Math.max(left, Math.min(r.right, q.right)) }
+          }
+          n = n.parentElement
+        }
+        return r
+      }
       const byRail = new Map()
       for (const c of railCandidates) {
         const key = c.axis + '|' + sel(c.rail)
@@ -436,10 +456,28 @@ window.__L = (function () {
         // everything above it out of the viewport - so 301 perfectly reachable elements were
         // reported unreachable because the one position the test tried happened to be the wrong end.
         for (const c of past) {
+          // scrollIntoView walks outwards and scrolls EVERY scrollable ancestor, so it has to be
+          // undone on every one of them or the proof leaves the page somewhere other than where it
+          // started - and the next measurement on that page is then taken on a scrolled document.
+          // (Two consecutive geometry() calls used to disagree on proven=123 vs proven=100 for
+          // exactly this reason.)
+          const scrollers = []
+          { let n = c.e.parentElement
+            while (n) { const cs2 = getComputedStyle(n)
+              if (/(auto|scroll|overlay)/.test(cs2.overflowY + ' ' + cs2.overflowX)) scrollers.push([n, n.scrollTop, n.scrollLeft])
+              n = n.parentElement } }
+          const docTop = window.scrollY, docLeft = window.scrollX
           try { c.e.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' }) } catch (e) { c.e.scrollIntoView() }
-          const rect = c.e.getBoundingClientRect()
-          const visible = axis === 'y' ? (rect.top < view - 8 && rect.bottom > 8) : (rect.left < view - 8 && rect.right > 8)
+          const rect = visibleBox(c.e)
+          // A band, not an intersection. The previous form (top < view && bottom > 0) is satisfied by
+          // a box that clipping has already crushed to zero height sitting anywhere on screen, which
+          // is the fourth way this criterion was wrong - caught only because the negative control
+          // planted an element the proof was supposed to refuse.
+          const band = axis === 'y' ? Math.min(rect.bottom, view) - Math.max(rect.top, 0) : Math.min(rect.right, view) - Math.max(rect.left, 0)
+          const visible = band >= 8
           const moved = (axis === 'y' ? rail.scrollTop : rail.scrollLeft) !== before
+          for (const [n, st, sl] of scrollers) { n.scrollTop = st; n.scrollLeft = sl }
+          window.scrollTo(docLeft, docTop)
           if (visible) out.railProof.proven++
           else out.railProof.unreachable.push({ sel: sel(c.e), rail: sel(rail), axis, moved, visible, scrollSize: axis === 'y' ? rail.scrollHeight : rail.scrollWidth, clientSize: axis === 'y' ? rail.clientHeight : rail.clientWidth, text: txt(c.e).slice(0, 24) })
         }

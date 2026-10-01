@@ -1,15 +1,15 @@
 {
   "_meta": {
-    "takenAt": "2026-09-30T17:26:37",
-    "head": "5a947b2a5bbec2233200541ec0785710d171de16",
-    "reason": "ninth signing: rail reachability proof added to the layout probe (scroll the element, instant behaviour, grouped per rail)"
+    "takenAt": "2026-10-01T00:10:53",
+    "head": "30607854c063ca17c58a3711719a9e1696e11819",
+    "reason": "tenth signing: rail reachability negative control, ancestor-clip-aware visibility, scroll-state restore, backtick-in-template guard"
   },
   "files": [
     {
       "file": "scripts/verify_all.mjs",
       "exists": true,
-      "lines": 354,
-      "bytes": 25495,
+      "lines": 352,
+      "bytes": 25424,
       "families": {
         "failures.push": 0,
         "emitGate": 0,
@@ -22,12 +22,12 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 2698,
-      "bytes": 207936,
+      "lines": 2797,
+      "bytes": 216013,
       "families": {
         "failures.push": 13,
         "emitGate": 11,
-        "harness-fault exit": 37,
+        "harness-fault exit": 38,
         "gate line": 8,
         "positive control": 10,
         "throw": 16
@@ -64,8 +64,8 @@
     {
       "file": "scripts/verify_probes.mjs",
       "exists": true,
-      "lines": 591,
-      "bytes": 36422,
+      "lines": 629,
+      "bytes": 38899,
       "families": {
         "failures.push": 0,
         "emitGate": 0,
@@ -92,12 +92,12 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 4243,
-    "bytes": 310555,
+    "lines": 4378,
+    "bytes": 321038,
     "families": {
       "failures.push": 14,
       "emitGate": 11,
-      "harness-fault exit": 39,
+      "harness-fault exit": 40,
       "gate line": 8,
       "positive control": 11,
       "throw": 16

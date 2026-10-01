@@ -84,6 +84,12 @@ const stages = [
   // that changed size or lost a mode between one commit and the next.
   { name: 'theme_face_inventory', run: 'node', args: ['scripts/theme_face_inventory.mjs', '--verify'], count: /THEME_FACE_VERIFY faces=(\d+) docLines=\d+ mismatch=(\d+)/ },
   { name: 'verify_shape', run: 'node', args: ['scripts/verify_shape.mjs', '--verify'], count: /SPLIT_SHAPE (?:OK|DRIFT) checked=(\d+) failed=(\d+)/ },
+  // The token policy, wired the same round it was written. It was left out at first because it was
+  // red on the tree, and that is how a policy gets quietly exempted on day one: the breach
+  // (--accent-solid declared in one theme block while its family follows the theme) would have gone
+  // on red in a script nobody runs. It is fixed instead - one :root declaration, no rendered pixel
+  // changed - and the check is now part of the exit code.
+  { name: 'token_policy', run: 'node', args: ['scripts/theme_token_census.mjs', '--verify'], count: /TOKEN_POLICY families=(\d+) breaches=(\d+)/ },
   { name: 'gate-unit', run: 'node', args: [NODE_MODE, 'gate-unit'], gateJson: true, count: /gate unit check: (\d+\/\d+ correct)/ },
   { name: 'gate', run: 'node', args: [NODE_MODE, 'gate'], needsServer: true, gateJson: true, count: /"sawMinimizedReject": (true|false)/ },
   { name: 'ab', run: 'node', args: [NODE_MODE, 'ab'], needsServer: true, gateJson: true, count: /"deltaOverflowX": (\d+)/ },
@@ -103,22 +109,14 @@ const stages = [
   // `theme-surfaces` IS a stage: it has been green since the palette remap (0 off-theme, 0 dead
   // exemptions) and it now also sweeps the confirm dialog and a raised toast, so a whitelist entry
   // that no surface hits any more is reported as DEAD-EXEMPTION.
-  // `token-policy` (scripts/theme_token_census.mjs --verify) is deliberately NOT a stage yet: it is
-  // red on the current tree, on one named violation. The policy is "within a semantic colour family
-  // the declaration style must be consistent - if any member follows the theme, all of them must".
-  // It bites once, and that once is real: --accent and --accent-soft are declared in all three theme
-  // blocks while --accent-solid exists only in midnight's. Reproduce with:
-  //   node scripts/theme_token_census.mjs --verify     (exit 1, BREACH accent)
-  // It lands as a stage in the colour round, in the same commit as whichever way that is resolved -
-  // declaring --accent-solid in :root changes no rendered colour (its only consumer rule is
-  // midnight-scoped), so this is a one-line fix that was NOT taken here because the boundary for
-  // this round was "no colour changes".
   { name: 'theme-surfaces', run: 'node', args: [NODE_MODE, 'theme-surfaces'], needsServer: true, gateJson: true, timeout: 600_000, count: /SURFACE_GATE routes=(\d+).*offThemeUnwhitelisted=(\d+)/ },
-  // `layout` is deliberately NOT a stage yet. Standalone it reports 23 real geometry findings;
-  // inside this aggregate the viewport override for the 1024 tier never applied and the injected
-  // helpers disappeared before 640, which surfaced as 7 invented "navigation entry point not
-  // reachable" failures. A stage that manufactures findings is worse than no stage. See
-  // CHANGELOG "verify:all 里没接 layout" for the reproduced log; it lands with the fix.
+  // `layout` is deliberately NOT a stage yet. Standalone it now reports 9 findings (down from 23 lines:
+  // 14 of those were one sidebar bug counted through two families, and 7 more fell out when the rail
+  // became scrollable). Inside this aggregate it previously produced a different result - the viewport
+  // override for the 1024 tier never applied and the injected helpers disappeared before 640, which
+  // surfaced as 7 invented "navigation entry point not reachable" failures. A stage that manufactures
+  // findings is worse than no stage. See the CHANGELOG entry for the reproduced log; it lands once the
+  // aggregate-side viewport fault is fixed and the two readings agree.
   { name: 'red-demo', run: 'node', args: [NODE_MODE, 'red-demo'], timeout: 600_000, count: /identity gate red demo: (\d+\/\d+ alarms reproduced)/ },
   { name: 'mutations', run: 'node', args: ['scripts/verify_guard_mutations.mjs'], timeout: 900_000, count: /guard mutations: (\d+\/\d+ alarms reproduced)/ },
 ]

@@ -49,6 +49,12 @@
      red the filled danger control already uses, so "danger" is one colour in the light themes
      instead of two that differ by whether they are a fill or a label. */
   --color-red-600: #b91c1c;
+  /* --accent-solid existed only in the midnight block, which made the accent family inconsistent by
+     declaration: --accent and --accent-soft follow the theme, --accent-solid did not. Declaring it
+     here as the light themes' own filled accent changes no rendered pixel - its only consumer rule
+     (:root[data-theme="midnight"] .bg-indigo-600) is midnight-scoped - but it gives the token a
+     meaning in every theme instead of one, which is what the family-consistency policy checks. */
+  --accent-solid: var(--color-indigo-600);
 }
 
 :root[data-theme="midnight"] {

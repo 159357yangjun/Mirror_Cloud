@@ -501,6 +501,40 @@ def tracked_files():
 harness_imports = top_level_imports(harness)
 allowed_imports(harness, 'the harness')
 
+# Page-side code is transported to the browser as a template literal, so a backtick anywhere inside
+# one - including in a // comment, where it is inert JavaScript - closes the literal and breaks the
+# file with a SyntaxError that only appears when the string is parsed by the page. This has now
+# happened four times in this repo. node --check catches it, but only for whoever remembers to run
+# it after editing the comment, which is the same "written down as a rule, enforced by nobody" shape
+# this file exists to remove.
+def template_comment_backticks(source):
+    # Lines that are comments AND sit inside a template literal, tracked by backtick parity from the
+    # top of the file. The first version flagged any comment containing a backtick, which fired six
+    # times on ordinary Node-side comments that are harmless - a guard with six false alarms gets
+    # silenced by the next person, so it has to be able to tell the two apart.
+    hits, inside, line_no = [], False, 0
+    for line in source.replace('\r\n', '\n').split('\n'):
+        line_no += 1
+        stripped = line.lstrip()
+        if stripped.startswith('//') and '`' in line and inside:
+            hits.append(line_no)
+        for ch in line:
+            if ch == '`':
+                inside = not inside
+    return hits
+
+require(template_comment_backticks('const t = `(function(){\n// a note with `code` in it\n})()`\n') == [2],
+        'the backtick-in-comment guard can see a planted violation inside a transported template')
+require(template_comment_backticks('// a harmless Node-side note with `code` in it\nconst t = `x`\n') == [],
+        'the guard does not fire on a comment outside a template (six false alarms would get it deleted)')
+require(template_comment_backticks('const t = `a`\nconst u = `b`\n// clean\n') == [],
+        'the guard returns to outside-template state after a closed literal')
+for guarded in ['scripts/verify_probes.mjs', 'scripts/verify_dialog_interactions.mjs']:
+    path = ROOT / guarded
+    if path.exists():
+        hits = template_comment_backticks(path.read_text(encoding='utf-8'))
+        require(not hits, f'{guarded} has no backtick inside a comment that sits in a transported template (found on lines {hits[:6]})')
+
 # The probe module was cut out of the harness so the harness reads as control flow. That only
 # holds if the extracted file stays inert: three string exports and nothing that can run. If it
 # ever grows logic, the split has moved behaviour rather than text, and the harness's own
