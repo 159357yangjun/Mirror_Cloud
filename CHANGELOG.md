@@ -184,7 +184,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 770 | 47,295 | `5c4466e2c831de43b533063e19127d934e0b70747e9eb3459570ce63d827b8b7` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
 | `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,897 | `d54d83cb52a1f8489efa4c59162ce8d44f96f34505d3396a5d4e59675460833b` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
-| `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 848 | 68,206 | `d20775210d74c113d32cf6612f594f10d2176c57ac74186e936f50401512d551` | `USERFLOW_CHECKS total=222 failed=0`（落盘后；未提交时它必然报 10 条"HEAD blob 里没有这个文件"，见本节末） | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16 M19 M20` |
+| `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 848 | 68,212 | `d3fd390d002625c0f86051acda3e8ba9dfc076580bfb7f4e61807ff77c95e8c0` | `USERFLOW_CHECKS total=222 failed=0`（落盘后；未提交时它必然报 10 条"HEAD blob 里没有这个文件"，见本节末） | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16 M19 M20` |
 | `scripts/theme_token_census.mjs`（主题 token 普查 + 口径断言：族内声明方式必须一致） | 148 | 8,483 | `4fd961d1cb1fea90d46a879c9db8c1561ddbcded15733bddfaecbcf4b82e2968` | `TOKEN_POLICY_SELFTEST cases=5 failed=0` + `TOKEN_POLICY families=13 breaches=0` | 立口径那一轮它当场咬到 `--accent-solid`（exit 1）；把 `--accent-solid` 从 :root 删掉再 `--verify` 就会重新红 |
 | `scripts/__fixtures__/hanging_stage.mjs`（永不结束的假 stage，自己再 spawn 一个孙进程：`timeout-demo` 的靶子） | 20 | 1,155 | `16d702ee2dda998f2e7538d739f82d61656b075194ada2cb87fa014a80cf509a` | 只被 `verify_all.mjs timeout-demo` 生成，没有任何门读它 | `node scripts/verify_all.mjs timeout-demo`（六例，含"不调 taskkill 也不留孤儿"的消融与"正常结束不得报成 timeout"的负对照） |
 | `scripts/verify_modes.mjs`（模式名单 + 锚定的 dispatch 正则，纯数据、零控制流；runner 与 shape 台账读同一份） | 36 | 1,449 | `0b250811609418512489e3de9ffb70c1dbe24c7adc2d0b6cfe8da739bc6c2f87` | 每次启动三方核对：声明↔已派发用法块已文档化（15 个模式） | `node scripts/verify_guard_mutations.mjs M24`（把启动拒绝拔掉的变异，必须仍红） |
@@ -1241,8 +1241,11 @@ FAIL CONTRAST-DENOM-UNVERIFIED 云端|default: 3 combo(s) have runs the identity
 | `docs/baseline-images/before-token-lift-2026-09-30-default-black-插件.png` | 85,030 | `9459ff00eb3424f3265bb8ed7117ec75ee1a4bfe173a3b8699856522ef5eedf4` |
 | `docs/baseline-images/before-token-lift-2026-09-30-midnight-black-插件.png` | 82,303 | `59bc153b4d56b837e03c7fce7c3b231a6c1d97ced7c65c16f722589fbf962146` |
 | `docs/baseline-images/before-token-lift-2026-09-30-sakura-black-插件.png` | 85,780 | `1a78aeb57d9bf4228f77d2fa3e48cc8900542c056bb044f891a9076b0a0342f3` |
+| `docs/baseline-images/after-token-lift-2026-09-30-default-black-插件.png` | 85,249 | `02bcd5f836cd015efc9038038f85321862b05aff93fa807ff1f4ea8ccf0a6134` |
+| `docs/baseline-images/after-token-lift-2026-09-30-midnight-black-插件.png` | 82,139 | `3904359e73edfaad5532401ab0a8bf91227139411dee4f2053ad374f32638523` |
+| `docs/baseline-images/after-token-lift-2026-09-30-sakura-black-插件.png` | 86,094 | `fb572ca1651d42cb2c6afa672fd16f90c3323c5d26e1f7586c6ea63f0bcf076d` |
 
-三张都含目标元素 `暂无插件执行记录`（`PluginsPage.tsx:136`，`text-slate-400` 压在 `bg-white` 面板上）。
+六张（改前三张 + 改后三张）都含目标元素 `暂无插件执行记录`（`PluginsPage.tsx:136`，`text-slate-400` 压在 `bg-white` 面板上）。
 **这张表不是纪律，是断言**：`check_user_flow.py` 逐行比对磁盘上的字节数与 sha256，
 图被删、被换、被重新截一张"看起来一样"的都报红——按 §十一 那条定案，登记了没人核的哈希就是装饰。
 

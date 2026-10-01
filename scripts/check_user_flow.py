@@ -792,8 +792,8 @@ print(f'STRAY_GUARD suffixes={len(STRAY_SUFFIXES)} nameShapes={len(STRAY_NAME_PR
 baseline_img_rows = re.findall(
     r'^\| `(docs/baseline-images/[^`]+)` \| ([\d,]+) \| `([0-9a-f]{64})` \|$',
     change_log_text, re.M)
-require(len(baseline_img_rows) == 3,
-        f'the before-token-lift table lists three images (found {len(baseline_img_rows)})')
+require(len(baseline_img_rows) == 6,
+        f'the before/after-token-lift table lists six images (found {len(baseline_img_rows)})')
 
 
 def baseline_img_check(rows):
@@ -817,7 +817,7 @@ require(not baseline_img_check(baseline_img_rows),
 # Guarded on a non-empty parse: the first version indexed rows[0] unconditionally and an
 # unparseable table crashed the whole checker with a traceback instead of reporting one FAIL -
 # which is worse than the bug it was meant to catch, because nothing else gets checked either.
-if len(baseline_img_rows) == 3:
+if len(baseline_img_rows) == 6:
     require(bool(baseline_img_check([(baseline_img_rows[0][0], baseline_img_rows[0][1], '0' * 64)])),
             'a changed sha256 in the table must be reported, otherwise the row is decoration')
     require(bool(baseline_img_check([(baseline_img_rows[0][0], '1', baseline_img_rows[0][2])])),
@@ -825,7 +825,7 @@ if len(baseline_img_rows) == 3:
     require(bool(baseline_img_check([('docs/baseline-images/gone.png', '1', '0' * 64)])),
             'a registered image that is missing from disk must be reported')
 else:
-    require(False, f'the before-image fixtures were skipped because the table did not parse to 3 rows (got {len(baseline_img_rows)}) - a broken regex reads as no findings')
+    require(False, f'the before-image fixtures were skipped because the table did not parse to six rows (got {len(baseline_img_rows)}) - a broken regex reads as no findings')
 print(f'BASELINE_IMAGES registered={len(baseline_img_rows)} '
       f'verified={len(baseline_img_rows) - len(baseline_img_check(baseline_img_rows))} '
       'selftest=sha256:caught bytes:caught missing:caught')

@@ -40,7 +40,16 @@
      var(--color-slate-N) - so the readable grey is set here once instead of at 181 places.
      Neither rung is used as a background anywhere in the app, so darkening them only affects text
      and the eight border-slate-400 usages, which want to be more visible anyway. */
-  --color-slate-400: #5b6b80;
+  /* slate-400 is the muted-ink rung, and it is the one that sits on the lightest surfaces the app
+     draws, so it is the binding constraint for the whole ramp: the plugin panel's empty state
+     ("暂无插件执行记录") measured 4.41 / 4.08 / 4.38 against its rendered surface - under WCAG's
+     4.5 body floor, and with no margin at all. bc53a45 lifted this ramp against pure token pairs
+     and stopped at the floor, so nothing here had room for the surface to move.
+     These three values are solved per theme against the SURFACE THE SAMPLER MEASURED, not against
+     a nominal white, and to >=5.3 rather than >=5.0: the denominator finding showed the sampled
+     background under one element can shift between combinations, so a 0.05 margin is inside the
+     instrument's own wobble and would re-cross the line without anything changing in the app. */
+  --color-slate-400: #4e5e73;
   --color-slate-500: #4a5768;
   /* 33 call sites use text-red-600, most of them error copy sitting on the 38 bg-red-50 panels.
      Tailwind v4's own red-600 is oklch(57.7% .245 27.3) = rgb(231,0,11), which measures 4.36:1 on
@@ -86,7 +95,7 @@
      the "loading" spinner simply were not there. No gate sees this one: the contrast sweep only
      samples text nodes and an svg carries no text, so it is fixed by role and recorded here. */
   --color-slate-300: #64748b;
-  --color-slate-400: #8d9bb3;
+  --color-slate-400: #a4b2ca;
   --color-slate-500: #a9b7cd;
   --color-slate-600: #c6d2e2;
   --color-slate-700: #dde5f0;
@@ -207,7 +216,7 @@
   /* Sakura is a light theme, so only the text rungs need moving: the default slate-400/500 are
      cool greys that sit at 3.1:1 on this near-white surface. Warmed and darkened to match the
      palette, they clear 4.5:1 without touching the surface rungs. */
-  --color-slate-400: #7a6472;
+  --color-slate-400: #6d5765;
   --color-slate-500: #6b5260;
 }
 
