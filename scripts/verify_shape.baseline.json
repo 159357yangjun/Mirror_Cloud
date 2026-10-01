@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-10-01T03:12:17",
-    "head": "6c34cc5c7a43bba28778f23e7d2eb358293a54a2",
-    "reason": "fourteenth signing: shape ledger now asserts per-file rows (lines/bytes/six families) and file-set membership, not just aggregates; denominator gate + identity keys added to contrast-tier; RAIL-CONTROL plant/page counts split"
+    "takenAt": "2026-10-01T03:35:31",
+    "head": "5278729b0424ebc31463f5cbdff91999d8b6f50f",
+    "reason": "fifteenth signing: CONTRAST-DENOM-UNVERIFIED quarantine added (identity collisions now cost the run its green)"
   },
   "files": [
     {
@@ -22,8 +22,8 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 3101,
-      "bytes": 246677,
+      "lines": 3111,
+      "bytes": 247632,
       "families": {
         "failures.push": 15,
         "emitGate": 12,
@@ -92,8 +92,8 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 4849,
-    "bytes": 362210,
+    "lines": 4859,
+    "bytes": 363165,
     "families": {
       "failures.push": 16,
       "emitGate": 12,

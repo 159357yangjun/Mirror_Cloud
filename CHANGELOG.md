@@ -179,7 +179,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
 | `scripts/verify_all.mjs` | 351 | 25,424 | `538d75d3f61b94fe33d2563200b59292470bc2938ef9db30a69976ffad301ebf` | 18 stages：七道静态守卫 + 两份台账（`theme_face_inventory`、`verify_shape`）+ 七个测具模式（新增 `contrast-tier`、`theme-surfaces`）+ `red-demo` + 变异套件；`layout` 仍不接入，原因见其注释 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行）；`node scripts/verify_all.mjs selftest`（往 stage 表里粘一行重复名字，必须被点名） |
-| `scripts/verify_dialog_interactions.mjs` | 3100 | 246,677 | `6364bde26b1375c33e113b3cb0e7eb5e8ef2ad8494b7eab14da221f2622ec9f9` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
+| `scripts/verify_dialog_interactions.mjs` | 3110 | 247,632 | `9c96e7cb65022a8779e08b2eb1a6c2160151a552787d3aa689ec728d9df41856` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
 | `scripts/verify_guard_mutations.mjs` | 294 | 23,825 | `68ec6d88b27b31e9f3967f9ba84918a94537d674fac29ce686738baccd16976a` | 24 个变异（M1–M24），每个都必须被它指定的那台 oracle 抓到；本轮 M18/M19/M21/M22/M23/M24 的逐条读数见下面"本轮末次运行读数"一节 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
 | `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 770 | 47,295 | `5c4466e2c831de43b533063e19127d934e0b70747e9eb3459570ce63d827b8b7` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
@@ -189,7 +189,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | `scripts/__fixtures__/hanging_stage.mjs`（永不结束的假 stage，自己再 spawn 一个孙进程：`timeout-demo` 的靶子） | 20 | 1,155 | `16d702ee2dda998f2e7538d739f82d61656b075194ada2cb87fa014a80cf509a` | 只被 `verify_all.mjs timeout-demo` 生成，没有任何门读它 | `node scripts/verify_all.mjs timeout-demo`（六例，含"不调 taskkill 也不留孤儿"的消融与"正常结束不得报成 timeout"的负对照） |
 | `scripts/verify_modes.mjs`（模式名单 + 锚定的 dispatch 正则，纯数据、零控制流；runner 与 shape 台账读同一份） | 36 | 1,449 | `0b250811609418512489e3de9ffb70c1dbe24c7adc2d0b6cfe8da739bc6c2f87` | 每次启动三方核对：声明↔已派发用法块已文档化（15 个模式） | `node scripts/verify_guard_mutations.mjs M24`（把启动拒绝拔掉的变异，必须仍红） |
 | `scripts/verify_shape.mjs`（拆分对账台账：模式集合双向差、总行/字节、六族决策点数、以及"拆出去的探针是否仍逐字节等于拆之前"） | 292 | 17,246 | `b2e4824ca146f6858f6d0782efaa88b91350f53c07c2bfe95881e90fbb729559` | `SHAPE_SELFTEST cases=6 failed=0` + `SPLIT_SHAPE OK checked=17 failed=0` | 它自己先跑 6 例植入式夹具（改一个字节、删一个模式、把 extraction 弄瞎），任一抓不到就 exit 2；`--snapshot` 无 `--reason` 直接拒绝 |
-| `scripts/verify_shape.baseline.json`（上一行那本台账**签过的基线**：文件清单、总行/字节、六族决策点数、模式集合、extraction 长度与 `--snapshot --reason` 的原文） | 143 | 3,108 | `93b89b19e01602c0ca0ff918f7a2072f58f9f1e15e353016bd5aa5ada0cd405c` | `SPLIT_SHAPE OK checked=17 failed=0`（它变了而代码没变 ⇒ 要么有人重签，要么有人偷改） | 它自己不会报红，是 `verify_shape.mjs --verify` 报红；本轮把它纳入指纹表，是因为"改基线"这件事此前只存在于 JSON 被碰过这一种痕迹里 |
+| `scripts/verify_shape.baseline.json`（上一行那本台账**签过的基线**：文件清单、总行/字节、六族决策点数、模式集合、extraction 长度与 `--snapshot --reason` 的原文） | 143 | 2,993 | `b86ad1e618b9e139a0a6674494df0ce98084d7793ea76c732ccf1ddce33ded62` | `SPLIT_SHAPE OK checked=17 failed=0`（它变了而代码没变 ⇒ 要么有人重签，要么有人偷改） | 它自己不会报红，是 `verify_shape.mjs --verify` 报红；本轮把它纳入指纹表，是因为"改基线"这件事此前只存在于 JSON 被碰过这一种痕迹里 |
 | `scripts/theme_face_inventory.mjs`（逐面三档清单的生成器，`docs/VISUAL_BASELINE.md` 4.1 那张表由它核对） | 173 | 9,327 | `3f4ca60138cdaa82b528894b402c3652595e9a57f1154ebc565ce05eda397396` | `THEME_FACE_VERIFY faces=23 docLines=25 mismatch=0` | `node scripts/theme_face_inventory.mjs --selftest`（4 例：自己的输出干净、改一个数字恰好报 1 行、截断要报、行号要点对；抓不到 exit 2） |
 
 **这张表现在是断言，不是纪律**：`check_user_flow.py` 解析上面每一行，对每个文件重算 `git show HEAD:<path>` 的行数/字节/sha256 并逐项比对，还断言"表里的行集合 == 磁盘上成员集合"，成员由四条规则导出而不是由名字导出：`scripts/verify_*.mjs`、`scripts/__fixtures__/*.mjs`、`verify_all.mjs` 里被当作 stage 引用的 `scripts/*.mjs`、以及 `scripts/*.baseline.json`（外加 `check_user_flow.py` 自己）。所以：新加一个测具忘了上表 → 红；改了测具忘了更新表 → 红；哈希对不上 → 红，并附一句"该文件另有未提交改动"。上一版这张表就是**手写漂移了一笔提交**（记 965 行 / `9341e4ba…`，实际 1119 行 / `d9572a31…`），而它上面那句"改完必须回来更新"正是被漂移的那句——所以规则本身不解决问题，断言才解决。`.baseline.json` 这一类是本轮补的：`verify_shape.baseline.json` 早就在仓里、早就被 `--snapshot` 重签过十次，而指纹表按名字匹配 `.mjs` 一直没看见它——**门禁自己的输入清单漏了门禁签过的那张纸**。
@@ -1172,6 +1172,68 @@ FAIL CONTRAST_FACE_TABLE 1 row(s) ... : 插件 mist: doc 4.74 -> run 4.41;
 ```
 
 **这一条现在才算占功。** 上一轮我写"成员按形状导出"时它并不成立。
+
+### 十一、定案：产物里录了却没人核的字段 = 装饰
+
+**规矩（入仓，适用所有门）**：一份产物里记了、但没有任何断言去比对的字段，是装饰，不是证据。
+要么给它加断言，要么把字段删掉。**"我把数记下来了"不等于"这个数被看着"**。
+
+第一次演示的原始输出，按"它比第二次成功更值钱"归档在这里——**我翻了一个字节，门红了，
+但红里没有一个字提到我翻的那个字段**：
+
+```text
+$ python -c "flip one digit inside a per-file 'lines' value"   # 结果翻到了 totals.lines 上
+$ node scripts/verify_shape.mjs --verify                       # EXIT=1
+SPLIT_SHAPE DRIFT checked=17 failed=3
+  MISMATCH total lines across harness files: 4830 (expect 4774)
+  MISMATCH total bytes across harness files: 360709 (expect 356002)
+  MISMATCH decision points: positive control: 16 (expect 15)
+```
+
+三条 MISMATCH 全部来自我自己未提交的代码增量；**我篡改的那个字节零信号**。
+根因：`problems()` 只比 `totals` 与六族总数，`baseline.files[]` 每行的 lines/bytes/families
+记了却从来没被读过。补完逐文件断言后，同样的篡改变成 `MISMATCH scripts/…​.mjs lines: 3101 (expect 3102)`，
+且自证 8/8 里有两例专门钉这件事。
+
+### 十二、身份不单射：选"隔离"而不是"加字段"，并且它现在拦得住绿
+
+`CONTRAST-DENOM` 用的身份串是 `tag+class+text`，**不是单射**（`云端` 38 个 run 只有 37 个身份）。
+两条出路里选了隔离，理由是：要单射就得加位置，而**位置会在上方插入内容时整体平移**——
+那等于把每一次真实内容变更都变成一次假 diff，这种门一周内就会被人静音。
+所以"这一组的 run 我分辨不了"必须记成**本组未验**，并且**让这一批不能算通过**。
+
+拦住的现场就是它自己：这一批 `below=0`（没有任何一行低于阈值），但
+
+```text
+DENOM_STABILITY combos=72 routeThemeGroups=24 contentDifferences=6 nonInjectiveIdentityReads=9 unverifiedGroups=3
+CONTRAST_TALLY below=0 + docDrift=0 + denom=9 = stopping=9      EXIT=1
+FAIL CONTRAST-DENOM-UNVERIFIED 云端|default: 3 combo(s) have runs the identity string cannot tell apart
+      (distinct keys < measured runs), so this group's set equality was NOT established
+      and it cannot count as verified
+```
+
+**换成上一轮的写法，这批会报绿。** 这正是你担心的"漏报而不是误报"。
+
+### 十三、问 2 的答复：TypeError 本体找到了，但我的"间歇招"是过度声明，撤回
+
+| 我上一轮说的 | 盘上查到的 |
+| --- | --- |
+| 错误面板来自 `refetchInterval: 2500` 那个 logs 轮询 | **错**。面板绑的是 `pluginsError`（`PluginsPage.tsx:116`），即 `listPlugins`，与 2.5s 轮询无关 |
+| 查询本身在间歇招 | **错，撤回**。`desktop.ts:92` 的 `invoke` 没有运行时守卫，直接 `import('@tauri-apps/api/core')` 再调 `invoke`；浏览器里 `window.__TAURI_INTERNALS__` 是 `undefined` ⇒ **每次加载都必然抛**，不周期。现测 5 次采样（间隔 350ms）面板 `NO-PANEL` ×5、`distinct=1` |
+| 那"同一次跑内进进出出"是什么 | 是**我的普查在抢拍**：`await import(...)` 是异步的，某个组合拍在它 reject 之前、某个拍在之后。所以分母会动是**量具的 settle 竞态**，不是产品缺陷 |
+
+**但确实有一条真的产品问题，只是比我想的小一层**：`PluginsPage.tsx:117` 把 `String(pluginsError)`
+**原样上屏**。Tauri 用户平时看不到（invoke 在），可一旦命令层真出问题（命令没注册、panic、权限），
+用户屏幕上就是 `TypeError: Cannot read properties of undefined (reading 'invoke')` 这一坨。
+这条属于"内部异常直供用户"，和对比度不是一档，**我没有为了跑康普查把它遮掉**，登记待批。
+
+### 十四、拍 1+2（抬 token 到 ≥5.0）本轮没做，明写降级
+
+不是忘了：我剩余上下文不足以完成"改前三拍 → 改 → 改后三拍 → 重跑 `contrast-tier` 判红绿"这一整串，
+而**没跑过的编辑不算交付**，半截的颜色改动更糟。改前三张已从会被覆盖的探针目录复制钉死在
+`%TEMP%/image-hosting-probes/2026-09-30/before-token-lift/before-{default,midnight,sakura}-black-插件.png`
+（含目标元素 `暂无插件执行记录`；`contrast-tier` 每批都会覆盖 `ct-*.png`，所以先复制出来）。
+下一轮我按 ≥5.0 抬 `--color-slate-400` 三档、贴改前/改后各三张与新的 `CONTRAST_GATE` 读数。
 
 ## 1.4.4 - Gallery Render Bound and Installer Publisher
 
