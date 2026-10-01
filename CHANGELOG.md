@@ -179,12 +179,12 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
 | `scripts/verify_all.mjs` | 351 | 25,424 | `538d75d3f61b94fe33d2563200b59292470bc2938ef9db30a69976ffad301ebf` | 18 stages：七道静态守卫 + 两份台账（`theme_face_inventory`、`verify_shape`）+ 七个测具模式（新增 `contrast-tier`、`theme-surfaces`）+ `red-demo` + 变异套件；`layout` 仍不接入，原因见其注释 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行）；`node scripts/verify_all.mjs selftest`（往 stage 表里粘一行重复名字，必须被点名） |
-| `scripts/verify_dialog_interactions.mjs` | 2796 | 216,013 | `045c1166237ca57abe5aad5e83b3d5674da12d8b8439cba6a966cb8064b1d788` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
+| `scripts/verify_dialog_interactions.mjs` | 2961 | 233,521 | `d341873055c6f54ab480fa9f8cc907d23f47ddd3a27510e30e3c1b0d7f1e4374` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
 | `scripts/verify_guard_mutations.mjs` | 288 | 23,220 | `c909de97ff370ed6e0593e519b7d21728d459030966788dc4a2c2df694edf52f` | 24 个变异（M1–M24），每个都必须被它指定的那台 oracle 抓到；本轮 M18/M19/M21/M22/M23/M24 的逐条读数见下面"本轮末次运行读数"一节 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
-| `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 628 | 38,899 | `9987d5567339af6bdc29dbc3e8a796a8298989cb02fbedc02e2219bc1d296fdc` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
+| `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 735 | 45,176 | `44508f59fb8ba631fbbc42496871730fa3a8740fdd3be2c67ad835c030348e21` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
 | `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,897 | `d54d83cb52a1f8489efa4c59162ce8d44f96f34505d3396a5d4e59675460833b` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
-| `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 669 | 56,790 | `d1dbf5bfc33ebd8d573b80019533b2d882732d23b2f1564673e853991cbcbf6d` | `USERFLOW_CHECKS total=222 failed=0`（落盘后；未提交时它必然报 10 条"HEAD blob 里没有这个文件"，见本节末） | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16 M19 M20` |
+| `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 686 | 58,181 | `68dac432513ecfa07ab84e6529fce422f49a059b8433494a4187da7bc9606394` | `USERFLOW_CHECKS total=222 failed=0`（落盘后；未提交时它必然报 10 条"HEAD blob 里没有这个文件"，见本节末） | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16 M19 M20` |
 | `scripts/theme_token_census.mjs`（主题 token 普查 + 口径断言：族内声明方式必须一致） | 148 | 8,483 | `4fd961d1cb1fea90d46a879c9db8c1561ddbcded15733bddfaecbcf4b82e2968` | `TOKEN_POLICY_SELFTEST cases=5 failed=0` + `TOKEN_POLICY families=13 breaches=0` | 立口径那一轮它当场咬到 `--accent-solid`（exit 1）；把 `--accent-solid` 从 :root 删掉再 `--verify` 就会重新红 |
 | `scripts/__fixtures__/hanging_stage.mjs`（永不结束的假 stage，自己再 spawn 一个孙进程：`timeout-demo` 的靶子） | 20 | 1,155 | `16d702ee2dda998f2e7538d739f82d61656b075194ada2cb87fa014a80cf509a` | 只被 `verify_all.mjs timeout-demo` 生成，没有任何门读它 | `node scripts/verify_all.mjs timeout-demo`（六例，含"不调 taskkill 也不留孤儿"的消融与"正常结束不得报成 timeout"的负对照） |
 | `scripts/verify_modes.mjs`（模式名单 + 锚定的 dispatch 正则，纯数据、零控制流；runner 与 shape 台账读同一份） | 36 | 1,449 | `0b250811609418512489e3de9ffb70c1dbe24c7adc2d0b6cfe8da739bc6c2f87` | 每次启动三方核对：声明↔已派发用法块已文档化（15 个模式） | `node scripts/verify_guard_mutations.mjs M24`（把启动拒绝拔掉的变异，必须仍红） |
@@ -951,8 +951,90 @@ LAYOUT_FAMILIES pages_with_cuts=7 family_lines_before_grouping=14 distinct_root_
 不改任何颜色、不修任何 layout 条目、不给 `paintedByUnmarked` 设上限（你说得对：要卡它得先修标记集定义，
 现在那个分母量的是"门自己的粒度"，不是"覆盖率"）、不拆 190 KB harness 也不记成欠账。
 
-## 1.4.4 - Gallery Render Bound and Installer Publisher
+## Unreleased - 2026-09-30（第五批：C 的记账拆完，D 那一次读数把一条更大的拽出来）
 
+边界照旧：不新增依赖、不 push、不打 tag、版本仍 1.4.4、不动依赖清单。**本轮没动任何界面。**
+
+### 一、C：`TOUCH-TARGET` 原来把两件事记成一个数
+
+七条 `TOUCH-TARGET` 里有五条的"最小目标"是同一颗吐司近按钮（`关闭提示` 16×16）。
+它属于 `ToastViewport`，不属于那五个页面——页面计数现在按 `[role=alert],[role=status]`
+把覆盖层拆出去，**跨路由去重后单独成一条**，仍然报红，但不再让五个页面替一个组件背五条：
+
+```text
+LAYOUT_OVERLAY distinct_controls=1 instances=28 probe_reported=28 routes_involved=7
+```
+
+第二条记账错：`<label>` 套着 `<input>` 时量的是复选框自己的盒子，而手指点的是 label。
+判据改为"控件与其关联 label 中较大的盒子"（关联含包裹与 `for=` 两条路径）。
+**你点的那两行了落了，但没有一行因此变绿**：
+
+| 原来报的 | 真实可点盒子 | 结论 |
+| --- | --- | --- |
+| 设置 `13×16 input.size-4` | `36.9×32` 的 label | 缺陷真，要改的是 label 高度 |
+| 发布 `13×13 input`（发布完成自动复制） | `446×40` 的整行 label | 缺陷真，差的是那 4px 高度 |
+
+每路由真实计数（640 档，吐司已拆出）：**发布 19、资源 14、云端 11、图库 12、插件 13、任务 10、设置 15**。
+恒等式对得起来：改前 123 = 改后 94 页面自有 + 28 覆盖层实例 + 1 个被 label 豁免的目标。
+七页现在的"最小目标"是同一族真缺陷：侧栏压到 64px 后 `button.flex.w-full` 只剩 **35×30 / 35×37**。
+
+两条豁免各配一对夹具（`CONTROL-T`）：该免的免掉、**不该免的必须仍然报红**，
+且必须以 label 的盒子（60×18）报出——否则修的对象还是错的。覆盖层那半边同时断言
+"从页面计数里出去了"与"仍然被记了一次"，因为"拆分"最容易退化成"丢掉"。
+
+### 二、D：那一次读数，判据错了，但它指着的元素有一个真缺陷
+
+图库 `刷新` 那两条（1024 / 640 各一，我挂了"分不清"两轮）按你说的只取一次读数：
+
+```text
+box 40px (client 38 / scroll 43), line-height 24px on font 16px,
+padding 0px/0px, overflow visible/visible, ink box 45px 伸出 border box [3, 2]
+```
+
+`overflow: visible / visible` —— **一个不裁切的盒子不可能"自我裁切"**。那 4px 是行盒
+（两行 24px 折行 = 45px）伸出 40px 盒子的部分，它照常上漆。判据现在要求
+"被量的那一轴真的在裁切"，作废为 0.1 表最后一行。
+
+绿夹具的第一版是**空转的**：我用拉丁文当文本，它根本不折行，墨迹 21px 从没超过 40px 的盒子，
+"没报红"看起来和"判据修好了"一模一样。加了 `plantReproduces`（墨迹必须真的超出盒子，否则判为
+测具故障）才咬住。红的那半边同时断言 `hDelta=0`，证明报上来的是纵向那一刀。
+
+而 `刷新` 之所以会折成两行——这才是真缺陷，也是读数顺手拽出来的那条。
+
+### 三、`font: inherit` 写在层外，把 23 个控件的字号整条吞掉
+
+`styles.css:223` 的 `button, input, select, textarea { font: inherit; }` 在**层外**，
+未分层声明优先级高于 Tailwind 的 `@layer utilities`，所以这四类元素上自己声明的
+`text-xs / text-sm / font-medium` 全部失效。Tailwind 的 preflight 本来就在 `@layer base`
+里给了同一条（`tailwindcss/index.css:796`）——**这一行是重复声明，它唯一的净效果就是把层序反过来**。
+
+新判据 `FONT-SWALLOW` 不写死数字：在页面上放一个只挂 `text-xs` 的 `<span>`（控件豁免够不着它），
+量出这个工具类在本 app 里真正等于多少 px，再和控件的渲染值对账。`CONTROL-H` 那对夹具
+**自带一份 bug**（注入 `button.lctl-swallow{font:inherit}`），所以 app 那行被删掉之后它依然能证明会红。
+
+**两个独立仪器给出同一个 23**：已签字的 §1 基线表里"漂移按钮"合计 = **23**（`visual` 模式
+span/button 参照比出来），`layout` 这边 class/计算值比出来也是 **23**
+（`FONT_SWALLOW distinct_controls=23 instances_sum=109`）。
+
+**这一条我没修、也没加白名单。** 删那一行会让 23 个控件渲染字号变小、`刷新` 不再折行，
+并把 §1 表"字号阶梯"与"漂移按钮"两列一起改掉——那是**重签基线**，按规矩归你签字。
+修法是删一行，不是改 23 个调用点。
+
+**自我交代**：这个缺陷早就被量过、早就写在已签字的表里、`visual` 模式里也早就有
+`regressions.push(...)`，甚至 `styles.css:169` 的注释里我自己写过"the cascade fact that made
+`button { font: inherit }` swallow text-xs"——**知道这个事实，却从没把它当成一条待修缺陷上报**。
+这轮不是新发现，是把一个已经量了两轮的数归到了因上。
+
+### 四、判据改动与违规同笔
+
+`layout` 结论：改前 9 条（7 `TOUCH-TARGET` 含 5 条被吐司冒充 + 2 条假 `SELF-CLIP`）
+→ 改后 9 条（7 条真实页面计数 + 1 条覆盖层 + 1 条 `FONT-SWALLOW`，`SELF-CLIP` 归零）。
+`RAIL-PROOF 712 proven / 0 unreachable`、`LAYOUT_FAMILIES records_listed=0 records_total=0` 不变。
+`check_user_flow.py` 新增一条静态断言：源码里不许出现响应式/状态相关的字号工具类
+（`sm:text-xs`、`hover:text-sm` 等），因为 `FONT-SWALLOW` 只在 640 一档读——
+它自带两面夹具，且把"单档读数为什么是完整的"这件事从我的判断变成断言。
+
+## 1.4.4 - Gallery Render Bound and Installer Publisher
 
 
 
