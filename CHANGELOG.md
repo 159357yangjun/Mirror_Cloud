@@ -179,7 +179,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
 | `scripts/verify_all.mjs` | 351 | 25,424 | `538d75d3f61b94fe33d2563200b59292470bc2938ef9db30a69976ffad301ebf` | 18 stages：七道静态守卫 + 两份台账（`theme_face_inventory`、`verify_shape`）+ 七个测具模式（新增 `contrast-tier`、`theme-surfaces`）+ `red-demo` + 变异套件；`layout` 仍不接入，原因见其注释 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行）；`node scripts/verify_all.mjs selftest`（往 stage 表里粘一行重复名字，必须被点名） |
-| `scripts/verify_dialog_interactions.mjs` | 2992 | 237,032 | `747347516c8c67b6ff397ab3179b14d566f0e85fe57aa89f085715f155ebbcb8` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
+| `scripts/verify_dialog_interactions.mjs` | 3035 | 240,921 | `a3ef57e577eed2a26ba2e0dc4ad2dda0bc6ca39326427066b54c830db09681ec` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
 | `scripts/verify_guard_mutations.mjs` | 294 | 23,825 | `68ec6d88b27b31e9f3967f9ba84918a94537d674fac29ce686738baccd16976a` | 24 个变异（M1–M24），每个都必须被它指定的那台 oracle 抓到；本轮 M18/M19/M21/M22/M23/M24 的逐条读数见下面"本轮末次运行读数"一节 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
 | `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 770 | 47,295 | `5c4466e2c831de43b533063e19127d934e0b70747e9eb3459570ce63d827b8b7` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
@@ -189,7 +189,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | `scripts/__fixtures__/hanging_stage.mjs`（永不结束的假 stage，自己再 spawn 一个孙进程：`timeout-demo` 的靶子） | 20 | 1,155 | `16d702ee2dda998f2e7538d739f82d61656b075194ada2cb87fa014a80cf509a` | 只被 `verify_all.mjs timeout-demo` 生成，没有任何门读它 | `node scripts/verify_all.mjs timeout-demo`（六例，含"不调 taskkill 也不留孤儿"的消融与"正常结束不得报成 timeout"的负对照） |
 | `scripts/verify_modes.mjs`（模式名单 + 锚定的 dispatch 正则，纯数据、零控制流；runner 与 shape 台账读同一份） | 36 | 1,449 | `0b250811609418512489e3de9ffb70c1dbe24c7adc2d0b6cfe8da739bc6c2f87` | 每次启动三方核对：声明↔已派发用法块已文档化（15 个模式） | `node scripts/verify_guard_mutations.mjs M24`（把启动拒绝拔掉的变异，必须仍红） |
 | `scripts/verify_shape.mjs`（拆分对账台账：模式集合双向差、总行/字节、六族决策点数、以及"拆出去的探针是否仍逐字节等于拆之前"） | 273 | 15,745 | `7ee753466cae22ed1c4176e07f248227187c7265abfdb49c7a89d02053a4f8c7` | `SHAPE_SELFTEST cases=6 failed=0` + `SPLIT_SHAPE OK checked=17 failed=0` | 它自己先跑 6 例植入式夹具（改一个字节、删一个模式、把 extraction 弄瞎），任一抓不到就 exit 2；`--snapshot` 无 `--reason` 直接拒绝 |
-| `scripts/verify_shape.baseline.json`（上一行那本台账**签过的基线**：文件清单、总行/字节、六族决策点数、模式集合、extraction 长度与 `--snapshot --reason` 的原文） | 143 | 3,255 | `9e2f469030af8b264591369b768bca0b57279ccaea57859e35841465028b3f5c` | `SPLIT_SHAPE OK checked=17 failed=0`（它变了而代码没变 ⇒ 要么有人重签，要么有人偷改） | 它自己不会报红，是 `verify_shape.mjs --verify` 报红；本轮把它纳入指纹表，是因为"改基线"这件事此前只存在于 JSON 被碰过这一种痕迹里 |
+| `scripts/verify_shape.baseline.json`（上一行那本台账**签过的基线**：文件清单、总行/字节、六族决策点数、模式集合、extraction 长度与 `--snapshot --reason` 的原文） | 143 | 3,258 | `d98a6971123142f1ecdde37956ef3bd832d77063c198047e0b961a82736c1708` | `SPLIT_SHAPE OK checked=17 failed=0`（它变了而代码没变 ⇒ 要么有人重签，要么有人偷改） | 它自己不会报红，是 `verify_shape.mjs --verify` 报红；本轮把它纳入指纹表，是因为"改基线"这件事此前只存在于 JSON 被碰过这一种痕迹里 |
 | `scripts/theme_face_inventory.mjs`（逐面三档清单的生成器，`docs/VISUAL_BASELINE.md` 4.1 那张表由它核对） | 173 | 9,327 | `3f4ca60138cdaa82b528894b402c3652595e9a57f1154ebc565ce05eda397396` | `THEME_FACE_VERIFY faces=23 docLines=25 mismatch=0` | `node scripts/theme_face_inventory.mjs --selftest`（4 例：自己的输出干净、改一个数字恰好报 1 行、截断要报、行号要点对；抓不到 exit 2） |
 
 **这张表现在是断言，不是纪律**：`check_user_flow.py` 解析上面每一行，对每个文件重算 `git show HEAD:<path>` 的行数/字节/sha256 并逐项比对，还断言"表里的行集合 == 磁盘上成员集合"，成员由四条规则导出而不是由名字导出：`scripts/verify_*.mjs`、`scripts/__fixtures__/*.mjs`、`verify_all.mjs` 里被当作 stage 引用的 `scripts/*.mjs`、以及 `scripts/*.baseline.json`（外加 `check_user_flow.py` 自己）。所以：新加一个测具忘了上表 → 红；改了测具忘了更新表 → 红；哈希对不上 → 红，并附一句"该文件另有未提交改动"。上一版这张表就是**手写漂移了一笔提交**（记 965 行 / `9341e4ba…`，实际 1119 行 / `d9572a31…`），而它上面那句"改完必须回来更新"正是被漂移的那句——所以规则本身不解决问题，断言才解决。`.baseline.json` 这一类是本轮补的：`verify_shape.baseline.json` 早就在仓里、早就被 `--snapshot` 重签过十次，而指纹表按名字匹配 `.mjs` 一直没看见它——**门禁自己的输入清单漏了门禁签过的那张纸**。
@@ -1080,6 +1080,31 @@ porcelain_modified=2 ['docs/VISUAL_BASELINE.md', 'scripts/check_user_flow.py']
 什么算漂移"的文件，是表里唯一没有的文件**。成员现在按形状导出（多一条 `scripts/*.baseline.json`），
 两处派生（`fingerprint_rows.mjs` 与 `check_user_flow.py`）同时改，
 新行必须先写出来 `--patch` 才肯填数——它拒绝给不存在的行编号，这条行为留着。
+
+### 七、`CONTRAST_FACE_TABLE` 那条红只报数、不报名，被它绊住一次之后修了
+
+`verify:all` 里 `contrast-tier` 有一轮报的是：
+
+```text
+FAIL CONTRAST_FACE_TABLE 1 row(s) in docs/VISUAL_BASELINE.md do not match this run
+```
+
+**哪一行？没说。** 我去翻上一次跑存的 JSON 才对出来是 `插件` 行。修完之后的原文：
+
+```text
+FAIL CONTRAST_FACE_TABLE 1 row(s) ... : 插件 mist: doc 4.74 -> run 4.41;
+     插件 midnight: doc 4.92 -> run 4.08. --doc-write regenerates it, but only sign
+     numbers you mean to keep: if the run is worse than the doc, regenerating makes
+     the regression the baseline.
+```
+
+顺带把 `gate-unit` 加了第三组（`doc-table` 5 例，16/16）：表相同 ⇒ 0 行；改一个比值 ⇒ 恰好 1 行且**必须**含
+`插件 midnight: doc 4.08 -> run 4.92` 这个串；只改计数列 ⇒ 仍然 0 行；两边行数不等 ⇒ 各自点名。
+
+**这张表我没有 `--doc-write`，故意的。** 存进去的是 `插件 4.74/4.92/4.93`，而跑出来是
+`4.41/4.08/4.38`——差的就是那条还没定的 `暂无插件执行记录`。而且它**分批漂**：
+同一份代码，一批里三列全漂，下一批只有两列漂（另一批存的又是 `28/26/26`）。
+也就是说 `--doc-write` 会把"哪一批"签成基线。**要修的是那个元素，不是这张表。**
 
 ## 1.4.4 - Gallery Render Bound and Installer Publisher
 
