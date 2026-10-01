@@ -855,6 +855,13 @@ failed = [label for ok, label in checks if not ok]
 # mutation runner reported as "the oracle stayed silent" for guards that had caught the mutation.
 for label in failed:
     print('FAIL ' + label)
+# On a GitHub runner, a failed step's stdout needs a token to read (the logs endpoint answers 403),
+# and the only public channel is the annotation list - so until now this guard could go red in CI and
+# tell nobody which of its 253 assertions said no. Each failure is echoed as a workflow command so it
+# lands next to the job, where anyone without credentials can read it.
+if os.environ.get('GITHUB_ACTIONS') == 'true':
+    for label in failed:
+        print('::error::user-flow: ' + label.replace('%', '%25').replace('\r', ' ').replace('\n', ' ')[:400])
 for ok, label in checks[-8:]:
     if ok:
         print('OK   ' + label)
