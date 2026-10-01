@@ -1279,8 +1279,30 @@ FAIL CONTRAST-DENOM-UNVERIFIED 云端|default: 3 combo(s) have runs the identity
 这次往返里或它紧邻的几毫秒内）。所以"历史那条红是被过期像素骗的"是推定，不是闭环。
 `docs/VISUAL_BASELINE.md` §7.6 有逐行原文、两处自我更正（整页指纹结构上看不见这件事；
 `WATCH-PAINT` 那句"是重绘不是采样移位"是错的）
-和两条未解释项（58px 与那 2 行面板的同因未经测量；为什么只落在 `black`）。
+和一条仍开着的缺口（成功布局里被面板替换掉的那一块是什么，没有命名；为什么只落在 `black` 没有解释）。
 **这三批 `below` 都是 0**，所以这不是"那条红重现了"，是共现成立、机制独立可观测。
+
+**58px 这一笔后续量过了，方向和我先写的相反**：错误面板自己的盒子实测 `top=287 h=102`，
+面板在的布局日志标题在 459、面板不在在 517 ——**面板出现时内容上移 58px**（102px 的面板换掉约 160px
+的成功态内容），不是"顶下去"。过期坐标上现在印着 `ownerAtStalePoint = div.p-8.text-center{bg:rgba(0,0,0,0)}`
+⇒ 那一点采到的是透明容器**背后**的页面底，这才是低比值的全部来源。
+四批合计 stale 组合 3 / 0 / 1 / 2 = **6/288**，全在 `black`（非 black 四批合计 0/192）。
+
+**判据本身现在能从仓里重跑了**（`78111d0`、`503f3c3`）：`rectMoved` / `layoutDrift` 提到模块作用域，
+夹具表 `gate-unit` 与扫掠共用同一份，不需要浏览器：
+
+```text
+gate unit check: 26/26 correct (viewport 6/6, coverage 5/5, doc-table 5/5, staleness 10/10)
+node scripts/verify_guard_mutations.mjs M26 M27 -> 2/2 alarms reproduced, tree restored: clean
+  FAIL staleness: rectMoved planted 470px shift -> 0 (expected 470)          # M26 拔掉比较循环
+  FAIL staleness: rectMoved live box missing (element unmounted) -> 0 (expected null)  # M27 把"比不了"当"没动"
+```
+
+M26 第一次落地时锚点写的是旧的内块缩进（6 空格），runner 报
+`anchor missing - mutation definition is stale` 而**没有当通过跳过**——这句留在提交信息里是因为
+"锚点烂掉不被静默跳过"就是这本台账的设计要点，本轮是它第一次被自己的手滑验证。
+M25 这个编号故意空着不用：它当年针对退出码闩所起草、后因"改不动 oracle 所见"而撤回，
+重新编号会让那条撤回说明指向另一条测试。
 
 **跨制品对账一笔**：§十四 末尾那句"下一轮只做一件事：按 ≥5.0 抬 `--color-slate-400`"**已经履行了**，
 在 `e65962c`（`--color-slate-400` = `#4e5e73` / `#a4b2ca` / `#6d5765`，磁盘上现值，本轮重读确认）。
