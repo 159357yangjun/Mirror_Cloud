@@ -184,7 +184,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 770 | 47,295 | `5c4466e2c831de43b533063e19127d934e0b70747e9eb3459570ce63d827b8b7` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
 | `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,897 | `d54d83cb52a1f8489efa4c59162ce8d44f96f34505d3396a5d4e59675460833b` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
-| `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 689 | 58,451 | `893a78e324162a76dff0fda9a742923e3cc6a872c7da98bd31918acc8ec9d525` | `USERFLOW_CHECKS total=222 failed=0`（落盘后；未提交时它必然报 10 条"HEAD blob 里没有这个文件"，见本节末） | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16 M19 M20` |
+| `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 803 | 65,576 | `967ea70ad656fb086296b972f6986d596b76227c8a7208eab70c91976b056601` | `USERFLOW_CHECKS total=222 failed=0`（落盘后；未提交时它必然报 10 条"HEAD blob 里没有这个文件"，见本节末） | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16 M19 M20` |
 | `scripts/theme_token_census.mjs`（主题 token 普查 + 口径断言：族内声明方式必须一致） | 148 | 8,483 | `4fd961d1cb1fea90d46a879c9db8c1561ddbcded15733bddfaecbcf4b82e2968` | `TOKEN_POLICY_SELFTEST cases=5 failed=0` + `TOKEN_POLICY families=13 breaches=0` | 立口径那一轮它当场咬到 `--accent-solid`（exit 1）；把 `--accent-solid` 从 :root 删掉再 `--verify` 就会重新红 |
 | `scripts/__fixtures__/hanging_stage.mjs`（永不结束的假 stage，自己再 spawn 一个孙进程：`timeout-demo` 的靶子） | 20 | 1,155 | `16d702ee2dda998f2e7538d739f82d61656b075194ada2cb87fa014a80cf509a` | 只被 `verify_all.mjs timeout-demo` 生成，没有任何门读它 | `node scripts/verify_all.mjs timeout-demo`（六例，含"不调 taskkill 也不留孤儿"的消融与"正常结束不得报成 timeout"的负对照） |
 | `scripts/verify_modes.mjs`（模式名单 + 锚定的 dispatch 正则，纯数据、零控制流；runner 与 shape 台账读同一份） | 36 | 1,449 | `0b250811609418512489e3de9ffb70c1dbe24c7adc2d0b6cfe8da739bc6c2f87` | 每次启动三方核对：声明↔已派发用法块已文档化（15 个模式） | `node scripts/verify_guard_mutations.mjs M24`（把启动拒绝拔掉的变异，必须仍红） |
@@ -1034,6 +1034,52 @@ span/button 参照比出来），`layout` 这边 class/计算值比出来也是 
 `check_user_flow.py` 新增一条静态断言：源码里不许出现响应式/状态相关的字号工具类
 （`sm:text-xs`、`hover:text-sm` 等），因为 `FONT-SWALLOW` 只在 640 一档读——
 它自带两面夹具，且把"单档读数为什么是完整的"这件事从我的判断变成断言。
+
+### 五、落盘盲区：先纠正前提，再补守卫
+
+你派活时引用的我那句自报是"落盘守卫只扫 `.log/.tmp/.verify/`，看不见 `.cjs`"。
+**盘上查了，本仓没有这条守卫**——`grep` 遍 `scripts/` 与 `tools/` 没有任何扫临时件的代码，
+只有一个 `.gitignore`（`*.log`、`*.tmp`、`*.temp`、`*.bak`、`*.swp`、`*~`），
+而 `git log --all --diff-filter=A -- '*.cjs'` 空 ⇒ 本仓从未提交过任何 `.cjs`。
+所以那个形状要么属于隔壁仓，要么属于一次没留下的临时件；**我不能拿它当"已核实的本仓违规"**。
+
+但前提错了不等于盲区不存在，而且真实方向相反：
+
+| 我以为的盲区 | 盘上的盲区 |
+| --- | --- |
+| 守卫看不见 `.cjs` | **根本没有守卫**；而 `.gitignore` 恰好把 `.log/.tmp/.bak` 从 `git status` 里藏掉 ⇒ 临时后缀那一路连"有人看一眼"都没有 |
+| 按后缀禁就够 | `.cjs/.mjs/.py` 是**真源码后缀**，按后缀禁等于禁掉 `scripts/`；所以 `.tmp-readme-fix.cjs` 只能靠**文件名形状**抓 |
+
+新守卫三条规则，各自写明了为什么：
+`STRAY_SUFFIXES` 12 个后缀（树内任意位置、**跟踪与否都算**，因为提交进去的 `.bak` 同样是垃圾）；
+`STRAY_NAME_PREFIXES` 12 个自证抛弃的前缀（`tmp-` `temp-` `scratch-` `debug-` `wip-` 两种分隔符）；
+根目录未跟踪脚本（`.cjs/.mjs/.py/.js/.ps1/.sh` 且深度 1）——依据是"本仓所有可执行工具都在 `scripts/` 下"
+这条事实本身也被断言（根目录跟踪脚本数 = 0）。`node_modules`/`dist`/`target` 等构建区跳过。
+
+**四条"零误报"断言全部带正例对照**：`git ls-files` 里 `.py`=8、`.md`=41 看得见，
+才允许说 12 个临时后缀跟踪数 = 0。夹具两面都落盘：
+`stray-guard-red.txt`（4 行，每行带"是被哪条规则抓到的"）与 `stray-guard-green.txt`（**必须是 0 字节**，
+非空的绿输出本身就是一条发现）。夹具种在临时目录里，不种在工作树——
+否则守卫会把自己下一轮跑红。
+
+**与真实违规同笔这一条我没做到，原因是没有可笔的违规**，不是跳过了：
+本轮按你的要求重扫了未提交 diff 与整棵树——
+
+```text
+live_walk_hits=0   porcelain_untracked=0   uncommitted_diff_hits=0
+porcelain_modified=2 ['docs/VISUAL_BASELINE.md', 'scripts/check_user_flow.py']
+```
+
+所以 `STRAY_GUARD` 那行自己印的是 `status=not-yet-earned: never caught a real stray, only the planted one`。
+**这条门不占功**，等它第一次真的在地上捡到东西再摘这个标。
+
+### 六、门禁自己的输入清单漏了一张签过的纸
+
+顺手扫 membership 时发现：`scripts/verify_shape.baseline.json` 从第一次拆分起就在仓里、
+已经被 `--snapshot` 重签过十次，而指纹表的成员规则按名字匹配 `.mjs` ⇒ **唯一一份"改了它就改了
+什么算漂移"的文件，是表里唯一没有的文件**。成员现在按形状导出（多一条 `scripts/*.baseline.json`），
+两处派生（`fingerprint_rows.mjs` 与 `check_user_flow.py`）同时改，
+新行必须先写出来 `--patch` 才肯填数——它拒绝给不存在的行编号，这条行为留着。
 
 ## 1.4.4 - Gallery Render Bound and Installer Publisher
 

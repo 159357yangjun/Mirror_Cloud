@@ -544,6 +544,28 @@ D 的读数见 0.1 表最后一行。它顺带把 `SELF-CLIP` 判据修对了：
 墨迹 21px 从没超过 40px 的盒子，"没报"看起来和"判据修好了"一模一样。
 现在 `plantReproduces` 断言墨迹必须真的超出盒子，否则判为测具故障。
 
+**而这次收窄把 M17 弄瞎了。** 收窄之后当场跑变异：`M17`（把确认框 `<p>` 的 `break-words` 摘掉，
+64 字符哈希在 440px 卡里撑开）——**没有任何一条判据报红**。它从来不是"被切"，
+是字**画到盒子外面去了**，所以正确的处置是给它一条自己的判据，而不是把假阳性的
+`SELF-CLIP` 退回去。新判据 `TEXT-ESCAPE` 连踩两个坑才咬住：
+
+| 第一版 | 为什么看不见 |
+| --- | --- |
+| 用 `scrollWidth - clientWidth` 判"超出自己的盒子" | `overflow: visible` 的块**不是滚动容器**，`scrollWidth` 根本不涨 ⇒ 恒为 0 |
+| 用 `clipperForAxis(e,'x')` 判"没人裁它" | 该 helper 找的是**最近的非 visible 祖先**，问的不是"哪一层真的把这段字切掉了" |
+
+第三版改用**墨迹右缘**，并把可见范围限定为"祖先链里真正 `hidden`/`clip` 的那些盒子的右缘与视口的较小值"。
+`CONTROL-I` 两面：260px `nowrap` 长词挂在 `documentElement` 下 ⇒ 必须报（+173px）；
+同一段字放进 `overflow:hidden` 的 200px 宿主里 ⇒ 必须**离开** `TEXT-ESCAPE`、
+并且**仍然**出现在祖先裁切族里（恒等式：`dEscape === 1`，两面只动一条判据）。
+红绿各跑过一次原文：
+
+```text
+pristine  confirm-longname  LAYOUT_GATE failures=3   (无 TEXT-ESCAPE)
+M17 变异  confirm-longname  FAIL TEXT-ESCAPE 640x480 confirm-longname: 1 text run(s) ...
+                            worst +127px past a 302px box
+```
+
 ### 读数（每路由真实计数，吐司已拆出）
 
 | 路由 | 改前 `TOUCH-TARGET` | 改后页面自有 | 其中 button/input/select |
@@ -585,10 +607,13 @@ D 的读数见 0.1 表最后一行。它顺带把 `SELF-CLIP` 判据修对了：
 ### 净结论
 
 **改前 9 条 = 7 `TOUCH-TARGET`（含 5 条被吐司冒充）+ 2 `SELF-CLIP`（假象）。
-改后 9 条 = 7 `TOUCH-TARGET`（页面自有，真实计数见上表）+ 1 `TOUCH-TARGET overlay(toast)` + 1 `FONT-SWALLOW`（23 个控件、同一行 CSS）+ 0 `SELF-CLIP`。**
+改后 = 7 `TOUCH-TARGET`（页面自有，真实计数见上表）+ 1 `TOUCH-TARGET overlay(toast)` + 1 `FONT-SWALLOW`（23 个控件、同一行 CSS）+ `TEXT-ESCAPE` 0 条（判据新增，pristine 全 21 组合为 0，M17 变异上 +127px 报红）。
 `SELF-CLIP` 那 2 条作废（0.1 末行），但它指着的元素有一个**真**缺陷：`刷新` 把两字标签折成两行，
 根因就是 `FONT-SWALLOW`。分档落定：C 的 7 条现在全部是"真缺陷（侧栏断点级）+ 记账已纠正"，
 D 的 2 条从"分不清"变成"1 假象 + 1 真缺陷换了名字"。
+
+**本轮代价最大的一条不是任何界面缺陷，是我自己把 M17 弄瞎了**：收窄 `SELF-CLIP` 之后当场跑变异才发现
+"少了一条判据"与"多了一条判据"都可能是零条。它现在写在 `verify_guard_mutations.mjs` 的 M17 注释里。
 
 本轮按边界**没动任何界面**（只改判据与测具）。下一步顺序：`font: inherit` 那一行删不删由你定
 （删 ⇒ §1 两列重签）；侧栏 35×30 那族要不要在 640 档给回宽度，也是界面改动，同样等你点头。
