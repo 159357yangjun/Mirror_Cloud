@@ -1860,10 +1860,19 @@ async function main() {
       byRouteTheme.get(k).push(r)
     }
     let identityFalse = 0
+    const unverifiedGroups = new Map()
     for (const [k, list] of [...byRouteTheme.entries()].sort()) {
       for (const r of list) {
         const uniq = new Set(r.keys).size
-        if (uniq !== r.measured) identityFalse++
+        if (uniq !== r.measured) {
+          identityFalse++
+          // Quarantined, not smoothed: the identity string is tag+class+text, and two runs on one
+          // page can share it. Making it injective would need a position, and a position shifts when
+          // anything above is added - which turns every real content change into a false diff and
+          // gets this gate muted inside a week. So a group whose runs cannot be told apart is one
+          // this sweep did NOT verify, and that refusal has to cost the run something.
+          unverifiedGroups.set(k, (unverifiedGroups.get(k) || 0) + 1)
+        }
       }
       const base = list[0]
       for (const o of list.slice(1)) {
@@ -1875,7 +1884,8 @@ async function main() {
         }
       }
     }
-    console.log(`DENOM_STABILITY combos=${rows.length} routeThemeGroups=${byRouteTheme.size} contentDifferences=${denomDrift.length} nonInjectiveIdentityReads=${identityFalse}`)
+    console.log(`DENOM_STABILITY combos=${rows.length} routeThemeGroups=${byRouteTheme.size} contentDifferences=${denomDrift.length} nonInjectiveIdentityReads=${identityFalse} unverifiedGroups=${unverifiedGroups.size}`)
+    for (const [k, n] of [...unverifiedGroups.entries()].sort()) denomFindings.push(`CONTRAST-DENOM-UNVERIFIED ${k}: ${n} combo(s) have runs the identity string cannot tell apart (distinct keys < measured runs), so this group's set equality was NOT established and it cannot count as verified`)
     if (denomDrift.length) {
       for (const d of denomDrift) denomFindings.push(`CONTRAST-DENOM ${d}`)
       console.log(`CONTRAST-DENOM ${denomDrift.length} route/theme group(s) disagree across wallpapers; a below=0 from this sweep is not a pass on those routes`)
