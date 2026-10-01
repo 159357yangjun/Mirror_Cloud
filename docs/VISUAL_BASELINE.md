@@ -236,7 +236,7 @@ B 的 5 项是 A 的 1/2/3/5/6 的缩写重述，**且编号不一致**（B 的�
 | 资源 | 5.26 | 6.18 | 5.23 | 31/31/31 |
 | 云端 | 5.26 | 6.18 | 5.23 | 38/38/38 |
 | 图库 | 5.26 | 6.18 | 5.23 | 18/18/18 |
-| 插件 | 5.09 | 5.95 | 5.09 | 26/28/26 |
+| 插件 | 5.09 | 6.18 | 5.09 | 29/29/29 |
 | 任务 | 5.26 | 6.18 | 5.23 | 17/17/17 |
 | 设置 | 5.26 | 6.18 | 5.23 | 37/37/37 |
 | 对话框 | 5.17 | 6.31 | 5.04 | 5/5/5 |
@@ -251,7 +251,7 @@ class/tag，新出现的按钮形状会落进 `ghost` 而被判读，不会不�
 | 控件类型 | mist | midnight | sakura | 判读控件数（每主题） |
 |---|---|---|---|---|
 | primary-fill | 20.16 | 20.16 | 20.16 | 12/12/12 |
-| danger-fill | 6.47 | 6.47 | 6.47 | 3/3/3 |
+| danger-fill | 6.47 | 6.47 | 7.5 | 3/3/3 |
 | subtle-fill | 6.83 | 6.95 | 6.83 | 27/27/27 |
 | field | 17.39 | 16.96 | 16.83 | 6/6/6 |
 | icon | 5.17 | 6.31 | 5.04 | 3/3/3 |
@@ -342,6 +342,32 @@ class/tag，新出现的按钮形状会落进 `ghost` 而被判读，不会不�
 这条作废记在 0.1 的第十行。它同时是"没红过我不当门"的反面教材：**红过一次、但红的是测具的门，
 比没红过更危险**——它给出的数字带着具体的元素、坐标和比值，看起来比谁都像证据。
 
+### 4.38 分母的单射性：把"隔离不判"换成"能判"（2026-10-01）
+
+4.36 留下的口子在这里补上。比值列投影之后，`DENOM_STABILITY` 仍每轮报
+`nonInjectiveIdentityReads=3 unverifiedGroups=3`（`云端|default`、`云端|midnight`、`云端|sakura`）：
+身份串 `kind|tag class前3段|text` 在云端页把 38 次测量压成 37 个键，那三组的集合等式**从未成立**，
+门按设计拒绝判它们（`CONTRAST-DENOM-UNVERIFIED`，进退码）。
+
+当时写在代码注释里的理由是"要单射就得带位置，而位置会随上方内容变化 ⇒ 每次真改动都变假差异 ⇒ 这扇门一周内会被关掉"。
+**那句把"位置"和"序号"混成一件事了**：现在带的是**同一基础键内的出现序号**（`#1`/`#2`），不是几何坐标——
+唯一元素永远是 `#1`，`#2` 只在页面上真的多出一次相同测量时才出现，所以它不随上方内容漂移。
+
+改动与两面证据：
+- `identityKeys()` 取代原内联拼串；`auditDenominators()` 把"隔离 + 多重集比对"抽成纯函数，让夹具能过**真谓词**
+  （照 `GEOMETRY_DRIFT selftest` 的房内先例，不另起一套）。
+- `DENOM_INJECTIVE selftest identityCases=4 denomCases=3 allAsExpected=1`，其中含**负面对照**：
+  喂一对重复键必须报 `identityFalse=2 / unverifiedGroups=1`（否则这扇门只是装饰）；
+  喂 `#1/#2` vs `#1` 必须报 `denomDrift=1`（否则"单射"只是把差异抹平）；单组合不得凭空造差异。
+  任一不符即 `HARNESS FAULT` + `finish(2)`，退码算得出来、不是打印出来的。
+- 本轮真读数：`DENOM_STABILITY combos=72 routeThemeGroups=24 contentDifferences=0 nonInjectiveIdentityReads=0 unverifiedGroups=0`；
+  `CONTRAST_GATE combos=72 measured=1917 below=0 docDrift=0 denom=0 drift=0 unresolved=0`，
+  `contrast-tier` 从 `failed=4` 变 `failed=0`（80s 级）。
+
+一句限定，别读成"云端页从此稳定"：**它现在是被真的判了**，判的结果是这一轮 72 组合里多重集两两相同。
+跨批次内容仍会漂（4.36 的 1929 vs 1902 那条结论没被这次改动推翻），漂的时候 `contentDifferences` 会报出来，
+而不是像以前那样先落进"未验"桶里当作没发生。
+
 ### 4.4 白名单只能签给"量到过的"面
 
 `theme-surfaces` 的白名单原有 5 条，本轮加了一条机器断言 **DEAD-EXEMPTION**：一条豁免如果这次跑没有任何
@@ -415,6 +441,61 @@ danger 撞 hex 是渲染事实（不是缺陷，是门的假阳性，需要的�
 修 `--accent-solid` 不需要动任何颜色：它唯一的消费规则（`styles.css:184`）是 midnight 作用域的，
 在 `:root` 补一份同值声明不改变任何主题的渲染结果。**本轮没做**，因为边界写着不碰颜色，
 留到颜色那一轮与断言接入 stage 同笔落地（复算式已写在 `verify_all.mjs` 的注释里）。
+
+
+
+### 5.2 颜色那一轮已落地（2026-10-01，含改前/改后渲染图）
+
+**改了什么**（三处，全在令牌层；`ConfirmDialog.tsx:53` 的 className 一个字没动）：
+
+1. `:root` 补 `--danger-solid: var(--color-red-600)`——与 §5.1 里 `--accent-solid` 完全同形的修法，不改变任何像素；
+2. sakura 块补自己的 danger 红：`--color-red-600: #a81330` **与** `--danger-solid: #a81330`（字与底一起走，
+   保住上面那条"亮色主题里 danger 只有一个颜色"的既有意图）；
+3. 原先挂在 midnight 作用域的两条 `.bg-red-600` / `.hover:bg-red-700:hover` 覆写，改成**无主题前缀**的同一条规则读 `var(--danger-solid)`。
+   **这两条主题专属补丁就是"两套亮色主题继承暗色那一份 hex"的机制来源**；去掉前缀后，底色由各自主题的令牌决定。
+
+**读数**（改前 → 改后，全部本轮实测；改前存档 `theme-surfaces-BEFORE.txt`，改后 `ts-round2.txt`）：
+
+```text
+theme-surfaces   frozen=8 offThemeUnwhitelisted=1  exit 1   ->  frozen=7 offThemeUnwhitelisted=0 whitelisted=7  exit 0   (186 面全判)
+token_policy     families=13 breaches=0            exit 0
+contrast-tier    measured=1917 below=0 docDrift=0 denom=0 drift=0 unresolved=0   exit 0
+```
+
+同一个页面、同一个对话框、只换 CSS 文件的两面像素（连接页 `getComputedStyle`）：
+sakura 下确认键 `rgb(185, 28, 28)` → `rgb(168, 19, 48)`，墨色始终 `rgb(255, 255, 255)`。
+
+**渲染证据**（`node scripts/verify_dialog_interactions.mjs visual --theme=sakura`；`--theme` 是本轮给 `visual` 模式新加的参数——
+外观证据必须能按主题渲，否则只动一套主题像素的改动拍出来前后一样）：
+
+| 文件 | bytes | sha256 |
+|---|---|---|
+| `danger-fill-2026-10-01-before-sakura.png` | 190031 | `833a8c392ccda4727f6ac2d6b5a622cc0b47e76ff5b3ae0521fc82912edbc792` |
+| `danger-fill-2026-10-01-after-sakura.png` | 190042 | `9a75ea3bc56174b9b2442c2c5a86af4d0b473cdd872c5435e701355993faa8ea` |
+
+两帧字节差 96487（同一视口、同一面、同一主题，只有底色不同）。
+
+**为什么不取 §5 里那条"更小的修法"**（候选 A：改 `:root --color-red-600` 让亮色不再撞 midnight 的 hex）：
+A 会同时移动 **34 处（15 个文件）**`text-red-600` 的字色与两个亮色主题下所有 `bg-red-600` 底色，
+把 default 主题也一起改掉；而 `.bg-red-600` / `.hover:bg-red-700` 的 TSX 消费点 grep 只有 **1 处**（`ConfirmDialog.tsx:53`）。
+最终取的是 **B 的机制 + A 只作用在 sakura**：default 与 midnight 逐字不变，sakura 字与底一起换成自己的红。
+
+**代价（一起记，不留到下一轮）**：口径一升，`danger` 族变成"`--danger-solid` 分主题 + `--danger` 只声明一次"
+⇒ `token_policy` 当场报混合族（`families=13 breaches=1`，exit 1）。**这个红不是误报**，它逼出的真问题是
+`--danger: #dc2626` 是一条**零消费者的死声明**（`grep -rn "var(--danger)" apps/desktop/src website examples` = 0 命中；
+全仓只剩它自己的声明与本文档的两处提及）。处置：删掉它，家族回到单成员、按 §5.1 口径合法（`breaches=0`）。
+同族另两个死令牌 `--success`、`--warning` 各自成单成员族、不违反口径，**本轮不顺手删**，只在此列名。
+
+**台账签字**（`--doc-write` 只重写标记块，散文不动；先红的原始输出存档 `contrast-tier-AFTER2.txt`）：
+
+- `| danger-fill | 6.47 | 6.47 | 6.47 | 3/3/3 |` → `| danger-fill | 6.47 | 6.47 | 7.5 | 3/3/3 |`——sakura 变好，分母未动。
+- `| 插件 | 5.09 | 5.95 | 5.09 | 26/28/26 |` → `| 插件 | 5.09 | 6.18 | 5.09 | 29/29/29 |`——midnight 变好，但**分母动了**（26/28/26 → 29/29/29）。
+  这一条**不记成本轮改色的功劳**：`--danger-solid` 不参与该面的测量；它的形状与 §4.36 那条 2.5s 轮询错误面板一致
+  （三档壁纸采到同一批行）。归因：**未证实的外因**，按"分母动了"如实登记，不写成改善。
+
+§5 与 §5.1 上面那张表和那些句子是当时的快照。现在的事实是：`--danger-solid` 三块齐全、`--danger` 已删、`accent` 家族合规。
+复算式：`node scripts/theme_token_census.mjs --verify` · `node scripts/verify_dialog_interactions.mjs theme-surfaces` ·
+`node scripts/verify_dialog_interactions.mjs contrast-tier --doc=docs/VISUAL_BASELINE.md`。
 
 
 

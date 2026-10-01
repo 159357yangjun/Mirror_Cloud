@@ -29,7 +29,6 @@
   --accent-soft: rgba(79, 70, 229, .1);
   --success: #059669;
   --warning: #d97706;
-  --danger: #dc2626;
   --radius-card: 24px;
   --radius-control: 12px;
   --shadow-card: 0 8px 30px rgba(15, 23, 42, .04);
@@ -51,12 +50,13 @@
      instrument's own wobble and would re-cross the line without anything changing in the app. */
   --color-slate-400: #4e5e73;
   --color-slate-500: #4a5768;
-  /* 33 call sites use text-red-600, most of them error copy sitting on the 38 bg-red-50 panels.
+  /* 34 call sites (15 files) use text-red-600, most of them error copy sitting on the 38 bg-red-50
+     panels.
      Tailwind v4's own red-600 is oklch(57.7% .245 27.3) = rgb(231,0,11), which measures 4.36:1 on
      that panel under a white wallpaper - the one pair in the app that sat under the 4.5:1 floor and
-     was never seen, because the sweep used to have an error toast over these rows. Set to the same
-     red the filled danger control already uses, so "danger" is one colour in the light themes
-     instead of two that differ by whether they are a fill or a label. */
+     was never seen, because the sweep used to have an error toast over these rows. "Danger" stays one
+     colour per light theme (label and fill move together); it no longer does that by sharing
+     midnight's hex, which is what made the fill read as theme-deaf to theme-surfaces. */
   --color-red-600: #b91c1c;
   /* --accent-solid existed only in the midnight block, which made the accent family inconsistent by
      declaration: --accent and --accent-soft follow the theme, --accent-solid did not. Declaring it
@@ -64,6 +64,11 @@
      (:root[data-theme="midnight"] .bg-indigo-600) is midnight-scoped - but it gives the token a
      meaning in every theme instead of one, which is what the family-consistency policy checks. */
   --accent-solid: var(--color-indigo-600);
+  /* The same hole one family over: --danger-solid was declared only inside the midnight block, so
+     the two light themes had no danger fill of their own and their bg-red-600 surfaces were pinned
+     to midnight's hex by accident rather than by a decision. Declaring it here changes no pixel
+     (--color-red-600 in :root is #b91c1c, the hex already painted). */
+  --danger-solid: var(--color-red-600);
 }
 
 :root[data-theme="midnight"] {
@@ -197,8 +202,11 @@
 :root[data-theme="midnight"] .text-slate-200 { color: #dde5f0; }
 :root[data-theme="midnight"] .text-slate-800 { color: var(--text-secondary); }
 :root[data-theme="midnight"] .bg-indigo-600 { background-color: var(--accent-solid); }
-:root[data-theme="midnight"] .bg-red-600,
-:root[data-theme="midnight"] .hover\:bg-red-700:hover { background-color: var(--danger-solid); }
+/* Unlayered and deliberately NOT theme-scoped: the danger fill reads whichever --danger-solid the
+   active theme paints, so the control follows the theme by construction instead of being patched
+   per theme (the midnight-scoped pair below was what made the light themes inherit midnight's hex). */
+.bg-red-600,
+.hover\:bg-red-700:hover { background-color: var(--danger-solid); }
 
 :root[data-theme="sakura"] {
   --app-bg: #fff8fb;
@@ -218,6 +226,14 @@
      palette, they clear 4.5:1 without touching the surface rungs. */
   --color-slate-400: #6d5765;
   --color-slate-500: #6b5260;
+  /* Sakura's own danger red, label and fill together. The palette already warms its greys and paints
+     its accent pink, so a danger control that stayed midnight's hex was the odd surface out; the
+     light-themes-keep-one-danger-colour rule above is preserved by moving BOTH rungs, not just the
+     fill. Direction of the text move is darker, so on the pale panels these sit on the ratio goes up;
+     that is a measurement claim, not a proof - contrast-tier is what checks it, and this round it
+     measured 1917 runs with below=0. */
+  --color-red-600: #a81330;
+  --danger-solid: #a81330;
 }
 
 * { box-sizing: border-box; }
