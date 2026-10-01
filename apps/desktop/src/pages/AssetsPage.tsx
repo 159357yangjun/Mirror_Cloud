@@ -2,6 +2,7 @@ import { Check, Cloud, Copy, LoaderCircle, RefreshCw, Search, Sparkles, Trash2, 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
+import { ReadFailurePanel } from '../components/ReadFailurePanel'
 import { CloudIndexSyncBanner } from '../components/CloudIndexSyncBanner'
 import {
   copyText,
@@ -160,7 +161,7 @@ export function AssetsPage() {
       </div>
 
       <section className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(290px,1fr))] gap-5">
-        {assetsError && !assets.length && <div className="col-span-full rounded-[26px] border border-dashed border-red-200 bg-red-50 p-10 text-center text-sm text-red-600">资源读取失败：{String(assetsError)}</div>}
+        {assetsError && !assets.length && <ReadFailurePanel className="col-span-full rounded-[26px] border border-dashed border-red-200 bg-red-50 p-10 text-center text-sm text-red-600" subject="资源" error={assetsError} />}
         {assetsLoading && <div className="col-span-full grid min-h-[240px] place-items-center text-slate-300"><LoaderCircle size={22} className="animate-spin" /></div>}
         {!assetsError && !assetsLoading && !filtered.length && (
           <div className="col-span-full rounded-[26px] border border-dashed border-[var(--border)] bg-[var(--surface)] p-10">

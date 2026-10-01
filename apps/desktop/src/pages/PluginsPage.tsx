@@ -3,6 +3,7 @@ import { Activity, Bot, CheckCircle2, ChevronDown, ChevronUp, Download, LoaderCi
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { aiPlanWorkflow, deletePlugin, getAiSettings, installMarketplacePlugin, listMarketplacePlugins, listPluginExecutionLogs, listPlugins, saveAiSettings, savePluginConfig, setPluginEnabled, setPluginHooks, setPluginPermissions } from '../lib/desktop'
 import { PageHeader } from '../components/PageHeader'
+import { ReadFailurePanel } from '../components/ReadFailurePanel'
 import type { AiSettings, PluginView } from '../types'
 import { notifyError } from '../store/useToastStore'
 import { confirmAction } from '../store/useConfirmStore'
@@ -114,7 +115,7 @@ export function PluginsPage() {
             />
           ))}
           {pluginsError && !installed.length && (
-            <div className="rounded-2xl border border-dashed border-red-200 bg-red-50 px-5 py-10 text-center text-sm text-red-600">插件列表读取失败：{String(pluginsError)}</div>
+            <ReadFailurePanel className="rounded-2xl border border-dashed border-red-200 bg-red-50 px-5 py-10 text-center text-sm text-red-600" subject="插件列表" error={pluginsError} />
           )}
           {pluginsLoading && <div className="grid min-h-[160px] place-items-center rounded-2xl bg-slate-50/60 text-slate-300"><LoaderCircle size={20} className="animate-spin" /></div>}
           {!pluginsError && !pluginsLoading && !filtered.length && (

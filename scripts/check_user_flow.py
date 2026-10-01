@@ -792,8 +792,8 @@ print(f'STRAY_GUARD suffixes={len(STRAY_SUFFIXES)} nameShapes={len(STRAY_NAME_PR
 baseline_img_rows = re.findall(
     r'^\| `(docs/baseline-images/[^`]+)` \| ([\d,]+) \| `([0-9a-f]{64})` \|$',
     change_log_text, re.M)
-require(len(baseline_img_rows) == 6,
-        f'the before/after-token-lift table lists six images (found {len(baseline_img_rows)})')
+require(len(baseline_img_rows) == 8,
+        f'the before/after evidence table lists eight images (found {len(baseline_img_rows)})')
 
 
 def baseline_img_check(rows):
@@ -817,7 +817,7 @@ require(not baseline_img_check(baseline_img_rows),
 # Guarded on a non-empty parse: the first version indexed rows[0] unconditionally and an
 # unparseable table crashed the whole checker with a traceback instead of reporting one FAIL -
 # which is worse than the bug it was meant to catch, because nothing else gets checked either.
-if len(baseline_img_rows) == 6:
+if len(baseline_img_rows) == 8:
     require(bool(baseline_img_check([(baseline_img_rows[0][0], baseline_img_rows[0][1], '0' * 64)])),
             'a changed sha256 in the table must be reported, otherwise the row is decoration')
     require(bool(baseline_img_check([(baseline_img_rows[0][0], '1', baseline_img_rows[0][2])])),
@@ -829,6 +829,25 @@ else:
 print(f'BASELINE_IMAGES registered={len(baseline_img_rows)} '
       f'verified={len(baseline_img_rows) - len(baseline_img_check(baseline_img_rows))} '
       'selftest=sha256:caught bytes:caught missing:caught')
+
+# A read-failure panel used to print the exception itself as its headline, in four pages
+# (`任务读取失败：TypeError: Cannot read properties of undefined (reading 'invoke')` on screen).
+# All four now route through one component that keeps the exception retrievable inside a <details>
+# instead of deleting it. Asserted in both directions: the banned shape must be gone, and each page
+# must actually use the component - otherwise a page could drop the component and the ban would stay
+# green while the raw text came back.
+FAILURE_PAGES = [
+    'apps/desktop/src/pages/PluginsPage.tsx',
+    'apps/desktop/src/pages/AssetsPage.tsx',
+    'apps/desktop/src/pages/StoragesPage.tsx',
+    'apps/desktop/src/pages/TasksPage.tsx',
+]
+_raw_headline = [p for p in FAILURE_PAGES if re.search(r'读取失败：\{String\(', text(p))]
+require(not _raw_headline, f'no read-failure panel prints String(error) as its headline (offenders: {", ".join(_raw_headline) or "none"})')
+_unused = [p for p in FAILURE_PAGES if '<ReadFailurePanel' not in text(p)]
+require(not _unused, f'all four read-failure panels render the shared component (missing: {", ".join(_unused) or "none"})')
+require('<details' in text('apps/desktop/src/components/ReadFailurePanel.tsx'),
+        'the raw exception stays retrievable on screen (folded in a details, not deleted)')
 
 failed = [label for ok, label in checks if not ok]
 # Print every failure, then a short tail of passing checks for context. Printing only the last 20

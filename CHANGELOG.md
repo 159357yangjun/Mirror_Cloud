@@ -184,7 +184,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 770 | 47,295 | `5c4466e2c831de43b533063e19127d934e0b70747e9eb3459570ce63d827b8b7` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
 | `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,897 | `d54d83cb52a1f8489efa4c59162ce8d44f96f34505d3396a5d4e59675460833b` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
-| `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 848 | 68,212 | `d3fd390d002625c0f86051acda3e8ba9dfc076580bfb7f4e61807ff77c95e8c0` | `USERFLOW_CHECKS total=222 failed=0`（落盘后；未提交时它必然报 10 条"HEAD blob 里没有这个文件"，见本节末） | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16 M19 M20` |
+| `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 867 | 69,552 | `7444852372b60a4fde9c0d9de4fb3a1fba91753302c0912ea7e0e7a76d40d9f4` | `USERFLOW_CHECKS total=222 failed=0`（落盘后；未提交时它必然报 10 条"HEAD blob 里没有这个文件"，见本节末） | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16 M19 M20` |
 | `scripts/theme_token_census.mjs`（主题 token 普查 + 口径断言：族内声明方式必须一致） | 148 | 8,483 | `4fd961d1cb1fea90d46a879c9db8c1561ddbcded15733bddfaecbcf4b82e2968` | `TOKEN_POLICY_SELFTEST cases=5 failed=0` + `TOKEN_POLICY families=13 breaches=0` | 立口径那一轮它当场咬到 `--accent-solid`（exit 1）；把 `--accent-solid` 从 :root 删掉再 `--verify` 就会重新红 |
 | `scripts/__fixtures__/hanging_stage.mjs`（永不结束的假 stage，自己再 spawn 一个孙进程：`timeout-demo` 的靶子） | 20 | 1,155 | `16d702ee2dda998f2e7538d739f82d61656b075194ada2cb87fa014a80cf509a` | 只被 `verify_all.mjs timeout-demo` 生成，没有任何门读它 | `node scripts/verify_all.mjs timeout-demo`（六例，含"不调 taskkill 也不留孤儿"的消融与"正常结束不得报成 timeout"的负对照） |
 | `scripts/verify_modes.mjs`（模式名单 + 锚定的 dispatch 正则，纯数据、零控制流；runner 与 shape 台账读同一份） | 36 | 1,449 | `0b250811609418512489e3de9ffb70c1dbe24c7adc2d0b6cfe8da739bc6c2f87` | 每次启动三方核对：声明↔已派发用法块已文档化（15 个模式） | `node scripts/verify_guard_mutations.mjs M24`（把启动拒绝拔掉的变异，必须仍红） |
@@ -1244,6 +1244,8 @@ FAIL CONTRAST-DENOM-UNVERIFIED 云端|default: 3 combo(s) have runs the identity
 | `docs/baseline-images/after-token-lift-2026-09-30-default-black-插件.png` | 85,249 | `02bcd5f836cd015efc9038038f85321862b05aff93fa807ff1f4ea8ccf0a6134` |
 | `docs/baseline-images/after-token-lift-2026-09-30-midnight-black-插件.png` | 82,139 | `3904359e73edfaad5532401ab0a8bf91227139411dee4f2053ad374f32638523` |
 | `docs/baseline-images/after-token-lift-2026-09-30-sakura-black-插件.png` | 86,094 | `fb572ca1651d42cb2c6afa672fd16f90c3323c5d26e1f7586c6ea63f0bcf076d` |
+| `docs/baseline-images/before-raw-error-2026-10-01-default-white-插件.png` | 85,837 | `9155d443b85efde767aef5c6b7551443ea0c91ba4e1d73e8c8db5d3f48888cee` |
+| `docs/baseline-images/after-folded-error-2026-10-01-default-white-插件.png` | 83,022 | `e99ee164d81276ec06bf004f9c7d8d24d378c37a76e66353421721e870f21a83` |
 
 六张（改前三张 + 改后三张）都含目标元素 `暂无插件执行记录`（`PluginsPage.tsx:136`，`text-slate-400` 压在 `bg-white` 面板上）。
 **这张表不是纪律，是断言**：`check_user_flow.py` 逐行比对磁盘上的字节数与 sha256，
@@ -1393,6 +1395,38 @@ docs/VISUAL_BASELINE.md                 805/806 行以 \r 结尾（node 侧读�
 
 `theme_face_inventory --selftest` 的 7 例**不在 `verify_all` 的 19 个 stage 里**（`check_user_flow.py` 也不跑它），
 所以它今天只在这条命令被手打时执行——登记了没人打，属于"录了没读"家族，一并具名。
+
+### 十八、四处"把异常当标题"改成折叠可取（产品侧，本轮唯一改动）
+
+`PluginsPage.tsx:117`、`AssetsPage.tsx:163`、`StoragesPage.tsx:206`、`TasksPage.tsx:58` 原先都是
+`X读取失败：{String(error)}`——浏览器里跑会看到
+`插件列表读取失败：TypeError: Cannot read properties of undefined (reading 'invoke')`，
+真机上则是 Rust 侧原文。**我第一版只列了三处，`TasksPage` 是 grep 剩下的形状时自己撞出来的第四处。**
+
+统一走 `components/ReadFailurePanel.tsx`：标题只说人话（`插件列表读取失败`），下面一行说明去哪儿看，
+原始异常收进 `<details><summary>原始错误</summary>`——**降级措辞但没删证据**，按你给的约束办。
+面板几何（圆角/内距/`col-span-*`）逐页原样传进去，配色沿用各页现有的 `text-red-600 on bg-red-50`，
+**没有新增主题反色面**（`bg-slate-950 + text-slate-200` 那种写法在 midnight 下是深压深，
+`SettingsPage.tsx:341` 已经有一份，我不再复制第二份）。
+
+改前/改后各一张已进仓并按哈希登记（`docs/baseline-images/before-raw-error-…` 85,837B /
+`after-folded-error-…` 83,022B，表从六行改到八行，`BASELINE_IMAGES registered=8 verified=8`）。
+渲染实测：面板在场时该组合 `rows=29`（26 + 标题 + 说明 + `原始错误` 摘要），折叠内的原文不进采样。
+`contrast-tier --routes=插件` 三主题九组合 `below=0`。
+
+**新断言先红后绿**（`check_user_flow.py`，253 项）：禁 `读取失败：{String(` 形状、要求四页**渲染**
+`<ReadFailurePanel`、要求组件里有 `<details>`。红演示是把 `PluginsPage` 那一行临时改回旧写法后跑出来的，
+逐字在 `%TEMP%\image-hosting-probes\2026-10-01\userflow-red-plant2.log`：
+
+```text
+FAIL no read-failure panel prints String(error) as its headline (offenders: apps/desktop/src/pages/PluginsPage.tsx)
+FAIL all four read-failure panels render the shared component (missing: apps/desktop/src/pages/PluginsPage.tsx)
+user-flow checker FAILED: 3 of 253 check(s)
+```
+
+**第一版断言被 import 糊过去了**（我写的是 `'ReadFailurePanel' in text(p)`，改回旧写法后那半边没红，
+因为 import 还在）——正是我自己记过的"符号存在≠接线"。收紧成找 `<ReadFailurePanel` 之后两条都红了。
+上面那个 `3 of 253` 里第三条是指纹表过期（我那时还在改这个文件），不是断言。
 
 ## 1.4.4 - Gallery Render Bound and Installer Publisher
 

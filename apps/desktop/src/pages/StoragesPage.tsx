@@ -18,6 +18,7 @@ import { confirmAction } from '../store/useConfirmStore'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
+import { ReadFailurePanel } from '../components/ReadFailurePanel'
 import { ProviderPickerDialog } from '../components/ProviderPickerDialog'
 import { StorageBrowserDialog } from '../components/StorageBrowserDialog'
 import { StorageGroupDialog } from '../components/StorageGroupDialog'
@@ -203,7 +204,7 @@ export function StoragesPage() {
           )
         })}
         {storagesError && !storages.length && (
-          <div className="col-span-3 rounded-[24px] border border-dashed border-red-200 bg-red-50 p-10 text-center text-sm text-red-600">云端列表读取失败：{String(storagesError)}</div>
+          <ReadFailurePanel className="col-span-3 rounded-[24px] border border-dashed border-red-200 bg-red-50 p-10 text-center text-sm text-red-600" subject="云端列表" error={storagesError} />
         )}
         {!isLoading && !storages.length && !storagesError && (
           <div className="col-span-3 rounded-[24px] border border-dashed border-slate-200 bg-white p-10 text-center">

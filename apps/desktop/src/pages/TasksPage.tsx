@@ -2,6 +2,7 @@ import { AlertCircle, CheckCircle2, CircleDashed, LoaderCircle, RotateCcw, Trian
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
+import { ReadFailurePanel } from '../components/ReadFailurePanel'
 import { cancelTask, isTauriRuntime, listTasks, retryTask } from '../lib/desktop'
 import type { TaskView } from '../types'
 
@@ -55,7 +56,7 @@ export function TasksPage() {
       <PageHeader title="任务" description="单云发布、多云发布、修复与远端删除都由 Rust 后台任务引擎执行。" />
       <section className="mt-8 overflow-hidden rounded-[24px] border border-slate-200/80 bg-white">
         {tasksLoading && <div className="grid min-h-[220px] place-items-center text-slate-300"><LoaderCircle size={22} className="animate-spin" /></div>}
-        {!tasksLoading && !tasks.length && (tasksError ? <div className="p-10 text-center text-sm text-red-600">任务读取失败：{String(tasksError)}</div> : <div className="p-10 text-center text-sm text-slate-400">暂无任务</div>)}
+        {!tasksLoading && !tasks.length && (tasksError ? <ReadFailurePanel className="p-10 text-center text-sm text-red-600" subject="任务" error={tasksError} /> : <div className="p-10 text-center text-sm text-slate-400">暂无任务</div>)}
         {tasks.map((task, index) => {
           const hasWarning = task.status === 'completed' && Boolean(task.error)
           const Icon =
