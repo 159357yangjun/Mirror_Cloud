@@ -358,6 +358,24 @@ window.__L = (function () {
     const h = Math.max(0, Math.min(r.bottom, box.bottom) - Math.max(r.top, box.top))
     return { lostX: Math.round((r.width - w) * 10) / 10, lostY: Math.round((r.height - h) * 10) / 10 }
   }
+  // How far right a glyph can actually paint: the viewport, tightened by every ancestor that truly
+  // clips (hidden/clip). A rail does not count - content reachable by scrolling it is not lost.
+  // This is deliberately NOT clipperForAxis: that helper stops at body and returns the nearest
+  // non-visible overflow, which for "what survives the clip chain" is the wrong question - the
+  // nearest clipper can be wider than the element, and then nothing is clipped at all.
+  const paintedRight = (el) => {
+    let limit = innerWidth
+    let n = el.parentElement
+    while (n && n.nodeType === 1) {
+      const cs = getComputedStyle(n)
+      if (cs.overflowX === 'hidden' || cs.overflowX === 'clip') {
+        const q = n.getBoundingClientRect()
+        limit = Math.min(limit, q.right - (parseFloat(cs.borderRightWidth) || 0))
+      }
+      n = n.parentElement
+    }
+    return limit
+  }
   return {
     geometry: (touchMin) => {
       const iw = innerWidth
@@ -378,6 +396,7 @@ window.__L = (function () {
         viewportOverflowPx: 0,
         offenders: [], clipped: [], clippedByAncestor: [], controlsCut: [], containersCut: [], smallTargets: [], brokenImages: [], focusables: 0,
         smallByKind: {}, rescuedByLabel: 0, overlaySmall: [], overlayInstances: 0, fontSwallowed: [],
+        textEscaped: [],
         railProof: { proven: 0, rails: 0, unreachable: [] },
       }
       const railCandidates = []
@@ -512,7 +531,8 @@ window.__L = (function () {
         // being judged is now a precondition, not an assumption.
         const clipsX = cs.overflowX !== 'visible'
         const clipsY = cs.overflowY !== 'visible'
-        const hDelta = clipsX ? Math.max(0, e.scrollWidth - e.clientWidth) : 0
+        const ownX = Math.max(0, e.scrollWidth - e.clientWidth)
+        const hDelta = clipsX ? ownX : 0
         let vDelta = 0
         let ink = null
         try {
@@ -524,6 +544,17 @@ window.__L = (function () {
             vDelta = Math.max(0, Math.round(Math.max(top - ink.top, ink.bottom - bottom)))
           }
         } catch (err) { vDelta = 0 }
+        if (!clipsX && ink && ink.right > r2.right + 1) {
+          // TEXT-ESCAPE. An unbreakable word wider than its own box is not cut - the glyphs paint
+          // past the edge, which is the 534cc15 shape (a 64-character hash in a 440px card once
+          // overflow-wrap is removed). Judged on the ink rect rather than scrollWidth minus
+          // clientWidth: the first version used the latter and caught nothing, because a box whose
+          // overflow is visible is not a scroll container, so its scrollWidth never grew.
+          // It gets its own record rather than being folded back into SELF-CLIP, which would put
+          // the false "4px of cut ink" reading right back.
+          const escaped = Math.max(0, Math.round(Math.min(ink.right, paintedRight(e)) - r2.right))
+          if (escaped > 1) out.textEscaped.push({ sel: sel(e), text: txt(e), excess: escaped, ownX, clientWidth: e.clientWidth, scrollWidth: e.scrollWidth })
+        }
         if (hDelta > 1 || vDelta > 1) {
           // The box arithmetic rides along with the finding. Whether a 4px vertical excursion is a
           // cut glyph or just half-leading is settled by line-height against the content height and
@@ -549,6 +580,10 @@ window.__L = (function () {
       const clippedTotal = out.clipped.length
       out.clipped = out.clipped.slice(0, 8)
       out.clippedTotal = clippedTotal
+      out.textEscaped.sort((a, b) => b.excess - a.excess)
+      out.textEscapedTotal = out.textEscaped.length
+      out.textEscapedAll = out.textEscaped.slice()
+      out.textEscaped = out.textEscaped.slice(0, 8)
       if (touchMin) {
         const nodes = Array.from(doc.querySelectorAll('button, a[href], input:not([type=hidden]), select, [role=button], [role=tab]'))
         out.focusables = nodes.filter((e) => vis(e)).length

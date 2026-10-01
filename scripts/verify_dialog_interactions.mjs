@@ -2372,6 +2372,31 @@ async function main() {
         noClipOf: (function () { const c = getComputedStyle(noClip); return c.overflowX + '/' + c.overflowY })(),
       };
       cutY.remove(); noClip.remove();
+      // TEXT-ESCAPE pair. The SELF-CLIP narrowing took the 534cc15 shape (a 64-character hash with
+      // overflow-wrap removed) down with it: that text is not cut, it paints past the card edge, and
+      // it needed its own criterion rather than a reverted false positive. The green half has to
+      // prove hand-off, not deletion - a run clipped by an ancestor must leave TEXT-ESCAPE and show
+      // up in the ancestor-clip family, never vanish from both.
+      const LONGX = 'LCTLescapeabcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz';
+      const esc = mkCtl('div', 'width:260px;overflow:visible;white-space:nowrap;font-size:12px');
+      esc.textContent = LONGX;
+      const escHost = mkCtl('div', 'width:200px;overflow:hidden');
+      const escClipped = mkCtl('div', 'width:260px;overflow:visible;white-space:nowrap;font-size:12px');
+      escClipped.textContent = 'LCTLesclip' + LONGX.slice(10);
+      escHost.appendChild(escClipped);
+      const gE0 = window.__L.geometry(0);
+      document.documentElement.appendChild(esc); document.documentElement.appendChild(escHost);
+      const gE1 = window.__L.geometry(0);
+      const escRec = (n) => gE1.textEscapedAll.filter((c) => c.text && c.text.indexOf(n) === 0);
+      probe.textEscape = {
+        caught: escRec('LCTLescape').length === 1 && escRec('LCTLescape')[0].excess > 1,
+        excess: escRec('LCTLescape').length ? escRec('LCTLescape')[0].excess : null,
+        clippedHandedOff: escRec('LCTLesclip').length === 0
+          && gE1.clippedByAncestor.some((c) => c.text && c.text.indexOf('LCTLesclip') === 0),
+        clippedStillReported: gE1.clippedByAncestorTotal > gE0.clippedByAncestorTotal,
+        dEscape: gE1.textEscapedTotal - gE0.textEscapedTotal,
+      };
+      esc.remove(); escHost.remove();
       // FONT-SWALLOW pair. The plant carries its own copy of the bug - an unlayered element rule that
       // outranks the utility layer - so this control keeps proving the mechanism after the app's own
       // reset is fixed, instead of freezing today's defect in place. The second plant declares the
@@ -2430,6 +2455,10 @@ async function main() {
     if (!control.fontChain.caught) bad.push(`FONT-SWALLOW counted ${control.fontChain.dTotal} control(s) for a plant pair that should move it by exactly 1 - the declared-versus-rendered check is not tracking its own input`)
     if (!control.fontChain.badIsSwallowed) bad.push(`FONT-SWALLOW plant is not a real swallow: the planted button rendered ${control.fontChain.gotBad}, same as its declared ${control.fontChain.refWant} - the control proves nothing`)
     if (!control.fontChain.goodAgrees) bad.push(`FONT-SWALLOW green half broken: the plant that declares text-xs and sets its size inline rendered ${control.fontChain.gotGood} while the utility itself measures ${control.fontChain.refWant} - the check would report controls that are behaving`)
+    if (!control.textEscape.caught) bad.push(`TEXT-ESCAPE missed a 260px nowrap run sitting in a chain that clips nowhere (excess ${control.textEscape.excess}px) - the criterion written to replace the false SELF-CLIP reading cannot see the shape it exists for`)
+    if (!control.textEscape.clippedHandedOff) bad.push('TEXT-ESCAPE did not hand off: the identical run inside an overflow:hidden ancestor either still counts as an escape, or has left both criteria')
+    if (!control.textEscape.clippedStillReported) bad.push('the clipped escape plant was reported by neither criterion - the exclusion deleted a defect instead of routing it to the ancestor-clip family')
+    if (control.textEscape.dEscape !== 1) bad.push(`TEXT-ESCAPE moved by ${control.textEscape.dEscape} for a plant pair that must move it by exactly 1 - one of the two halves is not doing what its name says`)
     // The divergence is the point, not a failure: the clip placement leaves the document-level
     // number untouched while the per-element one fires. Recorded so nobody re-merges them later.
     const docBlindToClip = control.clippedPlacement.caught && control.clippedPlacement.docOverflowPx === control.baselineDocOverflow
@@ -2443,6 +2472,7 @@ async function main() {
     console.log(`CONTROL-T touch -> 13px checkbox inside a 220x60 label excused=${control.touch.bigLabelRescued}; for=-associated label excused=${control.touch.forLabelRescued}; 13px checkbox inside an 18px label still RED=${control.touch.smallLabelCaught} (measured ${control.touch.smallLabelSize ? control.touch.smallLabelSize.join('x') : 'n/a'} = the label box, which is the element to fix); [role=status] button out of the page count=${control.touch.overlaySplitOut} and reported once rather than lost=${control.touch.overlayRecorded} (rescued delta=${control.touch.dRescued}, overlay instances delta=${control.touch.dOverlay})`)
     console.log(`CONTROL-G self-clip -> a 14px overflow:${control.selfClip.clipYOf} box cutting a 24px line is still reported=${control.selfClip.clipYCaught} (h/v delta ${JSON.stringify(control.selfClip.clipYDelta)}); a ${control.selfClip.noClipBoxH}px button whose ink box is ${control.selfClip.noClipInkH}px with overflow ${control.selfClip.noClipOf} is no longer reported=${control.selfClip.noClipIgnored} - nothing clips there, so nothing was cut`)
     console.log(`CONTROL-H font -> planted an unlayered element rule over a text-xs utility: swallowed plant renders ${control.fontChain.gotBad} against the utility's own ${control.fontChain.refWant} (reported=${control.fontChain.badIsSwallowed}), inline-sized plant renders ${control.fontChain.gotGood} (not reported=${control.fontChain.goodAgrees}), count moved by ${control.fontChain.dTotal} for a pair that must move it by 1`)
+    console.log(`CONTROL-I escape -> a 260px nowrap run in a chain that clips nowhere is reported=${control.textEscape.caught} (+${control.textEscape.excess}px past its own box); the same run inside an overflow:hidden ancestor left TEXT-ESCAPE and is reported by the ancestor-clip family instead=${control.textEscape.clippedHandedOff} (still reported there=${control.textEscape.clippedStillReported}); count moved by ${control.textEscape.dEscape} for a pair that must move it by 1`)
     console.log(`COVERAGE: the sr-only exclusion is proven only by the planted control. In a browser-only harness no plugin row renders, so the app's own .sr-only element (PluginsPage.tsx:175) is never reached - the branch works, the app path is unexercised.`)
     console.log(`COVERAGE: nodes=${control.nodes} textLeaves=${control.textLeaves} restored=${control.removedCleanly}`)
     if (bad.length) {
@@ -2582,6 +2612,7 @@ async function main() {
         }
         overlayProbeTotal += g.overlayInstances || 0
         if (g.rescuedByLabel || g.overlayInstances) entry.overlayExcluded = { rescuedByLabel: g.rescuedByLabel, overlayInstances: g.overlayInstances }
+        if (g.textEscapedTotal) emit(`TEXT-ESCAPE ${entry.tier} ${label}: ${g.textEscapedTotal} text run(s) wider than their own box with nothing clipping anywhere up the chain - the glyphs paint past the container edge - worst +${g.textEscaped[0].excess}px past a ${g.textEscaped[0].clientWidth}px box "${g.textEscaped[0].text}" at ${g.textEscaped[0].sel}`)
         if (g.fontSwallowTotal) {
           // One CSS rule, not one defect per route: the sidebar and every shared control reappear on
           // all seven, so seven lines would be summed by the next reader as seven problems. The
