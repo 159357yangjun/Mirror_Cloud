@@ -220,6 +220,27 @@ function coverageVerdict({ judged, dropped, ceiling = 0.25 }) {
   return { ok: !problems.length, problems, pct: coverage ? Math.round((judged / coverage) * 100) : 0 }
 }
 
+// The document projection's row comparison, lifted out of the sweep so gate-unit can plant tables at
+// it. It names WHICH row moved with both values, because "1 row(s) do not match" is not actionable -
+// the gate spent an entire run saying that about what turned out to be the pending colour red.
+const DOC_TABLE_COLS = ['面', 'mist', 'midnight', 'sakura']
+const stripCountCol = (text) => String(text).split('\n').map((l) => l.split('|').slice(0, -2).join('|'))
+function docTableDiff(haveText, wantText) {
+  const have = stripCountCol(haveText)
+  const want = stripCountCol(wantText)
+  const cells = (x) => String(x || '').split('|').slice(1, -1).map((c) => c.trim())
+  const rows = []
+  for (let i = 0; i < Math.max(have.length, want.length); i++) {
+    if (have[i] === want[i]) continue
+    if (want[i] === undefined) { rows.push(`the doc has a row this run did not produce: "${String(have[i] || '').trim()}"`); continue }
+    if (have[i] === undefined) { rows.push(`this run produced a row the doc lacks: "${String(want[i] || '').trim()}"`); continue }
+    const d = cells(have[i]), r = cells(want[i])
+    const moved = d.map((c, k) => (c !== r[k] ? `${r[0]} ${DOC_TABLE_COLS[k] || `col${k}`}: doc ${c} -> run ${r[k]}` : null)).filter(Boolean)
+    rows.push(moved.length ? moved.join('; ') : `row differs: doc "${String(have[i]).trim()}" vs run "${String(want[i]).trim()}"`)
+  }
+  return rows
+}
+
 if (MODE === 'gate-unit') {
   // No browser, no dev server: this exercises the gate predicate against readings that were really
   // observed on this machine, including the one that produced the bogus 186.796875px card width.
@@ -254,16 +275,39 @@ if (MODE === 'gate-unit') {
   ].map((c) => check(c.group === 'coverage' ? coverageVerdict : gateVerdict, c))
   const failed = results.filter((r) => !r.correct)
   const byGroup = (g) => results.filter((r) => r.group === g)
-  writeFileSync(`${OUT}/report-gate-unit.json`, JSON.stringify(results, null, 2))
+  // The doc projection gets its own group, on planted tables. It reports WHICH row moved now, and a
+  // claim like that needs both directions: a comparison that cannot see a changed ratio pins nothing,
+  // and one that cannot tell "the plugin panel had one fewer error banner this time" from a real
+  // regression will be muted within a week.
+  const T = (rows) => rows.join('\n')
+  const HEAD = '| 面 | mist | midnight | sakura | 判读文字数（每主题） |\n|---|---|---|---|---|'
+  const RUN = T([HEAD, '| 插件 | 4.74 | 4.92 | 4.93 | 28/28/28 |', '| 设置 | 4.74 | 4.92 | 4.93 | 37/37/37 |'])
+  const docTableCases = [
+    { name: 'doc equals run', diff: docTableDiff(RUN, RUN), expectRows: 0, expectToken: null },
+    { name: 'one ratio moved (the pending 插件 red)', diff: docTableDiff(T([HEAD, '| 插件 | 4.74 | 4.08 | 4.38 | 28/26/26 |', '| 设置 | 4.74 | 4.92 | 4.93 | 37/37/37 |']), RUN), expectRows: 1, expectToken: '插件 midnight: doc 4.08 -> run 4.92' },
+    { name: 'only the count column moved', diff: docTableDiff(T([HEAD, '| 插件 | 4.74 | 4.92 | 4.93 | 26/26/26 |', '| 设置 | 4.74 | 4.92 | 4.93 | 37/37/37 |']), RUN), expectRows: 0, expectToken: null },
+    { name: 'doc carries a row the run did not produce', diff: docTableDiff(T([HEAD, '| 插件 | 4.74 | 4.92 | 4.93 | 28/28/28 |', '| 设置 | 4.74 | 4.92 | 4.93 | 37/37/37 |', '| 幽灵 | 1.00 | 1.00 | 1.00 | 1/1/1 |']), RUN), expectRows: 1, expectToken: 'the doc has a row this run did not produce' },
+    { name: 'run produced a row the doc lacks', diff: docTableDiff(T([HEAD, '| 插件 | 4.74 | 4.92 | 4.93 | 28/28/28 |']), RUN), expectRows: 1, expectToken: 'this run produced a row the doc lacks' },
+  ]
+  const docResults = docTableCases.map((c) => ({
+    group: 'doc-table', name: c.name, expectedRows: c.expectRows, gotRows: c.diff.length,
+    correct: c.diff.length === c.expectRows && (!c.expectToken || c.diff.some((d) => d.includes(c.expectToken))),
+    detail: c.diff.join(' | ') || '(none)',
+  }))
+  writeFileSync(`${OUT}/report-gate-unit.json`, JSON.stringify({ results, docResults }, null, 2))
   for (const r of results) console.log(`${r.correct ? 'OK  ' : 'FAIL'} ${r.group}: ${r.name} -> ${r.gateRejected ? 'rejected: ' + r.problems.join('; ') : 'accepted'}`)
+  for (const r of docResults) console.log(`${r.correct ? 'OK  ' : 'FAIL'} doc-table: ${r.name} -> ${r.gotRows} row(s) reported${r.detail ? `: ${r.detail}` : ''}`)
   // One emitGate per predicate under test: a single tally would let the viewport cases carry a
   // coverage failure, which is the cross-group averaging this table exists to avoid. The rollup has
   // to be the LAST line - verify_all.mjs reads the last GATE_JSON of a stage and cross-checks its
   // name against the stage, so reordering these three would silently narrow what gets checked.
   for (const g of ['viewport', 'coverage']) emitGate(`gate-unit:${g}`, byGroup(g).length, byGroup(g).filter((r) => !r.correct).length)
-  emitGate('gate-unit', results.length, failed.length)
-  console.log(`gate unit check: ${results.length - failed.length}/${results.length} correct (viewport ${byGroup('viewport').length - byGroup('viewport').filter((r) => !r.correct).length}/${byGroup('viewport').length}, coverage ${byGroup('coverage').length - byGroup('coverage').filter((r) => !r.correct).length}/${byGroup('coverage').length}) | reports: ${OUT}`)
-  process.exit(failed.length ? 1 : 0)
+  emitGate('gate-unit:doc-table', docResults.length, docResults.filter((r) => !r.correct).length)
+  const all = [...results, ...docResults]
+  const allFailed = all.filter((r) => !r.correct)
+  emitGate('gate-unit', all.length, allFailed.length)
+  console.log(`gate unit check: ${all.length - allFailed.length}/${all.length} correct (viewport ${byGroup('viewport').length - byGroup('viewport').filter((r) => !r.correct).length}/${byGroup('viewport').length}, coverage ${byGroup('coverage').length - byGroup('coverage').filter((r) => !r.correct).length}/${byGroup('coverage').length}, doc-table ${docResults.length - docResults.filter((r) => !r.correct).length}/${docResults.length}) | reports: ${OUT}`)
+  process.exit(allFailed.length ? 1 : 0)
 }
 
 
@@ -1802,21 +1846,20 @@ async function main() {
         // time", and in a browser-only harness which error banners exist is content, not timing. The
         // worst-ratio columns are what this section is about and they did not move, so the count
         // column prints for humans and is dropped from the comparison.
-        const stripCount = (text) => text.split('\n').map((l) => l.split('|').slice(0, -2).join('|'))
-        const wantLines = stripCount(want)
-        const haveLines = stripCount(have)
-        const diff = wantLines.filter((line, i) => haveLines[i] !== line).length
+        const wantLines = stripCountCol(want)
+        const haveLines = stripCountCol(have)
+        const rowDiff = docTableDiff(have, want)
         // Both directions, or "ignore one column" is just a quieter gate:
         //  - a changed RATIO must still be reported (the thing this table exists to pin),
         //  - a changed COUNT alone must not be (the drift this run is proving is content, not defect).
         const probe = wantLines.slice()
         probe[probe.length - 1] = probe[probe.length - 1].replace(/(\d+\.\d+)/, '1.00')
-        const ratioCaught = probe.filter((l, i) => stripCount(want)[i] !== l).length > 0
-        const countIgnored = stripCount(want).join('\n') === stripCount(want.replace(/(\| )\d+\/\d+\/\d+( \|)$/, '$1999/999/999$2')).join('\n')
+        const ratioCaught = probe.filter((l, i) => stripCountCol(want)[i] !== l).length > 0
+        const countIgnored = stripCountCol(want).join('\n') === stripCountCol(want.replace(/(\| )\d+\/\d+\/\d+( \|)$/, '$1999/999/999$2')).join('\n')
         if (!ratioCaught || !countIgnored) {
           docDrift.push(`${tag} DOC-TABLE SELF-TEST FAILED in ${docPath}'s comparison: ratioCaught=${ratioCaught} countIgnored=${countIgnored} - a projection that cannot see a changed ratio is not pinning anything, and one that still sees a changed count did not drop the column.`)
         }
-        if (diff) docDrift.push(`${tag} ${diff} row(s) in ${docPath} do not match this run - the table was typed, not generated. Re-run: node scripts/verify_dialog_interactions.mjs contrast-tier --doc=${docPath} --doc-write`)
+        if (rowDiff.length) docDrift.push(`${tag} ${rowDiff.length} row(s) in ${docPath} do not match this run: ${rowDiff.slice(0, 4).join(' | ')}${rowDiff.length > 4 ? ` (+${rowDiff.length - 4} more)` : ''}. --doc-write regenerates it, but only sign numbers you mean to keep: if the run is worse than the doc, regenerating makes the regression the baseline.`)
       }
       console.log(`${docDrift.some((f) => f.startsWith('CONTRAST_')) ? 'DOC-TABLE mismatch' : 'DOC-TABLE ok'} for ${docPath}`)
     }
