@@ -1197,6 +1197,11 @@ async function main() {
     // amplitude is that element's own and not borrowed from whoever happens to be worst.
     const watchNeedles = opt('watch', '') ? opt('watch', '').split(',').map((s) => s.trim()).filter(Boolean) : []
     const watchSeen = new Map()
+    // What is actually stacked at a pixel. It used to be fetched only for the first three FAILING
+    // runs, which makes it a field that exists in the artifact and is empty in every passing batch -
+    // so the one question it answers ("is this paint or is this position") was unanswerable exactly
+    // when the numbers looked fine. Now it is a shared helper, used by failures and by watch rows.
+    const paintChainAt = (x, y) => evaluate(`(function(){const h=document.elementFromPoint(${x},${y});const chain=[];let n=h;for(let i=0;i<6&&n;i++){const cs=getComputedStyle(n);chain.push(n.tagName.toLowerCase()+(typeof n.className==='string'&&n.className?'.'+n.className.trim().split(/\\s+/).slice(0,2).join('.'):'')+'{bg:'+cs.backgroundColor+',img:'+(cs.backgroundImage==='none'?'-':cs.backgroundImage.slice(0,28))+'}');n=n.parentElement}return chain.join(' < ')})()`)
     // The sweep's own wall clock, split by phase. Without this, "make the gate faster" can only be
     // answered by guessing, and the guess is usually wrong about which half costs anything.
     const cost = { nav: 0, quiet: 0, prep: 0, collect: 0, fixtures: 0, shot: 0, sample: 0 }
@@ -1738,9 +1743,7 @@ async function main() {
           const below = sampled.filter((s) => s.ratio !== null && s.ratio < s.threshold)
           // When a row fails, say what is actually stacked under it. Guessing at a colour from its
           // rgb triple is how I spent three rounds attributing this to chips, tiles and rounding.
-          for (const b of below.slice(0, 3)) {
-            b.under = await evaluate(`(function(){const h=document.elementFromPoint(${b.x},${b.y});const chain=[];let n=h;for(let i=0;i<6&&n;i++){const cs=getComputedStyle(n);chain.push(n.tagName.toLowerCase()+(typeof n.className==='string'&&n.className?'.'+n.className.trim().split(/\\s+/).slice(0,2).join('.'):'')+'{bg:'+cs.backgroundColor+',img:'+(cs.backgroundImage==='none'?'-':cs.backgroundImage.slice(0,28))+'}');n=n.parentElement}return chain.join(' < ')})()`)
-          }
+          for (const b of below.slice(0, 3)) b.under = await paintChainAt(b.x, b.y)
           const unresolved = sampled.filter((s) => s.ratio === null)
           const worst = sampled.filter((s) => s.ratio !== null).sort((a, b) => a.ratio - b.ratio)[0]
           // A colour the tool cannot parse is not a row that passed: it is a row that was never
@@ -1789,6 +1792,7 @@ async function main() {
               ink: Array.isArray(h.ink) ? JSON.stringify(h.ink) : String(h.ink || ''),
               hit: String(h.hit || ''),
               chain: String(h.under || '').split(' < ').slice(0, 3).map((s) => s.split('{')[0].trim()).join('<'),
+              under: await paintChainAt(h.x, h.y),
             })
           }
           if (below.length) failures.push(`CONTRAST ${themeName}/${wallName}/${label}: ${below.length}/${sampled.length} readable runs below their threshold - worst ${worst.ratio}:1 (need ${worst.threshold}) "${worst.text}" ${worst.size}px ${worst.bold ? 'bold' : 'regular'} fg rgb(${worst.fg}) on sampled rgb(${worst.bg})`)

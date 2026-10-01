@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-10-01T05:00:17",
-    "head": "2677687e75bc7d088afd11d0c59e44e540125d8b",
-    "reason": "eighteenth signing: --watch rows now carry box/ink/paint-owner/ancestor-chain and are archived into contrast-tier.json, so a cross-batch claim about one element is recomputable rather than remembered"
+    "takenAt": "2026-10-01T05:28:32",
+    "head": "94c86aa55b364cb9bee6bbfa4c6f374023aa779c",
+    "reason": "nineteenth signing: paintChainAt extracted and now also fetched for watch rows, so the ancestor paint stack exists for passing readings instead of only the first three failures"
   },
   "files": [
     {
@@ -22,8 +22,8 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 3166,
-      "bytes": 253340,
+      "lines": 3170,
+      "bytes": 256990,
       "families": {
         "failures.push": 15,
         "emitGate": 12,
@@ -92,8 +92,8 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 4914,
-    "bytes": 368873,
+    "lines": 4918,
+    "bytes": 372523,
     "families": {
       "failures.push": 16,
       "emitGate": 12,
