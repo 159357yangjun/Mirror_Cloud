@@ -535,6 +535,23 @@ for guarded in ['scripts/verify_probes.mjs', 'scripts/verify_dialog_interactions
         hits = template_comment_backticks(path.read_text(encoding='utf-8'))
         require(not hits, f'{guarded} has no backtick inside a comment that sits in a transported template (found on lines {hits[:6]})')
 
+# The layout probe compares a control's declared text-* utility against its rendered font-size, and
+# reads it at ONE viewport (640). That is only a complete answer while no font size in the app
+# depends on width or on a pointer state - a sm:text-xs would make the other two tiers unmeasured
+# rather than measured-and-clean. This is the "a rule the code happens to follow today" case the
+# file exists for: assert it, so the single-tier reading stays a reading.
+RESPONSIVE_FONT = re.compile(r'\b(?:sm|md|lg|xl|2xl|hover|focus|focus-visible|active|group-hover):text-(?:xs|sm|base|lg|xl)\b')
+responsive_font_defs = RESPONSIVE_FONT.findall('x = "hover:text-xs"')
+require(len(responsive_font_defs) == 1, 'the responsive-font detector sees a planted hover:text-xs')
+require(not RESPONSIVE_FONT.findall('x = "text-xs hover:text-red-600"'),
+        'the responsive-font detector does not fire on a colour utility (text-red-600 is not a size)')
+responsive_hits = sorted({f"{rel}:{RESPONSIVE_FONT.search(text(rel)).group(0)}"
+                          for rel in sorted(tracked_files())
+                          if rel.endswith('.tsx') and RESPONSIVE_FONT.search(text(rel))})
+require(not responsive_hits,
+        f'no responsive or state-dependent font-size utility exists in the desktop source, because '
+        f'the rendered-size check reads one viewport only (found {responsive_hits[:8]})')
+
 # The probe module was cut out of the harness so the harness reads as control flow. That only
 # holds if the extracted file stays inert: three string exports and nothing that can run. If it
 # ever grows logic, the split has moved behaviour rather than text, and the harness's own
