@@ -179,7 +179,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
 | `scripts/verify_all.mjs` | 351 | 25,424 | `538d75d3f61b94fe33d2563200b59292470bc2938ef9db30a69976ffad301ebf` | 18 stages：七道静态守卫 + 两份台账（`theme_face_inventory`、`verify_shape`）+ 七个测具模式（新增 `contrast-tier`、`theme-surfaces`）+ `red-demo` + 变异套件；`layout` 仍不接入，原因见其注释 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行）；`node scripts/verify_all.mjs selftest`（往 stage 表里粘一行重复名字，必须被点名） |
-| `scripts/verify_dialog_interactions.mjs` | 3044 | 241,970 | `e5266e25bfeb55481980946158fa36d95860bb83ad6ab2df9f78311e97ec5bfe` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
+| `scripts/verify_dialog_interactions.mjs` | 3100 | 246,677 | `6364bde26b1375c33e113b3cb0e7eb5e8ef2ad8494b7eab14da221f2622ec9f9` | `gate-unit` 6/6；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18` |
 | `scripts/verify_guard_mutations.mjs` | 294 | 23,825 | `68ec6d88b27b31e9f3967f9ba84918a94537d674fac29ce686738baccd16976a` | 24 个变异（M1–M24），每个都必须被它指定的那台 oracle 抓到；本轮 M18/M19/M21/M22/M23/M24 的逐条读数见下面"本轮末次运行读数"一节 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
 | `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 770 | 47,295 | `5c4466e2c831de43b533063e19127d934e0b70747e9eb3459570ce63d827b8b7` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
@@ -188,8 +188,8 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | `scripts/theme_token_census.mjs`（主题 token 普查 + 口径断言：族内声明方式必须一致） | 148 | 8,483 | `4fd961d1cb1fea90d46a879c9db8c1561ddbcded15733bddfaecbcf4b82e2968` | `TOKEN_POLICY_SELFTEST cases=5 failed=0` + `TOKEN_POLICY families=13 breaches=0` | 立口径那一轮它当场咬到 `--accent-solid`（exit 1）；把 `--accent-solid` 从 :root 删掉再 `--verify` 就会重新红 |
 | `scripts/__fixtures__/hanging_stage.mjs`（永不结束的假 stage，自己再 spawn 一个孙进程：`timeout-demo` 的靶子） | 20 | 1,155 | `16d702ee2dda998f2e7538d739f82d61656b075194ada2cb87fa014a80cf509a` | 只被 `verify_all.mjs timeout-demo` 生成，没有任何门读它 | `node scripts/verify_all.mjs timeout-demo`（六例，含"不调 taskkill 也不留孤儿"的消融与"正常结束不得报成 timeout"的负对照） |
 | `scripts/verify_modes.mjs`（模式名单 + 锚定的 dispatch 正则，纯数据、零控制流；runner 与 shape 台账读同一份） | 36 | 1,449 | `0b250811609418512489e3de9ffb70c1dbe24c7adc2d0b6cfe8da739bc6c2f87` | 每次启动三方核对：声明↔已派发用法块已文档化（15 个模式） | `node scripts/verify_guard_mutations.mjs M24`（把启动拒绝拔掉的变异，必须仍红） |
-| `scripts/verify_shape.mjs`（拆分对账台账：模式集合双向差、总行/字节、六族决策点数、以及"拆出去的探针是否仍逐字节等于拆之前"） | 273 | 15,745 | `7ee753466cae22ed1c4176e07f248227187c7265abfdb49c7a89d02053a4f8c7` | `SHAPE_SELFTEST cases=6 failed=0` + `SPLIT_SHAPE OK checked=17 failed=0` | 它自己先跑 6 例植入式夹具（改一个字节、删一个模式、把 extraction 弄瞎），任一抓不到就 exit 2；`--snapshot` 无 `--reason` 直接拒绝 |
-| `scripts/verify_shape.baseline.json`（上一行那本台账**签过的基线**：文件清单、总行/字节、六族决策点数、模式集合、extraction 长度与 `--snapshot --reason` 的原文） | 143 | 3,167 | `bfdba2376304897c121fa4d1432437c0eede2c8190fccc97f78dcf5f5d7cb8e4` | `SPLIT_SHAPE OK checked=17 failed=0`（它变了而代码没变 ⇒ 要么有人重签，要么有人偷改） | 它自己不会报红，是 `verify_shape.mjs --verify` 报红；本轮把它纳入指纹表，是因为"改基线"这件事此前只存在于 JSON 被碰过这一种痕迹里 |
+| `scripts/verify_shape.mjs`（拆分对账台账：模式集合双向差、总行/字节、六族决策点数、以及"拆出去的探针是否仍逐字节等于拆之前"） | 292 | 17,246 | `b2e4824ca146f6858f6d0782efaa88b91350f53c07c2bfe95881e90fbb729559` | `SHAPE_SELFTEST cases=6 failed=0` + `SPLIT_SHAPE OK checked=17 failed=0` | 它自己先跑 6 例植入式夹具（改一个字节、删一个模式、把 extraction 弄瞎），任一抓不到就 exit 2；`--snapshot` 无 `--reason` 直接拒绝 |
+| `scripts/verify_shape.baseline.json`（上一行那本台账**签过的基线**：文件清单、总行/字节、六族决策点数、模式集合、extraction 长度与 `--snapshot --reason` 的原文） | 143 | 3,108 | `93b89b19e01602c0ca0ff918f7a2072f58f9f1e15e353016bd5aa5ada0cd405c` | `SPLIT_SHAPE OK checked=17 failed=0`（它变了而代码没变 ⇒ 要么有人重签，要么有人偷改） | 它自己不会报红，是 `verify_shape.mjs --verify` 报红；本轮把它纳入指纹表，是因为"改基线"这件事此前只存在于 JSON 被碰过这一种痕迹里 |
 | `scripts/theme_face_inventory.mjs`（逐面三档清单的生成器，`docs/VISUAL_BASELINE.md` 4.1 那张表由它核对） | 173 | 9,327 | `3f4ca60138cdaa82b528894b402c3652595e9a57f1154ebc565ce05eda397396` | `THEME_FACE_VERIFY faces=23 docLines=25 mismatch=0` | `node scripts/theme_face_inventory.mjs --selftest`（4 例：自己的输出干净、改一个数字恰好报 1 行、截断要报、行号要点对；抓不到 exit 2） |
 
 **这张表现在是断言，不是纪律**：`check_user_flow.py` 解析上面每一行，对每个文件重算 `git show HEAD:<path>` 的行数/字节/sha256 并逐项比对，还断言"表里的行集合 == 磁盘上成员集合"，成员由四条规则导出而不是由名字导出：`scripts/verify_*.mjs`、`scripts/__fixtures__/*.mjs`、`verify_all.mjs` 里被当作 stage 引用的 `scripts/*.mjs`、以及 `scripts/*.baseline.json`（外加 `check_user_flow.py` 自己）。所以：新加一个测具忘了上表 → 红；改了测具忘了更新表 → 红；哈希对不上 → 红，并附一句"该文件另有未提交改动"。上一版这张表就是**手写漂移了一笔提交**（记 965 行 / `9341e4ba…`，实际 1119 行 / `d9572a31…`），而它上面那句"改完必须回来更新"正是被漂移的那句——所以规则本身不解决问题，断言才解决。`.baseline.json` 这一类是本轮补的：`verify_shape.baseline.json` 早就在仓里、早就被 `--snapshot` 重签过十次，而指纹表按名字匹配 `.mjs` 一直没看见它——**门禁自己的输入清单漏了门禁签过的那张纸**。
@@ -1126,9 +1126,52 @@ FAIL CONTRAST_FACE_TABLE 1 row(s) ... : 插件 mist: doc 4.74 -> run 4.41;
 复原在位：    railDelta=0, proven_without=4 === proven_with=4，RAIL-CONTROL 零故障
 ```
 
-**顺带发现、本轮没动**：夹具存的 `probe.unreachable` 是**按靶子文本过滤后**的数组，而 `total` 是过滤前的
-计数——这一面 `total=2` 而数组里只有 1 条，所以 artifact 里的 `total` 可以大于文件里看得见的内容。
-默认窗口（非任何被测档）下那第 2 条不可达元素是谁，没查。
+**上一轮"只报不改"的那条，本轮改了**：夹具存的 `probe.unreachable` 是按靶子文本过滤后的数组，
+而 `total` 是过滤前的计数（`total=2` 而文件里只有 1 条）。现在拆成 `plantCount` / `pageOthers` /
+`total` 三个数，断言 `total === plantCount + pageOthers.length`，并把非靶子那几条**原样印出来**。
+
+### 九、"骑在 4.5 上、分批漂"是我算错了，真因是分母会动
+
+我上一轮手算 `#5b6b80` 压 `#e2e8f0` 得 4.51，据此说这三条红"本来能过、被合成拉到 4.0x"。
+**4.51 是错的，真值 4.410**（他独立重算推翻）。而且 fg/bg 逐字等于声明的不透明 token
+（`rgb(43,58,82)` 就是 `#2b3a52`），掺了壁纸 alpha 的像素不可能还落在 token 上 ⇒
+**三档本来就全低于 4.5，没有"被拉下来"这回事**。
+
+推翻那句错话之后，真问题浮出来：**`checked=1902 failed=0` 那一批不是"硬币另一面"，是分母会动。**
+
+| 证据 | 读数 |
+| --- | --- |
+| 同一次跑内、同一路由同一主题、只换壁纸，测到的**内容**就不一样 | 批次 A `插件 default` = none 26 / black 28 / white 28；批次 B = 26 / 26 / 28 |
+| 动的是哪两个 run（逐元素 diff，不是只报两个数） | `div.mt-0.5.text-xs.text-indigo-700` "配置 OpenAI-compatible…" 与 `div.rounded-2xl.border.border-dashed` "插件列表读取失败：TypeError…" |
+| 根因 | `PluginsPage.tsx:18` 的 `plugin-execution-logs` 是 **`refetchInterval: 2500` 轮询查询**；哪几个组合恰好拍在"查询已失败"的时刻，就多带那两行 |
+| 我那个"空状态字串"的猜测 | **元素猜对、机制猜错**：`暂无插件执行记录` 72 个组合全在（它就是那条红的元素），出现/消失的是它旁边的**错误面板**，而错误面板改变了它背后被采到的漆 |
+
+⇒ 新判据 `CONTRAST-DENOM`：同一 batch 内、同一路由同一主题的三个壁纸组合，测到集合必须相同，
+不同就报红并点名；它在 `CONTRAST_TALLY` 里占**自己一格**（`below + docDrift + denom = stopping`），
+不跟"低于阈值的行数"混。今天当场就红：`contentDifferences=4`。
+
+**同时自曝一个我自己的量具缺陷**：我给"逐元素身份"造的串（tag+class+text）**不是单射**——
+`云端` 38 个 run 只有 37 个不同身份。第一版用 Set 比，把这件事藏成了"两边各 37 条、恒等式不成立"。
+现在改用多重集比，并印 `nonInjectiveIdentityReads=9`，**不拿 Set 抹平**。
+
+### 十、"改了 baseline 会红"这句，第一次演示是失败的
+
+他要我当场演示指纹表纳管 `.baseline.json` 之后真的会红。**第一次翻一个字节 ⇒ 门是红了，
+但红的是我自己未提交的代码增长，我翻的那个字节根本没产生信号。** 查下去：`verify_shape.mjs`
+的 `problems()` 只比 `totals` 与六族总数，**`baseline.files[]` 每行的 lines/bytes/families 记了
+却从来没比过**——所以"这个文件被指纹了"这句话，除聚合数以外对每个字段都是假的。
+
+补上后（每文件 lines/bytes/六族 + 文件集合双向），两面演示留档：
+
+```text
+翻 files[1].lines 一个字节（totals 不动）：
+  SPLIT_SHAPE DRIFT checked=65 failed=1
+    MISMATCH scripts/verify_dialog_interactions.mjs lines: 3101 (expect 3102)     EXIT=1
+恢复：SPLIT_SHAPE OK checked=65 failed=0                                          EXIT=0
+自证 8/8，新增两例就是"只改每文件行、聚合全对"与"只改每文件某族计数"，各须恰好报 1
+```
+
+**这一条现在才算占功。** 上一轮我写"成员按形状导出"时它并不成立。
 
 ## 1.4.4 - Gallery Render Bound and Installer Publisher
 
