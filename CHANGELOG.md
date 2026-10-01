@@ -1590,6 +1590,56 @@ completed/success @2026-10-01T12:42:38Z
 
 本轮三份原始产物落盘：`image-hosting-probes/2026-10-01/ci_run.json`、`ci_jobs.json`、`ci_art.json`。
 
+### 5. 盯包的推进器进了仓：`scripts/watch_ci.mjs`（那把半瞎的已删）
+
+**位置按仓里的约定来，不自创**：`scripts/` 下**没有任何 `.sh`**（实测 9 个 `.mjs` / 8 个 `.py` / 4 个 `.ps1`），
+运维件放 `scripts/` 并由本文件引用（`release.ps1`、`fingerprint_rows.mjs` 同此路）⇒ 它是 `.mjs`，
+依赖只有 `node:fs` + `node:path` + 全局 `fetch`，**零第三方、无 token、无代理**。
+
+**三条硬规矩，每条对应本轮真翻过的车**：
+
+1. 每行必须带上**本轮真解析出来的** `status=` / `conclusion=` / `updated=` 字段本身，不是只有 `http=200`
+   —— `http=200` 只证明传输，不证明解析；
+2. **非 200 是"瞎"，不是"没有"**：立刻停、退 2。（上一版把配额耗尽的 403 落进"查无此项"分支，
+   于是把已经失败的包读成"进行中"，还连着读了 31 分钟。）
+3. **预算关不掉**：`--polls` 默认 20，`0` / 负数 / `NaN` / `Infinity` 一律拒绝并退 2。
+
+**两面夹具**（`node scripts/watch_ci.mjs --selftest`，不联网）：`WATCH_CI_SELFTEST cases=7 failed=0`，
+其中 4 条是负向（缺 conclusion、HTML 冒充 200、`polls=0`、`polls=Infinity`）。
+**夹具第一轮就咬出我自己两处 bug**，这正是它存在的理由：
+
+- 解析器原先要求 `conclusion` 是非空字符串，而 GitHub 在 `in_progress` 期间它就是 `null`
+  ⇒ 监视器会在第一次未终态时退出，**等于根本不能盯**。改成：只有 `status=completed` 时 `conclusion` 必须是字符串，
+  未终态印 `-`；这条用例永久留在夹具里（`an in_progress payload is NOT terminal`）。
+- 负例的**退码是 127 而不是 2**：Windows 上 `process.exit()` 撞在未关闭完的 fetch 句柄上会触发 libuv 断言
+  （`Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c`）。**退码就是契约**，
+  所以全文不再调用 `process.exit`，改为 `main()` 返回码 + `process.exitCode`。
+
+**runner 级两面，原文归档**（`image-hosting-probes/2026-10-01/watch-{selftest,positive,neg-path,neg-404}.txt`）：
+
+```text
+$ node scripts/watch_ci.mjs --run 36863157166 --polls 1                                rc=0
+POLL pass=1 12:09:44 http=200 quota_remaining=45 run=36863157166 status=completed conclusion=success updated=2026-10-01T12:42:38Z archived=...\watch_ci_36863157166_pass1.json
+TERMINAL pass=1 12:09:44 run=36863157166 completed/success updated=2026-10-01T12:42:38Z
+
+$ node scripts/watch_ci.mjs --run 36863157166 --polls 20 --dir <某个普通文件>/nope      rc=2
+POLL pass=1 12:09:45 http=200 run=36863157166 :: HARNESS FAULT - ENOTDIR: not a directory, mkdir '...\ci_run.json\nope'; the transport worked and the reading did not, which is exactly the shape that produced a false "in progress" before. Stopping.
+
+$ node scripts/watch_ci.mjs --run 999999999999 --polls 20                               rc=2
+POLL pass=1 12:09:46 http=404 run=999999999999 :: BLIND - a non-200 is not "the run disappeared"; stopping rather than polling on.
+```
+
+两条负例都在 **pass=1 就停**；旧版是刷满 20 行 `http=200` 再按预算退出、且退码 0。
+
+**覆盖关系说白**：`watch_ci.mjs` **不在指纹表的成员规则里**（成员由 `scripts/verify_*.mjs`、`__fixtures__/*.mjs`、
+被 stage 引用的 `scripts/*.mjs`、`*.baseline.json` 四条规则导出）。这不是漏，是实测确认的归属：
+`USERFLOW_CHECKS total=253 failed=0` 与 `SPLIT_SHAPE OK checked=65 failed=0` 都不含它。
+它的牙来自**自己文件里的 7 条夹具**，与 `release.ps1` 同属"自带夹具的运维件"，不靠台账背书。
+
+**被删的那把**：`Documents\Qoder\2026-10-01\7098e13a\watch-ci-dev.sh`（1473 B，08:39，从未入库）。
+删除前的引用普查全部为空：`git log --all -- '*watch-ci-dev*'` 无、仓内 ripgrep 无命中、
+会话目录 grep 无、`image-hosting-probes` 目录 grep 无。取代它的记录 = 本文件第 4 节那段推进器缺陷 + 本节这件仓内脚本。
+
 ### 本轮验证命令与实际输出
 
 ```text
