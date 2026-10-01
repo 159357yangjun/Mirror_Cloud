@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-10-01T05:28:32",
-    "head": "94c86aa55b364cb9bee6bbfa4c6f374023aa779c",
-    "reason": "nineteenth signing: paintChainAt extracted and now also fetched for watch rows, so the ancestor paint stack exists for passing readings instead of only the first three failures"
+    "takenAt": "2026-10-01T05:57:54",
+    "head": "f7c163bb020beec378e5bf14039bbf814b3e60f1",
+    "reason": "twentieth signing: ancestor paint chain now computed in the same page evaluation as the geometry, and the later round-trip chain is kept beside it so staleness is visible"
   },
   "files": [
     {
@@ -22,8 +22,8 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 3170,
-      "bytes": 256990,
+      "lines": 3180,
+      "bytes": 258217,
       "families": {
         "failures.push": 15,
         "emitGate": 12,
@@ -92,8 +92,8 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 4918,
-    "bytes": 372523,
+    "lines": 4928,
+    "bytes": 373750,
     "families": {
       "failures.push": 16,
       "emitGate": 12,

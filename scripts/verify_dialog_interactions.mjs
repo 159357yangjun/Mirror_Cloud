@@ -1375,7 +1375,13 @@ async function main() {
               // cls is reported so a failure names its call site; without it the only way back to
               // the source is the composited rgb(), which cannot distinguish two shades that round
               // to the same triple.
-              out.push({ pts, foreign, kind: controls ? 'control' : 'text', text:t.slice(0,26), size, bold, color:cs.color, cls:(typeof e.className==='string'?e.className:'').slice(0,120), tag:e.tagName.toLowerCase(), threshold: (size>=24&&bold)?3:4.5, x, y, box:[vx,vy,vw,vh], ink, rects:ink.length, bgi:cs.backgroundImage.slice(0,60), hit:hit.tagName.toLowerCase()+((typeof hit.className==='string'?hit.className:'').slice(0,50)) });
+              // The ancestor paint stack, walked from the SAME elementFromPoint result in the SAME
+              // evaluation that produced the geometry. Fetching it in a later round trip is how the
+              // chain ended up describing a page that had already reflowed: on the anomalous readings
+              // the panel was missing from the chain entirely, which a repaint cannot do to a hit
+              // test but a stale coordinate does to both at once.
+              const chain=[]; { let n=hit; for (let i=0;i<6&&n;i++){ const c2=getComputedStyle(n); chain.push(n.tagName.toLowerCase()+(typeof n.className==='string'&&n.className?'.'+n.className.trim().split(/\\s+/).slice(0,2).join('.'):'')+'{bg:'+c2.backgroundColor+',img:'+(c2.backgroundImage==='none'?'-':c2.backgroundImage.slice(0,28))+'}'); n=n.parentElement } }
+              out.push({ pts, foreign, kind: controls ? 'control' : 'text', text:t.slice(0,26), size, bold, color:cs.color, cls:(typeof e.className==='string'?e.className:'').slice(0,120), tag:e.tagName.toLowerCase(), threshold: (size>=24&&bold)?3:4.5, x, y, box:[vx,vy,vw,vh], ink, rects:ink.length, bgi:cs.backgroundImage.slice(0,60), hit:hit.tagName.toLowerCase()+((typeof hit.className==='string'?hit.className:'').slice(0,50)), chain: chain.join(' < ') });
             }
             return { rows: out.slice(0, 400), skipped: { clipped, offcanvas, occluded, offscreen, nonText, containers, foreignOnly }, occlBy, truncated: Math.max(0, out.length-400) };
           })`
@@ -1792,6 +1798,10 @@ async function main() {
               ink: Array.isArray(h.ink) ? JSON.stringify(h.ink) : String(h.ink || ''),
               hit: String(h.hit || ''),
               chain: String(h.under || '').split(' < ').slice(0, 3).map((s) => s.split('{')[0].trim()).join('<'),
+              chain: String(h.chain || ''),
+              // Both kept on purpose: chain is same-source with the geometry, under is a later round
+              // trip. Where they disagree the page moved in between, which is the thing that made the
+              // first version of this evidence untrustworthy - and the disagreement is itself readable.
               under: await paintChainAt(h.x, h.y),
             })
           }
