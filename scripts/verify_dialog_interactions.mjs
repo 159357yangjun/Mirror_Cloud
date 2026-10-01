@@ -1223,6 +1223,11 @@ async function main() {
     // Its own bucket, so `below` keeps meaning "runs below their threshold" and a denominator fault
     // cannot be read as a contrast finding, or the other way round.
     const denomFindings = []
+    // A third bucket again, for the same reason: "the layout moved between the geometry read and the
+    // photograph" makes that combination's pixels belong to a different layout than its coordinates.
+    // That is neither a contrast finding nor a content difference, and folding it into either count
+    // would let a stale sample be reported as an unreadable surface.
+    const driftFindings = []
     const combosTotal = THEMES.length * WALLS.length * (ROUTES.length + 1)
     let comboIndex = 0
     const allControls = []
@@ -1245,6 +1250,44 @@ async function main() {
     // One predicate, used by the text sweep, by the control sweep and by the control that proves
     // the sweep's own skip counters are live. Written as a string with a flag argument so the
     // control cannot end up testing a copy of the logic.
+    // A cheap layout fingerprint: how many text-bearing elements there are, where their tops add up
+    // to, and how tall the document is. Any reflow between the two reads moves at least one of the
+    // three. No regex here on purpose - this string is injected, and a single backslash would be
+    // eaten by the template and leave a fingerprint that silently never changes.
+    const SIG = `(function(){var sel='p,span,div,button,a,li,h1,h2,h3,h4,label,td,th,code,pre',n=0,s=0;var all=document.querySelectorAll(sel);for(var i=0;i<all.length;i++){var e=all[i];var t=e.textContent||'';if(!t.trim())continue;var r=e.getBoundingClientRect();if(r.height<=0)continue;n++;s+=Math.round(r.top)}return {n:n,sumTop:s,doc:document.documentElement.scrollHeight,bodyH:document.body?document.body.scrollHeight:0}})()`
+    // One predicate, called by the sweep and by its own control: two signature reads in and out of the
+    // geometry -> photograph window. It answers exactly one question, "did the layout move", and its
+    // blind spot is part of the answer - an element that changes colour, or slides sideways while its
+    // top edge and the document height stay put, is invisible here. That blind spot is what makes the
+    // pair useful rather than decorative: drift says the sample moved, and no-drift-plus-a-different
+    // background is the only way left for "the paint changed", which is the MC-2 fork.
+    const layoutDrift = (a, b) => {
+      if (!a || !b) return 'signature missing'
+      const parts = []
+      if (a.n !== b.n) parts.push(`text-bearing elements ${a.n}->${b.n}`)
+      if (a.sumTop !== b.sumTop) parts.push(`sum of top edges ${a.sumTop}->${b.sumTop}`)
+      if (a.doc !== b.doc) parts.push(`document height ${a.doc}->${b.doc}`)
+      if (a.bodyH !== b.bodyH) parts.push(`body height ${a.bodyH}->${b.bodyH}`)
+      return parts.length ? parts.join(', ') : null
+    }
+    // Read the live box of every element the sweep marked, with the SAME clamping the collector used,
+    // so box-to-box comparison is apples-to-apples instead of "clamped versus unclamped". Returns
+    // ctid -> [left, top, width, height]. An id that is absent is a row whose element is no longer on
+    // the page, which is the strongest form of the same finding and must not be read as a match.
+    const RECHECK = `(function(){var m=document.querySelectorAll('[data-ctid]'),o={};for(var i=0;i<m.length;i++){var e=m[i],r=e.getBoundingClientRect();var vx=Math.max(r.left,0),vy=Math.max(r.top,0);o[e.getAttribute('data-ctid')]=[Math.round(vx),Math.round(vy),Math.round(Math.min(r.right,innerWidth)-vx),Math.round(Math.min(r.bottom,innerHeight)-vy)]}return o})()`
+    // One predicate for "did this element's box move", used by the sweep and by its own fixtures.
+    // Returns 0 for unmoved, the worst axis delta for moved, and null when there is no live box to
+    // compare against - null must never be counted as "did not move".
+    const rectMoved = (box, live) => {
+      if (!Array.isArray(box) || box.length !== 4 || !Array.isArray(live) || live.length !== 4) return null
+      let worst = 0
+      for (let i = 0; i < 4; i++) {
+        const d = Math.abs(Number(box[i]) - Number(live[i]))
+        if (!(d >= 0)) return null
+        if (d > worst) worst = d
+      }
+      return worst > 1 ? Math.round(worst) : 0
+    }
     const COLLECT_TEXTS = `(function(controls, dialogOnly){
             // Monotonic and page-global: the text sweep and the control sweep are two calls over the same page, and a
             // per-call counter plus a clear-at-start wiped the first call marks, so every text row came back
@@ -1381,7 +1424,13 @@ async function main() {
               // the panel was missing from the chain entirely, which a repaint cannot do to a hit
               // test but a stale coordinate does to both at once.
               const chain=[]; { let n=hit; for (let i=0;i<6&&n;i++){ const c2=getComputedStyle(n); chain.push(n.tagName.toLowerCase()+(typeof n.className==='string'&&n.className?'.'+n.className.trim().split(/\\s+/).slice(0,2).join('.'):'')+'{bg:'+c2.backgroundColor+',img:'+(c2.backgroundImage==='none'?'-':c2.backgroundImage.slice(0,28))+'}'); n=n.parentElement } }
-              out.push({ pts, foreign, kind: controls ? 'control' : 'text', text:t.slice(0,26), size, bold, color:cs.color, cls:(typeof e.className==='string'?e.className:'').slice(0,120), tag:e.tagName.toLowerCase(), threshold: (size>=24&&bold)?3:4.5, x, y, box:[vx,vy,vw,vh], ink, rects:ink.length, bgi:cs.backgroundImage.slice(0,60), hit:hit.tagName.toLowerCase()+((typeof hit.className==='string'?hit.className:'').slice(0,50)), chain: chain.join(' < ') });
+              // Mark the element itself, first write wins, so the photograph and the coordinates can be
+              // compared against THAT element afterwards. A page-level fingerprint can say "something
+              // reflowed somewhere" and cannot say whether it moved the element whose pixel I sampled;
+              // the two sweeps share one id per element, so a run collected by both is checked twice
+              // against the same live rect.
+              let ctid = Number(e.getAttribute('data-ctid') || 0); if (!ctid) { ctid = (window.__CTID = (window.__CTID || 0) + 1); e.setAttribute('data-ctid', String(ctid)) }
+              out.push({ pts, foreign, kind: controls ? 'control' : 'text', text:t.slice(0,26), size, bold, color:cs.color, cls:(typeof e.className==='string'?e.className:'').slice(0,120), tag:e.tagName.toLowerCase(), threshold: (size>=24&&bold)?3:4.5, x, y, box:[vx,vy,vw,vh], ink, rects:ink.length, bgi:cs.backgroundImage.slice(0,60), hit:hit.tagName.toLowerCase()+((typeof hit.className==='string'?hit.className:'').slice(0,50)), chain: chain.join(' < '), ctid });
             }
             return { rows: out.slice(0, 400), skipped: { clipped, offcanvas, occluded, offscreen, nonText, containers, foreignOnly }, occlBy, truncated: Math.max(0, out.length-400) };
           })`
@@ -1617,7 +1666,15 @@ async function main() {
             const open = await evaluate(`document.querySelectorAll('[role=dialog]').length`)
             if (!open) { console.log(`HARNESS FAULT: the 对话框 face ran with ${open} [role=dialog] elements on screen in ${themeName}/${wallName}; whatever it measured, it was not the confirm dialog.`); finish(2) }
           }
+          // Optimistic concurrency on the page itself. Geometry is collected before the glyph-hidden
+          // screenshot, so anything that reflows in between makes the sampled pixels belong to a
+          // different layout than the coordinates - which is the one remaining way MC-2's two causes
+          // can be told apart (a stale screenshot versus a real non-ancestor painting there). The
+          // signature is read on both sides of that window and reported; it is NOT silently retried,
+          // because "it moved" is the measurement, not an error to paper over.
+          const sigA = await evaluate(SIG)
           const texts = await evaluate(`(function(){window.__COLLECT=${COLLECT_TEXTS};return window.__COLLECT(false, ${dialogFace})})()`)
+          const sigGeom = await evaluate(SIG)
           if (texts.truncated) { console.log(`HARNESS FAULT: ${texts.truncated} more readable runs beyond the ${texts.rows.length} sampled in ${themeName}/${wallName}/${label}; the tally would be a partial one.`); finish(2) }
           // Controls are the item 1.4.11 object: a button or field judged against the surface it
           // actually sits on, not against a neighbouring panel of convenience.
@@ -1740,12 +1797,36 @@ async function main() {
           // Hide the glyphs, photograph what is left: that photograph IS the background the text
           // sits on, gradients, blur and wallpaper included.
           await evaluate(`(function(){const s=document.createElement('style');s.id='lctl-hide';s.textContent='*{color:transparent !important;-webkit-text-fill-color:transparent !important;text-shadow:none !important}';document.head.appendChild(s);return true})()`)
+          const sigShot = await evaluate(SIG)
           const shotData = await send('Page.captureScreenshot', { format: 'png' })
+          // Immediately after the photograph, before anything else is dispatched: comparing these live
+          // boxes to the recorded ones turns "the page reflowed somewhere" into "the element whose
+          // pixel I sampled moved by N px", which is the difference MC-2 cannot be argued about.
+          const shotRects = await evaluate(RECHECK)
           await evaluate(`(function(){const s=document.getElementById('lctl-hide');if(s)s.remove();return true})()`)
           cost.shot += Date.now() - mark; mark = Date.now()
           const sampled = await evaluate(`(${SAMPLE_FN})(${JSON.stringify(shotData.data)}, ${JSON.stringify(texts.rows.concat(ctl.rows))})`)
           cost.sample += Date.now() - mark; mark = Date.now()
           if (!sampled.length) { console.log(`HARNESS FAULT: ${themeName}/${wallName}/${label} yielded 0 readable runs - an empty sweep is not a pass.`); finish(2) }
+          // Row-level layout verdict: every run's own element, measured again now that the photograph
+          // exists. moved = the pixel came from a layout those coordinates no longer describe;
+          // gone = the element is off the page entirely; uncomparable = the instrument cannot tell,
+          // which is reported and never folded into "did not move".
+          const staleRows = [], goneRows = [], uncomparableRows = []
+          for (const s of sampled) {
+            let verdict = 'fresh'
+            if (!s.ctid) { verdict = 'uncomparable'; uncomparableRows.push(s) }
+            else {
+              const live = shotRects[String(s.ctid)]
+              if (!live) { verdict = 'gone'; goneRows.push(s) }
+              else {
+                const movedBy = rectMoved(s.box, live)
+                if (movedBy === null) { verdict = 'uncomparable'; uncomparableRows.push(s) }
+                else if (movedBy > 0) { verdict = 'moved'; staleRows.push({ text: (s.text || '').slice(0, 24), kind: s.kind, movedBy, ratio: s.ratio, threshold: s.threshold, from: s.box, to: live }) }
+              }
+            }
+            s.layoutVerdict = verdict
+          }
           const below = sampled.filter((s) => s.ratio !== null && s.ratio < s.threshold)
           // When a row fails, say what is actually stacked under it. Guessing at a colour from its
           // rgb triple is how I spent three rounds attributing this to chips, tiles and rounding.
@@ -1777,6 +1858,18 @@ async function main() {
           // reader can compare between two batches is a COUNT, and a count that changes says
           // nothing about which run appeared or vanished - which is the difference between
           // "the page rendered differently" and "the sweep went blind for one combination".
+          rows[rows.length - 1].sig = { geom: sigGeom, shot: sigShot, pre: sigA }
+          rows[rows.length - 1].drift = {
+            geomToShot: layoutDrift(sigGeom, sigShot),
+            preToGeom: layoutDrift(sigA, sigGeom),
+          }
+          rows[rows.length - 1].stale = {
+            moved: staleRows.length,
+            gone: goneRows.length,
+            uncomparable: uncomparableRows.length,
+            worstMovedBy: staleRows.length ? Math.max(...staleRows.map((s) => s.movedBy)) : 0,
+            examples: staleRows.slice(0, 3).concat(goneRows.slice(0, 2).map((g) => ({ text: (g.text || '').slice(0, 24), kind: g.kind, gone: true }))),
+          }
           rows[rows.length - 1].keys = sampled.map((s) => `${s.kind}|${s.tag || ''} ${(s.cls || '').split(/\s+/).slice(0, 3).join('.')}|${(s.text || '').slice(0, 40)}`).sort()
           // The grid-vs-centre disagreement, kept for PASSING runs too. The floor margin rule is
           // "at least the measured wobble", and before this line the only spreads in the artifact
@@ -1797,8 +1890,19 @@ async function main() {
               box: Array.isArray(h.box) ? h.box.join(',') : String(h.box || ''),
               ink: Array.isArray(h.ink) ? JSON.stringify(h.ink) : String(h.ink || ''),
               hit: String(h.hit || ''),
-              chain: String(h.under || '').split(' < ').slice(0, 3).map((s) => s.split('{')[0].trim()).join('<'),
+              // One name, one value: this used to carry two `chain` keys in the same literal, and the
+              // first (a stripped, late-fetched owner) was silently overwritten by the second. JS lets
+              // that pass syntax-checking, so a reader comparing chains was comparing the same-source
+              // one while believing the artifact held both. Full chain keeps the computed colours, the
+              // stripped one answers "which element chain" without letting a repaint look like a
+              // different element.
               chain: String(h.chain || ''),
+              chainIds: String(h.chain || '').split(' < ').map((s) => s.split('{')[0].trim()).join('<'),
+              // The layout verdict for this combination, read on both sides of the geometry -> photograph
+              // window. A needle whose anomalous readings all land in a moved combination is a stale
+              // sample; one whose readings land in unmoved combinations is the other branch of MC-2.
+              sampleMoved: rows[rows.length - 1].drift.geomToShot,
+              layoutVerdict: h.layoutVerdict,
               // Both kept on purpose: chain is same-source with the geometry, under is a later round
               // trip. Where they disagree the page moved in between, which is the thing that made the
               // first version of this evidence untrustworthy - and the disagreement is itself readable.
@@ -1813,7 +1917,7 @@ async function main() {
           // same from outside, and the only way to tell them apart was reaching for ps on a pid that
           // turned out to belong to a different project.
           comboIndex++
-          console.log(`COMBO ${comboIndex}/${combosTotal} ${themeName}/${wallName}/${label} elapsed=${Math.round((Date.now() - RUN_STARTED) / 1000)}s rows=${sampled.length} points=${sampled.reduce((a, x) => a + (x.sampledPoints || 0), 0)} rejected=${sampled.reduce((a, x) => a + (x.foreign || 0), 0)} toasts=${toastClear.before}`)
+          console.log(`COMBO ${comboIndex}/${combosTotal} ${themeName}/${wallName}/${label} elapsed=${Math.round((Date.now() - RUN_STARTED) / 1000)}s rows=${sampled.length} points=${sampled.reduce((a, x) => a + (x.sampledPoints || 0), 0)} rejected=${sampled.reduce((a, x) => a + (x.foreign || 0), 0)} toasts=${toastClear.before} moved=${staleRows.length} gone=${goneRows.length} unchecked=${uncomparableRows.length}`)
           if (label === '对话框') { await pressEscape(); await sleep(200) }
         }
       }
@@ -1947,13 +2051,85 @@ async function main() {
       const rects = new Set(got.map((g) => g.box)), hitsSet = new Set(got.map((g) => g.hit)), chains = new Set(got.map((g) => g.chain))
       const bgByRect = new Map()
       for (const g of got) { if (!bgByRect.has(g.box)) bgByRect.set(g.box, new Set()); bgByRect.get(g.box).add(g.bg) }
+      // The MC-2 fork, decided per needle instead of argued. The distinct-count line above can only say
+      // "the readings differ"; which of the two causes it is needs the same-source layout verdict that
+      // this combination carried.
+      const movedCombos = new Set(got.filter((g) => g.sampleMoved).map((g) => g.combo))
+      const distinctBg = new Set(got.map((g) => g.bg))
+      // Group by the identity-only chain: the full chain string embeds the computed colours, so two
+      // readings of the SAME element over a repainted surface would count as two different chains and
+      // the phrase "one chain, many backgrounds" would be unfalsifiable.
+      const bgByChain = new Map()
+      for (const g of got) { if (!bgByChain.has(g.chainIds)) bgByChain.set(g.chainIds, new Set()); bgByChain.get(g.chainIds).add(g.bg) }
+      const sameChainManyBg = [...bgByChain.entries()].filter(([, s]) => s.size > 1).length
+      // "No ancestor's solid colour equals the sampled pixel" is a FILTER, not a verdict: a gradient, a
+      // background-image or the wallpaper composite legitimately matches nothing, and calling that a
+      // non-ancestor painter is the exact misattribution this case already retracted once. So the
+      // ancestor-image count rides along, and only a reading that matches no solid colour AND has no
+      // background-image anywhere in its chain is unexplained by its own ancestors.
+      const triple = (s) => { const m = String(s).match(/\d+/g); return m && m.length >= 3 ? `${m[0]},${m[1]},${m[2]}` : null }
+      const unexplained = got.filter((g) => {
+        const want = triple(g.bg)
+        if (!want) return false
+        const nodes = g.chain.split(' < ')
+        if (nodes.some((n) => triple((n.match(/\{bg:([^,]*)/) || [])[1]) === want)) return false
+        return !nodes.some((n) => /,img:(?!-)/.test(n))
+      }).length
+      const verdicts = { fresh: 0, moved: 0, gone: 0, uncomparable: 0 }
+      for (const g of got) verdicts[g.layoutVerdict in verdicts ? g.layoutVerdict : 'uncomparable']++
+      console.log(`WATCH-CAUSE ${JSON.stringify(needle)}: distinctBackgrounds=${distinctBg.size} sampledFromMovedCombinations=${movedCombos.size}/${new Set(got.map((g) => g.combo)).size} distinctAncestorChains=${new Set(got.map((g) => g.chainIds)).size} chainsCarryingMoreThanOneBackground=${sameChainManyBg} readingsMatchNoAncestorSolidColorAndNoAncestorImage=${unexplained}/${got.length} thisElementsOwnLayout={fresh:${verdicts.fresh} moved:${verdicts.moved} gone:${verdicts.gone} uncomparable:${verdicts.uncomparable}}`)
       const sameRectManyBg = [...bgByRect.entries()].filter(([, s]) => s.size > 1).length
-      console.log(`WATCH ${JSON.stringify(needle)} present=${got.length}/${rows.length} ratio min=${Math.round(lo * 100) / 100} max=${Math.round(hi * 100) / 100} crossComboAmplitude=${Math.round((hi - lo) * 100) / 100} withinRunMaxSpread=${Math.round(spreadMax * 100) / 100} perThemeFloor=${Object.entries(perTheme).map(([k, v]) => `${k}:${Math.round(v * 100) / 100}`).join(' ')} distinctRects=${rects.size} distinctPaintOwners=${hitsSet.size} distinctAncestorChains=${chains.size} rectsWithMoreThanOneBackground=${sameRectManyBg} bg={${[...new Set(got.map((g) => g.bg))].join(' | ')}}`)
+      console.log(`WATCH ${JSON.stringify(needle)} present=${got.length}/${rows.length} ratio min=${Math.round(lo * 100) / 100} max=${Math.round(hi * 100) / 100} crossComboAmplitude=${Math.round((hi - lo) * 100) / 100} withinRunMaxSpread=${Math.round(spreadMax * 100) / 100} perThemeFloor=${Object.entries(perTheme).map(([k, v]) => `${k}:${Math.round(v * 100) / 100}`).join(' ')} distinctRects=${rects.size} distinctPaintOwners=${hitsSet.size} distinctAncestorChainReadings=${chains.size} rectsWithMoreThanOneBackground=${sameRectManyBg} bg={${[...new Set(got.map((g) => g.bg))].join(' | ')}}`)
       if (sameRectManyBg) console.log(`WATCH-PAINT ${JSON.stringify(needle)}: ${sameRectManyBg} rect value(s) carry more than one sampled background while the element box did not move - that is a repaint, not a sample shift`)
       else if (rects.size > 1) console.log(`WATCH-PAINT ${JSON.stringify(needle)}: ${rects.size} different boxes, one background per box - the readings come from different positions, so no repaint is demonstrated`)
     }
     if (watchNeedles.length) console.log(`WATCH_SUMMARY needles=${watchNeedles.length} withReadings=${[...watchSeen.values()].filter((v) => v.length).length} absent=${watchNeedles.filter((n) => !(watchSeen.get(n) || []).length).length}`)
     console.log(`DENOM_STABILITY combos=${rows.length} routeThemeGroups=${byRouteTheme.size} contentDifferences=${denomDrift.length} nonInjectiveIdentityReads=${identityFalse} unverifiedGroups=${unverifiedGroups.size}`)
+    // Layout drift across the geometry -> photograph window, counted before anything reads it. The two
+    // halves are not the same claim: geomToShot is the one that can stale the sampled pixels, while
+    // preToGeom only says at which stage the page reflowed, so it locates and is not gated.
+    const moved = rows.filter((r) => r.drift && r.drift.geomToShot)
+    const movedCollect = rows.filter((r) => r.drift && r.drift.preToGeom)
+    // The predicate's own red half, in the same pass and through the same function. A fingerprint guard
+    // is unusually easy to kill silently: a misspelled field comparison returns null on every pair and
+    // prints `moved=0`, which reads exactly like a clean sweep. So the fixtures below are the only
+    // evidence that a zero here was earned.
+    const ctlMoved = layoutDrift({ n: 10, sumTop: 100, doc: 900, bodyH: 900 }, { n: 11, sumTop: 130, doc: 900, bodyH: 900 })
+    const ctlTwin = layoutDrift({ n: 10, sumTop: 100, doc: 900, bodyH: 900 }, { n: 10, sumTop: 100, doc: 900, bodyH: 900 })
+    const ctlHeight = layoutDrift({ n: 10, sumTop: 100, doc: 900, bodyH: 900 }, { n: 10, sumTop: 100, doc: 912, bodyH: 900 })
+    if (!ctlMoved || ctlTwin !== null || !ctlHeight) {
+      console.log(`HARNESS FAULT: the layout-drift predicate disagrees with its own fixtures (moved=${JSON.stringify(ctlMoved)}, twin=${JSON.stringify(ctlTwin)}, heightOnly=${JSON.stringify(ctlHeight)}); a guard that cannot see a planted move cannot see a real one.`); finish(2)
+    }
+    console.log(`GEOMETRY_DRIFT selftest movedCaught=${ctlMoved ? 1 : 0} twinIgnored=${ctlTwin === null ? 1 : 0} singleFieldCaught=${ctlHeight ? 1 : 0} combos=${rows.length} geomToShotMoved=${moved.length} preToGeomMoved=${movedCollect.length}`)
+    // A zero from this guard has to be read as one of two different things, so it says which: a probe
+    // that cannot see a move also reports zero. The selftest above is the difference.
+    if (!moved.length) console.log(`GEOMETRY_DRIFT-NULL geomToShotMoved=0: the page-level fingerprint saw no reflow inside the geometry -> photograph window in any of ${rows.length} combinations, and the selftest above shows it can see one. The per-element verdict below is the load-bearing reading; this line only says the whole-page summary did not change shape.`)
+    for (const r of moved.slice(0, 5)) console.log(`GEOMETRY_DRIFT ${r.theme}/${r.wallpaper}/${r.route}: ${r.drift.geomToShot} - the ${r.measured} run(s) in this combination carry coordinates read before that reflow`)
+    for (const r of movedCollect.slice(0, 3)) console.log(`GEOMETRY_DRIFT-COLLECT ${r.theme}/${r.wallpaper}/${r.route}: ${r.drift.preToGeom} - reflowed between the first fingerprint read and the last; this says nothing about which runs moved, so the per-element verdict below is the one that is read`)
+    // The per-element verdict, which is the guard the fingerprint exists to explain. Three totals are
+    // printed because they are three different claims, and uncomparable is deliberately not folded into
+    // fresh: a row the instrument cannot check is a row that was not checked.
+    const rectCtlMoved = rectMoved([10, 100, 200, 20], [10, 570, 200, 20])
+    const rectCtlFresh = rectMoved([10, 100, 200, 20], [10, 100, 200, 20])
+    const rectCtlSubPixel = rectMoved([10, 100, 200, 20], [10, 101, 200, 20])
+    const rectCtlMissing = rectMoved([10, 100, 200, 20], undefined)
+    const rectCtlJunk = rectMoved('10,100,200,20', [10, 100, 200, 20])
+    if (!(rectCtlMoved > 0) || rectCtlFresh !== 0 || rectCtlSubPixel !== 0 || rectCtlMissing !== null || rectCtlJunk !== null) {
+      console.log(`HARNESS FAULT: the per-element layout verdict disagrees with its own fixtures (moved=${rectCtlMoved}, fresh=${rectCtlFresh}, subPixel=${rectCtlSubPixel}, missingBox=${rectCtlMissing}, malformed=${rectCtlJunk}); a guard that reads a planted 470px move as clean is worse than no guard, because it prints a number.`); finish(2)
+    }
+    const staleCombos = rows.filter((r) => r.stale && (r.stale.moved || r.stale.gone))
+    const staleRunTotal = rows.reduce((a, r) => a + (r.stale ? r.stale.moved : 0), 0)
+    const goneRunTotal = rows.reduce((a, r) => a + (r.stale ? r.stale.gone : 0), 0)
+    const uncomparableTotal = rows.reduce((a, r) => a + (r.stale ? r.stale.uncomparable : 0), 0)
+    // Its own total, computed here: `judgedTotal` is declared further down this block and reading it
+    // from above is a ReferenceError that node --check does not catch, which is the failure this file
+    // already has a comment about.
+    const sampledTotal = rows.reduce((a, r) => a + r.measured, 0)
+    console.log(`GEOMETRY_STALE selftest moved=${rectCtlMoved}px fresh=${rectCtlFresh} subPixel=${rectCtlSubPixel} missingBox=${String(rectCtlMissing)} malformed=${String(rectCtlJunk)} combos=${rows.length} combosWithStaleRuns=${staleCombos.length} movedRuns=${staleRunTotal} goneRuns=${goneRunTotal} uncomparableRuns=${uncomparableTotal} of ${sampledTotal} sampled`)
+    for (const r of staleCombos.slice(0, 5)) console.log(`GEOMETRY_STALE ${r.theme}/${r.wallpaper}/${r.route}: ${r.stale.moved} moved + ${r.stale.gone} unmounted of ${r.measured} run(s), worst ${r.stale.worstMovedBy}px - ${r.stale.examples.map((s) => `${s.gone ? 'gone' : s.movedBy + 'px'} "${s.text}"`).join(' ; ')}`)
+    if (!staleCombos.length && !moved.length) console.log(`GEOMETRY_STALE-NULL moved=0 gone=0 with a predicate that caught a planted 470px move and still calls a 1px jitter fresh, so this zero is "no sampled element moved in any of ${rows.length} combinations", not "the check is blind". It governs only the batch that ran it, and it cannot see an element that stayed put while something behind it repainted - that case is WATCH-PAINT, not this line.`)
+    for (const r of staleCombos) driftFindings.push(`CONTRAST-STALE-ELEMENT ${r.theme}/${r.wallpaper}/${r.route}: ${r.stale.moved} sampled run(s) whose own element measured differently after the photograph (worst ${r.stale.worstMovedBy}px) and ${r.stale.gone} whose element is no longer on the page, so those pixels belong to a layout their coordinates do not describe - ${r.stale.examples.map((s) => `${s.gone ? 'gone' : s.movedBy + 'px'} "${s.text}"`).join(' ; ')}`)
+    for (const r of moved) driftFindings.push(`CONTRAST-STALE ${r.theme}/${r.wallpaper}/${r.route}: the layout moved between the geometry read and the glyph-hidden photograph (${r.drift.geomToShot}), so these ${r.measured} readings sample a layout their own coordinates do not describe`)
     for (const [k, n] of [...unverifiedGroups.entries()].sort()) denomFindings.push(`CONTRAST-DENOM-UNVERIFIED ${k}: ${n} combo(s) have runs the identity string cannot tell apart (distinct keys < measured runs), so this group's set equality was NOT established and it cannot count as verified`)
     if (denomDrift.length) {
       for (const d of denomDrift) denomFindings.push(`CONTRAST-DENOM ${d}`)
@@ -1990,7 +2166,7 @@ async function main() {
     }
     writeFileSync(`${OUT}/contrast-tier.json`, JSON.stringify({ provenance: buildProvenance(), note: 'backgrounds are sampled from a screenshot taken with glyphs hidden, so gradients, backdrop-filter and the wallpaper composite are all included; wallpaper envelope is an all-black and an all-white image; controls are judged against their own rendered surface', themes: THEMES.map((t) => t[0]), wallpapers: WALLS.map((w) => w[0]), perControl, faceTable: faceTable.join('\n'), ctlTable: ctlTable.join('\n'), rows, watch: Object.fromEntries(watchSeen) }, null, 2))
     if (budgetHits) { console.log(`CONTRAST_GATE INCOMPLETE: covered ${comboIndex}/${combosTotal} combinations inside the ${DEADLINE_MS}ms budget; the unmeasured remainder is not a pass.`); finish(2) }
-    for (const f of failures.concat(docDrift, denomFindings)) console.log(`FAIL ${f}`)
+    for (const f of failures.concat(docDrift, denomFindings, driftFindings)) console.log(`FAIL ${f}`)
     console.log('TOKENS ' + JSON.stringify(rows.filter((r, i, a) => a.findIndex((x) => x.theme === r.theme) === i).map((r) => ({ theme: r.theme, ...r.tokens }))))
     // The planted gradient proves the grid CAN disagree with a single pixel. This proves it does so on
     // this app's real surfaces: if no row's worst point ever differed from its centre point, the
@@ -2016,13 +2192,13 @@ async function main() {
     console.log(`COVERAGE judged=${judgedTotal} dropped=${droppedTotal} (${cov.pct}% of candidates) ceiling=75% topOccluders=${occlTop || '-'}`)
     // Computed, not a literal: this line used to print `unresolved=0` unconditionally, which is the
     // one number on the row that could never disagree with the run that produced it.
-    console.log(`CONTRAST_GATE combos=${rows.length} routes=${ROUTES.length} measured=${judgedTotal} below=${failures.length} docDrift=${docDrift.length} denom=${denomFindings.length} unresolved=${unresolvedTotal} gridDisagreed=${gridStats.disagreed} points=${gridStats.points} nodeWall=${Math.round((Date.now() - t0) / 1000)}s nodeCpu=${(() => { const c = process.cpuUsage(cpu0); return ((c.user + c.system) / 1e6).toFixed(1) })()}s skipped=${JSON.stringify(skipped)}`)
-    // The identity is printed so a reader can see the three buckets were not merged anywhere downstream.
-    const stopping = failures.length + docDrift.length + denomFindings.length
-    console.log(`CONTRAST_TALLY below=${failures.length} + docDrift=${docDrift.length} + denom=${denomFindings.length} = stopping=${stopping}`)
+    console.log(`CONTRAST_GATE combos=${rows.length} routes=${ROUTES.length} measured=${judgedTotal} below=${failures.length} docDrift=${docDrift.length} denom=${denomFindings.length} drift=${driftFindings.length} unresolved=${unresolvedTotal} gridDisagreed=${gridStats.disagreed} points=${gridStats.points} nodeWall=${Math.round((Date.now() - t0) / 1000)}s nodeCpu=${(() => { const c = process.cpuUsage(cpu0); return ((c.user + c.system) / 1e6).toFixed(1) })()}s skipped=${JSON.stringify(skipped)}`)
+    // The identity is printed so a reader can see the four buckets were not merged anywhere downstream.
+    const stopping = failures.length + docDrift.length + denomFindings.length + driftFindings.length
+    console.log(`CONTRAST_TALLY below=${failures.length} + docDrift=${docDrift.length} + denom=${denomFindings.length} + drift=${driftFindings.length} = stopping=${stopping}`)
 
-    emitGate('contrast-tier', rows.reduce((a, r) => a + r.measured, 0), stopping, { combos: rows.length, routes: ROUTES.length, below: failures.length, docDrift: docDrift.length, denom: denomFindings.length, unresolved: rows.reduce((a, r) => a + r.unresolved, 0), gridDisagreed: gridStats.disagreed, inkFallbacks: gridStats.fallbacks, skipped })
-    console.log(stopping ? `contrast: ${stopping} stopping finding(s) (${failures.length} below threshold, ${docDrift.length} document projection, ${denomFindings.length} denominator) across ${rows.length} theme/wallpaper/route combinations` : `contrast: every readable run meets its threshold in all ${rows.length} combinations`)
+    emitGate('contrast-tier', rows.reduce((a, r) => a + r.measured, 0), stopping, { combos: rows.length, routes: ROUTES.length, below: failures.length, docDrift: docDrift.length, denom: denomFindings.length, drift: driftFindings.length, unresolved: rows.reduce((a, r) => a + r.unresolved, 0), gridDisagreed: gridStats.disagreed, inkFallbacks: gridStats.fallbacks, skipped })
+    console.log(stopping ? `contrast: ${stopping} stopping finding(s) (${failures.length} below threshold, ${docDrift.length} document projection, ${denomFindings.length} denominator, ${driftFindings.length} stale layout) across ${rows.length} theme/wallpaper/route combinations` : `contrast: every readable run meets its threshold in all ${rows.length} combinations`)
     finish(stopping ? 1 : 0)
   }
 

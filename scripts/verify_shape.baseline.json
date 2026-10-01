@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-10-01T05:57:54",
-    "head": "f7c163bb020beec378e5bf14039bbf814b3e60f1",
-    "reason": "twentieth signing: ancestor paint chain now computed in the same page evaluation as the geometry, and the later round-trip chain is kept beside it so staleness is visible"
+    "takenAt": "2026-10-01T06:32:16",
+    "head": "09fb50b4121e449213dd797822ebe50361244b84",
+    "reason": "twenty-first signing: per-element layout verdict added to contrast-tier (collector marks each sampled element, its box is re-read immediately after the photograph, moved/gone/uncomparable are three separate counts), plus the page-level layout fingerprint and its fixtures; the watch rows now carry their own layout verdict. Product code untouched."
   },
   "files": [
     {
@@ -22,12 +22,12 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 3180,
-      "bytes": 258217,
+      "lines": 3356,
+      "bytes": 275995,
       "families": {
         "failures.push": 15,
         "emitGate": 12,
-        "harness-fault exit": 40,
+        "harness-fault exit": 42,
         "gate line": 8,
         "positive control": 15,
         "throw": 16
@@ -92,12 +92,12 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 4928,
-    "bytes": 373750,
+    "lines": 5104,
+    "bytes": 391528,
     "families": {
       "failures.push": 16,
       "emitGate": 12,
-      "harness-fault exit": 42,
+      "harness-fault exit": 44,
       "gate line": 8,
       "positive control": 16,
       "throw": 16
