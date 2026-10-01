@@ -1714,15 +1714,24 @@ async function main() {
             quiet = { stable: true, waited: 0, len: quietLen }
           }
           if (!quiet) {
+            // Three 120ms samples (360ms of silence) was not enough, and the churn probe says why: the
+            // plugin error panel lands 663-1027ms after the route mounts, and the stretch between mount
+            // and that landing is itself silent - nothing changes in the DOM while the query is pending
+            // and backing off. So the old rule could declare "quiet" and then be reflowed 58px
+            // underneath itself. The requirement is now 12 consecutive equal samples = 1440ms of
+            // silence, which clears the measured upper bound with margin, per the rule that a margin
+            // must be at least the observed amplitude. `waited` is printed so a short wait is visible
+            // rather than assumed.
             let last = -1, stable = 0, waited = 0
-            while (waited < 4000) {
+            while (waited < 8000) {
               const len = await evaluate(`document.body.innerText.length`)
-              if (len === last) { if (++stable >= 3) { quiet = { stable: true, waited, len }; break } } else { stable = 0; last = len }
+              if (len === last) { if (++stable >= 12) { quiet = { stable: true, waited, len }; break } } else { stable = 0; last = len }
               await sleep(120); waited += 120
             }
             if (!quiet) quiet = { stable: false, waited, len: last }
             quietFor = `${themeName}|${label}`
             quietLen = quiet.len
+            console.log(`QUIET ${themeName}/${label} waited=${quiet.waited}ms stable=${quiet.stable ? 1 : 0} requiredSilence=1440ms measuredSettle=663-1027ms`)
           }
           if (!quiet.stable) { console.log(`HARNESS FAULT: the page was still changing after ${quiet.waited}ms of quiet-waiting on ${themeName}/${wallName}/${label} (text length ${quiet.len}); the candidate set is not stable enough to sample.`); finish(2) }
           cost.quiet += Date.now() - mark; mark = Date.now()

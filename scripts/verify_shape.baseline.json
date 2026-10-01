@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-10-01T08:58:05",
-    "head": "7d44bfb2a5bd2f3cb39bdf38a55f5d9760dce6a6",
-    "reason": "twenty-sixth signing: --churn=<text> samples the presence of one string every 250ms for 20.5s and prints transitions with a since-navigation anchor; report-only, never reaches the exit code. Product code untouched."
+    "takenAt": "2026-10-01T09:08:51",
+    "head": "20a98cec3800a3f35ee40e46742b7dac494dddb3",
+    "reason": "twenty-seventh signing: the quiescence wait now demands 1440ms of silence (12 consecutive equal samples) instead of 360ms, because the plugin error panel lands 663-1027ms after mount and the pending-query stretch is itself silent; waited is printed per page load. Measured effect: contentDifferences 6-9 -> 0, stale combinations 7/360 -> 0/72, plugin rows 26/28 mixed -> 29 uniform. Product code untouched."
   },
   "files": [
     {
@@ -22,8 +22,8 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 3489,
-      "bytes": 285861,
+      "lines": 3498,
+      "bytes": 286771,
       "families": {
         "failures.push": 15,
         "emitGate": 13,
@@ -92,8 +92,8 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 5262,
-    "bytes": 403391,
+    "lines": 5271,
+    "bytes": 404301,
     "families": {
       "failures.push": 16,
       "emitGate": 13,
