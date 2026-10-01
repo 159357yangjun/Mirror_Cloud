@@ -1555,6 +1555,41 @@ RUN7 sakura/none/插件   at=[58769ms[距挂载663ms]:0->1]
 - `CONTRAST_GATE combos=72 measured=1917 below=0 docDrift=0 denom=0 drift=0 unresolved=0`（rc=0）
 - `visual` 新增 `--theme=`：外观证据必须能按主题渲，否则只动一套主题像素的改动拍出来前后一样。
 
+### 4. 推送与 dev 上的 CI 终态（run `36863157166`）
+
+- 推送事实：`1e951f9..e55cc34 dev -> dev`，快进、无 `--force`；推后 `git ls-remote origin refs/heads/dev`
+  复核远端 = `e55cc34c6f09df5386327ed4dbdf89d25ff4d7d2`，与本地 HEAD 逐字相同。
+  通道：本机 `github.com:443` 直连超时（DNS → `20.205.243.166`）而 `api.github.com` 通，
+  故 git 走内联 `-c http.proxy=http://127.0.0.1:7897`，**未写任何 config 文件**。
+- run `36863157166`（`CI`，`run_number=144`，`head_sha=e55cc34`，`event=push`，`attempt=1`）
+  = **`completed / success`**，`created=2026-10-01T12:38:52Z`、`updated=12:42:38Z`
+  （本地 08:38:52 / 08:42:38，wall 226s）。**没有 annotation 需要读**：结论是 success，且唯一作业没有失败步骤（下表）。
+- 覆盖面（作业 `desktop-check` 单作业，wall=222s，25 步 = 24 `success` + 1 `skipped`）：
+  真跑过的有 [6]–[12] 七个静态契约（validate / command / user-flow / docs-site / action-pin / release-version / tauri-family）、
+  [13] Node 与 `.node-version` 一致、[14] 提交的锁文件一致、[15] `cargo fmt --check`、[17] `cargo check --workspace --locked`、
+  [18] `cargo test --workspace --locked`、[19] Desktop build、[20] Docs build、[21] 上传锁文件。
+  **唯一被 skip 的是 [16] `Upload rustfmt diff`** —— 该步只在 rustfmt 产出 diff 时上传，skip 即"格式无差异"，不是漏跑。
+  artifact 恰 1 个：`dependency-locks` 95,675 B，未过期。
+- **这道绿不覆盖什么**（不许把"作业存在且未失败"读成"验过了"）：`ci.yml` 根本不跑 `verify:all`
+  （grep 不到 `verify_all`），所以 19 stage 的浏览器门（`contrast-tier` / `theme-surfaces` / `visual` / `gate` /
+  `mutations` 等）**只在上节那次本地干净树跑里被验过**，CI 这道绿不为它们作证；
+  `windows-bundle`（`tauri build` + NSIS/MSI 冒烟 + 资产暂存 + 发布）属 `release.yml`、只在 tag push 上跑，本道绿也不为它作证。
+- **我挂的推进器是半瞎的，记成人读的一行**：它每行印 `http=200` 与剩余配额，看着健康，但 20 次全 `PARSE_ERROR`
+  后按预算退出（09:06:30 `BUDGET_EXHAUSTED`），一次状态都没读到。根因是路径两侧不一致——
+  `curl` 写 MSYS 的 `/tmp/cirun.json`，`node` 按 Windows 的 `C:\tmp\cirun.json` 读。
+  ⇒ **纪律补一条：`http=200` 只证明传输，不证明解析**；载荷读不出来必须是独立退码并立刻停，
+  不能继续轮询到预算耗尽——这是"半坏自检比没有更坏"的又一例，因为它比没挂推进器更像在工作。
+- 复算（**该读数只对该 run 在该时刻有效**，引用前现查）：
+
+```text
+$ curl -s -o ci_run.json -w "run_http=%{http_code}\n" \
+    https://api.github.com/repos/159357yangjun/image-hosting-platform/actions/runs/36863157166
+$ node -e "const r=require('./ci_run.json');console.log(r.status+'/'+r.conclusion+' @'+r.updated_at)"
+completed/success @2026-10-01T12:42:38Z
+```
+
+本轮三份原始产物落盘：`image-hosting-probes/2026-10-01/ci_run.json`、`ci_jobs.json`、`ci_art.json`。
+
 ### 本轮验证命令与实际输出
 
 ```text
