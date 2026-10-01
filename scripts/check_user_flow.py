@@ -10,7 +10,14 @@ ROOT = Path(__file__).resolve().parents[1]
 checks = []
 
 def text(rel: str) -> str:
-    return (ROOT / rel).read_text(encoding='utf-8')
+    # Normalise line endings at the single read point. GitHub's windows runners check out with
+    # core.autocrlf=true, so every file arrives there with CRLF while this box holds LF for the files
+    # an agent rewrites - which makes any `$`-anchored or line-indexed assertion answer to the
+    # checkout instead of the content. That is not hypothetical: the evidence-table regex returned
+    # zero rows in CI and eight locally, and the only difference was the line ending. The
+    # double-encoding check below still reads raw bytes on purpose, because that defect IS a byte
+    # property.
+    return (ROOT / rel).read_text(encoding='utf-8').replace('\r\n', '\n')
 
 def require(ok: bool, label: str):
     checks.append((ok, label))
@@ -670,7 +677,7 @@ for rel in measured_files:
 # Encoding integrity for the change record. A latin1 read + utf8 write turns every CJK character
 # into a two-byte mojibake sequence; the result still decodes as UTF-8, so "it parsed" proves
 # nothing. Real Chinese code points sit far above U+00FF, so their absence is the signature.
-change_log_text = (ROOT / 'CHANGELOG.md').read_bytes().decode('utf-8')
+change_log_text = (ROOT / 'CHANGELOG.md').read_bytes().decode('utf-8').replace('\r\n', '\n')
 require(any(ord(c) > 0x255 for c in change_log_text), 'CHANGELOG.md still holds real CJK code points (not double-encoded)')
 
 # ---------------------------------------------------------------------------
