@@ -785,6 +785,51 @@ print(f'STRAY_GUARD suffixes={len(STRAY_SUFFIXES)} nameShapes={len(STRAY_NAME_PR
       f'outputs={probe_dir}{os.sep}stray-guard-{{red,green}}.txt '
       f'status={"earned - it reddened on a real stray" if stray_real else "not-yet-earned: never caught a real stray, only the planted one"}')
 
+# The three "before" photographs are the only evidence of what the next colour change altered, and
+# %TEMP% is the first place a cleanup deletes. They are in the repo now, and the table that
+# registers them is checked here rather than trusted: a sha256 written in prose that nothing
+# compares is the same "recorded but never read" decoration the shape ledger had.
+baseline_img_rows = re.findall(
+    r'^\| `(docs/baseline-images/[^`]+)` \| ([\d,]+) \| `([0-9a-f]{64})` \|$',
+    change_log_text, re.M)
+require(len(baseline_img_rows) == 3,
+        f'the before-token-lift table lists three images (found {len(baseline_img_rows)})')
+
+
+def baseline_img_check(rows):
+    bad = []
+    for rel, bytes_str, sha in rows:
+        p = ROOT / rel
+        if not p.exists():
+            bad.append(f'{rel}: file missing')
+            continue
+        data = p.read_bytes()
+        if f'{len(data):,}' != bytes_str:
+            bad.append(f'{rel}: bytes {len(data):,} != table {bytes_str}')
+        if hashlib.sha256(data).hexdigest() != sha:
+            bad.append(f'{rel}: sha256 does not match the table')
+    return bad
+
+
+require(not baseline_img_check(baseline_img_rows),
+        f'the before-token-lift images match their registered bytes and sha256 (problems: {baseline_img_check(baseline_img_rows)})')
+# Two-sided, or the check above could be reading a table that stopped describing anything.
+# Guarded on a non-empty parse: the first version indexed rows[0] unconditionally and an
+# unparseable table crashed the whole checker with a traceback instead of reporting one FAIL -
+# which is worse than the bug it was meant to catch, because nothing else gets checked either.
+if len(baseline_img_rows) == 3:
+    require(bool(baseline_img_check([(baseline_img_rows[0][0], baseline_img_rows[0][1], '0' * 64)])),
+            'a changed sha256 in the table must be reported, otherwise the row is decoration')
+    require(bool(baseline_img_check([(baseline_img_rows[0][0], '1', baseline_img_rows[0][2])])),
+            'a byte count that no longer matches the file must be reported')
+    require(bool(baseline_img_check([('docs/baseline-images/gone.png', '1', '0' * 64)])),
+            'a registered image that is missing from disk must be reported')
+else:
+    require(False, f'the before-image fixtures were skipped because the table did not parse to 3 rows (got {len(baseline_img_rows)}) - a broken regex reads as no findings')
+print(f'BASELINE_IMAGES registered={len(baseline_img_rows)} '
+      f'verified={len(baseline_img_rows) - len(baseline_img_check(baseline_img_rows))} '
+      'selftest=sha256:caught bytes:caught missing:caught')
+
 failed = [label for ok, label in checks if not ok]
 # Print every failure, then a short tail of passing checks for context. Printing only the last 20
 # checks meant a failing assertion outside that window exited 1 without ever naming itself, which the

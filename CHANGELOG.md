@@ -184,7 +184,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 770 | 47,295 | `5c4466e2c831de43b533063e19127d934e0b70747e9eb3459570ce63d827b8b7` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
 | `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,897 | `d54d83cb52a1f8489efa4c59162ce8d44f96f34505d3396a5d4e59675460833b` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
-| `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 803 | 65,576 | `967ea70ad656fb086296b972f6986d596b76227c8a7208eab70c91976b056601` | `USERFLOW_CHECKS total=222 failed=0`（落盘后；未提交时它必然报 10 条"HEAD blob 里没有这个文件"，见本节末） | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16 M19 M20` |
+| `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 848 | 68,206 | `d20775210d74c113d32cf6612f594f10d2176c57ac74186e936f50401512d551` | `USERFLOW_CHECKS total=222 failed=0`（落盘后；未提交时它必然报 10 条"HEAD blob 里没有这个文件"，见本节末） | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16 M19 M20` |
 | `scripts/theme_token_census.mjs`（主题 token 普查 + 口径断言：族内声明方式必须一致） | 148 | 8,483 | `4fd961d1cb1fea90d46a879c9db8c1561ddbcded15733bddfaecbcf4b82e2968` | `TOKEN_POLICY_SELFTEST cases=5 failed=0` + `TOKEN_POLICY families=13 breaches=0` | 立口径那一轮它当场咬到 `--accent-solid`（exit 1）；把 `--accent-solid` 从 :root 删掉再 `--verify` 就会重新红 |
 | `scripts/__fixtures__/hanging_stage.mjs`（永不结束的假 stage，自己再 spawn 一个孙进程：`timeout-demo` 的靶子） | 20 | 1,155 | `16d702ee2dda998f2e7538d739f82d61656b075194ada2cb87fa014a80cf509a` | 只被 `verify_all.mjs timeout-demo` 生成，没有任何门读它 | `node scripts/verify_all.mjs timeout-demo`（六例，含"不调 taskkill 也不留孤儿"的消融与"正常结束不得报成 timeout"的负对照） |
 | `scripts/verify_modes.mjs`（模式名单 + 锚定的 dispatch 正则，纯数据、零控制流；runner 与 shape 台账读同一份） | 36 | 1,449 | `0b250811609418512489e3de9ffb70c1dbe24c7adc2d0b6cfe8da739bc6c2f87` | 每次启动三方核对：声明↔已派发用法块已文档化（15 个模式） | `node scripts/verify_guard_mutations.mjs M24`（把启动拒绝拔掉的变异，必须仍红） |
@@ -1230,10 +1230,24 @@ FAIL CONTRAST-DENOM-UNVERIFIED 云端|default: 3 combo(s) have runs the identity
 ### 十四、拍 1+2（抬 token 到 ≥5.0）本轮没做，明写降级
 
 不是忘了：我剩余上下文不足以完成"改前三拍 → 改 → 改后三拍 → 重跑 `contrast-tier` 判红绿"这一整串，
-而**没跑过的编辑不算交付**，半截的颜色改动更糟。改前三张已从会被覆盖的探针目录复制钉死在
-`%TEMP%/image-hosting-probes/2026-09-30/before-token-lift/before-{default,midnight,sakura}-black-插件.png`
-（含目标元素 `暂无插件执行记录`；`contrast-tier` 每批都会覆盖 `ct-*.png`，所以先复制出来）。
-下一轮我按 ≥5.0 抬 `--color-slate-400` 三档、贴改前/改后各三张与新的 `CONTRAST_GATE` 读数。
+而**没跑过的编辑不算交付**，半截的颜色改动更糟。
+
+**改前三张已进仓**（原来只钉在 `%TEMP%\image-hosting-probes\2026-09-30\before-token-lift\`，
+那是这台机器上最容易被清的位置，而它们是下一笔颜色改动唯一的改前凭证）：
+`contrast-tier` 每批都会覆盖 `ct-*.png`，所以复制进 `docs/baseline-images/` 并按 SHAPE 那条规矩登记：
+
+| 改前凭证（`docs/baseline-images/`） | 字节 | sha256 |
+| --- | --- | --- |
+| `docs/baseline-images/before-token-lift-2026-09-30-default-black-插件.png` | 85,030 | `9459ff00eb3424f3265bb8ed7117ec75ee1a4bfe173a3b8699856522ef5eedf4` |
+| `docs/baseline-images/before-token-lift-2026-09-30-midnight-black-插件.png` | 82,303 | `59bc153b4d56b837e03c7fce7c3b231a6c1d97ced7c65c16f722589fbf962146` |
+| `docs/baseline-images/before-token-lift-2026-09-30-sakura-black-插件.png` | 85,780 | `1a78aeb57d9bf4228f77d2fa3e48cc8900542c056bb044f891a9076b0a0342f3` |
+
+三张都含目标元素 `暂无插件执行记录`（`PluginsPage.tsx:136`，`text-slate-400` 压在 `bg-white` 面板上）。
+**这张表不是纪律，是断言**：`check_user_flow.py` 逐行比对磁盘上的字节数与 sha256，
+图被删、被换、被重新截一张"看起来一样"的都报红——按 §十一 那条定案，登记了没人核的哈希就是装饰。
+
+下一轮只做一件事：按 ≥5.0 抬 `--color-slate-400` 三档、贴改后三张与新的 `CONTRAST_GATE` 读数，**判据一行不动**。
+`String(pluginsError)` 那条排在它之后（且修法只许降级措辞、原始异常必须留在用户可取到的位置）。
 
 ## 1.4.4 - Gallery Render Bound and Installer Publisher
 
