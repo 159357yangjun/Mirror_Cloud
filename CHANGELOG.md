@@ -1428,6 +1428,22 @@ user-flow checker FAILED: 3 of 253 check(s)
 因为 import 还在）——正是我自己记过的"符号存在≠接线"。收紧成找 `<ReadFailurePanel` 之后两条都红了。
 上面那个 `3 of 253` 里第三条是指纹表过期（我那时还在改这个文件），不是断言。
 
+## 1.4.5 - Legible Read-Failure Panels and Measured Contrast Floors
+
+自 `v1.4.4` 起 115 笔提交（09-29 43 / 09-30 54 / 10-01 18）。改到 `apps/desktop/src` 的只有 8 笔；
+**Rust 侧与 `Cargo.toml`/`Cargo.lock` 在 bump 之前零改动**，远端 tip `fe57911` 的 CI 是
+`completed/success`，所以 cargo 作业吃的输入与上一版相同。
+
+- **读取失败面板不再把异常当标题**：`插件`/`资源`/`云端`/`任务` 四处原先直接渲染 `String(error)`
+  （真机上是 Rust 原文），现在标题只说人话，原始错误收进 `<details>` 可展开复制——降级措辞但不删证据。
+- **主题墨色按实测表面抬到下限**：`bc53a45` 先把三档 `--color-slate-400` 解到 4.5:1 地板，
+  `e65962c` 再按每套主题**合成后的真实表面**补余量到 ≥5.0；壁纸两个极值一并界定，改前/改后截图进仓带哈希。
+- **`data-theme` 只能由主题的写入者写**（`6e6a12f`），非法值在装载边界被拒并被界面显式报出。
+- **侧栏在产品最小窗口 640×480 下可滚**（`3060785`），可达性用滚动实测证明而不是推断。
+- 新手教程弹窗：一处层级、一处顺序、一处可读灰（`c1ac825`）。
+- 测具加固：对比度普查改为"隐藏字形后拍照取真实合成底"、逐元素采样过期判据（`moved/gone/uncomparable`
+  三数分开）、投影比对做行尾归一；`verify:all` 现为 19 个 stage。
+
 ## 1.4.4 - Gallery Render Bound and Installer Publisher
 
 
