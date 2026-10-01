@@ -1252,6 +1252,45 @@ FAIL CONTRAST-DENOM-UNVERIFIED 云端|default: 3 combo(s) have runs the identity
 下一轮只做一件事：按 ≥5.0 抬 `--color-slate-400` 三档、贴改后三张与新的 `CONTRAST_GATE` 读数，**判据一行不动**。
 `String(pluginsError)` 那条排在它之后（且修法只许降级措辞、原始异常必须留在用户可取到的位置）。
 
+### 十五、采样过期判据落到"每个元素自己"，MC-2 的两条候选被分开（`80a9ec3`）
+
+**盘上事实**：这条判据只动量具，产品代码一行没改。采集器给每个被采样的元素打标记，
+照片落地后立刻重读那个元素的矩形，`moved` / `gone` / `uncomparable` 三个数分开报，
+`uncomparable` 不并进"没动"。判据先过自己的五个夹具（植入 470px 必须报、同一份矩形必须 0、
+1px 抖动必须 0、缺盒子与畸形必须返回 null 而不是 0），夹具挂在同一批输出里，所以它的 0 是可读的。
+
+同 HEAD、同一条命令跑三批（逐字）：
+
+```text
+批 1  GEOMETRY_STALE combosWithStaleRuns=3 movedRuns=21 goneRuns=0 uncomparableRuns=0 of 1896 sampled
+      CONTRAST_TALLY below=0 + docDrift=0 + denom=6 + drift=3 = stopping=9      EXIT=1
+批 2  GEOMETRY_STALE combosWithStaleRuns=0 movedRuns=0 goneRuns=0 uncomparableRuns=0 of 1902 sampled
+      CONTRAST_TALLY below=0 + docDrift=0 + denom=9 + drift=0 = stopping=9      EXIT=1
+批 3  GEOMETRY_STALE combosWithStaleRuns=1 movedRuns=7  goneRuns=0 uncomparableRuns=0 of 1900 sampled
+      CONTRAST_TALLY below=0 + docDrift=0 + denom=8 + drift=1 = stopping=9      EXIT=1
+```
+
+4 个 stale 组合全是 `插件/black`、全是 58px，那条空状态文字自己的读数分成两族：
+`moved` 的三条比值 5.32–5.37（底 `226,232,240` / `43,58,82`），`fresh` 的六条 6.56–8.42。
+⇒ MC-2 那两条候选：**第 2 条被数成 `0/9`**（没有一个采样像素需要链外的兄弟元素来解释，
+§7.5 那次"六层没一层等于被采到的颜色"在这三批没复现）；**第 1 条只落地一半**——
+"坐标与像素不同源"成立（同一批里整页两次读都是 null，而那个元素的盒子差 58px），
+"照片站在重排的哪一侧"未证（重排落在 `sigShot` 之后、元素重读之前，即在 `captureScreenshot`
+这次往返里或它紧邻的几毫秒内）。所以"历史那条红是被过期像素骗的"是推定，不是闭环。
+`docs/VISUAL_BASELINE.md` §7.6 有逐行原文、两处自我更正（整页指纹结构上看不见这件事；
+`WATCH-PAINT` 那句"是重绘不是采样移位"是错的）
+和两条未解释项（58px 与那 2 行面板的同因未经测量；为什么只落在 `black`）。
+**这三批 `below` 都是 0**，所以这不是"那条红重现了"，是共现成立、机制独立可观测。
+
+**跨制品对账一笔**：§十四 末尾那句"下一轮只做一件事：按 ≥5.0 抬 `--color-slate-400`"**已经履行了**，
+在 `e65962c`（`--color-slate-400` = `#4e5e73` / `#a4b2ca` / `#6d5765`，磁盘上现值，本轮重读确认）。
+本节的 9 条空状态读数是对它的再次确认：**新鲜样本 6.56–8.42，全部 ≥5.0**；
+而 5.32–5.37 那三条是过期采样，**今后不得被引作 floor 证据**——它们量的不是那个元素。
+
+**交回你定**：这个门会当场变红，而且是间歇的（同 HEAD 同命令 3 / 0 / 1）。三个处置我都不自行执行——
+收下间歇红（每批都可能红）、把 stale 判据从退码里摘出来只留报告行、或者让扫掠等稳态再拍（那是另一件活）。
+按老规矩：不加白名单、不放宽阈值。
+
 ## 1.4.4 - Gallery Render Bound and Installer Publisher
 
 

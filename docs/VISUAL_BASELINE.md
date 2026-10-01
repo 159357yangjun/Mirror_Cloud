@@ -709,3 +709,83 @@ div.p-8.text-center{bg:rgba(0,0,0,0)} < div.max-h-72.overflow-auto{bg:rgba(0,0,0
 
 是面板真有一个透层、还是采样器把 `border-slate-200` 当成了底 —— **仍然不下结论，也不顺手修**。
 本轮不改任何产品代码、不改判据、不放宽任何阈值。
+
+### 7.6 分开那两种的手段做出来了，它选第 1 种（`80a9ec3`，三批实测）
+
+上一节留下的两条候选"预测同一份证据"，是因为当时的量具只看整页。看**单个元素**就能分开：
+采集器给每个被采样的元素打上标记（`data-ctid`，同一次求值里写），**照片落地后立刻**再读一次
+它自己的矩形，与采样时那份逐轴比。`moved` / `gone`（元素已被 React 卸载）/ `uncomparable`
+（比不了）是三个数，因为它们是三个不同的断言；`uncomparable` 永不并进"没动"。
+判据 `rectMoved` 吃 1px 容差（记录值是浮点、重读值取整，静态元素差 ≤0.5px），
+并且先过五个自己的夹具：植入 470px 位移必须报、同一份矩形必须 0、1px 抖动必须 0、
+缺盒子与畸形输入必须返回 null 而不是 0。
+
+三批同 HEAD、同一条命令（`contrast-tier --watch=暂无插件执行记录`）的原文：
+
+```text
+批 1  GEOMETRY_STALE ... combosWithStaleRuns=3 movedRuns=21 goneRuns=0 uncomparableRuns=0 of 1896 sampled
+      GEOMETRY_DRIFT ... geomToShotMoved=0 preToGeomMoved=2
+      WATCH-CAUSE "暂无插件执行记录": ... readingsMatchNoAncestorSolidColorAndNoAncestorImage=0/9 thisElementsOwnLayout={fresh:6 moved:3 gone:0 uncomparable:0}
+      CONTRAST_TALLY below=0 + docDrift=0 + denom=6 + drift=3 = stopping=9
+批 2  GEOMETRY_STALE ... combosWithStaleRuns=0 movedRuns=0 goneRuns=0 uncomparableRuns=0 of 1902 sampled
+      GEOMETRY_DRIFT ... geomToShotMoved=0 preToGeomMoved=0
+      WATCH-CAUSE ... thisElementsOwnLayout={fresh:9 moved:0 gone:0 uncomparable:0}
+      CONTRAST_TALLY below=0 + docDrift=0 + denom=9 + drift=0 = stopping=9
+批 3  GEOMETRY_STALE ... combosWithStaleRuns=1 movedRuns=7 goneRuns=0 uncomparableRuns=0 of 1900 sampled
+      GEOMETRY_DRIFT ... geomToShotMoved=0 preToGeomMoved=1
+      WATCH-CAUSE ... thisElementsOwnLayout={fresh:8 moved:1 gone:0 uncomparable:0}
+      CONTRAST_TALLY below=0 + docDrift=0 + denom=8 + drift=1 = stopping=9
+```
+
+被点名的组合，三批都是同一族，位移都是 58px：
+
+```text
+GEOMETRY_STALE default/black/插件  : 7 moved + 0 unmounted of 26, worst 58px - "插件执行记录" [329,517,...]->[329,459,...]
+GEOMETRY_STALE midnight/black/插件 : 同上
+GEOMETRY_STALE sakura/black/插件   : 同上（批 3 只有 sakura/black 这一个组合）
+```
+
+那条空状态文字自己的 9 条读数里，被判 `moved` 的那几条记录的框是 `261,576,1096,80`，
+采到的底是 `226,232,240`（default/sakura）与 `43,58,82`（midnight）、比值 5.32–5.37；
+判 `fresh` 的那几条，同一个元素在 `white` 组合上落在 `261,518,...`、底是 `255,255,255` / `16,24,40`、
+比值 6.56–8.42。**`y=576` 是重排之前的位置**：§7.2 那个合取里的 **`y` 那一半到此有了成因**
+（低比值不是那个表面变淡了，是采样点落在了元素原来占的那块底上）。
+**`black` 那一半没有**——本节末尾把它单列为未解释的集中度，不拿"恰好只有 black 跨过了重排"
+冒充解释，那只是把同一件事换个说法。
+
+所以两条候选的关系要说准。**候选 2 被数成 0**：
+`readingsMatchNoAncestorSolidColorAndNoAncestorImage=0/9`，三批都是 0——没有一个采样像素需要靠
+"链外的兄弟元素在画它"来解释；§7.5 那次"六层里没有一层等于被采到的颜色"在这三批**也没有复现**。
+**候选 1 部分成立、部分未定**。成立的部分：坐标与像素不同源——同一批里 `sigA == sigGeom == sigShot`
+（整页指纹两次比较都是 null），而那个元素的盒子在照片之后重读时差 58px，所以这次采样确实跨了一次重排，
+`y=576` 是**重排之前**的位置。未定的部分：**照片自己站在重排的哪一侧**。重排落在 `sigShot` 之后、
+元素重读之前，也就是发生在 `Page.captureScreenshot` 这次往返里或它紧邻的几毫秒内，
+而量具伸不进那张 PNG 内部。所以"历史上那条红就是被过期像素骗出来的"是**推定**（颜色、位置、
+机制三者都对得上，反证 0/9），不是当场闭环——这三批 `below` 全是 0，那条红没有重现。
+
+**这不是因果闭环，别读成闭环**：这三批 `below` 全是 0，§7.2 里那条真正低于阈值的异常读数
+**没有重现**。成立的是共现（4 个 stale 组合、颜色与位置都对得上、反证为 0/9），
+不是"当场让那条红再出现一次"。§7 标题的合取照原样留着，它没失真。
+
+自我更正两条，都在这轮：
+
+1. 上一轮我提议并用上的**整页指纹结构上就看不见这件事**，不是"这次没轮到它看见"。
+   它的两次读（`sigGeom`、`sigShot`）**都在照片之前**，照片之后的第一次读就是元素级重读——
+   所以 `geomToShotMoved=0`（三批全 0）说的从来不是"页面没动"，而是"量具在照片之后没有整页读"。
+   `preToGeom` 抓到 4 个里的 3 个纯属重排时刻的巧合（它比的两个点也都在照片之前），
+   批 1 漏掉 `midnight/black` 是必然。承重的那行是 `GEOMETRY_STALE`，`GEOMETRY_DRIFT` 只解释机制。
+   这条撤的是**我自己上一轮的期待**——"整页指纹可以当那把分叉的刀"，不是它印出来的数字。
+2. `WATCH-PAINT` 那句"同一矩形有两种底 ⇒ 那是重绘，不是采样移位"**是错的**，它当时正在描述
+   采样移位。这轮把标签拆开（`distinctAncestorChainReadings` 数带颜色的链、
+   `distinctAncestorChains` 数元素身份链），并让每个 needle 带上自己元素的判定。
+
+58px 从哪来：`插件` 路由上方那块错误面板 —— 也就是 `CONTRAST-DENOM` 每次点名的那 2 行
+（`配置 OpenAI-compatible…` 与 `插件列表读取失败：TypeError…`，`PluginsPage.tsx:18` 的
+`refetchInterval: 2500` 轮询决定它们在不在）。**那 2 行加起来正好 58px 我没量**，
+所以这句是"与 denom 那 2 行同因"的相关，不是"面板高度 == 58"的断言。
+同理，4 个 stale 组合全在 `black`（每批 24 个 black 组合里 3、0、1 个；非 black 0/144）
+**为什么只落在 black，本轮没有证据**，只记为未解释的集中度。
+
+产品代码一行没动。这个新门会**当场变红**（`drift` 桶，三批分别 3/0/1，同 HEAD 同命令），
+所以按规矩交回你定：收下间歇红、还是让扫掠在非稳态里不进退码、还是别的；我不自行放宽判据、
+不加白名单。
