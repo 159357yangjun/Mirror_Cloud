@@ -1,8 +1,10 @@
 from pathlib import Path
 import hashlib
 import json
+import os
 import re
 import subprocess
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 checks = []
@@ -670,6 +672,118 @@ for rel in measured_files:
 # nothing. Real Chinese code points sit far above U+00FF, so their absence is the signature.
 change_log_text = (ROOT / 'CHANGELOG.md').read_bytes().decode('utf-8')
 require(any(ord(c) > 0x255 for c in change_log_text), 'CHANGELOG.md still holds real CJK code points (not double-encoded)')
+
+# ---------------------------------------------------------------------------
+# Stray-artifact guard.
+#
+# Every measurement this project produces is supposed to land in %TEMP%\image-hosting-probes\<date>,
+# and the harness says so in its own usage text. Nothing enforced that, and the blind spot is not the
+# one you would expect: .gitignore hides *.log / *.tmp / *.temp / *.bak / *.swp from `git status`, so
+# a scratch file with a *temp* extension is invisible to the one command people use to look for junk.
+# The files that actually get left behind are the other kind - a throwaway script used to patch files
+# in place, which has a real source extension (.cjs / .mjs / .py) and therefore cannot be caught by
+# banning an extension without banning the tooling directory.
+#
+# The list, and why each half is shaped the way it is:
+#   STRAY_SUFFIXES - matched on extension anywhere, tracked or not, because a committed .bak is also
+#       junk. All twelve currently have zero tracked matches; that is asserted below with a positive
+#       control, since a census that returns 0 is only evidence if the tool can see a 1.
+#   STRAY_NAME_PREFIXES - the basename declares itself throwaway. This is the rule that catches
+#       tmp-readme-fix.cjs, which no extension rule could.
+#   root scripts - an UNTRACKED .cjs/.mjs/.py/.js/.ps1/.sh at the repository root. Every executable
+#       this repo owns lives under scripts/ (asserted: zero tracked root scripts), and an ad-hoc patch
+#       script is dropped at the root by definition. Untracked-only so that adding a real tool at the
+#       root is a decision, not a failure.
+# Build territory (.git, node_modules, dist, target, ...) is skipped: npm writes its own .log files
+# inside node_modules on purpose.
+STRAY_SUFFIXES = ('.log', '.tmp', '.temp', '.bak', '.orig', '.rej', '.swp', '.save', '.patch', '.diff', '.new', '.old')
+STRAY_NAME_PREFIXES = ('tmp-', 'tmp_', '.tmp-', '.tmp_', 'temp-', 'temp_', 'scratch-', 'scratch_', 'debug-', 'debug_', 'wip-', 'wip_')
+ROOT_SCRIPT_SUFFIXES = ('.cjs', '.mjs', '.js', '.py', '.ps1', '.sh')
+STRAY_SKIP_DIRS = {'.git', 'node_modules', 'dist', 'target', 'build', 'coverage', '.venv', '__pycache__'}
+
+
+def stray_files(root, tracked_set=None):
+    root = Path(root)
+    if tracked_set is None:
+        tracked_set = tracked_files()
+    found = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if d not in STRAY_SKIP_DIRS)
+        for f in filenames:
+            rel = (Path(dirpath) / f).relative_to(root).as_posix()
+            low = f.lower()
+            why = None
+            if low.endswith(STRAY_SUFFIXES):
+                why = 'suffix'
+            elif low.startswith(STRAY_NAME_PREFIXES):
+                why = 'name'
+            elif '/' not in rel and rel not in tracked_set and low.endswith(ROOT_SCRIPT_SUFFIXES):
+                why = 'root-script'
+            if why:
+                found.append((rel, why))
+    return sorted(found)
+
+
+tracked_set = tracked_files()
+require(any(p.endswith('.py') for p in tracked_set) and any(p.endswith('.md') for p in tracked_set),
+        'the tracked-file census can see source (positive control for the two zeros below)')
+require(not [p for p in tracked_set if p.lower().endswith(STRAY_SUFFIXES)],
+        f'no tracked file carries a temp-extension name, so the suffix rule starts with zero false alarms (found {[p for p in tracked_set if p.lower().endswith(STRAY_SUFFIXES)][:6]})')
+require(not [p for p in tracked_set if Path(p).name.lower().startswith(STRAY_NAME_PREFIXES)],
+        'no tracked file carries a scratch-name prefix, so the name rule starts with zero false alarms')
+require(not [p for p in tracked_set if '/' not in p and p.lower().endswith(ROOT_SCRIPT_SUFFIXES)],
+        'every executable this repo owns lives under scripts/ or apps/, which is what makes a root-level untracked script a stray')
+
+STRAY_PLANTED = [('tmp-readme-fix.cjs', 'name'), ('notes.log', 'suffix'), ('scratch_probe.mjs', 'name'), ('docs/outline.old', 'suffix')]
+STRAY_CLEAN = [('README.md', None), ('scripts/keep.mjs', None), ('src/app.ts', None)]
+
+
+def stray_fixture():
+    # The fixture runs against a throwaway tree, never against the repository: a guard that plants its
+    # own violation in the working copy would fail the next run of itself.
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        (base / 'scripts').mkdir()
+        (base / 'docs').mkdir()
+        (base / 'src').mkdir()
+        for rel, _ in STRAY_PLANTED + STRAY_CLEAN:
+            (base / rel).write_text('x\n', encoding='utf-8')
+        (base / 'node_modules').mkdir()
+        (base / 'node_modules' / 'npm.log').write_text('x\n', encoding='utf-8')
+        red = stray_files(base, tracked_set={r for r, _ in STRAY_PLANTED + STRAY_CLEAN})
+        for rel, _ in STRAY_PLANTED:
+            (base / rel).unlink()
+        green = stray_files(base, tracked_set={r for r, _ in STRAY_CLEAN})
+        return red, green
+
+
+stray_red, stray_green = stray_fixture()
+probe_dir = Path(os.environ.get('TEMP') or os.environ.get('TMP') or '.') / 'image-hosting-probes' / time.strftime('%Y-%m-%d')
+probe_dir.mkdir(parents=True, exist_ok=True)
+stray_out = {}
+for half, rows in (('red', stray_red), ('green', stray_green)):
+    p = probe_dir / f'stray-guard-{half}.txt'
+    p.write_text('\n'.join(f'{r}\t{w}' for r, w in rows) + ('\n' if rows else ''), encoding='utf-8', newline='\n')
+    stray_out[half] = p
+require([r for r, _ in stray_red] == sorted(x for x, _ in STRAY_PLANTED),
+        f'the stray guard must report every planted temp file and nothing else (got {[r for r, _ in stray_red]})')
+require(all(dict(stray_red)[r] == w for r, w in STRAY_PLANTED),
+        'each planted file must be reported for the rule that actually catches it (extension vs name vs root script)')
+require(stray_green == [], f'the stray guard must go quiet once the planted files are removed (got {stray_green})')
+require(not any(r.startswith('node_modules/') for r, _ in stray_red),
+        'build territory is skipped on purpose - npm leaves .log files inside node_modules by design')
+require(stray_out['red'].exists() and stray_out['red'].stat().st_size > 0,
+        'the red half is saved to a file with its rows in it, because "I ran it" is not recomputable')
+require(stray_out['green'].exists() and stray_out['green'].stat().st_size == 0,
+        'the green half is saved too, and must be an empty file - a non-empty green output is a finding')
+
+stray_real = stray_files(ROOT)
+require(not stray_real, f'the repository contains no stray temp or scratch file (found {stray_real[:8]})')
+print(f'STRAY_GUARD suffixes={len(STRAY_SUFFIXES)} nameShapes={len(STRAY_NAME_PREFIXES)} rootScriptSuffixes={len(ROOT_SCRIPT_SUFFIXES)} '
+      f'selftest=red:{len(stray_red)}/green:{len(stray_green)} real_found={len(stray_real)} '
+      f'outputs={probe_dir}{os.sep}stray-guard-{{red,green}}.txt '
+      f'status={"earned - it reddened on a real stray" if stray_real else "not-yet-earned: never caught a real stray, only the planted one"}')
 
 failed = [label for ok, label in checks if not ok]
 # Print every failure, then a short tail of passing checks for context. Printing only the last 20
