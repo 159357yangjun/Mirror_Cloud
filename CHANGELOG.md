@@ -1576,10 +1576,29 @@ $ node scripts/verify_dialog_interactions.mjs visual --theme=sakura
 VISUAL_GATE total=4 failed=0   rc=0        # 产出上面那两张渲染图
 ```
 
-聚合层 `verify:all` 的终态读数在下一笔提交里（这笔写完就得重跑，读数不能先写）。
+聚合层终态读数（工作树干净、`HEAD=3f716f0` 时跑，退出码 0）：
+
+```text
+$ node scripts/verify_all.mjs
+verify:all | repo D:/image-hosting-platform
+verify:all | dev server http://127.0.0.1:1420/ reachable
+verify:all | wall=171.4s stages=19 sumOfStageWalls=171.2s
+verify:all | cost (slowest first): contrast-tier=85.0 mutations=38.7 theme-surfaces=16.4 visual=12.7 red-demo=4.7 settings-guard=4.3
+verify:all | 19 passed, 0 failed, 0 skipped of 19
+```
+
+关键计数逐条：`validate` 13 migrations OK · `check_contracts` 66/66/66 · `check_user_flow` 253/0 ·
+`theme_face_inventory` faces=23 docLines=25 mismatch=0 · `verify_shape` checked=65 failed=0 ·
+`token_policy` families=13 breaches=0 · `gate-unit` 29/0 · `contrast-tier` 1917/0（`docDrift=0 denom=0 drift=0`）·
+`theme-surfaces` 186/0（`frozen=7` 全在白名单）· `mutations` 27/27 复现且 `unrestored=0`。
+
+**这一绿覆盖到哪为止要说准**：它覆盖 19 个 stage 各自声明的谓词，不覆盖"安装包能装能跑"——
+后者是 `windows-bundle` 的第 [11]–[17] 步（`tauri build`、NSIS/MSI 冒烟、资产暂存），本轮一次都没跑到，
+CI 侧那条作业仍是 `completed/failure`。上面那句"没有一条是产品代码的红"只描述本仓库内这些门的归因。
+
 本笔之前的一次聚合跑是 `16 passed, 3 failed, 0 skipped of 19`，三条红分别是：
 指纹表未跟改动（`check_user_flow`）、shape 基线未重签（`verify_shape`）、`mutations` 在脏树拒绝启动——
-**没有一条是产品代码的红**，前两处已在本笔（`--patch` / 第二十八次签字）落平。
+前两处已在上笔（`--patch` / 第二十八次签字）落平，第三处需要干净树，故本笔的 19/19 才是它的证人。
 
 ## 1.4.5 - Legible Read-Failure Panels and Measured Contrast Floors
 
