@@ -135,6 +135,22 @@ const mutations = [
   // The probe module is only safe to extract because it stays inert. Smuggle logic in and the
   // assertion that says so must fire - otherwise "it is just data" is a claim with nothing behind it.
   { id: 'M20', file: PROBES, from: 'export const HELPERS = `', to: 'export function smuggledLogic() { return 1 }\nexport const HELPERS = `', oracle: 'guard', expect: 'the probe module exports no logic of its own' },
+  // The per-element staleness guard, both of its silent-death shapes, asserted through `gate-unit` so
+  // no browser is in the loop and the case table is the one the sweep re-runs before quoting a zero.
+  // M26 is the disarmed comparison (a loop bound that never runs: every element then "did not move");
+  // M27 is the subtler one, where a missing or malformed box returns 0 instead of null, which turns an
+  // element React unmounted - the strongest stale reading there is - into a pass.
+  // M25 stays unused on purpose: it was drafted against the exit-code latch and withdrawn, because
+  // after that fix no path asks for a second verdict, so the mutation could not change what the
+  // oracle sees. Renumbering it here would make the old note point at a different test.
+  {
+    id: 'M26', file: HARNESS, oracle: 'gate-unit', expect: 'rectMoved planted 470px shift -> 0 (expected 470)',
+    from: '  let worst = 0\n      for (let i = 0; i < 4; i++) {', to: '  let worst = 0\n      for (let i = 0; i < 0; i++) {',
+  },
+  {
+    id: 'M27', file: HARNESS, oracle: 'gate-unit', expect: 'rectMoved live box missing (element unmounted) -> 0 (expected null)',
+    from: '|| live.length !== 4) return null', to: '|| live.length !== 4) return 0',
+  },
 ]
 
 const selected = only ? mutations.filter((m) => only.has(m.id)) : mutations

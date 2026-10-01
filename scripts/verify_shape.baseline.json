@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-10-01T06:32:16",
-    "head": "09fb50b4121e449213dd797822ebe50361244b84",
-    "reason": "twenty-first signing: per-element layout verdict added to contrast-tier (collector marks each sampled element, its box is re-read immediately after the photograph, moved/gone/uncomparable are three separate counts), plus the page-level layout fingerprint and its fixtures; the watch rows now carry their own layout verdict. Product code untouched."
+    "takenAt": "2026-10-01T07:06:08",
+    "head": "6645cda347ac69e30e640046b4410cc8b8f6b060",
+    "reason": "twenty-second signing: rectMoved/layoutDrift lifted to module scope with a shared fixture table so gate-unit can plant moves without a browser (staleness group, 10 cases, gate-unit now 26); the sweep re-runs that same table before quoting any zero; stale rows now also record which element owns the stale coordinate. Product code untouched."
   },
   "files": [
     {
@@ -22,11 +22,11 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 3356,
-      "bytes": 275995,
+      "lines": 3412,
+      "bytes": 280302,
       "families": {
         "failures.push": 15,
-        "emitGate": 12,
+        "emitGate": 13,
         "harness-fault exit": 42,
         "gate line": 8,
         "positive control": 15,
@@ -36,8 +36,8 @@
     {
       "file": "scripts/verify_guard_mutations.mjs",
       "exists": true,
-      "lines": 295,
-      "bytes": 24119,
+      "lines": 311,
+      "bytes": 25387,
       "families": {
         "failures.push": 0,
         "emitGate": 0,
@@ -92,11 +92,11 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 5104,
-    "bytes": 391528,
+    "lines": 5176,
+    "bytes": 397103,
     "families": {
       "failures.push": 16,
-      "emitGate": 12,
+      "emitGate": 13,
       "harness-fault exit": 44,
       "gate line": 8,
       "positive control": 16,

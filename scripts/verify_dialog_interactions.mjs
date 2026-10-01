@@ -245,6 +245,56 @@ function docTableDiff(haveText, wantText) {
   return rows
 }
 
+// The layout-staleness predicates, lifted out of the sweep for the same reason `coverageVerdict` and
+// `docTableDiff` are: the sweep can only feed them whatever the page happened to be doing that
+// minute, so a predicate quietly disarmed (a loop bound that never runs, a misspelled field, a
+// `!==` turned into `<`) would print `moved=0` in every batch and read exactly like a clean page.
+// The cases below are the planted halves; `gate-unit` runs them with no browser, and the sweep
+// re-runs the SAME table before it is allowed to quote a zero of its own.
+//
+// "did this element's box move between the sample and the photograph": 0 for unmoved, the worst axis
+// delta in px for moved, null when there is nothing to compare against. null must never be counted
+// as unmoved - an element that vanished from the page is the strongest form of the finding, not the
+// weakest.
+function rectMoved(box, live) {
+  if (!Array.isArray(box) || box.length !== 4 || !Array.isArray(live) || live.length !== 4) return null
+  let worst = 0
+  for (let i = 0; i < 4; i++) {
+    const d = Math.abs(Number(box[i]) - Number(live[i]))
+    if (!(d >= 0)) return null
+    if (d > worst) worst = d
+  }
+  return worst > 1 ? Math.round(worst) : 0
+}
+// The page-level fingerprint, kept for mechanism rather than verdict: both of its reads sit BEFORE
+// the photograph, so it can never see a reflow that lands inside the capture round trip. That is why
+// the per-element check above is the load-bearing one, and the 58px finding in
+// docs/VISUAL_BASELINE.md section 7.6 is the measurement that proved it.
+function layoutDrift(a, b) {
+  if (!a || !b) return 'signature missing'
+  const parts = []
+  if (a.n !== b.n) parts.push(`text-bearing elements ${a.n}->${b.n}`)
+  if (a.sumTop !== b.sumTop) parts.push(`sum of top edges ${a.sumTop}->${b.sumTop}`)
+  if (a.doc !== b.doc) parts.push(`document height ${a.doc}->${b.doc}`)
+  if (a.bodyH !== b.bodyH) parts.push(`body height ${a.bodyH}->${b.bodyH}`)
+  return parts.length ? parts.join(', ') : null
+}
+const RECT_CASES = [
+  { name: 'planted 470px shift', box: [10, 100, 200, 20], live: [10, 570, 200, 20], expect: 470 },
+  { name: 'the observed real shift (58px, plugin/black)', box: [329, 517, 391, 20], live: [329, 459, 391, 20], expect: 58 },
+  { name: 'identical twin', box: [10, 100, 200, 20], live: [10, 100, 200, 20], expect: 0 },
+  { name: '1px jitter, inside tolerance', box: [10, 100, 200, 20], live: [10, 101, 200, 20], expect: 0 },
+  { name: 'live box missing (element unmounted)', box: [10, 100, 200, 20], live: undefined, expect: null },
+  { name: 'recorded box malformed', box: '10,100,200,20', live: [10, 100, 200, 20], expect: null },
+]
+const SIG_HERE = { n: 62, sumTop: 24198, doc: 900, bodyH: 900 }
+const DRIFT_CASES = [
+  { name: 'identical signatures', a: SIG_HERE, b: SIG_HERE, expect: null },
+  { name: 'element count moved (62->64, as observed)', a: SIG_HERE, b: { ...SIG_HERE, n: 64 }, expect: 'text-bearing elements 62->64' },
+  { name: 'only the top sum moved', a: SIG_HERE, b: { ...SIG_HERE, sumTop: 23728 }, expect: 'sum of top edges 24198->23728' },
+  { name: 'a signature read is missing', a: null, b: SIG_HERE, expect: 'signature missing' },
+]
+
 if (MODE === 'gate-unit') {
   // No browser, no dev server: this exercises the gate predicate against readings that were really
   // observed on this machine, including the one that produced the bogus 186.796875px card width.
@@ -298,19 +348,36 @@ if (MODE === 'gate-unit') {
     correct: c.diff.length === c.expectRows && (!c.expectToken || c.diff.some((d) => d.includes(c.expectToken))),
     detail: c.diff.join(' | ') || '(none)',
   }))
-  writeFileSync(`${OUT}/report-gate-unit.json`, JSON.stringify({ results, docResults }, null, 2))
+  // The layout-staleness predicates, with no browser in the loop. Both directions are asserted on
+  // every case: a planted move must come back as that many pixels, an identical twin must come back 0,
+  // and a missing or malformed box must come back null rather than 0. The third one is the case that
+  // would otherwise be lost - `undefined` treated as "did not move" turns an unmounted element into a
+  // pass, which is the failure mode this whole section was written to avoid.
+  const staleResults = [
+    ...RECT_CASES.map((c) => {
+      const got = rectMoved(c.box, c.live)
+      return { group: 'staleness', name: `rectMoved ${c.name}`, got: String(got), expect: String(c.expect), correct: got === c.expect }
+    }),
+    ...DRIFT_CASES.map((c) => {
+      const got = layoutDrift(c.a, c.b)
+      return { group: 'staleness', name: `layoutDrift ${c.name}`, got: String(got), expect: String(c.expect), correct: c.expect === null ? got === null : String(got).includes(c.expect) }
+    }),
+  ]
+  writeFileSync(`${OUT}/report-gate-unit.json`, JSON.stringify({ results, docResults, staleResults }, null, 2))
   for (const r of results) console.log(`${r.correct ? 'OK  ' : 'FAIL'} ${r.group}: ${r.name} -> ${r.gateRejected ? 'rejected: ' + r.problems.join('; ') : 'accepted'}`)
   for (const r of docResults) console.log(`${r.correct ? 'OK  ' : 'FAIL'} doc-table: ${r.name} -> ${r.gotRows} row(s) reported${r.detail ? `: ${r.detail}` : ''}`)
+  for (const r of staleResults) console.log(`${r.correct ? 'OK  ' : 'FAIL'} staleness: ${r.name} -> ${r.got} (expected ${r.expect})`)
   // One emitGate per predicate under test: a single tally would let the viewport cases carry a
   // coverage failure, which is the cross-group averaging this table exists to avoid. The rollup has
   // to be the LAST line - verify_all.mjs reads the last GATE_JSON of a stage and cross-checks its
   // name against the stage, so reordering these three would silently narrow what gets checked.
   for (const g of ['viewport', 'coverage']) emitGate(`gate-unit:${g}`, byGroup(g).length, byGroup(g).filter((r) => !r.correct).length)
   emitGate('gate-unit:doc-table', docResults.length, docResults.filter((r) => !r.correct).length)
-  const all = [...results, ...docResults]
+  emitGate('gate-unit:staleness', staleResults.length, staleResults.filter((r) => !r.correct).length)
+  const all = [...results, ...docResults, ...staleResults]
   const allFailed = all.filter((r) => !r.correct)
   emitGate('gate-unit', all.length, allFailed.length)
-  console.log(`gate unit check: ${all.length - allFailed.length}/${all.length} correct (viewport ${byGroup('viewport').length - byGroup('viewport').filter((r) => !r.correct).length}/${byGroup('viewport').length}, coverage ${byGroup('coverage').length - byGroup('coverage').filter((r) => !r.correct).length}/${byGroup('coverage').length}, doc-table ${docResults.length - docResults.filter((r) => !r.correct).length}/${docResults.length}) | reports: ${OUT}`)
+  console.log(`gate unit check: ${all.length - allFailed.length}/${all.length} correct (viewport ${byGroup('viewport').length - byGroup('viewport').filter((r) => !r.correct).length}/${byGroup('viewport').length}, coverage ${byGroup('coverage').length - byGroup('coverage').filter((r) => !r.correct).length}/${byGroup('coverage').length}, doc-table ${docResults.length - docResults.filter((r) => !r.correct).length}/${docResults.length}, staleness ${staleResults.length - staleResults.filter((r) => !r.correct).length}/${staleResults.length}) | reports: ${OUT}`)
   process.exit(allFailed.length ? 1 : 0)
 }
 
@@ -1255,39 +1322,13 @@ async function main() {
     // three. No regex here on purpose - this string is injected, and a single backslash would be
     // eaten by the template and leave a fingerprint that silently never changes.
     const SIG = `(function(){var sel='p,span,div,button,a,li,h1,h2,h3,h4,label,td,th,code,pre',n=0,s=0;var all=document.querySelectorAll(sel);for(var i=0;i<all.length;i++){var e=all[i];var t=e.textContent||'';if(!t.trim())continue;var r=e.getBoundingClientRect();if(r.height<=0)continue;n++;s+=Math.round(r.top)}return {n:n,sumTop:s,doc:document.documentElement.scrollHeight,bodyH:document.body?document.body.scrollHeight:0}})()`
-    // One predicate, called by the sweep and by its own control: two signature reads in and out of the
-    // geometry -> photograph window. It answers exactly one question, "did the layout move", and its
-    // blind spot is part of the answer - an element that changes colour, or slides sideways while its
-    // top edge and the document height stay put, is invisible here. That blind spot is what makes the
-    // pair useful rather than decorative: drift says the sample moved, and no-drift-plus-a-different
-    // background is the only way left for "the paint changed", which is the MC-2 fork.
-    const layoutDrift = (a, b) => {
-      if (!a || !b) return 'signature missing'
-      const parts = []
-      if (a.n !== b.n) parts.push(`text-bearing elements ${a.n}->${b.n}`)
-      if (a.sumTop !== b.sumTop) parts.push(`sum of top edges ${a.sumTop}->${b.sumTop}`)
-      if (a.doc !== b.doc) parts.push(`document height ${a.doc}->${b.doc}`)
-      if (a.bodyH !== b.bodyH) parts.push(`body height ${a.bodyH}->${b.bodyH}`)
-      return parts.length ? parts.join(', ') : null
-    }
     // Read the live box of every element the sweep marked, with the SAME clamping the collector used,
     // so box-to-box comparison is apples-to-apples instead of "clamped versus unclamped". Returns
     // ctid -> [left, top, width, height]. An id that is absent is a row whose element is no longer on
     // the page, which is the strongest form of the same finding and must not be read as a match.
     const RECHECK = `(function(){var m=document.querySelectorAll('[data-ctid]'),o={};for(var i=0;i<m.length;i++){var e=m[i],r=e.getBoundingClientRect();var vx=Math.max(r.left,0),vy=Math.max(r.top,0);o[e.getAttribute('data-ctid')]=[Math.round(vx),Math.round(vy),Math.round(Math.min(r.right,innerWidth)-vx),Math.round(Math.min(r.bottom,innerHeight)-vy)]}return o})()`
-    // One predicate for "did this element's box move", used by the sweep and by its own fixtures.
-    // Returns 0 for unmoved, the worst axis delta for moved, and null when there is no live box to
-    // compare against - null must never be counted as "did not move".
-    const rectMoved = (box, live) => {
-      if (!Array.isArray(box) || box.length !== 4 || !Array.isArray(live) || live.length !== 4) return null
-      let worst = 0
-      for (let i = 0; i < 4; i++) {
-        const d = Math.abs(Number(box[i]) - Number(live[i]))
-        if (!(d >= 0)) return null
-        if (d > worst) worst = d
-      }
-      return worst > 1 ? Math.round(worst) : 0
-    }
+    // `rectMoved` and `layoutDrift` are defined at module scope, next to their fixture tables, so the
+    // sweep and `gate-unit` cannot drift apart into two copies of the same comparison.
     const COLLECT_TEXTS = `(function(controls, dialogOnly){
             // Monotonic and page-global: the text sweep and the control sweep are two calls over the same page, and a
             // per-call counter plus a clear-at-start wiped the first call marks, so every text row came back
@@ -1822,11 +1863,18 @@ async function main() {
               else {
                 const movedBy = rectMoved(s.box, live)
                 if (movedBy === null) { verdict = 'uncomparable'; uncomparableRows.push(s) }
-                else if (movedBy > 0) { verdict = 'moved'; staleRows.push({ text: (s.text || '').slice(0, 24), kind: s.kind, movedBy, ratio: s.ratio, threshold: s.threshold, from: s.box, to: live }) }
+                else if (movedBy > 0) { verdict = 'moved'; staleRows.push({ text: (s.text || '').slice(0, 24), kind: s.kind, movedBy, ratio: s.ratio, threshold: s.threshold, from: s.box, to: live, ctid: s.ctid, x: s.x, y: s.y }) }
               }
             }
             s.layoutVerdict = verdict
           }
+          // Name what actually owns the stale coordinate. Without this the shift is a number and the
+          // thing that caused it stays a guess - which is how I ended up writing "the 58px must be the
+          // error panel" on the strength of it being the only other difference between combos.
+          // paintChainAt is the helper already used for failures and watch rows; reusing it here means
+          // one instrument, not a second copy of the hit-test logic.
+          for (const s of staleRows.slice(0, 2)) s.ownerAtStalePoint = await paintChainAt(s.x, s.y)
+          for (const s of staleRows.slice(0, 2)) if (s.ctid) s.ownerOfLiveBox = await paintChainAt(s.to[0] + 2, s.to[1] + 2)
           const below = sampled.filter((s) => s.ratio !== null && s.ratio < s.threshold)
           // When a row fails, say what is actually stacked under it. Guessing at a colour from its
           // rgb triple is how I spent three rounds attributing this to chips, tiles and rounding.
@@ -2109,13 +2157,21 @@ async function main() {
     // The per-element verdict, which is the guard the fingerprint exists to explain. Three totals are
     // printed because they are three different claims, and uncomparable is deliberately not folded into
     // fresh: a row the instrument cannot check is a row that was not checked.
-    const rectCtlMoved = rectMoved([10, 100, 200, 20], [10, 570, 200, 20])
-    const rectCtlFresh = rectMoved([10, 100, 200, 20], [10, 100, 200, 20])
-    const rectCtlSubPixel = rectMoved([10, 100, 200, 20], [10, 101, 200, 20])
-    const rectCtlMissing = rectMoved([10, 100, 200, 20], undefined)
-    const rectCtlJunk = rectMoved('10,100,200,20', [10, 100, 200, 20])
-    if (!(rectCtlMoved > 0) || rectCtlFresh !== 0 || rectCtlSubPixel !== 0 || rectCtlMissing !== null || rectCtlJunk !== null) {
-      console.log(`HARNESS FAULT: the per-element layout verdict disagrees with its own fixtures (moved=${rectCtlMoved}, fresh=${rectCtlFresh}, subPixel=${rectCtlSubPixel}, missingBox=${rectCtlMissing}, malformed=${rectCtlJunk}); a guard that reads a planted 470px move as clean is worse than no guard, because it prints a number.`); finish(2)
+    // The predicate's own red half, in the same pass and through the same function, over the SAME case
+    // table gate-unit asserts on. A fingerprint or box comparison is unusually easy to kill silently:
+    // disarmed, it returns "no move" for every pair and prints a zero that reads exactly like a clean
+    // sweep. So no zero from this section may be quoted unless every case came back as expected.
+    const fixtureFailures = []
+    for (const c of RECT_CASES) {
+      const got = rectMoved(c.box, c.live)
+      if (got !== c.expect) fixtureFailures.push(`rectMoved "${c.name}" -> ${String(got)}, expected ${String(c.expect)}`)
+    }
+    for (const c of DRIFT_CASES) {
+      const got = layoutDrift(c.a, c.b)
+      if (c.expect === null ? got !== null : !String(got || '').includes(c.expect)) fixtureFailures.push(`layoutDrift "${c.name}" -> ${String(got)}, expected it to name "${c.expect}"`)
+    }
+    if (fixtureFailures.length) {
+      console.log(`HARNESS FAULT: the layout-staleness predicates disagree with their own fixtures (${fixtureFailures.slice(0, 3).join(' | ')}); a guard that cannot see a planted 470px move cannot see a real one, and its zero would be a number, not a result.`); finish(2)
     }
     const staleCombos = rows.filter((r) => r.stale && (r.stale.moved || r.stale.gone))
     const staleRunTotal = rows.reduce((a, r) => a + (r.stale ? r.stale.moved : 0), 0)
@@ -2125,8 +2181,8 @@ async function main() {
     // from above is a ReferenceError that node --check does not catch, which is the failure this file
     // already has a comment about.
     const sampledTotal = rows.reduce((a, r) => a + r.measured, 0)
-    console.log(`GEOMETRY_STALE selftest moved=${rectCtlMoved}px fresh=${rectCtlFresh} subPixel=${rectCtlSubPixel} missingBox=${String(rectCtlMissing)} malformed=${String(rectCtlJunk)} combos=${rows.length} combosWithStaleRuns=${staleCombos.length} movedRuns=${staleRunTotal} goneRuns=${goneRunTotal} uncomparableRuns=${uncomparableTotal} of ${sampledTotal} sampled`)
-    for (const r of staleCombos.slice(0, 5)) console.log(`GEOMETRY_STALE ${r.theme}/${r.wallpaper}/${r.route}: ${r.stale.moved} moved + ${r.stale.gone} unmounted of ${r.measured} run(s), worst ${r.stale.worstMovedBy}px - ${r.stale.examples.map((s) => `${s.gone ? 'gone' : s.movedBy + 'px'} "${s.text}"`).join(' ; ')}`)
+    console.log(`GEOMETRY_STALE selftest rectCases=${RECT_CASES.length} driftCases=${DRIFT_CASES.length} allAsExpected=1 combos=${rows.length} combosWithStaleRuns=${staleCombos.length} movedRuns=${staleRunTotal} goneRuns=${goneRunTotal} uncomparableRuns=${uncomparableTotal} of ${sampledTotal} sampled`)
+    for (const r of staleCombos.slice(0, 5)) console.log(`GEOMETRY_STALE ${r.theme}/${r.wallpaper}/${r.route}: ${r.stale.moved} moved + ${r.stale.gone} unmounted of ${r.measured} run(s), worst ${r.stale.worstMovedBy}px - ${r.stale.examples.map((s) => `${s.gone ? 'gone' : s.movedBy + 'px'} "${s.text}"`).join(' ; ')}${r.stale.examples[0] && r.stale.examples[0].ownerAtStalePoint ? ` ; at the stale point now: ${String(r.stale.examples[0].ownerAtStalePoint).split(' < ').slice(0, 2).join(' < ')}` : ''}`)
     if (!staleCombos.length && !moved.length) console.log(`GEOMETRY_STALE-NULL moved=0 gone=0 with a predicate that caught a planted 470px move and still calls a 1px jitter fresh, so this zero is "no sampled element moved in any of ${rows.length} combinations", not "the check is blind". It governs only the batch that ran it, and it cannot see an element that stayed put while something behind it repainted - that case is WATCH-PAINT, not this line.`)
     for (const r of staleCombos) driftFindings.push(`CONTRAST-STALE-ELEMENT ${r.theme}/${r.wallpaper}/${r.route}: ${r.stale.moved} sampled run(s) whose own element measured differently after the photograph (worst ${r.stale.worstMovedBy}px) and ${r.stale.gone} whose element is no longer on the page, so those pixels belong to a layout their coordinates do not describe - ${r.stale.examples.map((s) => `${s.gone ? 'gone' : s.movedBy + 'px'} "${s.text}"`).join(' ; ')}`)
     for (const r of moved) driftFindings.push(`CONTRAST-STALE ${r.theme}/${r.wallpaper}/${r.route}: the layout moved between the geometry read and the glyph-hidden photograph (${r.drift.geomToShot}), so these ${r.measured} readings sample a layout their own coordinates do not describe`)
