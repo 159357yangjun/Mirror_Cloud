@@ -1758,6 +1758,13 @@ async function main() {
           // nothing about which run appeared or vanished - which is the difference between
           // "the page rendered differently" and "the sweep went blind for one combination".
           rows[rows.length - 1].keys = sampled.map((s) => `${s.kind}|${s.tag || ''} ${(s.cls || '').split(/\s+/).slice(0, 3).join('.')}|${(s.text || '').slice(0, 40)}`).sort()
+          // The grid-vs-centre disagreement, kept for PASSING runs too. The floor margin rule is
+          // "at least the measured wobble", and before this line the only spreads in the artifact
+          // belonged to runs that had already failed - so the number the rule needs was unavailable
+          // precisely in the case the rule is meant to govern.
+          const spreads = sampled.filter((s) => s.kind === 'text' && typeof s.spread === 'number').map((s) => ({ v: s.spread, t: (s.text || '').slice(0, 30), r: s.ratio, c: s.centreRatio })).sort((a, b) => b.v - a.v)
+          rows[rows.length - 1].maxSpread = spreads.length ? spreads[0] : null
+          rows[rows.length - 1].textSpreadCount = spreads.length
           if (below.length) failures.push(`CONTRAST ${themeName}/${wallName}/${label}: ${below.length}/${sampled.length} readable runs below their threshold - worst ${worst.ratio}:1 (need ${worst.threshold}) "${worst.text}" ${worst.size}px ${worst.bold ? 'bold' : 'regular'} fg rgb(${worst.fg}) on sampled rgb(${worst.bg})`)
           // A palette re-tune across three themes is exactly the change where every number can
           // pass and the screen still looks wrong, so each combination is photographed as well.
