@@ -228,7 +228,13 @@ function coverageVerdict({ judged, dropped, ceiling = 0.25 }) {
 // it. It names WHICH row moved with both values, because "1 row(s) do not match" is not actionable -
 // the gate spent an entire run saying that about what turned out to be the pending colour red.
 const DOC_TABLE_COLS = ['面', 'mist', 'midnight', 'sakura']
-const stripCountCol = (text) => String(text).split('\n').map((l) => l.split('|').slice(0, -2).join('|'))
+// Line endings are normalised here rather than at the call site, for the reason theme_face_inventory
+// learned on 2026-10-01: this repo is checked out with core.autocrlf=true, so the committed LF blob
+// arrives as CRLF in the working copy, and the byte after a BEGIN marker is \r. The call site's
+// `.replace(/^\n/,'')` then never fires, the doc side starts with an empty line, and every row is read
+// one slot out of phase - a projection gate that goes red while the table matches byte for byte.
+const normBlock = (t) => String(t).replace(/\r\n/g, '\n').replace(/[\r\u0085\u2028\u2029]/g, '\n').replace(/^\n+/, '').replace(/\n+$/, '')
+const stripCountCol = (text) => normBlock(text).split('\n').map((l) => l.split('|').slice(0, -2).join('|'))
 function docTableDiff(haveText, wantText) {
   const have = stripCountCol(haveText)
   const want = stripCountCol(wantText)
@@ -342,6 +348,13 @@ if (MODE === 'gate-unit') {
     { name: 'only the count column moved', diff: docTableDiff(T([HEAD, '| 插件 | 4.74 | 4.92 | 4.93 | 26/26/26 |', '| 设置 | 4.74 | 4.92 | 4.93 | 37/37/37 |']), RUN), expectRows: 0, expectToken: null },
     { name: 'doc carries a row the run did not produce', diff: docTableDiff(T([HEAD, '| 插件 | 4.74 | 4.92 | 4.93 | 28/28/28 |', '| 设置 | 4.74 | 4.92 | 4.93 | 37/37/37 |', '| 幽灵 | 1.00 | 1.00 | 1.00 | 1/1/1 |']), RUN), expectRows: 1, expectToken: 'the doc has a row this run did not produce' },
     { name: 'run produced a row the doc lacks', diff: docTableDiff(T([HEAD, '| 插件 | 4.74 | 4.92 | 4.93 | 28/28/28 |']), RUN), expectRows: 1, expectToken: 'this run produced a row the doc lacks' },
+    // The line-ending half, both directions. A claim like "the projection is CRLF-tolerant" is worth
+    // nothing on the positive side alone: the second case is the one that shows the normaliser did not
+    // blind the comparison, and it is written in the mixed state the working copy really produces
+    // (doc side CRLF, run side LF) rather than the easy both-sides-same case.
+    { name: 'doc written with CRLF still equals the run', diff: docTableDiff(RUN.replace(/\n/g, '\r\n'), RUN), expectRows: 0, expectToken: null },
+    { name: 'a leading blank line does not shift the rows', diff: docTableDiff('\n' + RUN, RUN), expectRows: 0, expectToken: null },
+    { name: 'a moved ratio is still reported under mixed endings', diff: docTableDiff(T([HEAD, '| 插件 | 4.74 | 4.08 | 4.38 | 28/26/26 |', '| 设置 | 4.74 | 4.92 | 4.93 | 37/37/37 |']).replace(/\n/g, '\r\n'), RUN), expectRows: 1, expectToken: '插件 midnight: doc 4.08 -> run 4.92' },
   ]
   const docResults = docTableCases.map((c) => ({
     group: 'doc-table', name: c.name, expectedRows: c.expectRows, gotRows: c.diff.length,

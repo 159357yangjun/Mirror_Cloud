@@ -179,13 +179,22 @@ if (argv[0] === '--verify') {
   const want = table()
   const have = doc.slice(b + MARK_BEGIN.length, e).replace(/^\n/, '').replace(/\n$/, '')
   const { bad, docLines, checked } = compare(have, want)
-  console.log(`THEME_FACE_VERIFY faces=${checked} docLines=${docLines} mismatch=${bad.length}`)
+  // The label, not the counting: `faces=` has always been "lines compared after the header", which
+  // counts the 合计 row as a face (23 = 22 个面 + 合计). Redefining it would move the number
+  // verify_all.mjs's count regex captures and the reading already registered in the fingerprint
+  // table, while the ambiguity is what actually needs fixing - so the breakdown is printed alongside,
+  // and the totals-row test is a test, not a comment: drop that row and the line says so instead of
+  // quietly reporting one fewer face.
+  const wantRows = String(want).replace(/\r\n/g, '\n').replace(/\n+$/, '').split('\n')
+  const totalsRow = /^\|\s*\*\*合计/.test(wantRows[wantRows.length - 1] || '')
+  const faceRows = wantRows.length - 2 - (totalsRow ? 1 : 0)
+  console.log(`THEME_FACE_VERIFY faces=${checked} docLines=${docLines} mismatch=${bad.length} (${totalsRow ? `${faceRows} 个面 + 1 合计行 = ${checked} 行参与比对；faces 字段含合计行，比对定义未改` : `${checked} 行参与比对，未见到合计行，faces 即面数`})`)
   if (bad.length) {
     for (const m of bad.slice(0, 8)) console.log(`  MISMATCH line ${m.i}\n    doc says: ${m.doc.slice(0, 110)}\n    code says: ${m.code.slice(0, 110)}`)
     console.log('theme_face_inventory: the table in VISUAL_BASELINE.md no longer matches the source. Re-run: node scripts/theme_face_inventory.mjs')
     process.exit(1)
   }
-  console.log(`theme-face inventory verified: ${checked} faces, every count matches the source`)
+  console.log(`theme-face inventory verified: ${faceRows} 个面 + 合计行，every count matches the source`)
   process.exit(0)
 }
 if (argv[0] === '--json') {

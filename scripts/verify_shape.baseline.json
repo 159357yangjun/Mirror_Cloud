@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-10-01T07:07:30",
-    "head": "78111d016b2358826c2f38788910fe48de7a0781",
-    "reason": "twenty-third signing: M26 anchor corrected to the predicates new module-scope indentation (it had been drafted against the old in-block 6-space form and the runner reported anchor-stale rather than passing it); no behaviour change, both mutations now reproduce"
+    "takenAt": "2026-10-01T07:28:00",
+    "head": "8e85c737bb105531fef1b496cb8ba88f7f3b5a0a",
+    "reason": "twenty-fourth signing: the doc projection's row comparison normalises line endings before splitting (CRLF working copies shifted every row one slot), gate-unit gains 3 doc-table cases (29 total) covering CRLF-clean, leading-blank-clean and a moved ratio still caught under mixed endings; M28 disarms the normaliser. Product code untouched."
   },
   "files": [
     {
@@ -22,8 +22,8 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 3412,
-      "bytes": 280302,
+      "lines": 3425,
+      "bytes": 281912,
       "families": {
         "failures.push": 15,
         "emitGate": 13,
@@ -36,8 +36,8 @@
     {
       "file": "scripts/verify_guard_mutations.mjs",
       "exists": true,
-      "lines": 311,
-      "bytes": 25379,
+      "lines": 320,
+      "bytes": 26116,
       "families": {
         "failures.push": 0,
         "emitGate": 0,
@@ -92,8 +92,8 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 5176,
-    "bytes": 397095,
+    "lines": 5198,
+    "bytes": 399442,
     "families": {
       "failures.push": 16,
       "emitGate": 13,

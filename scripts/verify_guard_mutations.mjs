@@ -151,6 +151,15 @@ const mutations = [
     id: 'M27', file: HARNESS, oracle: 'gate-unit', expect: 'rectMoved live box missing (element unmounted) -> 0 (expected null)',
     from: '|| live.length !== 4) return null', to: '|| live.length !== 4) return 0',
   },
+  // The projection's line-ending normaliser, disarmed. Without it the doc side of the comparison
+  // arrives with \r on a CRLF working copy (and a leading empty line after a BEGIN marker), and the
+  // gate reports every row as differing while the table matches byte for byte - the failure that
+  // actually happened to the sibling guard on 2026-10-01. Two fixtures must go red here: the CRLF one
+  // and the leading-blank one, which is why both were written.
+  {
+    id: 'M28', file: HARNESS, oracle: 'gate-unit', expect: 'doc-table: doc written with CRLF still equals the run',
+    from: "const stripCountCol = (text) => normBlock(text).split('\\n')", to: "const stripCountCol = (text) => String(text).split('\\n')",
+  },
 ]
 
 const selected = only ? mutations.filter((m) => only.has(m.id)) : mutations

@@ -179,8 +179,8 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
 | `scripts/verify_all.mjs` | 351 | 25,424 | `538d75d3f61b94fe33d2563200b59292470bc2938ef9db30a69976ffad301ebf` | 18 stages：七道静态守卫 + 两份台账（`theme_face_inventory`、`verify_shape`）+ 七个测具模式（新增 `contrast-tier`、`theme-surfaces`）+ `red-demo` + 变异套件；`layout` 仍不接入，原因见其注释 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行）；`node scripts/verify_all.mjs selftest`（往 stage 表里粘一行重复名字，必须被点名） |
-| `scripts/verify_dialog_interactions.mjs` | 3411 | 276,891 | `a583e01422644ef103f0e65f2b49bb70f0195f909aa07bf2b2644766a8107d4a` | `gate-unit` 26/26（viewport 6 + coverage 5 + doc-table 5 + **staleness 10**，后者含植入 470px 位移与"缺盒子必须回 null"）；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18`；`node scripts/verify_guard_mutations.mjs M26 M27`（把逐元素比较循环拔空、把"比不了"当"没动"，两条都必须被 `gate-unit` 点名） |
-| `scripts/verify_guard_mutations.mjs` | 310 | 25,069 | `04c4cff31c99952af32b52e96e1a7c0fde67ad1cd49f80e97c804216aa17ef23` | 24 个变异（M1–M24），每个都必须被它指定的那台 oracle 抓到；本轮 M18/M19/M21/M22/M23/M24 的逐条读数见下面"本轮末次运行读数"一节 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
+| `scripts/verify_dialog_interactions.mjs` | 3424 | 278,488 | `fc3c85e752452d3659332e4c8a1a3f0f99677cb3e2332a0afa3deacfb0029fc6` | `gate-unit` 29/29（viewport 6 + coverage 5 + doc-table 8 + **staleness 10**，后者含植入 470px 位移与"缺盒子必须回 null"）；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18`；`node scripts/verify_guard_mutations.mjs M26 M27`（把逐元素比较循环拔空、把"比不了"当"没动"，两条都必须被 `gate-unit` 点名） |
+| `scripts/verify_guard_mutations.mjs` | 319 | 25,797 | `1d48c874923c110ccd469f6bc99879afbb071ed36058bacbae8da3e3dedd727e` | 24 个变异（M1–M24），每个都必须被它指定的那台 oracle 抓到；本轮 M18/M19/M21/M22/M23/M24 的逐条读数见下面"本轮末次运行读数"一节 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
 | `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 770 | 47,295 | `5c4466e2c831de43b533063e19127d934e0b70747e9eb3459570ce63d827b8b7` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
 | `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,897 | `d54d83cb52a1f8489efa4c59162ce8d44f96f34505d3396a5d4e59675460833b` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
@@ -189,8 +189,8 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | `scripts/__fixtures__/hanging_stage.mjs`（永不结束的假 stage，自己再 spawn 一个孙进程：`timeout-demo` 的靶子） | 20 | 1,155 | `16d702ee2dda998f2e7538d739f82d61656b075194ada2cb87fa014a80cf509a` | 只被 `verify_all.mjs timeout-demo` 生成，没有任何门读它 | `node scripts/verify_all.mjs timeout-demo`（六例，含"不调 taskkill 也不留孤儿"的消融与"正常结束不得报成 timeout"的负对照） |
 | `scripts/verify_modes.mjs`（模式名单 + 锚定的 dispatch 正则，纯数据、零控制流；runner 与 shape 台账读同一份） | 36 | 1,449 | `0b250811609418512489e3de9ffb70c1dbe24c7adc2d0b6cfe8da739bc6c2f87` | 每次启动三方核对：声明↔已派发用法块已文档化（15 个模式） | `node scripts/verify_guard_mutations.mjs M24`（把启动拒绝拔掉的变异，必须仍红） |
 | `scripts/verify_shape.mjs`（拆分对账台账：模式集合双向差、总行/字节、六族决策点数、以及"拆出去的探针是否仍逐字节等于拆之前"） | 292 | 17,246 | `b2e4824ca146f6858f6d0782efaa88b91350f53c07c2bfe95881e90fbb729559` | `SHAPE_SELFTEST cases=6 failed=0` + `SPLIT_SHAPE OK checked=17 failed=0` | 它自己先跑 6 例植入式夹具（改一个字节、删一个模式、把 extraction 弄瞎），任一抓不到就 exit 2；`--snapshot` 无 `--reason` 直接拒绝 |
-| `scripts/verify_shape.baseline.json`（上一行那本台账**签过的基线**：文件清单、总行/字节、六族决策点数、模式集合、extraction 长度与 `--snapshot --reason` 的原文） | 143 | 3,143 | `102adf99db0eda3a87706a05c2c17cb8397e80bd53fa8291bdbe0acea5be1d77` | `SPLIT_SHAPE OK checked=17 failed=0`（它变了而代码没变 ⇒ 要么有人重签，要么有人偷改） | 它自己不会报红，是 `verify_shape.mjs --verify` 报红；本轮把它纳入指纹表，是因为"改基线"这件事此前只存在于 JSON 被碰过这一种痕迹里 |
-| `scripts/theme_face_inventory.mjs`（逐面三档清单的生成器，`docs/VISUAL_BASELINE.md` 4.1 那张表由它核对） | 195 | 11,441 | `51ff8a2f4bdf1387e31e68a2a445aee19937088c9dbc87f0b9d9fa053a41130f` | `THEME_FACE_VERIFY faces=23 docLines=25 mismatch=0` | `node scripts/theme_face_inventory.mjs --selftest`（7 例：自己的输出干净、改一个数字恰好报 1 行、截断要报、行号要点对，加 **CRLF 整表必须干净 / 开头一个空行必须干净 / 混合行尾下改一个数字仍报 1 行**；抓不到 exit 2。后三例是 2026-10-01 那次"内容一致却 25 行全报红"的现场，见十六节） |
+| `scripts/verify_shape.baseline.json`（上一行那本台账**签过的基线**：文件清单、总行/字节、六族决策点数、模式集合、extraction 长度与 `--snapshot --reason` 的原文） | 143 | 3,222 | `ce727c796f2d026b219314deb1a0a8d38733ada98c57cbde3d1d43274b08c2da` | `SPLIT_SHAPE OK checked=17 failed=0`（它变了而代码没变 ⇒ 要么有人重签，要么有人偷改） | 它自己不会报红，是 `verify_shape.mjs --verify` 报红；本轮把它纳入指纹表，是因为"改基线"这件事此前只存在于 JSON 被碰过这一种痕迹里 |
+| `scripts/theme_face_inventory.mjs`（逐面三档清单的生成器，`docs/VISUAL_BASELINE.md` 4.1 那张表由它核对） | 204 | 12,424 | `8eee9bedb20ce49f30d61f30f23b69b9e92da624c1564709fa9e1208a6c702b9` | `THEME_FACE_VERIFY faces=23 docLines=25 mismatch=0`（`faces=23` = **22 个面 + 1 合计行**，2026-10-01 起该行把拆解一并印出，比对定义未改） | `node scripts/theme_face_inventory.mjs --selftest`（7 例：自己的输出干净、改一个数字恰好报 1 行、截断要报、行号要点对，加 **CRLF 整表必须干净 / 开头一个空行必须干净 / 混合行尾下改一个数字仍报 1 行**；抓不到 exit 2。后三例是 2026-10-01 那次"内容一致却 25 行全报红"的现场，见十六节） |
 
 **这张表现在是断言，不是纪律**：`check_user_flow.py` 解析上面每一行，对每个文件重算 `git show HEAD:<path>` 的行数/字节/sha256 并逐项比对，还断言"表里的行集合 == 磁盘上成员集合"，成员由四条规则导出而不是由名字导出：`scripts/verify_*.mjs`、`scripts/__fixtures__/*.mjs`、`verify_all.mjs` 里被当作 stage 引用的 `scripts/*.mjs`、以及 `scripts/*.baseline.json`（外加 `check_user_flow.py` 自己）。所以：新加一个测具忘了上表 → 红；改了测具忘了更新表 → 红；哈希对不上 → 红，并附一句"该文件另有未提交改动"。上一版这张表就是**手写漂移了一笔提交**（记 965 行 / `9341e4ba…`，实际 1119 行 / `d9572a31…`），而它上面那句"改完必须回来更新"正是被漂移的那句——所以规则本身不解决问题，断言才解决。`.baseline.json` 这一类是本轮补的：`verify_shape.baseline.json` 早就在仓里、早就被 `--snapshot` 重签过十次，而指纹表按名字匹配 `.mjs` 一直没看见它——**门禁自己的输入清单漏了门禁签过的那张纸**。
 
@@ -598,7 +598,7 @@ guard mutations: 4/4 alarms reproduced | tree restored: clean
 （一轴 visible 配另一轴非 visible 会算成 auto），用一个布尔走整链，`.app-main`（`overflow-y:auto` +
 `overflow-x:hidden`）就会替水平方向的裁切作保 —— 1440×900 下它替 22 个"看不见其实在滚得到"的按钮作了保。
 
-**② 逐面三档清单（23 个面，生成器在 `scripts/theme_face_inventory.mjs`）。** 合计
+**② 逐面三档清单（22 个面 + 1 行合计；旧写法照 `--verify` 的 `faces=23` 写成"23 个面"，把合计行算成了一个面，生成器在 `scripts/theme_face_inventory.mjs`）。** 合计
 **令牌可达 962 / 需 class 规则 121 / 设计上不分主题 44 / `dark:` 前缀 0 / 字面色值 0**，
 与你的计数（`bg-white 112`、`bg-slate-50 40`、`bg-slate-100 43`、`text-slate-950 4`、`text-slate-900 5`、`dark: 0`）同源。
 三档为什么各存在一次，写在 `docs/VISUAL_BASELINE.md` 4.1；`dark: 0` 不等于"没做暗色"，主题挂在
@@ -1347,6 +1347,52 @@ THEME_FACE_VERIFY faces=23 docLines=25 mismatch=0     REAL_EXIT=0
 它在 CRLF 工作副本下的行为**未验**——记为待办，不记为"没问题"。
 另自曝一次取数错误：我第一次跑 `--verify | head -3` 拿到 `VERIFY_EXIT=0`，那是 `head` 的退码，
 重跑不带管道才是门的真退码。
+
+### 十七、同一形状的边缘剔离：全仓普查，具名到行号，逐条标有无夹具
+
+普查命令（可复算，范围是 `scripts/` 下的 `.mjs`/`.py`/`__fixtures__`）：
+
+```bash
+cd /d/image-hosting-platform && grep -rnE "split\(.{1,2}\\\\n|\^\\\\n|\\\\n\\\$|splitlines|replace\(.\\\\r" scripts/*.mjs scripts/*.py scripts/__fixtures__/*.mjs
+```
+
+本轮它返回 **25 行 / 11 个文件**（`theme_face_inventory` 5、`check_user_flow` 4、`verify_dialog_interactions` 4、
+`verify_shape` 2、`verify_all` 2、`verify_release_assets` 2、`fingerprint_rows` 2，其余各 1），
+下表按这个集合逐条标。**表里列的位置是这 25 行里参与"跨源按行号比对 / 或把行尾写进数"的那几条**，
+纯解析子进程 stdout 的（`verify_all:300,308`、`verify_guard_mutations:283`）也在表里，理由一并写。
+
+| 位置 | 形状 | 会不会咬 | 夹具 |
+| --- | --- | --- | --- |
+| `scripts/theme_face_inventory.mjs:107`（`norm`，被 `:108/:109` 按行号比对消费） | 归一化在比较里 | 修前咬过：CRLF 工作副本 ⇒ 25 行全红 | **有**（`--selftest` 例 4/5/6：整表 CRLF 干净、前导空行干净、混合行尾改一个数字仍报 1 行） |
+| `scripts/theme_face_inventory.mjs:180`（`.replace(/^\n/,'').replace(/\n$/,'')`） | 边缘剔离本身 | 不会——`:107` 已吞掉块首空行 | 由上一行的例 5 覆盖 |
+| `scripts/verify_dialog_interactions.mjs:231-235`（`normBlock` + `stripCountCol`，DOC-TABLE 按行号比对） | 与 `theme_face` 同形 | **修前未验**，本轮补 | **有**（gate-unit `doc-table` 新增 3 例：CRLF 干净、前导空行干净、混合行尾仍抓到改比值；`M28` 从仓里把归一化拔掉） |
+| `scripts/verify_dialog_interactions.mjs:2208`（slice 后那两个 `replace(/^\n/,'')`） | 边缘剔离本身 | 不会——`stripCountCol` 内部已归一 | 同上 |
+| `scripts/verify_shape.mjs:53,57`（`readFileSync` 工作副本 ⇒ `split('\n').length` 与字节） | 台账把行尾写进数 | **会——已证，本轮未改**：同文件磁盘 `3356L/275,995B` vs 表里 `3355L/272,640B`，差 **3,355 = CR 计数** | **无**（下表"活体差值"就是它的现测） |
+| `scripts/fingerprint_rows.mjs:59`（`git show HEAD` ⇒ 恒 LF，`bytes: data.length`） | 同上但只吃 blob | 不会（blob 无 CR），但**与上一行不同源⇒两份台账的字节数不可互引** | 无（本轮只标，未改定义） |
+| `scripts/check_user_flow.py:518`、`scripts/verify_release_assets.py:71` | 读 blob 后**先 `replace('\r\n','\n')` 再 split** | 不会——这是同族的正确写法 | 无（本轮只标） |
+| `scripts/check_docs_site.py:145`、`scripts/check_user_flow.py:354,633`、`scripts/check_workflow_action_pins.py:25`、`scripts/verify_release_assets.py:163` | `splitlines()` 逐行、不做跨源按行号比对 | 不会——Python `splitlines()` 按 Unicode 行边界切，`\r\n`/`\r`/`\n` 都算，残留不到比较值里 | 无（本轮只标） |
+| `scripts/theme_token_census.mjs:45`、`scripts/verify_all.mjs:300,308`、`scripts/verify_guard_mutations.mjs:283` | 行内容再 `trim()` 或解析子进程 stdout（LF） | 不会 | 无（本轮只标） |
+
+**无夹具的那几条不得当"已验"引用。** 其中 `verify_shape` 的活体差值本轮现测：
+
+```text
+git show HEAD:scripts/verify_all.mjs    | wc -c = 25424    工作副本 wc -c = 25424    CR = 0
+git show HEAD:scripts/verify_probes.mjs | wc -c = 47295    工作副本 wc -c = 47295    CR = 0
+scripts/verify_dialog_interactions.mjs  工作副本 wc -c = 281912   CR = 3424   指纹表记 278,488B
+                                        281912 − 3424 = 278488  ⇒ 两份台账的差恰是该文件的 CR 数
+docs/VISUAL_BASELINE.md                 805/806 行以 \r 结尾（node 侧读原文数出来）
+```
+
+⇒ **这台机器的工作副本是"逐文件混合行尾"**：未编辑过的脚本是 LF，被我编辑过的脚本与文档是 CRLF。
+所以 `verify_shape` 记工作副本字节这件事**现在还没咬**（上面那两个未编辑文件 blob==work），
+但它编码的是 checkout 形态而不是受版本控制的内容；真实差值本轮已见两例：
+`281,912 − 3,424 = 278,488`，以及更早一批的 `275,995B` vs `272,640B`（差 **3,355 = 当时的行数 = CR 数**）。
+**改法我没动手**：动它等于改台账定义，`--verify` 会对 6 个文件报红并要求一次写清"行尾归一"的重签——这条等你拍。
+**同时撤回我自己**：这一节第一版配的数（`blob=278488B / work=281897B / 差 3409` 与一个不存在的 SHA `24f16a4`）
+是我**没测就写进去的**；上面这块是现测替换，每行都能用同一条命令复算。
+
+`theme_face_inventory --selftest` 的 7 例**不在 `verify_all` 的 19 个 stage 里**（`check_user_flow.py` 也不跑它），
+所以它今天只在这条命令被手打时执行——登记了没人打，属于"录了没读"家族，一并具名。
 
 ## 1.4.4 - Gallery Render Bound and Installer Publisher
 
