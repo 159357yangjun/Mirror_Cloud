@@ -190,7 +190,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | `scripts/verify_modes.mjs`（模式名单 + 锚定的 dispatch 正则，纯数据、零控制流；runner 与 shape 台账读同一份） | 36 | 1,449 | `0b250811609418512489e3de9ffb70c1dbe24c7adc2d0b6cfe8da739bc6c2f87` | 每次启动三方核对：声明↔已派发用法块已文档化（15 个模式） | `node scripts/verify_guard_mutations.mjs M24`（把启动拒绝拔掉的变异，必须仍红） |
 | `scripts/verify_shape.mjs`（拆分对账台账：模式集合双向差、总行/字节、六族决策点数、以及"拆出去的探针是否仍逐字节等于拆之前"） | 292 | 17,246 | `b2e4824ca146f6858f6d0782efaa88b91350f53c07c2bfe95881e90fbb729559` | `SHAPE_SELFTEST cases=6 failed=0` + `SPLIT_SHAPE OK checked=17 failed=0` | 它自己先跑 6 例植入式夹具（改一个字节、删一个模式、把 extraction 弄瞎），任一抓不到就 exit 2；`--snapshot` 无 `--reason` 直接拒绝 |
 | `scripts/verify_shape.baseline.json`（上一行那本台账**签过的基线**：文件清单、总行/字节、六族决策点数、模式集合、extraction 长度与 `--snapshot --reason` 的原文） | 143 | 3,143 | `102adf99db0eda3a87706a05c2c17cb8397e80bd53fa8291bdbe0acea5be1d77` | `SPLIT_SHAPE OK checked=17 failed=0`（它变了而代码没变 ⇒ 要么有人重签，要么有人偷改） | 它自己不会报红，是 `verify_shape.mjs --verify` 报红；本轮把它纳入指纹表，是因为"改基线"这件事此前只存在于 JSON 被碰过这一种痕迹里 |
-| `scripts/theme_face_inventory.mjs`（逐面三档清单的生成器，`docs/VISUAL_BASELINE.md` 4.1 那张表由它核对） | 173 | 9,327 | `3f4ca60138cdaa82b528894b402c3652595e9a57f1154ebc565ce05eda397396` | `THEME_FACE_VERIFY faces=23 docLines=25 mismatch=0` | `node scripts/theme_face_inventory.mjs --selftest`（4 例：自己的输出干净、改一个数字恰好报 1 行、截断要报、行号要点对；抓不到 exit 2） |
+| `scripts/theme_face_inventory.mjs`（逐面三档清单的生成器，`docs/VISUAL_BASELINE.md` 4.1 那张表由它核对） | 195 | 11,441 | `51ff8a2f4bdf1387e31e68a2a445aee19937088c9dbc87f0b9d9fa053a41130f` | `THEME_FACE_VERIFY faces=23 docLines=25 mismatch=0` | `node scripts/theme_face_inventory.mjs --selftest`（7 例：自己的输出干净、改一个数字恰好报 1 行、截断要报、行号要点对，加 **CRLF 整表必须干净 / 开头一个空行必须干净 / 混合行尾下改一个数字仍报 1 行**；抓不到 exit 2。后三例是 2026-10-01 那次"内容一致却 25 行全报红"的现场，见十六节） |
 
 **这张表现在是断言，不是纪律**：`check_user_flow.py` 解析上面每一行，对每个文件重算 `git show HEAD:<path>` 的行数/字节/sha256 并逐项比对，还断言"表里的行集合 == 磁盘上成员集合"，成员由四条规则导出而不是由名字导出：`scripts/verify_*.mjs`、`scripts/__fixtures__/*.mjs`、`verify_all.mjs` 里被当作 stage 引用的 `scripts/*.mjs`、以及 `scripts/*.baseline.json`（外加 `check_user_flow.py` 自己）。所以：新加一个测具忘了上表 → 红；改了测具忘了更新表 → 红；哈希对不上 → 红，并附一句"该文件另有未提交改动"。上一版这张表就是**手写漂移了一笔提交**（记 965 行 / `9341e4ba…`，实际 1119 行 / `d9572a31…`），而它上面那句"改完必须回来更新"正是被漂移的那句——所以规则本身不解决问题，断言才解决。`.baseline.json` 这一类是本轮补的：`verify_shape.baseline.json` 早就在仓里、早就被 `--snapshot` 重签过十次，而指纹表按名字匹配 `.mjs` 一直没看见它——**门禁自己的输入清单漏了门禁签过的那张纸**。
 
@@ -1312,6 +1312,41 @@ M25 这个编号故意空着不用：它当年针对退出码闩所起草、后�
 **交回你定**：这个门会当场变红，而且是间歇的（同 HEAD 同命令 3 / 0 / 1）。三个处置我都不自行执行——
 收下间歇红（每批都可能红）、把 stale 判据从退码里摘出来只留报告行、或者让扫掠等稳态再拍（那是另一件活）。
 按老规矩：不加白名单、不放宽阈值。
+
+### 十六、聚合里第三道红不是内容的错，是门自己在 CRLF 下错位（`theme_face_inventory`）
+
+`verify:all` 在 `c57d0d3` 上跑出 **16 passed, 3 failed of 19**（wall=120.0s）：`contrast-tier`
+`checked=1900 failed=12`（denom + 间歇的 drift，是我交回你的那件）、`theme-surfaces failed=1`（挂着的那条豁免）、
+以及 **`theme_face_inventory THEME_FACE_VERIFY faces=23 docLines=26 mismatch=25`**。
+
+先排除自己：文档里那张表**逐字节没被我动过**——
+`diff <(git show 09fb50b 的 BEGIN..END) <(HEAD 的 BEGIN..END)` 只差两行标记。生成器输出与文档表同样逐字相同。
+**内容没错，25 行全报红的是门自己的解析。**
+
+根因在块边缘的剥离方式：verify 侧写的是 `doc.slice(...).replace(/^\n/, '').replace(/\n$/, '')`，
+而这台机器 `core.autocrlf=true`、工作副本是 CRLF —— BEGIN 标记之后的第一个字节是 `\r` 不是 `\n`，
+那个 `replace` 根本不吃，于是 `have[0] === ""`，整表**错位一格**：
+`doc 说 页面·图库 / code 说 页面·插件`。docLines 也因此从 25 变成 26。
+⇒ 判据取决于 checkout 状态而不是取决于内容，属于"半坏的门"，而且它这次是**喊狼**（内容一致却报 25 条）。
+
+修法把归一化收进 `compare()` 这一个出口（块首块尾空行都去掉），并补**两面**夹具：
+
+```text
+THEME_FACE_SELFTEST cases=7 failed=0
+  ok   the same table written with CRLF verifies clean: got=0 expect=0
+  ok   a leading blank line verifies clean: got=0 expect=0
+  ok   a changed digit is still reported under mixed endings: got=1 expect=1
+THEME_FACE_VERIFY faces=23 docLines=25 mismatch=0     REAL_EXIT=0
+```
+
+第三例是承重的那一面：**只证"能容忍"是不可证伪的**，必须同时证混合行尾下改一个数字仍然恰好报 1 行。
+
+两处**具名但没动**的：① `faces=` 这个标签把合计行也算进去了（`checked = 行数 - 2`，23 = 22 个面 + 合计），
+改它要同时动 `verify_all.mjs` 的 `count:` 正则和已登记读数，没批不动；
+② `contrast-tier` 的 DOC-TABLE 切片用的是**同一形状**的边缘剥离，本轮没给它加行尾夹具，
+它在 CRLF 工作副本下的行为**未验**——记为待办，不记为"没问题"。
+另自曝一次取数错误：我第一次跑 `--verify | head -3` 拿到 `VERIFY_EXIT=0`，那是 `head` 的退码，
+重跑不带管道才是门的真退码。
 
 ## 1.4.4 - Gallery Render Bound and Installer Publisher
 

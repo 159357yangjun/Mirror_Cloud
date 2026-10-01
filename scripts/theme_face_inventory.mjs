@@ -95,8 +95,18 @@ const argv = process.argv.slice(2)
 // ever printed mismatch=0 has never been shown a mismatch, and "0 of them" is only evidence if the
 // instrument is known to be able to count one.
 function compare(have, want) {
-  const wantLines = want.split('\n')
-  const haveLines = have.split('\n')
+  // Normalise line endings here, not at the call site. This repo is checked out with
+  // core.autocrlf=true, so the same committed bytes reach this function with LF or CRLF depending on
+  // the state of the working copy. Comparing raw lines made the verdict depend on the checkout rather
+  // than on the table: on a CRLF working copy it reported all 25 rows as mismatches while the
+  // generated table and the documented one were byte-for-byte equal - a gate crying wolf, which costs
+  // more than a miss because people stop reading it.
+  // The call site's `.replace(/^\n/,'')` cannot do this job on a CRLF working copy: the character
+  // after the BEGIN marker is `\r`, so the guard saw a leading empty line and compared every row one
+  // slot out of phase. Whitespace at the block edges belongs to the normaliser, not to the caller.
+  const norm = (t) => String(t).replace(/\r\n/g, '\n').replace(/[\r\u0085\u2028\u2029]/g, '\n').replace(/^\n+/, '').replace(/\n+$/, '')
+  const wantLines = norm(want).split('\n')
+  const haveLines = norm(have).split('\n')
   const bad = []
   wantLines.forEach((line, i) => {
     if (haveLines[i] !== line) bad.push({ i, doc: haveLines[i] ?? '(absent)', code: line })
@@ -125,6 +135,18 @@ function selftestResult() {
   push('and it names the line that changed', one.bad[0]?.i === lines.length - 1 ? 1 : 0, 1)
   // Fixture 3: a doc whose table was cut short must not read as "the rows that are there all match".
   push('a truncated table is reported', compare(lines.slice(0, 5).join('\n'), want).bad.length, lines.length - 5)
+  // Fixture 4 and 5 are the two halves of the line-ending change above, and the second one is the
+  // point: normalising CR without this pair would be an unfalsifiable "it is tolerant now" claim. The
+  // doc side arrives as CRLF (that is what the working copy on this box holds) while the generated
+  // side is LF - the exact combination that produced the false red - and a single tampered digit must
+  // STILL be one reported line in that mixed state.
+  push('the same table written with CRLF verifies clean', compare(want.replace(/\n/g, '\r\n'), want).bad.length, 0)
+  // The exact artefact that made this gate red on a CRLF working copy: the byte after the BEGIN marker
+  // is \r, so the edge-stripping at the call site left a leading empty line and every row was read one
+  // slot out of phase. Asserted on its own because "CRLF is tolerated" would also be true if only the
+  // trailing edge were handled.
+  push('a leading blank line verifies clean', compare('\n' + want, want).bad.length, 0)
+  push('a changed digit is still reported under mixed endings', compare(tampered.join('\r\n'), want).bad.length, 1)
   return { cases, failed: cases.filter((c) => !c.ok) }
 }
 
