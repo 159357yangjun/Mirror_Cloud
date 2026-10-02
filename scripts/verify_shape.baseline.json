@@ -1,15 +1,15 @@
 {
   "_meta": {
-    "takenAt": "2026-10-01T12:23:51",
-    "head": "291349e38937e62a0ef0aa69db25e5ef1409cc02",
-    "reason": "twenty-eighth signing: the measured-run identity now carries an occurrence ordinal (#1/#2 within one base key) instead of tag+class+text alone, so the three 云端 groups are judged rather than quarantined; auditDenominators() became a pure function so 3 fixtures can run the real predicate, adding one harness-fault exit. visual gained --theme= for per-theme appearance evidence. Harness only: +69 lines / +4329 bytes in verify_dialog_interactions.mjs, +1 harness-fault exit. The product change in this range (styles.css danger fill) is not a harness file and is covered by contrast-tier, theme-surfaces and token_policy."
+    "takenAt": "2026-10-02T01:50:44",
+    "head": "58ab9066140c4e897c9b3c338ad617f71e4fc76c",
+    "reason": "twenty-ninth signing: confirm and pages stopped being displays. Each gained a pure verdict function plus 14 fixtures (7 planted failures that must be caught, including a step that silently disappears and a below-minimum window that must NOT be charged), and both are now stages, so the aggregate is 21 stages. verify_all's header numbering was stale by eight stages and is rewritten as ordering rules with the count printed by every run."
   },
   "files": [
     {
       "file": "scripts/verify_all.mjs",
       "exists": true,
-      "lines": 352,
-      "bytes": 25424,
+      "lines": 357,
+      "bytes": 26240,
       "families": {
         "failures.push": 0,
         "emitGate": 0,
@@ -22,13 +22,13 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 3577,
-      "bytes": 292174,
+      "lines": 3722,
+      "bytes": 305370,
       "families": {
-        "failures.push": 15,
-        "emitGate": 13,
-        "harness-fault exit": 43,
-        "gate line": 8,
+        "failures.push": 22,
+        "emitGate": 15,
+        "harness-fault exit": 44,
+        "gate line": 10,
         "positive control": 15,
         "throw": 16
       }
@@ -92,13 +92,13 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 5350,
-    "bytes": 409704,
+    "lines": 5500,
+    "bytes": 423716,
     "families": {
-      "failures.push": 16,
-      "emitGate": 13,
-      "harness-fault exit": 45,
-      "gate line": 8,
+      "failures.push": 23,
+      "emitGate": 15,
+      "harness-fault exit": 46,
+      "gate line": 10,
       "positive control": 16,
       "throw": 16
     }

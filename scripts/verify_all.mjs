@@ -8,18 +8,18 @@
  * and hoping the next person runs all seven - reliably ends with someone running one and reading it
  * as "all green".
  *
- * Order and why:
- *   1-7  the seven static guards: cheap, no browser, they catch contract and record drift
- *   8    gate-unit     the viewport gate predicate, no browser needed
- *   9    gate          the viewport gate against a genuinely minimised real window
- *   10   ab            the confirm-card overflow, paired before/after in one viewport
- *   11   red-demo      the identity gate refusing two kinds of impostor server
- *   12    mutations    proves each of the guards above actually alarms when its property is broken
- *   The mutation suite runs last on purpose: it temporarily edits tracked files.
+ * Order and why - stated as rules, not as numbers, because the numbering was stale for eight stages
+ * before someone noticed: it claimed twelve stages while the array held nineteen, and every addition
+ * had to remember to rewrite it. The authoritative count is printed by every run as `stages=N`.
+ *   the static guards first: cheap, no browser, they catch contract and record drift
+ *   then the predicate that needs no browser (gate-unit), then the ones that do
+ *   then the dialog behaviours (confirm) and the no-Tauri route sweep (pages), which judge what they
+ *     record and are listed here precisely so "it exited 0" stops meaning "nobody looked"
+ *   the mutation suite runs last on purpose: it temporarily edits tracked files.
  *
- * Stages 9-11 need the frontend dev server. If it is not reachable they are reported as SKIPPED,
- * never as passed, and the command exits 3 so a green-looking run cannot be produced by simply not
- * starting the server.
+ * The browser stages need the frontend dev server. If it is not reachable they are reported as
+ * SKIPPED, never as passed, and the command exits 3 so a green-looking run cannot be produced by
+ * simply not starting the server.
  *
  * Exit codes: 0 all stages passed; 2 a stage failed (its own failures are printed in full, above the
  * summary); 3 nothing failed but some stages were skipped.
@@ -93,6 +93,11 @@ const stages = [
   { name: 'gate-unit', run: 'node', args: [NODE_MODE, 'gate-unit'], gateJson: true, count: /gate unit check: (\d+\/\d+ correct)/ },
   { name: 'gate', run: 'node', args: [NODE_MODE, 'gate'], needsServer: true, gateJson: true, count: /"sawMinimizedReject": (true|false)/ },
   { name: 'ab', run: 'node', args: [NODE_MODE, 'ab'], needsServer: true, gateJson: true, count: /"deltaOverflowX": (\d+)/ },
+  // `confirm` and `pages` were report-only modes: they recorded whether Escape closed the dialog and
+  // whether a route collapsed, then exited 0 whatever they saw. They now carry a tally, and the tally
+  // is what lets them be stages - the aggregate cross-checks GATE_JSON against the exit code both ways.
+  { name: 'confirm', run: 'node', args: [NODE_MODE, 'confirm'], needsServer: true, gateJson: true, timeout: 300_000, count: /CONFIRM_GATE steps=(\d+) checked=(\d+) failed=(\d+)/ },
+  { name: 'pages', run: 'node', args: [NODE_MODE, 'pages'], needsServer: true, gateJson: true, timeout: 300_000, count: /PAGES_GATE routes=(\d+) judged=(\d+) checked=(\d+) failed=(\d+)/ },
   { name: 'visual', run: 'node', args: [NODE_MODE, 'visual'], needsServer: true, gateJson: true, timeout: 600_000, count: /VISUAL_GATE total=(\d+) failed=(\d+)/ },
   { name: 'settings-guard', run: 'node', args: [NODE_MODE, 'settings-guard'], needsServer: true, gateJson: true, timeout: 600_000, count: /SETTINGS_GATE checked=(\d+).*failed=(\d+)/ },
   // `contrast-tier` IS a stage now. It was taken out of the table while it printed six findings on

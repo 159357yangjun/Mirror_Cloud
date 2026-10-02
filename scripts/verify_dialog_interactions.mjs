@@ -470,6 +470,127 @@ const DENOM_CASES = [
   },
 ]
 
+// ---- verdicts for the two modes that used to be displays --------------------------------------
+// `confirm` and `pages` recorded whether Escape closes the dialog, whether a press inside it survives,
+// whether a route collapsed - and then exited 0 no matter what they saw. verify_all cross-checks
+// GATE_JSON against the exit code in both directions, so a mode without a tally can never become a
+// stage, and until now nothing said out loud that those readings judged nothing. These functions are
+// pure over the recorded steps, so the fixtures below run the same predicates the modes run.
+function confirmVerdict(steps, info = () => {}) {
+  const by = {}
+  for (const s of steps) by[s.name] = s
+  const failures = []
+  let checked = 0
+  const need = (label, ok, got) => { checked += 1; if (!ok) failures.push(`${label} - got ${got}`) }
+
+  const focus = by['1-initial-focus']
+  need('initial focus lands on Cancel, never on the destructive button',
+    focus?.state?.present === true && focus?.state?.focusIsCancel === true,
+    JSON.stringify({ present: focus?.state?.present, focusIsCancel: focus?.state?.focusIsCancel, active: focus?.state?.activeText }))
+  need('Escape closes the dialog', by['2-escape']?.dialogPresentAfterEscape === false, JSON.stringify(by['2-escape']?.dialogPresentAfterEscape))
+  need('the corner press hits the overlay itself', by['3-backdrop-mousedown']?.hitTestAtCorner?.isOverlay === true, JSON.stringify(by['3-backdrop-mousedown']?.hitTestAtCorner))
+  need('a press on the backdrop closes the dialog', by['3-backdrop-mousedown']?.dialogPresentAfterBackdropPress === false, JSON.stringify(by['3-backdrop-mousedown']?.dialogPresentAfterBackdropPress))
+  need('a press INSIDE the dialog does not close it', by['3b-inside-mousedown-keeps-open']?.dialogPresentAfterPressingTitle === true, JSON.stringify(by['3b-inside-mousedown-keeps-open']?.dialogPresentAfterPressingTitle))
+  need('the X button closes the dialog', by['3c-x-button']?.dialogPresentAfterCloseButton === false, JSON.stringify(by['3c-x-button']?.dialogPresentAfterCloseButton))
+  need('Enter activates the focused Cancel, i.e. closes without performing the action', by['4-enter-activates-focused-cancel']?.result === 'closed', JSON.stringify(by['4-enter-activates-focused-cancel']?.result))
+
+  const long = steps.filter((s) => /long-text/.test(s.name))
+  const LONG_SIZES = ['4-long-text-1440', '5-long-text-below-app-minimum-420x720', '5-long-text-app-minimum-640x480', '5-long-text-app-minimum-14-lines']
+  need('the long-text sweep ran at all four labelled sizes', LONG_SIZES.every((n) => steps.some((s) => s.name === n)),
+    `missing=${JSON.stringify(LONG_SIZES.filter((n) => !steps.some((s) => s.name === n)))}`)
+  for (const s of long) {
+    const m = s.measured || s.overflow || {}
+    // The 1440 sample and the two emulated-window samples come from different page-side samplers and
+    // name the document-scroll field differently; both mean "no horizontal scrollbar".
+    const noDocScroll = m.docOverflowX !== undefined ? m.docOverflowX === false : m.documentHasHorizontalScroll === false
+    need(`${s.name}: no horizontal overflow of the paragraph or the document`,
+      m.pOverflowX === 0 && noDocScroll,
+      JSON.stringify({ pOverflowX: m.pOverflowX, docOverflowX: m.docOverflowX, documentHasHorizontalScroll: m.documentHasHorizontalScroll }))
+    if (/below-app-minimum/.test(s.name)) {
+      // 420x720 is below the app's own minWidth/minHeight, so no user can be shown this window; the
+      // mode measures it as the CSS contract at a narrow width. Reported, never charged to the exit
+      // code - a gate that is red only in a state the product cannot enter gets muted inside a week.
+      info(`INFO ${s.name}: confirm button not on screen (confirmFullyVisible=${JSON.stringify(m.confirmFullyVisible)}, overlayScrollable=${JSON.stringify(m.overlayScrollable)}) - below minWidth 640/minHeight 480, so this is a CSS contract reading, not a reachability failure`)
+      continue
+    }
+    need(`${s.name}: the confirm button is reachable - on screen, or by scrolling the overlay`,
+      m.confirmFullyVisible === true || (m.overlayScrollable === true && Number(m.overlayScrollDelta) > 0),
+      JSON.stringify({ confirmFullyVisible: m.confirmFullyVisible, overlayScrollable: m.overlayScrollable, overlayScrollDelta: m.overlayScrollDelta }))
+  }
+
+  const z = by['6-z-index-and-stacking']
+  need('the confirm overlay sits at z-[95]', z?.confirmAt95 === true, JSON.stringify(z?.confirm?.z))
+  need('a co-occurring toast does not dismiss the confirm', z?.toast?.present === true && z?.confirmStillOpen === true, JSON.stringify({ toastPresent: z?.toast?.present, confirmStillOpen: z?.confirmStillOpen }))
+  need('two layers tied at z-[95] resolve to exactly one of them', !!z && Boolean(z.tie?.hitIsSynth) !== Boolean(z.tie?.hitInsideConfirm), JSON.stringify({ hitIsSynth: z?.tie?.hitIsSynth, hitInsideConfirm: z?.tie?.hitInsideConfirm }))
+  need('the upload dialog stays the lower layer (z-50)', z?.uploadAlone?.present === true && z?.uploadAlone?.z === '50', JSON.stringify({ present: z?.uploadAlone?.present, z: z?.uploadAlone?.z }))
+  return { checked, failures }
+}
+
+function pagesVerdict(entries, routes) {
+  const failures = []
+  let checked = 0
+  const missing = routes.filter((r) => !entries.some((e) => e.label === r))
+  checked += 1
+  if (missing.length) failures.push(`the sweep judged ${entries.length} route(s) of ${routes.length}; never measured: ${JSON.stringify(missing)} - a sweep that silently loses a route is not a pass`)
+  for (const r of routes) {
+    const e = entries.find((x) => x.label === r)
+    if (!e) continue
+    const a = e.after || {}
+    checked += 5
+    if (e.gotoError) failures.push(`${r}: navigation threw ${e.gotoError}`)
+    if (a.heading !== r) failures.push(`${r}: the page renders heading ${JSON.stringify(a.heading)} - a route that lost its own heading took the page down`)
+    if (!(Number(a.rootChildren) > 0)) failures.push(`${r}: #root has ${JSON.stringify(a.rootChildren)} children - the tree collapsed`)
+    if (!(Number(a.rootTextLen) > 0)) failures.push(`${r}: #root text length ${JSON.stringify(a.rootTextLen)} - nothing rendered`)
+    if (a.sidebarAlive !== true) failures.push(`${r}: the sidebar nav is gone, so the app is no longer navigable from this page`)
+  }
+  return { checked, failures }
+}
+
+// Fixtures, both directions. Without the planted failure a zero from the predicates above is
+// indistinguishable from a predicate that cannot see anything - the exact disease this change cures.
+const CONFIRM_FIXTURE = (over = {}) => ([
+  { name: '1-initial-focus', state: { present: true, focusIsCancel: true, activeText: '取消' } },
+  { name: '2-escape', dialogPresentAfterEscape: false },
+  { name: '3-backdrop-mousedown', hitTestAtCorner: { isOverlay: true }, dialogPresentAfterBackdropPress: false },
+  { name: '3b-inside-mousedown-keeps-open', dialogPresentAfterPressingTitle: true },
+  { name: '3c-x-button', dialogPresentAfterCloseButton: false },
+  { name: '4-enter-activates-focused-cancel', result: 'closed' },
+  { name: '4-long-text-1440', overflow: { pOverflowX: 0, documentHasHorizontalScroll: false, confirmFullyVisible: true } },
+  { name: '5-long-text-below-app-minimum-420x720', measured: { pOverflowX: 0, docOverflowX: false, confirmFullyVisible: false, overlayScrollable: false, overlayScrollDelta: 0 } },
+  { name: '5-long-text-app-minimum-640x480', measured: { pOverflowX: 0, docOverflowX: false, confirmFullyVisible: true } },
+  { name: '5-long-text-app-minimum-14-lines', measured: { pOverflowX: 0, docOverflowX: false, confirmFullyVisible: false, overlayScrollable: true, overlayScrollDelta: 488 } },
+  { name: '6-z-index-and-stacking', confirmAt95: true, confirm: { z: '95' }, toast: { present: true }, confirmStillOpen: true, tie: { hitIsSynth: true, hitInsideConfirm: false }, uploadAlone: { present: true, z: '50' } },
+].map((s) => ({ ...s, ...(over[s.name] || {}) })))
+
+const PAGES_ROUTES = ['发布', '资源', '云端', '图库', '插件', '任务', '设置']
+const PAGES_FIXTURE = (bad = null) => PAGES_ROUTES.map((label) => (label === bad
+  ? { label, after: { heading: '发布', rootChildren: 0, rootTextLen: 0, sidebarAlive: false } }
+  : { label, after: { heading: label, rootChildren: 1, rootTextLen: 400, sidebarAlive: true } }))
+
+const VERDICT_CASES = [
+  { name: 'confirm: the untouched fixture judges nothing broken', run: () => confirmVerdict(CONFIRM_FIXTURE()).failures.length === 0 },
+  { name: 'confirm: Escape leaving the dialog open is caught', run: () => confirmVerdict(CONFIRM_FIXTURE({ '2-escape': { dialogPresentAfterEscape: true } })).failures.length >= 1 },
+  { name: 'confirm: a press inside that closes the dialog is caught', run: () => confirmVerdict(CONFIRM_FIXTURE({ '3b-inside-mousedown-keeps-open': { dialogPresentAfterPressingTitle: false } })).failures.length >= 1 },
+  { name: 'confirm: Enter performing the action is caught', run: () => confirmVerdict(CONFIRM_FIXTURE({ '4-enter-activates-focused-cancel': { result: 'still-open' } })).failures.length >= 1 },
+  { name: 'confirm: a confirm button neither visible nor scrollable-to is caught', run: () => confirmVerdict(CONFIRM_FIXTURE({ '5-long-text-app-minimum-14-lines': { measured: { pOverflowX: 0, docOverflowX: false, confirmFullyVisible: false, overlayScrollable: false, overlayScrollDelta: 0 } } })).failures.length >= 1 },
+  { name: 'confirm: a z-tie where neither layer wins is caught', run: () => confirmVerdict(CONFIRM_FIXTURE({ '6-z-index-and-stacking': { tie: { hitIsSynth: false, hitInsideConfirm: false } } })).failures.length >= 1 },
+  { name: 'confirm: a step that silently disappears is caught', run: () => confirmVerdict(CONFIRM_FIXTURE().filter((s) => s.name !== '3c-x-button')).failures.length >= 1 },
+  { name: 'confirm: the below-minimum window is reported, not charged for reachability', run: () => confirmVerdict(CONFIRM_FIXTURE({ '5-long-text-below-app-minimum-420x720': { measured: { pOverflowX: 0, docOverflowX: false, confirmFullyVisible: false, overlayScrollable: false, overlayScrollDelta: 0 } } })).failures.length === 0 },
+  { name: 'confirm: horizontal overflow is charged even below the minimum', run: () => confirmVerdict(CONFIRM_FIXTURE({ '5-long-text-below-app-minimum-420x720': { measured: { pOverflowX: 5, docOverflowX: false, confirmFullyVisible: false, overlayScrollable: false, overlayScrollDelta: 0 } } })).failures.length >= 1 },
+  { name: 'confirm: the checked count is the number of assertions, not of steps', run: () => confirmVerdict(CONFIRM_FIXTURE()).checked === 19 },
+  { name: 'pages: all seven routes alive produce no failure', run: () => pagesVerdict(PAGES_FIXTURE(), PAGES_ROUTES).failures.length === 0 },
+  { name: 'pages: a collapsed route is caught', run: () => pagesVerdict(PAGES_FIXTURE('云端'), PAGES_ROUTES).failures.length >= 4 },
+  { name: 'pages: a route that never got visited is caught', run: () => pagesVerdict(PAGES_FIXTURE().slice(0, 6), PAGES_ROUTES).failures.length >= 1 },
+  { name: 'pages: the checked count scales with the routes judged', run: () => pagesVerdict(PAGES_FIXTURE(), PAGES_ROUTES).checked === 1 + PAGES_ROUTES.length * 5 },
+]
+
+function verdictSelftest() {
+  const bad = VERDICT_CASES.filter((c) => { try { return c.run() !== true } catch { return true } })
+  for (const c of bad) console.log(`HARNESS FAULT: verdict fixture "${c.name}" did not hold`)
+  console.log(`VERDICT_SELFTEST cases=${VERDICT_CASES.length} failed=${bad.length}`)
+  return bad.length
+}
+
 const profile = `${OUT.replace(/\/+$/, '')}/.profile-${Date.now()}`
 // The browser and the dev-server preflight are lazy: red-demo orchestrates child processes and must
 // not fail (or burn a browser launch) because the parent's default --app is down.
@@ -1028,7 +1149,7 @@ async function main() {
   if (MODE === 'pages') {
     // Does a missing Tauri runtime take the page down? Visit every route with trusted clicks.
     const sweep = []
-    for (const label of ['发布', '资源', '云端', '图库', '插件', '任务', '设置']) {
+    for (const label of routeList()) {
       consoleErrors.length = 0
       let entry = { label }
       try {
@@ -3561,6 +3682,30 @@ async function main() {
 
   writeFileSync(`${OUT}/report-${MODE}.json`, JSON.stringify(report, null, 2))
   console.log(JSON.stringify(report, null, 2))
+
+  // Modes that own a tally judge what they measured, and prove the predicate can still see a planted
+  // failure before believing its own zero. The rest only report - and say so on the last line, so
+  // nobody reads "it exited 0" as "something was verified".
+  if (MODE === 'confirm' || MODE === 'pages') {
+    if (verdictSelftest()) finish(2)
+    if (MODE === 'confirm') {
+      const v = confirmVerdict(report.steps, (m) => console.log(m))
+      for (const f of v.failures) console.log(`FAIL ${f}`)
+      console.log(`CONFIRM_GATE steps=${report.steps.length} checked=${v.checked} failed=${v.failures.length}`)
+      emitGate('confirm', v.checked, v.failures.length)
+      console.log(v.failures.length ? `confirm: ${v.failures.length} dialog behaviour(s) wrong` : `confirm: all ${v.checked} dialog behaviours hold`)
+      finish(v.failures.length ? 1 : 0)
+    }
+    const sweep = report.steps.find((s) => s.name === '8-browser-only-route-sweep')
+    const entries = sweep ? Object.entries(sweep).filter(([k]) => /^\d+$/.test(k)).map(([, val]) => val) : []
+    const v = pagesVerdict(entries, routeList())
+    for (const f of v.failures) console.log(`FAIL ${f}`)
+    console.log(`PAGES_GATE routes=${routeList().length} judged=${entries.length} checked=${v.checked} failed=${v.failures.length}`)
+    emitGate('pages', v.checked, v.failures.length)
+    console.log(v.failures.length ? `pages: ${v.failures.length} route(s) failed to stay alive` : `pages: every route stayed alive with no Tauri runtime (${entries.length} routes)`)
+    finish(v.failures.length ? 1 : 0)
+  }
+  console.log(`NO_VERDICT mode=${MODE} - this mode reports only; nothing above is a pass, and it is not wired into verify:all as a gate`)
   finish(0)
 }
 
