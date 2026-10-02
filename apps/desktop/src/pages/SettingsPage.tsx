@@ -69,7 +69,7 @@ export function SettingsPage() {
     queryFn: getWindowsContextMenuInfo,
     refetchOnWindowFocus: false,
   })
-  const [form, setForm] = useState<OutputPreferences>({ defaultFormat: 'markdown', customTemplate: '![{name}]({url})', autoCopyAfterPublish: true })
+  const [form, setForm] = useState<OutputPreferences>({ defaultFormat: 'markdown', customTemplate: '![{name}]({url})', autoCopyAfterPublish: true, imageFormat: 'webp' })
   const [copiedCommand, setCopiedCommand] = useState(false)
   const [startingTypora, setStartingTypora] = useState(false)
   const [copiedApiToken, setCopiedApiToken] = useState(false)
@@ -365,6 +365,12 @@ export function SettingsPage() {
           <div><div className="text-xs font-medium text-slate-700">发布完成后自动复制</div><div className="mt-0.5 text-[11px] text-slate-400">真正发布成功后才复制；失败任务不会写入剪贴板。</div></div>
           <input type="checkbox" checked={form.autoCopyAfterPublish} onChange={(event) => setForm((current) => ({ ...current, autoCopyAfterPublish: event.target.checked }))} className="size-4 accent-slate-950" />
         </label>
+        <div className="mt-5 flex items-center justify-between gap-6 rounded-2xl bg-slate-50 px-4 py-3">
+          <div><div className="text-xs font-medium text-slate-700">上传时的图片格式</div><div className="mt-0.5 text-[11px] text-slate-400">默认链对所有入口生效（Typora、快捷键、右键、HTTP API）。“保留原图”不压缩不改格式。</div></div>
+          <select value={form.imageFormat} onChange={(event) => setForm((current) => ({ ...current, imageFormat: event.target.value as OutputPreferences['imageFormat'] }))} className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none" title="保存后下一次上传生效">
+            <option value="webp">WebP（默认，体积最小）</option><option value="jpeg">JPEG</option><option value="png">PNG</option><option value="original">保留原图</option>
+          </select>
+        </div>
         <div className="mt-5"><label className="text-xs font-medium text-slate-600">自定义模板</label><input value={form.customTemplate} onChange={(event) => setForm((current) => ({ ...current, customTemplate: event.target.value }))} placeholder="![{name}]({url})" className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 px-3 font-mono text-xs outline-none focus:border-slate-400" /><div className="mt-1.5 text-[11px] text-slate-400">支持 {'{url}'} 与 {'{name}'}。GitHub 会使用 Raw URL。</div></div>
         {mutation.error && <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{String(mutation.error)}</div>}
         <div className="mt-4 flex justify-end"><button disabled={mutation.isPending} onClick={() => mutation.mutate(form)} className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">保存输出设置</button></div>

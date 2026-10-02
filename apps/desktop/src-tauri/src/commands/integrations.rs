@@ -937,6 +937,12 @@ pub async fn save_output_preferences(
     if preferences.default_format == "custom" && !preferences.custom_template.contains("{url}") {
         return Err("Custom output template must contain {url}".into());
     }
+    if !matches!(
+        preferences.image_format.as_str(),
+        "original" | "jpeg" | "png" | "webp"
+    ) {
+        return Err("Unsupported image format".into());
+    }
     let value = serde_json::to_value(&preferences).map_err(|error| error.to_string())?;
     state
         .settings
@@ -944,4 +950,25 @@ pub async fn save_output_preferences(
         .await
         .map_err(|error| error.to_string())?;
     Ok(preferences)
+}
+
+pub async fn default_chain_image_format(settings: &persistence_sqlite::SettingsRepository) -> String {
+    // Single mapping from the stored preference to the Convert step. Anything unrecognized
+    // (including a hand-edited row or a read failure) falls back to webp - the pre-existing
+    // shipped behavior - never to an empty pipeline.
+    let format = settings
+        .get(OUTPUT_PREFERENCES_KEY)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|value| {
+            value
+                .get("imageFormat")
+                .and_then(serde_json::Value::as_str)
+                .map(|format| format.to_string())
+        });
+    match format.as_deref() {
+        Some(f @ ("original" | "jpeg" | "png" | "webp")) => f.to_string(),
+        _ => "webp".to_string(),
+    }
 }

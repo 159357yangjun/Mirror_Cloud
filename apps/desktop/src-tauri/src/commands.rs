@@ -144,10 +144,16 @@ pub struct OutputPreferences {
     pub custom_template: String,
     #[serde(default = "default_auto_copy")]
     pub auto_copy_after_publish: bool,
+    #[serde(default = "default_image_format")]
+    pub image_format: String,
 }
 
 fn default_auto_copy() -> bool {
     true
+}
+
+fn default_image_format() -> String {
+    "webp".into()
 }
 
 impl Default for OutputPreferences {
@@ -156,6 +162,7 @@ impl Default for OutputPreferences {
             default_format: "markdown".into(),
             custom_template: "![{name}]({url})".into(),
             auto_copy_after_publish: true,
+            image_format: default_image_format(),
         }
     }
 }

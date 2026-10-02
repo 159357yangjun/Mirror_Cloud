@@ -2038,6 +2038,20 @@ exe 与上一版差 418 B、msi 回到 12,161,024 B，符合"只动了 capabilit
 shape 第 **35** 次签字（漂移行点名 verify_guard_mutations +9L/+837B 与总量 433615B，别无他名）、台账指纹同笔两更新。
 `check_release_version.py` 自身不在 ledger 六文件内——它的行为证人就是 M30 本身。
 
+### 19. 默认链输出格式做成设置（2026-10-02）
+
+用户可感知的短板收口：`cli.rs` 建"自动上传链"时 Convert 步骤硬编码 `"webp"`，且 `upsert_system_default`
+每次运行都覆盖 DB ⇒ UI 里改 workflow 会被静默冲掉（此前仓内无任何改格式入口）。本轮把它变成真设置：
+
+- **单一真源** = settings 行 `output.preferences.imageFormat`；`default_chain_image_format()`（integrations.rs）
+  从该行读值、只认 `original|jpeg|png|webp`，其余/读失败一律降回 webp（= 旧发布行为，不造空管道）；
+  cli.rs 建链处消费该函数。GUI 与 CLI 本就同库同表（`connect_path(data_dir/publisher.sqlite3)`），四个入口一起生效。
+- `save_output_preferences` 加同枚举校验（后端边界，非法值拒绝入库）；前端 types + SettingsPage「链接输出」卡加下拉。
+- **验证跑了什么**：`tsc --noEmit` rc=0（含新字段全链路）、python 门 255/0、grep 证 `imageFormat` 全仓仅一处消费者。
+  **没跑的**：Rust 编译（本机无 cargo，CI 是证人）、真机上传矩阵（四格式各传一次验扩展名与 mime）——换包后做。
+- 已知未挡面（挂账不装看不见）：手改 SQLite 里的 imageFormat 为非法值不会被拦（读侧已降级安全）；
+  settings-guard 夹具吃的是 localStorage 主题键，覆盖不到这条 IPC 偏好路径，补它需要给该模式加第二注入点，暂不做。
+
 ## 1.4.5 - Legible Read-Failure Panels and Measured Contrast Floors
 
 自 `v1.4.4` 起 115 笔提交（09-29 43 / 09-30 54 / 10-01 18）。改到 `apps/desktop/src` 的只有 8 笔；

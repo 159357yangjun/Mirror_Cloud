@@ -236,6 +236,7 @@ export interface OutputPreferences {
   defaultFormat: OutputFormat
   customTemplate: string
   autoCopyAfterPublish: boolean
+  imageFormat: 'original' | 'jpeg' | 'png' | 'webp'
 }
 
 export interface TaskView {
