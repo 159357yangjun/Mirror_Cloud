@@ -92,7 +92,10 @@ pub async fn check_for_updates(app: tauri::AppHandle) -> CmdResult<UpdateCheckRe
         ));
     }
     let setup = setup_candidates[0];
-    let setup_bytes = setup.get("size").and_then(serde_json::Value::as_u64).unwrap_or(0);
+    let setup_bytes = setup
+        .get("size")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
     if setup_bytes == 0 || setup_bytes > MAX_SETUP_BYTES {
         return Err(format!("安装包大小不合理: {setup_bytes} B"));
     }
