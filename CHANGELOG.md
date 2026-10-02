@@ -1777,6 +1777,46 @@ verify:all | 21 passed, 0 failed, 0 skipped of 21
 变异从 27 涨到 28（`M29`），聚合从 19 涨到 21（`confirm`、`pages`）。
 产物：`image-hosting-probes/2026-10-01/verify-all-FINAL3.log`、`mutation-M29.txt`。
 
+### 9. `layout` 的触摸目标：把 24 档以下修干净，把 44 档的问题留成一道有数字的选择题
+
+**方法**：同一扫描跑两个底线（`--touch 44` 与 `--touch 24`），差集就是"落在 24–43 之间有多少"。
+不需要猜，也不需要改判据默认值去让计数消失。
+
+| 口径 | 修前 | 修后 |
+|---|---|---|
+| floor 24（WCAG 2.2 / 2.5.8，AA） | 2 条：`select 100x23`、`toast 关闭 16x16` | **0 条** |
+| floor 44（WCAG 2.5.5，AAA；本仓门的默认） | 8 条（7 路由 + toast），occurrence 合计 94 | 8 条，其中 toast 那条从 `16x16` 变成 `24x24` |
+
+**改了什么**（两处，都是命中区，不动字形）：`ToastViewport.tsx` 关闭键 `p-0.5` 的 16×16 → `grid min-h-6 min-w-6 place-items-center` 的 24×24（图标仍 12px）；
+`AssetsPage.tsx:153` 复制格式 `<select>` 从 23px 高改为 `h-full`，撑满它本来就坐在的 `h-10` 行（40px）。
+改前/改后各一张，四张都进仓：
+
+| 文件 | bytes | sha256 前缀 |
+|---|---|---|
+| `docs/toast-close-target-2026-10-01-before.png` | 222473 | `c94f76918d39f0dc` |
+| `docs/toast-close-target-2026-10-01-after.png` | 222454 | `a47adef6cda14817` |
+| `docs/select-target-2026-10-01-before.png` | 109601 | `586ec11a4a209262` |
+| `docs/select-target-2026-10-01-after.png` | 109594 | `40135f361f4ad1fe` |
+
+**剩下那 8 条为什么没修**：44 是 AAA 档。要把 94 个 occurrence 全抬到 44×44，改的是 7 屏的控件密度（侧栏那组 35×30 的主题键、每屏的图标按钮），
+这是"本产品承诺哪一档可访问性"的决定，不是我能靠改代码替它决定的；
+我也**没有**去把门的 `--touch` 默认改成 24 —— 那只会让报警消失，不会让事实改变。
+
+**我试过把 `FONT-SWALLOW` 一起修，然后撤回了**（把 `button, input, select, textarea { font: inherit }` 从层外移进 `@layer base`，
+让声明了 `text-xs/text-sm` 的控件赢回自己的字号）。全部读数留下备用：
+
+- 修好的：`FONT_SWALLOW distinct_controls 23 → 0`；`layout failures 9 → 0`（24 档）；`CONTRAST_*` 两行 `5.17 → 5.21`（变好）；`measured 1917 → 1944`。
+- 代价一：4 个文字按钮/输入框按声明字号渲染后高度掉到 16–20px，**反而低于 24 档** ⇒ 必须同笔补 `min-h-6`/`h-full`（我写了并验证：补完 24 档 0 条）。
+- 代价二（这条决定我为什么撤回）：主上传按钮从 52px 缩到 44px，**掉出 `theme-surfaces` 采样器 `≥120×48` 的粒度** ⇒
+  `frozen 7 → 0`、白名单条目 `/app-upload-button/` 被自己的 `DEAD-EXEMPTION` 规则判死。
+  也就是说：一次排版修正会**同时**改掉 10 屏的视觉密度和一把门的覆盖面，
+  而覆盖面的丢失是被另一条规则抓到、不是静默发生的——这条恰好证明那把门是活的。
+- 撤回后实测：`SURFACE_GATE routes=7 surfaces=186 frozen=7 offThemeUnwhitelisted=0 whitelisted=7`（rc=0），
+  `layout --touch 24` 只剩 `FONT-SWALLOW` 一条。
+
+`docs/VISUAL_BASELINE.md:111`、`:164` 早就写着这条"登记不修、需单独批准"。现在它带上了代价数字，
+所以那一次批准可以只凭这张表做，不必再量一遍。
+
 ### 本轮验证命令与实际输出
 
 ```text

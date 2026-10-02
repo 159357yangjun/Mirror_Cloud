@@ -150,7 +150,7 @@ export function AssetsPage() {
         </div>
         <div className="flex h-10 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3">
           <span className="text-[11px] text-[var(--text-muted)]">复制格式</span>
-          <select value={preferences.defaultFormat} onChange={(event) => formatMutation.mutate(event.target.value as OutputFormat)} className="bg-transparent text-xs text-[var(--text-secondary)] outline-none" title="资源卡片的复制按钮会使用这个格式">
+          <select value={preferences.defaultFormat} onChange={(event) => formatMutation.mutate(event.target.value as OutputFormat)} className="h-full bg-transparent text-xs text-[var(--text-secondary)] outline-none" title="资源卡片的复制按钮会使用这个格式">
             <option value="markdown">Markdown</option>
             <option value="url">URL</option>
             <option value="html">HTML</option>
