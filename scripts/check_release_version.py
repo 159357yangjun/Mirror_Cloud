@@ -27,6 +27,11 @@ def main() -> int:
         action="store_true",
         help="Mutation-harness tripwire: alarm immediately so a neutered lock reconciliation cannot masquerade as a pristine green run.",
     )
+    parser.add_argument(
+        "--lock-reconciliation-unsafe-return-zero",
+        action="store_true",
+        help="Mutation-harness pair to the tripwire: skip it so M31 can drive the stale-member branch under a corrupted lock.",
+    )
     args = parser.parse_args()
 
     cargo = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))
@@ -52,7 +57,7 @@ def main() -> int:
     # The mutation harness poisons this gate by neutering the first `return 1` after the Fix line.
     # On a healthy tree that return is unreachable, so without this tripwire M30 would compare the
     # mutant against itself and report "pristine run exited 0" about a disarmed file.
-    if args.poison_lock_check:
+    if "--poison-lock-check" in sys.argv and "--lock-reconciliation-unsafe-return-zero" not in sys.argv:
         print("LOCK_CHECK_POISONED: reconciliation return reached on a healthy tree", file=sys.stderr)
         return 1
 

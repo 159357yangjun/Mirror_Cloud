@@ -177,6 +177,15 @@ const mutations = [
     from: '        print("  Fix: run `cargo update --workspace` where cargo exists, or revert the bump.", file=sys.stderr)\n        return 1',
     to: '        print("  Fix: run `cargo update --workspace` where cargo exists, or revert the bump.", file=sys.stderr)\n        return 0',
   },
+  {
+    // M30's twin: same gate, other branch. M30 proves the tripwire path; this one neuters the
+    // stale-member return and poisons PAST the tripwire onto a corrupted lock - the run must
+    // still alarm. A cosmetic reconciliation (prints offenders, returns 0) would pass "named"
+    // alone; only the exit code carries it, which is what this mutation polices.
+    id: 'M31', file: 'scripts/check_release_version.py', oracle: 'release-version-stale', expect: 'Cargo.lock workspace members are out of sync',
+    from: '        print("  Fix: run `cargo update --workspace` where cargo exists, or revert the bump.", file=sys.stderr)\n        return 1',
+    to: '        print("  Fix: run `cargo update --workspace` where cargo exists, or revert the bump.", file=sys.stderr)\n        return 0',
+  },
 ]
 
 const selected = only ? mutations.filter((m) => only.has(m.id)) : mutations
@@ -249,6 +258,26 @@ const runOracle = (oracle) => {
     'release-version': [python.exe, [...python.pre, 'scripts/check_release_version.py', '--poison-lock-check']],
   }
   const cmd = CMD[oracle] || [python.exe, [...python.pre, 'scripts/check_user_flow.py']]
+  if (oracle === 'release-version-stale') {
+    // M31's stage: poison past the tripwire and corrupt one member entry for exactly this run.
+    // Cargo.lock is restored in finally even when python throws; a leftover 1.4.4 in the lock
+    // would be the loudest false alarm there is.
+    const f = `${REPO}/Cargo.lock`
+    const original = readFileSync(f)
+    const text = original.toString('utf8')
+    const i = text.indexOf('name = "application"')
+    const j = text.indexOf('version = "1.4.5"', i)
+    if (i < 0 || j < 0 || j - i > 60) {
+      return { status: null, spawnError: 'M31 lock anchor stale: cannot find application@1.4.5', output: '', marker: 'never-matches' }
+    }
+    writeFileSync(f, text.slice(0, j) + 'version = "1.4.4"' + text.slice(j + 'version = "1.4.5"'.length))
+    try {
+      const r2 = spawnSync(python.exe, [...python.pre, 'scripts/check_release_version.py', '--poison-lock-check', '--lock-reconciliation-unsafe-return-zero'], { cwd: REPO, encoding: 'utf8' })
+      return { status: r2.status, spawnError: r2.error ? String(r2.error).slice(0, 120) : null, output: `${r2.stdout || ''}${r2.stderr || ''}`, marker: 'Cargo.lock workspace members' }
+    } finally {
+      writeFileSync(f, original)
+    }
+  }
   const r = spawnSync(cmd[0], cmd[1], { cwd: REPO, encoding: 'utf8', timeout: oracle === 'gate-unit' || oracle === 'bogus-mode' ? 120_000 : 420_000 })
   const marker = { 'gate-unit': 'gate unit check', layout: 'LAYOUT_GATE', settings: 'SETTINGS_GATE', surfaces: 'SURFACE_GATE', contrast: 'CONTRAST_GATE', 'bogus-mode': 'HARNESS FAULT', 'latched-exit': 'HarnessFinishing', 'confirm-gate': 'VERDICT_SELFTEST', 'release-version': 'LOCK_CHECK_POISONED' }[oracle] || 'USERFLOW_CHECKS'
   if (oracle === 'bogus-mode') {
