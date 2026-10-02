@@ -183,6 +183,7 @@ const mutations = [
     // still alarm. A cosmetic reconciliation (prints offenders, returns 0) would pass "named"
     // alone; only the exit code carries it, which is what this mutation polices.
     id: 'M31', file: 'scripts/check_release_version.py', oracle: 'release-version-stale', expect: 'Cargo.lock workspace members are out of sync',
+    removesGuard: true,
     from: '        print("  Fix: run `cargo update --workspace` where cargo exists, or revert the bump.", file=sys.stderr)\n        return 1',
     to: '        print("  Fix: run `cargo update --workspace` where cargo exists, or revert the bump.", file=sys.stderr)\n        return 0',
   },
