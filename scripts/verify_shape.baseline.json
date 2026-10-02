@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-10-02T01:50:44",
-    "head": "58ab9066140c4e897c9b3c338ad617f71e4fc76c",
-    "reason": "twenty-ninth signing: confirm and pages stopped being displays. Each gained a pure verdict function plus 14 fixtures (7 planted failures that must be caught, including a step that silently disappears and a below-minimum window that must NOT be charged), and both are now stages, so the aggregate is 21 stages. verify_all's header numbering was stale by eight stages and is rewritten as ordering rules with the count printed by every run."
+    "takenAt": "2026-10-02T02:02:46",
+    "head": "466f311c45423267cb44ce1fde73e8c352bd8af1",
+    "reason": "thirtieth signing, and it changes a convention rather than a count: measurements are taken over the blob's LF form (toLF), because core.autocrlf=true checks files out with CRLF and a bare git checkout reddened every byte row without a line of code changing - it did, today, after an ablation was reverted. Consequence visible in the diff: verify_guard_mutations.mjs 26116 -> 25797 bytes, the 319 gone is exactly its 319 CR bytes, not lost content. verify_shape.mjs itself grew by the normaliser, its fixture case, and readSource."
   },
   "files": [
     {
@@ -37,7 +37,7 @@
       "file": "scripts/verify_guard_mutations.mjs",
       "exists": true,
       "lines": 320,
-      "bytes": 26116,
+      "bytes": 25797,
       "families": {
         "failures.push": 0,
         "emitGate": 0,
@@ -78,8 +78,8 @@
     {
       "file": "scripts/verify_shape.mjs",
       "exists": true,
-      "lines": 293,
-      "bytes": 17246,
+      "lines": 314,
+      "bytes": 18455,
       "families": {
         "failures.push": 1,
         "emitGate": 0,
@@ -92,8 +92,8 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 5500,
-    "bytes": 423716,
+    "lines": 5521,
+    "bytes": 424606,
     "families": {
       "failures.push": 23,
       "emitGate": 15,

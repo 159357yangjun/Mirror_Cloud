@@ -43,20 +43,35 @@ const FAMILIES = [
 
 const count = (s, re) => (s.match(re) || []).length
 
+// Line endings are not content. core.autocrlf=true checks files out with CRLF while the blob stores
+// LF, so a bare `git checkout -- <file>` used to redden every byte row in this ledger without one
+// line of code changing (it did, on 2026-10-01, after an ablation was reverted). check_user_flow
+// already normalises for exactly this reason; measuring the blob's form is the same decision here.
+const toLF = (s) => s.replace(/\r\n/g, '\n')
+function readSource(abs) {
+  return existsSync(abs) ? toLF(readFileSync(abs, 'utf8')) : null
+}
+function measureText(src) {
+  const t = toLF(src)
+  return { lines: t.split('\n').length, bytes: Buffer.byteLength(t, 'utf8') }
+}
+
 export function shape() {
   const present = readdirSync(`${ROOT}scripts`)
     .filter((f) => f.endsWith('.mjs'))
     .map((f) => `scripts/${f}`)
   const files = [...new Set([...FILES, ...present.filter((f) => /^scripts\/verify_(mode|harness)/.test(f))])]
   const perFile = files.map((rel) => {
-    const ok = existsSync(`${ROOT}${rel}`)
-    const src = ok ? readFileSync(`${ROOT}${rel}`, 'utf8') : ''
+    const src = readSource(`${ROOT}${rel}`)
+    const ok = src !== null
+    const text = ok ? src : ''
+    const m = measureText(text)
     return {
       file: rel,
       exists: ok,
-      lines: ok ? src.split('\n').length : 0,
-      bytes: ok ? Buffer.byteLength(src, 'utf8') : 0,
-      families: Object.fromEntries(FAMILIES.map(([name, re]) => [name, count(src, re)])),
+      lines: m.lines,
+      bytes: m.bytes,
+      families: Object.fromEntries(FAMILIES.map(([name, re]) => [name, count(text, re)])),
     }
   })
   const all = perFile.filter((f) => f.exists)
@@ -67,7 +82,7 @@ export function shape() {
   // when it was only mentioned twice.
   const reachable = new Set()
   for (const f of all) {
-    const src = readFileSync(`${ROOT}${f.file}`, 'utf8')
+    const src = readSource(`${ROOT}${f.file}`) || ''
     for (const m of src.matchAll(DISPATCH_RE)) reachable.add(m[1])
   }
   const declared = new Set(MODES)
@@ -165,6 +180,12 @@ function selftest() {
     b.modes.reachable = b.modes.reachable.filter((m) => m !== b.modes.reachable[0])
     return b
   })(), healthy)
+  // The other half of the line-ending decision above: normalising must make CRLF invisible without
+  // making the ledger blind. The byte-loss case covers blindness; this one covers invisibility, and it
+  // is the exact state a `git checkout` leaves the working copy in.
+  const crlf = measureText('a\r\nb\r\nc\n')
+  const lf = measureText('a\nb\nc\n')
+  cases.push({ name: 'CRLF and LF of the same text measure identically', bad: crlf.lines === lf.lines && crlf.bytes === lf.bytes ? 0 : 1, want: 0, ok: crlf.lines === lf.lines && crlf.bytes === lf.bytes, names: [] })
   return cases
 }
 
