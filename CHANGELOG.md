@@ -2024,6 +2024,20 @@ exe 与上一版差 418 B、msi 回到 12,161,024 B，符合"只动了 capabilit
 分享出去的链接对国内读者同样不稳。⇒ 根治方向是把 R2/OSS 配成 Primary、GitHub 降为 Mirror（多云副本本来就是为此设计的），
 待用户提供 Cloudflare 侧操作。引用"上传成功但显示不出"类问题时，先问"对方开没开代理"，不再猜 CDN。
 
+### 18. M30：给 lock 对账门补上变异证人（2026-10-02）
+
+§17 收口时挂账"新门没有 M 位"，本轮清偿。过程被门连咬三次，每次都是真教训：
+
+1. **CRLF 锚点**：第一版 `from` 用 `\n` 写、盘上是 `\r\n` ⇒ anchor stale（harness 如实报"定义过期"而不是装通过）。
+2. **健康树上不可达的行不能当证人**：直接摘 lock 检查的 `return 1`，正常树根本不执行那行——变异体和自己比，M30 假绿。
+   解法 = 给门加 `--poison-lock-check` tripwire（argparse 注册；不带 flag 照常绿 rc=0、带 flag 必红 rc=1，两面都验过），
+   oracle 走带 flag 的那条路径，marker/expect 统一到 `LOCK_CHECK_POISONED`。
+3. **marker≠expect 时 `oracle ran: false`**：第三稿 FAIL 读数暴露两者字符串不同源，对齐后 OK。
+
+终态读数：**mutations 29/29**（`GATE_JSON checked=29 failed=0 unrestored=0`）、user-flow 255/0、
+shape 第 **35** 次签字（漂移行点名 verify_guard_mutations +9L/+837B 与总量 433615B，别无他名）、台账指纹同笔两更新。
+`check_release_version.py` 自身不在 ledger 六文件内——它的行为证人就是 M30 本身。
+
 ## 1.4.5 - Legible Read-Failure Panels and Measured Contrast Floors
 
 自 `v1.4.4` 起 115 笔提交（09-29 43 / 09-30 54 / 10-01 18）。改到 `apps/desktop/src` 的只有 8 笔；
