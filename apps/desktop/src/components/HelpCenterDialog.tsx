@@ -1,5 +1,14 @@
-import { BookOpen, Boxes, Cloud, Copy, ExternalLink, Images, Upload, Workflow, X } from 'lucide-react'
+import { BookOpen, Boxes, Cloud, Copy, ExternalLink, Images, Settings2, Upload, Workflow, X } from 'lucide-react'
 import type { PageKey } from '../types'
+
+type GuideTint = 'info' | 'accent' | 'success' | 'warning'
+
+const TINT: Record<GuideTint, { ink: string; bed: string }> = {
+  info: { ink: 'var(--info)', bed: 'var(--info-soft)' },
+  accent: { ink: 'var(--accent)', bed: 'var(--accent-soft)' },
+  success: { ink: 'var(--success)', bed: 'var(--success-soft)' },
+  warning: { ink: 'var(--tutorial-warning-text)', bed: 'var(--warning-soft)' },
+}
 
 // The Latin/CJK pair this box really resolves to on the target machine. Inter is named in the app
 // stylesheet but is neither bundled nor installed, so naming it here would repeat the mistake;
@@ -42,12 +51,13 @@ export function HelpCenterDialog({
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6">
           <div className="grid grid-cols-2 gap-4 max-md:grid-cols-1">
-            <GuideCard icon={Cloud} step="1" title="连接一个真实云端" description="建议第一次先用 GitHub。填写 Owner、仓库、分支和 Token，点击“测试并保存”。Provider 配置窗口右上角还有对应平台的内置教程。" action="去云端" onClick={() => go('storages')} />
-            <GuideCard icon={Upload} step="2" title="上传第一张图片" description="点击左侧“快速发布”，上传一张测试图片。任务成功意味着远端 Provider 已确认文件存在，而不是只写入了本地记录。" action="开始发布" onClick={() => go('publish')} />
-            <GuideCard icon={Images} step="3" title="用“图库”检查远端" description="图库直接浏览 GitHub / R2 / OSS 等真实云端文件。以前就存在于云端的图片也应该从这里查看；它不依赖本机上传历史。" action="打开图库" onClick={() => go('gallery')} />
-            <GuideCard icon={Boxes} step="4" title="理解“资源”页面" description="资源是镜云维护的发布索引：记录名称、URL、部署状态和插件结果。图片本体仍在云端。旧的云端文件不会因为连接云端就自动变成本地发布记录。" action="查看资源" onClick={() => go('assets')} />
-            <GuideCard icon={Copy} step="5" title="“复制”到底复制什么" description="资源页会按当前格式复制 URL、Markdown、HTML、BBCode 或自定义模板；图库里的“复制”表示复制该远端文件的公开 URL。" action="查看设置" onClick={() => go('settings')} />
-            <GuideCard icon={Workflow} step="6" title="Typora 不是只能用 PicGo" description="镜云通过 Typora 的“自定义命令”接入。配置向导会复制命令并打开 Typora；你需要在 Typora → 偏好设置 → 图像中把上传服务改成“自定义命令”，粘贴后验证。" action="Typora 配置" onClick={() => go('settings')} />
+            <GuideCard tint="info" icon={Cloud} step="1" title="连接一个真实云端" description="建议第一次先用 GitHub。填写 Owner、仓库、分支和 Token，点击“测试并保存”。Provider 配置窗口右上角还有对应平台的内置教程。" action="去云端" onClick={() => go('storages')} />
+            <GuideCard tint="accent" icon={Upload} step="2" title="上传第一张图片" description="点击左侧“快速发布”，上传一张测试图片。任务成功意味着远端 Provider 已确认文件存在，而不是只写入了本地记录。" action="开始发布" onClick={() => go('publish')} />
+            <GuideCard tint="info" icon={Images} step="3" title="用“图库”检查远端" description="图库直接浏览 GitHub / R2 / OSS 等真实云端文件。以前就存在于云端的图片也应该从这里查看；它不依赖本机上传历史。" action="打开图库" onClick={() => go('gallery')} />
+            <GuideCard tint="success" icon={Boxes} step="4" title="理解“资源”页面" description="资源是镜云维护的发布索引：记录名称、URL、部署状态和插件结果。图片本体仍在云端。旧的云端文件不会因为连接云端就自动变成本地发布记录。" action="查看资源" onClick={() => go('assets')} />
+            <GuideCard tint="success" icon={Copy} step="5" title="“复制”到底复制什么" description="资源页会按当前格式复制 URL、Markdown、HTML、BBCode 或自定义模板；设置页还能改上传时的图片格式（WebP / JPEG / PNG / 保留原图）。图库里的“复制”表示复制该远端文件的公开 URL。" action="查看设置" onClick={() => go('settings')} />
+            <GuideCard tint="warning" icon={Workflow} step="6" title="Typora 不是只能用 PicGo" description="镜云通过 Typora 的“自定义命令”接入。配置向导会复制命令并打开 Typora；你需要在 Typora → 偏好设置 → 图像中把上传服务改成“自定义命令”，粘贴后验证。" action="Typora 配置" onClick={() => go('settings')} />
+            <GuideCard tint="warning" icon={Settings2} step="7" title="进阶入口" description="界面不用开着也能上传：全局快捷键把剪贴板图片直接变成 URL、Windows 右键菜单发布选中文件、本机 HTTP API 供 ShareX 与脚本调用；多云策略让一张图同时进 Primary 与镜像副本。" action="全部设置" onClick={() => go('settings')} />
           </div>
         </div>
       </section>
@@ -57,6 +67,7 @@ export function HelpCenterDialog({
 
 function GuideCard({
   icon: Icon,
+  tint = 'accent',
   step,
   title,
   description,
@@ -64,23 +75,25 @@ function GuideCard({
   onClick,
 }: {
   icon: typeof Cloud
+  tint?: GuideTint
   step: string
   title: string
   description: string
   action: string
   onClick: () => void
 }) {
+  const c = TINT[tint]
   return (
     <article className="flex h-full flex-col rounded-[16px] border border-[var(--border)] bg-[var(--surface)] p-5">
       <div className="flex items-center gap-3">
-        <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[var(--accent-soft)] text-[var(--accent)]"><Icon size={16} /></span>
-        <span className="text-[11px]! font-semibold! uppercase tracking-[.12em] text-[var(--text-secondary)] [font-variant-numeric:tabular-nums]">STEP {step}</span>
+        <span className="grid size-9 shrink-0 place-items-center rounded-xl" style={{ backgroundColor: c.bed, color: c.ink }}><Icon size={16} /></span>
+        <span className="text-[11px]! font-semibold! uppercase tracking-[.12em] [font-variant-numeric:tabular-nums]" style={{ color: c.ink }}>STEP {step}</span>
       </div>
       <h3 className="mt-4 text-sm font-semibold">{title}</h3>
       {/* flex-1 absorbs the row's equal-height slack inside the paragraph, so the actions land on one
           baseline across the grid instead of hanging at ragged distances under short descriptions. */}
       <p className="mt-2 flex-1 text-xs leading-6 text-[var(--text-secondary)]">{description}</p>
-      <button onClick={onClick} className="mt-4 self-start text-[12px]! font-medium! text-[var(--accent)] hover:underline">{action} →</button>
+      <button onClick={onClick} className="mt-4 self-start text-[12px]! font-medium! hover:underline" style={{ color: c.ink }}>{action} →</button>
     </article>
   )
 }

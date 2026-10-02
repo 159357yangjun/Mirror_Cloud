@@ -412,7 +412,7 @@ require('cancelRef.current?.focus()' in confirm_dialog, 'the dialog focuses Canc
 # printing when the dialog regresses.
 help_dialog = text('apps/desktop/src/components/HelpCenterDialog.tsx')
 steps = re.findall(r'step="(\d)"', help_dialog)
-require(steps == [str(i) for i in range(1, 7)], f'the onboarding dialog keeps exactly one 6-step sequence ({steps})')
+require(steps == [str(i) for i in range(1, 8)], f'the onboarding dialog keeps exactly one contiguous 7-step sequence ({steps})')
 require('推荐的第一次使用顺序' not in help_dialog, 'the duplicated five-chip ordering block stays deleted')
 require('--text-muted' not in help_dialog, 'the dialog avoids the muted grey measured at 2.45:1 / 2.56:1')
 require(re.search(r'Microsoft YaHei|PingFang|Noto Sans CJK', help_dialog) is not None, 'the dialog names a CJK face rather than relying on the system fallback')

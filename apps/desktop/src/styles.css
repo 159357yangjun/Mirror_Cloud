@@ -29,6 +29,14 @@
   --accent-soft: rgba(79, 70, 229, .1);
   --success: #059669;
   --warning: #d97706;
+  /* Tutorial semantic tints: icon-chip ink + soft bed per action family (接入/发布/理解/集成).
+     Text rungs chosen against the mist card surface; contrast-tier is the witness. */
+  --info: #0e7490;
+  --info-soft: rgba(14, 116, 144, .1);
+  --success-soft: rgba(5, 150, 105, .1);
+  --warning-soft: rgba(180, 83, 9, .1);
+  --tutorial-warning-text: #b45309;
+
   --radius-card: 24px;
   --radius-control: 12px;
   --shadow-card: 0 8px 30px rgba(15, 23, 42, .04);
@@ -85,6 +93,15 @@
   --border: rgba(71, 85, 105, .55);
   --accent: #818cf8;
   --accent-soft: rgba(129, 140, 248, .14);
+  /* Midnight rungs of the tutorial tints: darker variants would vanish on this surface. */
+  --info: #67e8f9;
+  --info-soft: rgba(103, 232, 249, .13);
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, .13);
+  --warning: #fbbf24;
+  --warning-soft: rgba(251, 191, 36, .13);
+  --tutorial-warning-text: #fcd34d;
+
   --shadow-card: 0 12px 40px rgba(0, 0, 0, .26);
   /* Pages ship roughly 580 hard-coded slate-* utilities (text-slate-400 alone: 138). Tailwind v4
      compiles each of them to var(--color-slate-N), so redefining the ramp here moves every one of
@@ -234,6 +251,11 @@
      measured 1917 runs with below=0. */
   --color-red-600: #a81330;
   --danger-solid: #a81330;
+  /* Sakura warms everything; cool cyan would read as foreign ink on this card. */
+  --info: #0f766e;
+  --info-soft: rgba(15, 118, 110, .1);
+  --success-soft: rgba(5, 150, 105, .1);
+  --warning-soft: rgba(180, 83, 9, .1);
 }
 
 * { box-sizing: border-box; }
