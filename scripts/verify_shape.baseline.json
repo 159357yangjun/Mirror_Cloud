@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-10-02T09:41:46",
-    "head": "ed8bbba66454f13bbf6c7f3d488e91794f36c2ff",
-    "reason": "thirty-sixth signing: M13 anchor retargeted to the action button's remaining !-classes after the help-center redesign (+14 bytes on verify_guard_mutations.mjs); product-side color fix is outside the ledger's six files."
+    "takenAt": "2026-10-02T10:01:47",
+    "head": "b3add8fbf633d454ac0567935a6930620818587a",
+    "reason": "thirty-seventh signing: M31 added to verify_guard_mutations (stale-member data corruption path + its oracle branch) - the second witness for the lock reconciliation. Drift rows named only this harness file and the totals."
   },
   "files": [
     {
@@ -36,8 +36,8 @@
     {
       "file": "scripts/verify_guard_mutations.mjs",
       "exists": true,
-      "lines": 341,
-      "bytes": 27619,
+      "lines": 366,
+      "bytes": 29464,
       "families": {
         "failures.push": 1,
         "emitGate": 0,
@@ -92,8 +92,8 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 5621,
-    "bytes": 433629,
+    "lines": 5646,
+    "bytes": 435474,
     "families": {
       "failures.push": 31,
       "emitGate": 16,
