@@ -758,9 +758,19 @@ class HarnessFinishing extends Error { constructor(code) { super(`harness finish
 function finish(code) {
   if (finishCode === null) {
     finishCode = code
-    try { ws.close() } catch {}
+    try { ws?.close() } catch {}
     try { browser?.kill() } catch {}
-    setTimeout(() => process.exit(finishCode), 300)
+    // The old form was setTimeout(() => process.exit(code), 300): a guess at how long the CDP socket
+    // and the browser child need, and when the guess lost, the stage aborted with 0xC0000409 rather
+    // than reporting anything (seen once in four aggregate runs on 2026-10-01, in settings-guard).
+    // Let the loop drain and take the recorded code with it; the watchdog only fires if something is
+    // still holding the process after 5s, and it says so instead of failing quietly.
+    const watchdog = setTimeout(() => {
+      console.log(`FINISH_WATCHDOG: the loop was still alive 5s after verdict ${finishCode} - something did not close; forcing the exit`)
+      process.exit(finishCode)
+    }, 5000)
+    if (watchdog.unref) watchdog.unref()
+    process.exitCode = finishCode
   }
   throw new HarnessFinishing(code)
 }

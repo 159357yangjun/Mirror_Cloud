@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-10-02T02:49:26",
-    "head": "75927ab45fd037593c7e7402d61bb0b06183eadb",
-    "reason": "thirty-second signing: links gained a two-sided verdict (entry present iff a docs base URL is configured, and a click must open something or say why not) with 8 fixtures, and is now a stage - 22 in the aggregate. It used to end in a bare finish(0) that no aggregate ran, so it printed rc=0 while finding nothing at all three call sites."
+    "takenAt": "2026-10-02T03:02:14",
+    "head": "7aa22f3f844e2a0896a6b7bb8f8e843781bda845",
+    "reason": "thirty-third signing: finish() stops guessing the teardown. A fixed 300ms process.exit aborted stages with 0xC0000409 when the CDP socket or browser child was still closing (seen once in four aggregate runs, settings-guard, 2026-10-01). The verdict code is now carried by process.exitCode and the loop drains; a 5s unref'd watchdog force-exits and says so. Harness-only change in verify_dialog_interactions.mjs."
   },
   "files": [
     {
@@ -22,8 +22,8 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 3787,
-      "bytes": 311360,
+      "lines": 3797,
+      "bytes": 312097,
       "families": {
         "failures.push": 29,
         "emitGate": 16,
@@ -92,8 +92,8 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 5602,
-    "bytes": 432026,
+    "lines": 5612,
+    "bytes": 432763,
     "families": {
       "failures.push": 31,
       "emitGate": 16,
