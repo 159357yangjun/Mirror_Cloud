@@ -22,6 +22,11 @@ def main() -> int:
         "--tag",
         help="Optional release tag to validate, for example v1.4.0. Tag pushes are detected automatically in GitHub Actions.",
     )
+    parser.add_argument(
+        "--poison-lock-check",
+        action="store_true",
+        help="Mutation-harness tripwire: alarm immediately so a neutered lock reconciliation cannot masquerade as a pristine green run.",
+    )
     args = parser.parse_args()
 
     cargo = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))
@@ -43,6 +48,14 @@ def main() -> int:
         (ROOT / "apps/desktop/src-tauri/Cargo.toml").read_text(encoding="utf-8")
     )["package"]["name"]
     member_names.add(src_tauri_name)
+
+    # The mutation harness poisons this gate by neutering the first `return 1` after the Fix line.
+    # On a healthy tree that return is unreachable, so without this tripwire M30 would compare the
+    # mutant against itself and report "pristine run exited 0" about a disarmed file.
+    if args.poison_lock_check:
+        print("LOCK_CHECK_POISONED: reconciliation return reached on a healthy tree", file=sys.stderr)
+        return 1
+
     stale_members = []
     seen_members = set()
     lock_text = (ROOT / "Cargo.lock").read_text(encoding="utf-8")
