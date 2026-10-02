@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-10-02T08:07:14",
-    "head": "cc171f8422361f67eca363b6a8f8ae82ab396474",
-    "reason": "thirty-fourth signing: check_release_version grew the Cargo.lock member reconciliation (cc171f8) and verify_all's count regex for that stage moved to the in-sync n/n form; +15 bytes on verify_all.mjs, total 432763->432778. Both are intended gate-side changes, product code untouched."
+    "takenAt": "2026-10-02T08:24:33",
+    "head": "5dfe8e4ce6a2d7577191940738c633f0c1dad97c",
+    "reason": "thirty-fifth signing: M30 added to verify_guard_mutations (+9 lines/+837 bytes) - the release-version oracle, its LOCK_CHECK_POISONED marker, and the mutation entry with tripwire. Drift rows named exactly this file and the totals; check_release_version.py's own growth is outside the ledger's six files by design."
   },
   "files": [
     {
@@ -36,8 +36,8 @@
     {
       "file": "scripts/verify_guard_mutations.mjs",
       "exists": true,
-      "lines": 332,
-      "bytes": 26768,
+      "lines": 341,
+      "bytes": 27605,
       "families": {
         "failures.push": 1,
         "emitGate": 0,
@@ -92,8 +92,8 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 5612,
-    "bytes": 432778,
+    "lines": 5621,
+    "bytes": 433615,
     "families": {
       "failures.push": 31,
       "emitGate": 16,
