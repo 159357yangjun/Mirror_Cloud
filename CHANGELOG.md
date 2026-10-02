@@ -1916,6 +1916,28 @@ CI 侧那条作业仍是 `completed/failure`。上面那句"没有一条是产�
 指纹表未跟改动（`check_user_flow`）、shape 基线未重签（`verify_shape`）、`mutations` 在脏树拒绝启动——
 前两处已在上笔（`--patch` / 第二十八次签字）落平，第三处需要干净树，故本笔的 19/19 才是它的证人。
 
+### 12. v1.4.5 重打 tag 后的出包终态与资产三方对账（2026-10-02）
+
+tag `v1.4.5` 移到 `f922ce5` 并 force 推单 refspec 后，`Release Bundle` 触发了新 run `36960220083`。
+
+- 读数：`watch_ci.mjs` pass=18 `TERMINAL completed/success updated=2026-10-02T03:49:01Z`；
+  此前该会话的第一把后台 watcher（`b4ftmglfb`）输出文件在 23:27–23:41 间为 **0 字节**，完成时才落盘——
+  引用它的"exit code 0"不算证人，本轮的终态是从 API 独立重测的（`http=200 status=completed conclusion=success`）。
+- Release 对象：`releases/tags/v1.4.5` = **200**，`release_id=401526603`，assets=4
+  （source.zip / windows-x64-setup.exe / windows-x64.msi / SHA256SUMS.txt），§1 里那句"没有对外资产"自本笔起过时，保留原文并注明。
+- 三方对账（本地 Node `crypto` 独立重算 vs `SHA256SUMS.txt` vs GitHub `assets[].digest`），3/3 全一致：
+
+  | 资产 | 大小 | sha256（三处相同） |
+  |---|---|---|
+  | source.zip | 3,124,579 B | `7b331a18…726a6537` |
+  | setup.exe | 8,205,472 B | `b54c4a92…f2502000` |
+  | installer.msi | 12,161,024 B | `4485c4d6…daeef2a1` |
+
+- 判别式：对捏造值 `'0'.repeat(64)` 走同一比较逻辑正确判 MISMATCH（`NEGATIVE-CONTROL teeth OK`）， hasher 不是永绿。
+- NSIS 安装包 **8.2 MB**（对照 PicList 的 dmg 141.7 MB，量级差 ~17×），这是 P3"打包面收益"的第一个实测锚点。
+- 下载产物落在 `%TEMP%/v145_assets/`（我的临时产物，不入仓；入仓的是上面的哈希与结论）。
+- **未覆盖的部分要说准**：对账证明"发布的就是构建的"，不证明"装得上、跑得起来"——安装冒烟仍是 Windows 侧人工验收项。
+
 ## 1.4.5 - Legible Read-Failure Panels and Measured Contrast Floors
 
 自 `v1.4.4` 起 115 笔提交（09-29 43 / 09-30 54 / 10-01 18）。改到 `apps/desktop/src` 的只有 8 笔；
