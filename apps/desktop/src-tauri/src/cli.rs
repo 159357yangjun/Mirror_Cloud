@@ -322,7 +322,8 @@ async fn ensure_default_workflow(
         .set(DEFAULT_TARGET_KEY, &setting)
         .await
         .map_err(|e| e.to_string())?;
-    let chain_image_format = crate::commands::integrations::default_chain_image_format(&context.settings).await;
+    let chain_image_format =
+        crate::commands::integrations::default_chain_image_format(&context.settings).await;
     let workflow = Workflow {
         id: Uuid::new_v4(),
         name: "自动上传链".into(),

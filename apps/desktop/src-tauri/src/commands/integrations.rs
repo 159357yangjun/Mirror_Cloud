@@ -952,7 +952,9 @@ pub async fn save_output_preferences(
     Ok(preferences)
 }
 
-pub async fn default_chain_image_format(settings: &persistence_sqlite::SettingsRepository) -> String {
+pub async fn default_chain_image_format(
+    settings: &persistence_sqlite::SettingsRepository,
+) -> String {
     // Single mapping from the stored preference to the Convert step. Anything unrecognized
     // (including a hand-edited row or a read failure) falls back to webp - the pre-existing
     // shipped behavior - never to an empty pipeline.
