@@ -9,7 +9,8 @@
     "core:default",
     "dialog:default",
     "clipboard-manager:allow-write-text",
-    "opener:allow-default-urls",
+    "opener:allow-open-url",
+        "opener:allow-default-urls",
     "clipboard-manager:allow-read-image"
   ]
 }

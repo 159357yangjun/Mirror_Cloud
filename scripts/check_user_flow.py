@@ -465,6 +465,19 @@ desktop_lib = text('apps/desktop/src/lib/desktop.ts')
 require('openExternalUrl(url).catch((error) => notifyError' in desktop_lib, 'a failed external-link open is reported through the toast channel')
 require("if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')" in desktop_lib, 'external links are still restricted to http/https')
 
+# Shipped 2026-10-02 and caught by the user, not by any gate: the installed Mirror Cloud v1.4.5
+# refused every external link with "Command plugin:opener|open_url not allowed by ACL".
+# openExternalUrl() calls plugin-opener's openUrl, but capabilities/default.json only granted
+# opener:allow-default-urls (mailto/tel). The whole error-reporting chain built around this call
+# could therefore only ever surface an ACL rejection. A capability list is a runtime contract;
+# grep for the command string never touches it, so the witness lives here.
+capabilities = json.loads((ROOT / 'apps' / 'desktop' / 'src-tauri' / 'capabilities' / 'default.json').read_text(encoding='utf-8'))
+capability_perms = capabilities.get('permissions', [])
+require('opener:allow-open-url' in capability_perms,
+        f'capabilities grant opener:allow-open-url or every external link dies at the ACL (granted: {capability_perms})')
+require('void openExternalUrl(' not in desktop_lib and "await openUrl(url)" in desktop_lib,
+        'the ACL-gated command name in desktop.ts stays in sync with the permission asserted above')
+
 # The browser harness that produced the two measurements above lives in the repo, so the gate that
 # voids hidden-window geometry is itself under test: without it a future edit can quietly drop the
 # precondition and every width/rect/hit-test number recorded in CHANGELOG becomes unauditable.
