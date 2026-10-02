@@ -1688,6 +1688,37 @@ pages: every route stayed alive with no Tauri runtime (7 routes)
 只是不再能被误读成"过了"。`layout` 的 9 条（触摸目标 44×44 与 `button{font:inherit}` 吞字号）仍是产品面缺陷，
 后者按 `docs/VISUAL_BASELINE.md:111`、`:164` 明写"登记不修、需单独批准"。
 
+**一次消融，证明夹具不是装饰**（把 `confirmVerdict` 临时换成"永远返回 0 失败"，跑真模式）：
+
+```text
+$ # 拔空判定函数后
+$ node scripts/verify_dialog_interactions.mjs confirm            rc=2
+HARNESS FAULT: verdict fixture "confirm: Escape leaving the dialog open is caught" did not hold
+HARNESS FAULT: verdict fixture "confirm: a press inside that closes the dialog is caught" did not hold
+HARNESS FAULT: verdict fixture "confirm: Enter performing the action is caught" did not hold
+HARNESS FAULT: verdict fixture "confirm: a confirm button neither visible nor scrollable-to is caught" did not hold
+HARNESS FAULT: verdict fixture "confirm: a z-tie where neither layer wins is caught" did not hold
+HARNESS FAULT: verdict fixture "confirm: a step that silently disappears is caught" did not hold
+HARNESS FAULT: verdict fixture "confirm: horizontal overflow is charged even below the minimum" did not hold
+VERDICT_SELFTEST cases=14 failed=7
+```
+
+一把被拔空的门交出的是 **rc=2 + 7 个具名失效夹具**，不是 `CONFIRM_GATE failed=0`；
+原文在 `image-hosting-probes/2026-10-01/confirm-ABLATION.txt`，改动已 `git checkout HEAD --` 复原（porcelain 0）。
+
+**聚合终态（干净树、`HEAD=bc1be95` 之上，退出码 0）**：
+
+```text
+$ node scripts/verify_all.mjs
+verify:all | wall=178.6s stages=21 sumOfStageWalls=178.5s
+verify:all | cost (slowest first): contrast-tier=78.5 mutations=33.4 theme-surfaces=14.3 confirm=13.2 visual=11.8 pages=11.6
+verify:all | 21 passed, 0 failed, 0 skipped of 21
+```
+
+新增两条的分子：`confirm checked=19 failed=0`、`pages checked=36 failed=0`；
+`mutations` 仍是 27/27 且 `unrestored=0`（它跑在最后，会临时改跟踪文件后复原）。
+产物：`image-hosting-probes/2026-10-01/verify-all-21stages.log`。
+
 ### 本轮验证命令与实际输出
 
 ```text
