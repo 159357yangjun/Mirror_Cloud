@@ -289,16 +289,22 @@ for (const m of selected) {
       // the file still decodes as UTF-8 afterwards, so a parse check stays green.
       mutated = Buffer.from(original.toString('latin1'), 'utf8')
     } else if (m.corrupt === 'stale-member') {
-      // M31's shape: mutate DATA, not the gate. application@1.4.5 -> the reconciliation branch is
-      // now reachable on the pristine gate; exit 0 with offenders named would be the cosmetic gate.
+      // M31's shape: mutate DATA, not the gate. application@<current> -> <current-1> so the
+      // reconciliation branch is now reachable on the pristine gate; exit 0 with offenders named
+      // would be the cosmetic gate. The version comes from Cargo.toml at run time - a hardcoded
+      // 1.4.5 died the moment v1.4.6 bumped the lock (aggregate caught it).
       const text = original.toString('utf8')
+      const currentVersion = require('node:fs').readFileSync(`${REPO}/Cargo.toml`, 'utf8')
+        .match(/\[workspace\.package\][\s\S]*?version = "([\d.]+)"/)[1]
       const i = text.indexOf('name = "application"')
-      const j = text.indexOf('version = "1.4.5"', i)
+      const j = text.indexOf(`version = "${currentVersion}"`, i)
+      const [maj, min, pat] = currentVersion.split('.')
+      const older = `${maj}.${min}.${Number(pat) - 1}`
       if (i < 0 || j < 0 || j - i > 60) {
-        results.push({ id: m.id, file: m.file, applied: false, note: 'lock anchor stale - mutation definition needs updating' })
+        results.push({ id: m.id, file: m.file, applied: false, note: `lock anchor stale: application@${currentVersion} not found` })
         continue
       }
-      mutated = text.slice(0, j) + 'version = "1.4.4"' + text.slice(j + 'version = "1.4.5"'.length)
+      mutated = text.slice(0, j) + `version = "${older}"` + text.slice(j + `version = "${currentVersion}"`.length)
     } else {
       const text = original.toString('utf8')
       const needle = adapt(text, m.from)
