@@ -318,7 +318,7 @@ export async function listAssets(limit = 200): Promise<AssetView[]> {
 
 export async function getOutputPreferences(): Promise<OutputPreferences> {
   if (!isTauriRuntime()) {
-    return { defaultFormat: 'markdown', customTemplate: '![{name}]({url})', autoCopyAfterPublish: true }
+    return { defaultFormat: 'markdown', customTemplate: '![{name}]({url})', autoCopyAfterPublish: true, imageFormat: 'webp' }
   }
   return invoke('get_output_preferences')
 }

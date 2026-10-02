@@ -49,6 +49,7 @@ export function AssetsPage() {
       defaultFormat: 'markdown',
       customTemplate: '![{name}]({url})',
       autoCopyAfterPublish: true,
+      imageFormat: 'webp',
     } as OutputPreferences,
   } = useQuery({ queryKey: ['output-preferences'], queryFn: getOutputPreferences })
   const [search, setSearch] = useState('')
