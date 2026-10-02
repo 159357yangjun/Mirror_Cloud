@@ -98,6 +98,10 @@ const stages = [
   // is what lets them be stages - the aggregate cross-checks GATE_JSON against the exit code both ways.
   { name: 'confirm', run: 'node', args: [NODE_MODE, 'confirm'], needsServer: true, gateJson: true, timeout: 300_000, count: /CONFIRM_GATE steps=(\d+) checked=(\d+) failed=(\d+)/ },
   { name: 'pages', run: 'node', args: [NODE_MODE, 'pages'], needsServer: true, gateJson: true, timeout: 300_000, count: /PAGES_GATE routes=(\d+) judged=(\d+) checked=(\d+) failed=(\d+)/ },
+  // Conditional on VITE_DOCS_BASE_URL, so the predicate cuts both ways: an entry point that offers no
+  // online link while a base URL is set is a bug, and one that offers a dead link while none is set is
+  // too. It used to end in a bare finish(0) that no aggregate ran.
+  { name: 'links', run: 'node', args: [NODE_MODE, 'links'], needsServer: true, gateJson: true, timeout: 300_000, count: /LINKS_GATE sites=(\d+) base=\S+ checked=(\d+) failed=(\d+)/ },
   { name: 'visual', run: 'node', args: [NODE_MODE, 'visual'], needsServer: true, gateJson: true, timeout: 600_000, count: /VISUAL_GATE total=(\d+) failed=(\d+)/ },
   { name: 'settings-guard', run: 'node', args: [NODE_MODE, 'settings-guard'], needsServer: true, gateJson: true, timeout: 600_000, count: /SETTINGS_GATE checked=(\d+).*failed=(\d+)/ },
   // `contrast-tier` IS a stage now. It was taken out of the table while it printed six findings on

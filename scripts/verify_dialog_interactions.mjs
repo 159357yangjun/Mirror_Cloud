@@ -591,6 +591,64 @@ function verdictSelftest() {
   return bad.length
 }
 
+// `links` asks what the three docs call sites offer under whatever VITE_DOCS_BASE_URL the dev server
+// started with. That makes the answer conditional, and a one-sided predicate would be permanently red
+// in the common case: with no base URL configured the app must NOT offer an online-docs entry, and
+// all three sites correctly report found=false. So the predicate cuts both ways, and so do the
+// fixtures - a missing entry when a base exists, and an entry that leads nowhere when none does.
+function linksVerdict(out) {
+  const failures = []
+  let checked = 0
+  const base = out?.baseEnv?.docsBaseUrl
+  const configured = typeof base === 'string' && base.length > 0
+  const sites = out?.sites || {}
+  for (const key of ['A_helpCenterDialog', 'B_settingsPage', 'C_storageSetupDialog']) {
+    const s = sites[key]
+    checked += 1
+    if (!s) { failures.push(`${key}: the site was never probed - a missing probe is not a pass`); continue }
+    if (configured && s.found !== true) failures.push(`${key}: a docs base URL is configured (${base}) but this entry point offers no online-docs link`)
+    if (!configured && s.found === true) failures.push(`${key}: no docs base URL is configured, yet this entry point offers an online-docs link that can lead nowhere`)
+    const a = s.afterClick
+    if (!a) continue
+    checked += 3
+    if (a.newWindowOpenEvents + a.newTabs < 1 && !(Array.isArray(a.toastTexts) && a.toastTexts.length)) {
+      failures.push(`${key}: the click neither opened anything nor told the user why not (windowOpen=${a.newWindowOpenEvents} tabs=${a.newTabs} toasts=${(a.toastTexts || []).length})`)
+    }
+    const bad = (a.urlsOpened || []).filter((u) => !/^https?:\/\//.test(u))
+    if (bad.length) failures.push(`${key}: opened a non-http(s) target: ${JSON.stringify(bad[0]).slice(0, 80)}`)
+    const thrown = (a.consoleErrors || []).filter((e) => /Uncaught|TypeError|ReferenceError/.test(String(e)))
+    if (thrown.length) failures.push(`${key}: clicking the docs entry threw ${JSON.stringify(thrown[0]).slice(0, 120)}`)
+  }
+  checked += 1
+  if (!configured && !(sites.C_storageSetupDialog?.panelCopy || '').length) {
+    failures.push('C_storageSetupDialog: with no docs base URL there is no online link, and the built-in tutorial copy did not render either - the user would get neither')
+  }
+  return { checked, failures }
+}
+
+const LINKS_FIXTURE = (over = {}) => ({
+  baseEnv: { docsBaseUrl: null, providerGuideUrl: null, localApiGuideUrl: null },
+  sites: {
+    A_helpCenterDialog: { found: false },
+    B_settingsPage: { found: false },
+    C_storageSetupDialog: { found: false, panelCopy: 'GitHub 配置教程 教程内置在应用里，不依赖文档网站' },
+  },
+  ...over,
+})
+
+const LINKS_CASES = [
+  { name: 'links: no base URL and no online entry is clean', out: LINKS_FIXTURE(), want: 0 },
+  { name: 'links: an online entry with no base URL is caught', out: LINKS_FIXTURE({ sites: { A_helpCenterDialog: { found: true }, B_settingsPage: { found: false }, C_storageSetupDialog: { found: false, panelCopy: 'x' } } }), want: 1 },
+  { name: 'links: a missing entry while a base URL is set is caught', out: LINKS_FIXTURE({ baseEnv: { docsBaseUrl: 'https://example.test/docs' }, sites: { A_helpCenterDialog: { found: false }, B_settingsPage: { found: false }, C_storageSetupDialog: { found: false, panelCopy: 'x' } } }), want: 3 },
+  { name: 'links: a click that opens nothing and says nothing is caught', out: LINKS_FIXTURE({ baseEnv: { docsBaseUrl: 'https://example.test/docs' }, sites: { A_helpCenterDialog: { found: true, afterClick: { newWindowOpenEvents: 0, newTabs: 0, urlsOpened: [], toastTexts: [], consoleErrors: [] } }, B_settingsPage: { found: true, afterClick: { newWindowOpenEvents: 1, newTabs: 0, urlsOpened: ['https://example.test/docs'], toastTexts: [], consoleErrors: [] } }, C_storageSetupDialog: { found: true, panelCopy: 'x', afterClick: { newWindowOpenEvents: 0, newTabs: 1, urlsOpened: ['https://example.test/g'], toastTexts: [], consoleErrors: [] } } } }), want: 1 },
+  { name: 'links: a non-http target is caught', out: LINKS_FIXTURE({ sites: { A_helpCenterDialog: { found: false }, B_settingsPage: { found: false }, C_storageSetupDialog: { found: false, panelCopy: 'x', afterClick: { newWindowOpenEvents: 1, newTabs: 0, urlsOpened: ['javascript:alert(1)'], toastTexts: [], consoleErrors: [] } } } }), want: 1 },
+  { name: 'links: an uncaught error on click is caught', out: LINKS_FIXTURE({ sites: { A_helpCenterDialog: { found: false }, B_settingsPage: { found: false }, C_storageSetupDialog: { found: false, panelCopy: 'x', afterClick: { newWindowOpenEvents: 0, newTabs: 1, urlsOpened: ['https://ok.test'], toastTexts: [], consoleErrors: ['Uncaught TypeError: Cannot read properties of undefined (reading open)'] } } } }), want: 1 },
+  { name: 'links: a site that was never probed is caught', out: LINKS_FIXTURE({ sites: { B_settingsPage: { found: false }, C_storageSetupDialog: { found: false, panelCopy: 'x' } } }), want: 1 },
+  { name: 'links: the built-in tutorial copy is required when there is no link', out: LINKS_FIXTURE({ sites: { A_helpCenterDialog: { found: false }, B_settingsPage: { found: false }, C_storageSetupDialog: { found: false, panelCopy: null } } }), want: 1 },
+]
+
+for (const c of LINKS_CASES) VERDICT_CASES.push({ name: c.name, run: () => linksVerdict(c.out).failures.length === c.want })
+
 const profile = `${OUT.replace(/\/+$/, '')}/.profile-${Date.now()}`
 // The browser and the dev-server preflight are lazy: red-demo orchestrates child processes and must
 // not fail (or burn a browser launch) because the parent's default --app is down.
@@ -1315,7 +1373,14 @@ async function main() {
     record('links-under-this-base', out)
     writeFileSync(`${OUT}/report-links-${TAG}.json`, JSON.stringify(out, null, 2))
     console.log(JSON.stringify(out, null, 2))
-    finish(0)
+    if (verdictSelftest()) finish(2)
+    const v = linksVerdict(out)
+    const baseShown = out.baseEnv?.docsBaseUrl || 'unset'
+    for (const f of v.failures) console.log(`FAIL ${f}`)
+    console.log(`LINKS_GATE sites=3 base=${baseShown} checked=${v.checked} failed=${v.failures.length}`)
+    emitGate('links', v.checked, v.failures.length, { baseConfigured: !!out.baseEnv?.docsBaseUrl })
+    console.log(v.failures.length ? `links: ${v.failures.length} docs entry-point failure(s)` : `links: the three docs entry points agree with the base URL the server was started with (${baseShown})`)
+    finish(v.failures.length ? 1 : 0)
   }
 
   if (MODE === 'gate') {

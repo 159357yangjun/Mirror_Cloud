@@ -1,15 +1,15 @@
 {
   "_meta": {
-    "takenAt": "2026-10-02T02:09:59",
-    "head": "f1b5eb52e0f92def5d9f45727748a946c8ed90eb",
-    "reason": "thirty-first signing: verify_guard_mutations.mjs gained the confirm-gate oracle and mutation M29, which disarms the dialog verdict's reporting half and expects the mode's own fixtures to notice. No product code and no other harness file moved."
+    "takenAt": "2026-10-02T02:49:26",
+    "head": "75927ab45fd037593c7e7402d61bb0b06183eadb",
+    "reason": "thirty-second signing: links gained a two-sided verdict (entry present iff a docs base URL is configured, and a click must open something or say why not) with 8 fixtures, and is now a stage - 22 in the aggregate. It used to end in a bare finish(0) that no aggregate ran, so it printed rc=0 while finding nothing at all three call sites."
   },
   "files": [
     {
       "file": "scripts/verify_all.mjs",
       "exists": true,
-      "lines": 357,
-      "bytes": 26240,
+      "lines": 361,
+      "bytes": 26699,
       "families": {
         "failures.push": 0,
         "emitGate": 0,
@@ -22,13 +22,13 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 3722,
-      "bytes": 305370,
+      "lines": 3787,
+      "bytes": 311360,
       "families": {
-        "failures.push": 22,
-        "emitGate": 15,
-        "harness-fault exit": 44,
-        "gate line": 10,
+        "failures.push": 29,
+        "emitGate": 16,
+        "harness-fault exit": 45,
+        "gate line": 11,
         "positive control": 15,
         "throw": 16
       }
@@ -92,13 +92,13 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 5533,
-    "bytes": 425577,
+    "lines": 5602,
+    "bytes": 432026,
     "families": {
-      "failures.push": 24,
-      "emitGate": 15,
-      "harness-fault exit": 46,
-      "gate line": 10,
+      "failures.push": 31,
+      "emitGate": 16,
+      "harness-fault exit": 47,
+      "gate line": 11,
       "positive control": 16,
       "throw": 16
     }

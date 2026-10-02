@@ -178,8 +178,8 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 
 | 文件 | 行数 | 字节 | sha256 | 基线通过项数 | 证明它报过警的命令 |
 | --- | --- | --- | --- | --- | --- |
-| `scripts/verify_all.mjs` | 356 | 26,240 | `b712fc05dc53f2c0811ad5b8851883ddf1f0cf7c872c2ff29a60449bb0696208` | 18 stages：七道静态守卫 + 两份台账（`theme_face_inventory`、`verify_shape`）+ 七个测具模式（新增 `contrast-tier`、`theme-surfaces`）+ `red-demo` + 变异套件；`layout` 仍不接入，原因见其注释 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行）；`node scripts/verify_all.mjs selftest`（往 stage 表里粘一行重复名字，必须被点名） |
-| `scripts/verify_dialog_interactions.mjs` | 3721 | 305,370 | `56b0d6b1a93d435e0799d310a6e43c151cb5d0287c7f2492a246db6c6330a0a5` | `gate-unit` 29/29（viewport 6 + coverage 5 + doc-table 8 + **staleness 10**，后者含植入 470px 位移与"缺盒子必须回 null"）；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18`；`node scripts/verify_guard_mutations.mjs M26 M27`（把逐元素比较循环拔空、把"比不了"当"没动"，两条都必须被 `gate-unit` 点名） |
+| `scripts/verify_all.mjs` | 360 | 26,699 | `49bc91a7aad6eb79cfadc7e933601ee48906bd69dd48bfdbb80ea2fd2dfa7c42` | 18 stages：七道静态守卫 + 两份台账（`theme_face_inventory`、`verify_shape`）+ 七个测具模式（新增 `contrast-tier`、`theme-surfaces`）+ `red-demo` + 变异套件；`layout` 仍不接入，原因见其注释 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行）；`node scripts/verify_all.mjs selftest`（往 stage 表里粘一行重复名字，必须被点名） |
+| `scripts/verify_dialog_interactions.mjs` | 3786 | 311,360 | `bc604699e2f7aa98361d6d6142e4b421654f82a8aaf33e76f192c33afda184de` | `gate-unit` 29/29（viewport 6 + coverage 5 + doc-table 8 + **staleness 10**，后者含植入 470px 位移与"缺盒子必须回 null"）；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18`；`node scripts/verify_guard_mutations.mjs M26 M27`（把逐元素比较循环拔空、把"比不了"当"没动"，两条都必须被 `gate-unit` 点名） |
 | `scripts/verify_guard_mutations.mjs` | 331 | 26,768 | `9c0e71adc375a5e3d7793280911275a7e7e52ff7ae737b9ca18c5a490d81e709` | 24 个变异（M1–M24），每个都必须被它指定的那台 oracle 抓到；本轮 M18/M19/M21/M22/M23/M24 的逐条读数见下面"本轮末次运行读数"一节 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
 | `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 770 | 47,295 | `5c4466e2c831de43b533063e19127d934e0b70747e9eb3459570ce63d827b8b7` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
@@ -189,7 +189,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | `scripts/__fixtures__/hanging_stage.mjs`（永不结束的假 stage，自己再 spawn 一个孙进程：`timeout-demo` 的靶子） | 20 | 1,155 | `16d702ee2dda998f2e7538d739f82d61656b075194ada2cb87fa014a80cf509a` | 只被 `verify_all.mjs timeout-demo` 生成，没有任何门读它 | `node scripts/verify_all.mjs timeout-demo`（六例，含"不调 taskkill 也不留孤儿"的消融与"正常结束不得报成 timeout"的负对照） |
 | `scripts/verify_modes.mjs`（模式名单 + 锚定的 dispatch 正则，纯数据、零控制流；runner 与 shape 台账读同一份） | 36 | 1,449 | `0b250811609418512489e3de9ffb70c1dbe24c7adc2d0b6cfe8da739bc6c2f87` | 每次启动三方核对：声明↔已派发用法块已文档化（15 个模式） | `node scripts/verify_guard_mutations.mjs M24`（把启动拒绝拔掉的变异，必须仍红） |
 | `scripts/verify_shape.mjs`（拆分对账台账：模式集合双向差、总行/字节、六族决策点数、以及"拆出去的探针是否仍逐字节等于拆之前"） | 313 | 18,455 | `cf453e6bd75acf90ab59a0780968fc52c4083da36b325de19a69a82524b7aa6c` | `SHAPE_SELFTEST cases=6 failed=0` + `SPLIT_SHAPE OK checked=17 failed=0` | 它自己先跑 6 例植入式夹具（改一个字节、删一个模式、把 extraction 弄瞎），任一抓不到就 exit 2；`--snapshot` 无 `--reason` 直接拒绝 |
-| `scripts/verify_shape.baseline.json`（上一行那本台账**签过的基线**：文件清单、总行/字节、六族决策点数、模式集合、extraction 长度与 `--snapshot --reason` 的原文） | 143 | 3,128 | `5dd4daa914519566d15d16fe0069bccd28c77305c0f1745badb884cb448eef90` | `SPLIT_SHAPE OK checked=17 failed=0`（它变了而代码没变 ⇒ 要么有人重签，要么有人偷改） | 它自己不会报红，是 `verify_shape.mjs --verify` 报红；本轮把它纳入指纹表，是因为"改基线"这件事此前只存在于 JSON 被碰过这一种痕迹里 |
+| `scripts/verify_shape.baseline.json`（上一行那本台账**签过的基线**：文件清单、总行/字节、六族决策点数、模式集合、extraction 长度与 `--snapshot --reason` 的原文） | 143 | 3,221 | `8e5d58911f65abd08a322f4e2b461206e158e27ebd0dc5a3d24026994fb9eaaf` | `SPLIT_SHAPE OK checked=17 failed=0`（它变了而代码没变 ⇒ 要么有人重签，要么有人偷改） | 它自己不会报红，是 `verify_shape.mjs --verify` 报红；本轮把它纳入指纹表，是因为"改基线"这件事此前只存在于 JSON 被碰过这一种痕迹里 |
 | `scripts/theme_face_inventory.mjs`（逐面三档清单的生成器，`docs/VISUAL_BASELINE.md` 4.1 那张表由它核对） | 204 | 12,424 | `8eee9bedb20ce49f30d61f30f23b69b9e92da624c1564709fa9e1208a6c702b9` | `THEME_FACE_VERIFY faces=23 docLines=25 mismatch=0`（`faces=23` = **22 个面 + 1 合计行**，2026-10-01 起该行把拆解一并印出，比对定义未改） | `node scripts/theme_face_inventory.mjs --selftest`（7 例：自己的输出干净、改一个数字恰好报 1 行、截断要报、行号要点对，加 **CRLF 整表必须干净 / 开头一个空行必须干净 / 混合行尾下改一个数字仍报 1 行**；抓不到 exit 2。后三例是 2026-10-01 那次"内容一致却 25 行全报红"的现场，见十六节） |
 
 **这张表现在是断言，不是纪律**：`check_user_flow.py` 解析上面每一行，对每个文件重算 `git show HEAD:<path>` 的行数/字节/sha256 并逐项比对，还断言"表里的行集合 == 磁盘上成员集合"，成员由四条规则导出而不是由名字导出：`scripts/verify_*.mjs`、`scripts/__fixtures__/*.mjs`、`verify_all.mjs` 里被当作 stage 引用的 `scripts/*.mjs`、以及 `scripts/*.baseline.json`（外加 `check_user_flow.py` 自己）。所以：新加一个测具忘了上表 → 红；改了测具忘了更新表 → 红；哈希对不上 → 红，并附一句"该文件另有未提交改动"。上一版这张表就是**手写漂移了一笔提交**（记 965 行 / `9341e4ba…`，实际 1119 行 / `d9572a31…`），而它上面那句"改完必须回来更新"正是被漂移的那句——所以规则本身不解决问题，断言才解决。`.baseline.json` 这一类是本轮补的：`verify_shape.baseline.json` 早就在仓里、早就被 `--snapshot` 重签过十次，而指纹表按名字匹配 `.mjs` 一直没看见它——**门禁自己的输入清单漏了门禁签过的那张纸**。
@@ -1816,6 +1816,30 @@ verify:all | 21 passed, 0 failed, 0 skipped of 21
 
 `docs/VISUAL_BASELINE.md:111`、`:164` 早就写着这条"登记不修、需单独批准"。现在它带上了代价数字，
 所以那一次批准可以只凭这张表做，不必再量一遍。
+
+### 10. `links` 是一把会印静默绿的门——它连我新加的 `NO_VERDICT` 行都到不了
+
+审计"哪些模式真有判据"时发现：`links` 块尾直接 `finish(0)`，**不经中心收尾**，
+所以 §6 加的 `NO_VERDICT` 提示对它也不生效——跑 `verify:dialog links` 的人拿到的 rc=0 与它测到什么完全无关。
+
+它最近一次的真实读数就是证据：三个文档入口 **全部 `found=false`**，而它退 0。
+但这里差点被我写成一条**永红判据**：读了记录才明白 `found=false` 是对的——
+`baseEnv` 三个 URL 全 `null`，没配 `VITE_DOCS_BASE_URL` 时应用**不该**给"在线文档"入口，
+它给的是内置教程（同一次记录里 `panelCopy` 就印着"教程内置在应用里，不依赖文档网站"）。
+
+所以判据是双向的：配了基址 ⇒ 三个入口必须都在、点击必须真打开东西**或**给出失败原因；
+没配基址 ⇒ 三个入口必须都不在，且内置教程文案必须在。8 条夹具两个方向都植了失败。
+
+```text
+$ node scripts/verify_dialog_interactions.mjs links
+VERDICT_SELFTEST cases=22 failed=0
+LINKS_GATE sites=3 base=unset checked=4 failed=0
+links: the three docs entry points agree with the base URL the server was started with (unset)
+```
+
+夹具用的是**精确相等**，所以它当场抓到我自己的一个用例写错（缺探测 + 缺兜底文案其实是 2 条，我写成 1）。
+`links` 同笔进聚合（`AGGREGATE_SELFTEST stages=22`），第 32 次签字随之落地。
+**还剩**：`external` 与 `contrast` 走中心收尾，仍各印 `NO_VERDICT`（它们没有判据，但也不再能被当成通过）。
 
 ### 本轮验证命令与实际输出
 
