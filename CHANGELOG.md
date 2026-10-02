@@ -2052,6 +2052,25 @@ shape 第 **35** 次签字（漂移行点名 verify_guard_mutations +9L/+837B �
 - 已知未挡面（挂账不装看不见）：手改 SQLite 里的 imageFormat 为非法值不会被拦（读侧已降级安全）；
   settings-guard 夹具吃的是 localStorage 主题键，覆盖不到这条 IPC 偏好路径，补它需要给该模式加第二注入点，暂不做。
 
+### 20. 端到端矩阵：格式设置在新包里真生效（2026-10-02）
+
+第三次移 tag（`33de596`，对象 `0e8b8ed`）后的 bundle run `36995685107` = **completed/success**；
+Release 资产原地刷新，setup.exe 三方对账一致（`68d3fa2f…`，msi/zip digest 同报）。
+覆盖安装到 `D:\Mirror Cloud`（用户既有目录），跑 §19 欠的矩阵——偏好写 `app_settings.output.preferences`，CLI 读同一行：
+
+| imageFormat | URL 扩展名 | 下载后文件头 magic | 判定 |
+|---|---|---|---|
+| webp（基线，改前） | .webp | RIFF/WEBP | ✓ 默认行为未变 |
+| jpeg | **.jpg** | FFD8FF | ✓ 偏好被消费 |
+| png | .png | 8950 4E47 | ✓ |
+| original | .png | 8950 4E47（=原图字节，72B 与探针同大） | ✓ 不转码 |
+| banana（非法） | .webp | — | ✓ 按承诺降级回 webp |
+
+四行输出互不相同 ⇒ 不是永绿量具。测毕卸载：注册表 CLEAN、`D:\Mirror Cloud` GONE。
+**注意**：这台机现在处于"未安装"状态（矩阵需要干净基线），直链在下面重报给用户。
+过程小坑两条如实记：settings 真表名是 `app_settings`/列 `value_json`（第一次 INSERT 撞 no-such-table）；
+cmd //c 吃带空格路径又翻车一次，改 PowerShell Start-Process 即好。
+
 ## 1.4.5 - Legible Read-Failure Panels and Measured Contrast Floors
 
 自 `v1.4.4` 起 115 笔提交（09-29 43 / 09-30 54 / 10-01 18）。改到 `apps/desktop/src` 的只有 8 笔；
