@@ -329,6 +329,40 @@ export async function saveOutputPreferences(
   if (!isTauriRuntime()) return preferences
   return invoke('save_output_preferences', { preferences })
 }
+
+export interface UpdateCheckResult {
+  currentVersion: string
+  latestVersion: string
+  updateAvailable: boolean
+  releaseNotes: string
+  setupUrl: string
+  setupBytes: number
+  publishedAt: string
+}
+
+export interface DownloadedUpdate {
+  installerPath: string
+  expectedSha256: string
+  actualSha256: string
+  verified: boolean
+  bytes: number
+}
+
+// The updater has no browser-mode mock on purpose: every state (idle/checking/available/downloaded)
+// is only honest when it comes from the real GitHub API and the real installed version. In the
+// dev browser the card renders its "检查更新" button as a call that fails with this message.
+export async function checkForUpdates(): Promise<UpdateCheckResult> {
+  return invoke('check_for_updates')
+}
+
+export async function downloadUpdate(check: UpdateCheckResult): Promise<DownloadedUpdate> {
+  return invoke('download_update', { check })
+}
+
+export async function installUpdate(update: DownloadedUpdate): Promise<void> {
+  return invoke('install_update', { update })
+}
+
 export async function getTyporaIntegrationInfo(): Promise<TyporaIntegrationInfo> {
   if (!isTauriRuntime()) {
     return { command: '', executable: '', dataDir: '', defaultWorkflow: null, ready: false, message: '仅桌面应用支持 Typora 集成' }

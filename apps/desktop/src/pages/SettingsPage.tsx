@@ -19,6 +19,8 @@ import { useEffect, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import {
   copyText,
+  checkForUpdates,
+  downloadUpdate,
   getLocalApiInfo,
   getLocalApiGuideUrl,
   getSystemDiagnostics,
@@ -26,6 +28,7 @@ import {
   getWindowsContextMenuInfo,
   getOutputPreferences,
   getTyporaIntegrationInfo,
+  installUpdate,
   openAppDataDir,
   openExternalUrlOrReport,
   openTypora,
@@ -35,6 +38,7 @@ import {
   uninstallWindowsContextMenu,
   saveOutputPreferences,
 } from '../lib/desktop'
+import type { DownloadedUpdate, UpdateCheckResult } from '../lib/desktop'
 import { useAppStore } from '../store/useAppStore'
 import { confirmAction } from '../store/useConfirmStore'
 import type { OutputFormat, OutputPreferences } from '../types'
@@ -84,6 +88,21 @@ export function SettingsPage() {
     mutationFn: saveOutputPreferences,
     onSuccess: (saved) => queryClient.setQueryData(['output-preferences'], saved),
   })
+
+  const [updateCheck, setUpdateCheck] = useState<UpdateCheckResult | null>(null)
+  const [updateDownloaded, setUpdateDownloaded] = useState<DownloadedUpdate | null>(null)
+  const checkUpdateMutation = useMutation({
+    mutationFn: checkForUpdates,
+    onSuccess: (result) => { setUpdateCheck(result); setUpdateDownloaded(null) },
+  })
+  const downloadUpdateMutation = useMutation({
+    mutationFn: () => { if (!updateCheck) throw new Error('请先检查更新'); return downloadUpdate(updateCheck) },
+    onSuccess: (downloaded) => setUpdateDownloaded(downloaded),
+  })
+  const installUpdateMutation = useMutation({
+    mutationFn: () => { if (!updateDownloaded) throw new Error('请先下载安装包'); return installUpdate(updateDownloaded) },
+  })
+  const updateError = checkUpdateMutation.error || downloadUpdateMutation.error || installUpdateMutation.error
 
   const regenerateApiTokenMutation = useMutation({
     mutationFn: regenerateLocalApiToken,
@@ -374,6 +393,35 @@ export function SettingsPage() {
         <div className="mt-5"><label className="text-xs font-medium text-slate-600">自定义模板</label><input value={form.customTemplate} onChange={(event) => setForm((current) => ({ ...current, customTemplate: event.target.value }))} placeholder="![{name}]({url})" className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 px-3 font-mono text-xs outline-none focus:border-slate-400" /><div className="mt-1.5 text-[11px] text-slate-400">支持 {'{url}'} 与 {'{name}'}。GitHub 会使用 Raw URL。</div></div>
         {mutation.error && <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{String(mutation.error)}</div>}
         <div className="mt-4 flex justify-end"><button disabled={mutation.isPending} onClick={() => mutation.mutate(form)} className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">保存输出设置</button></div>
+      </section>
+
+      <section className="mt-6 rounded-[24px] border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div><div className="text-sm font-semibold">关于与更新</div><div className="mt-1 text-xs leading-5 text-slate-400">检查 GitHub Releases 的新版本；下载的安装包必须通过 sha256 校验才会被启动。配置、索引和密钥保存在系统目录，更新不会触碰。</div></div>
+          <button disabled={checkUpdateMutation.isPending} onClick={() => checkUpdateMutation.mutate()} className="h-10 shrink-0 rounded-xl border border-slate-200 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">{checkUpdateMutation.isPending ? '检查中…' : '检查更新'}</button>
+        </div>
+        {updateCheck && (
+          <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-xs leading-6 text-slate-600">
+            <div>当前版本 <span className="font-mono">v{updateCheck.currentVersion}</span> · 最新版本 <span className="font-mono">v{updateCheck.latestVersion}</span>{updateCheck.publishedAt ? ` · 发布于 ${updateCheck.publishedAt.slice(0, 10)}` : ''}</div>
+            {updateCheck.updateAvailable ? (
+              <>
+                <div className="mt-1 font-medium text-slate-800">有新版本可安装（安装包 {(updateCheck.setupBytes / 1024 / 1024).toFixed(1)} MB）。</div>
+                {updateCheck.releaseNotes && <p className="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap rounded-xl bg-white px-3 py-2 text-[11px] text-slate-500">{updateCheck.releaseNotes}</p>}
+                {!updateDownloaded ? (
+                  <button disabled={downloadUpdateMutation.isPending} onClick={() => downloadUpdateMutation.mutate()} className="mt-3 rounded-xl bg-slate-950 px-4 py-2 text-xs font-medium text-white disabled:opacity-50">{downloadUpdateMutation.isPending ? '下载并校验中…' : '下载更新'}</button>
+                ) : (
+                  <div className="mt-3">
+                    <div className="text-[11px] text-emerald-700">已下载并通过 sha256 校验（{updateDownloaded.bytes.toLocaleString()} B）。</div>
+                    <button disabled={installUpdateMutation.isPending} onClick={() => void confirmAction({ title: '立即安装更新？', detail: '应用会关闭并静默覆盖安装；配置和数据不受影响。完成后请重新打开镜云。', danger: false, confirmLabel: '安装并退出' }).then((ok) => ok && installUpdateMutation.mutate())} className="mt-2 rounded-xl bg-emerald-700 px-4 py-2 text-xs font-medium text-white disabled:opacity-50">{installUpdateMutation.isPending ? '安装器已启动，应用即将退出…' : '立即安装'}</button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="mt-1 text-emerald-700">已是最新版本。</div>
+            )}
+          </div>
+        )}
+        {updateError && <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{String(updateError)}</div>}
       </section>
 
       <section className="mt-6 grid grid-cols-2 gap-4 max-md:grid-cols-1">

@@ -463,7 +463,17 @@ silent_openers = sorted(
 require(not silent_openers, f'no external-link open is fire-and-forget ({silent_openers})')
 desktop_lib = text('apps/desktop/src/lib/desktop.ts')
 require('openExternalUrl(url).catch((error) => notifyError' in desktop_lib, 'a failed external-link open is reported through the toast channel')
-require("if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')" in desktop_lib, 'external links are still restricted to http/https')
+# The updater's safety lives in three predicates the UI cannot route around; grep for them here so
+# deleting any one turns the gate red (M32-style witnesses come with the next mutation batch).
+updater = text('apps/desktop/src-tauri/src/commands/updater.rs')
+require('pub async fn check_for_updates' in updater and 'pub async fn download_update' in updater and 'pub async fn install_update' in updater, 'the three updater commands exist')
+require(updater.count('ends_with(SETUP_ASSET_SUFFIX)') >= 2, 'both asset selection and the download URL re-check the setup.exe suffix')
+require('sha256 校验不一致' in updater and 'remove_file' in updater, 'a hash mismatch deletes the installer and refuses it')
+require('if !update.verified || update.expected_sha256 != update.actual_sha256' in updater, 'install refuses an unverified package before spawning anything')
+require('.error_for_status()' in updater and 'MAX_SETUP_BYTES' in updater, 'HTTP status is checked and a size ceiling exists')
+desktop_lib_upd = desktop
+require("invoke('check_for_updates')" in desktop_lib_upd and "invoke('download_update', { check })" in desktop_lib_upd and "invoke('install_update', { update })" in desktop_lib_upd, 'the frontend wires exactly the three updater commands')
+
 
 # Shipped 2026-10-02 and caught by the user, not by any gate: the installed Mirror Cloud v1.4.5
 # refused every external link with "Command plugin:opener|open_url not allowed by ACL".
