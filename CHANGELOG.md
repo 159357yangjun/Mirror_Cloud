@@ -1999,6 +1999,19 @@ P3（冷启动 ms / 空闲 RSS MB）**本机测不了，原因不是工具而是
     "比 Electron 低一档"的说法**没有被本轮数字证实**——Electron 对照组没在同机测过。可引用的只有"镜云自身基线五连读"。
   - 采样脚本在 `%TEMP%\v145_assets\measure_*.ps1`，可复算。
 
+### 16. 用户第一人称端到端：Typora→镜云→GitHub 真链走通（2026-10-02）
+
+他装的是 `D:\Mirror Cloud\` 的 v1.4.5，配好 GitHub storage（仓库 `PicList`/main/assets），在 Typora 里完成 Custom Command 配置并上传成功。我侧独立核验：
+
+- 那条 Raw URL 重新下载 = **HTTP 200、17,510 B、magic `RIFF….WEBP`** ⇒ 图真实在 GitHub 上，且默认处理链把 PNG 转成了 WebP（"3 步完成第一次公网发布"链路端到端成立）。
+- 直连 `raw.githubusercontent.com` 这台机不通（http=000），核验必须走 `127.0.0.1:7897` 代理——与 git push 同一通道。
+- **本轮暴露的真缺陷已修**：教程截图里两条红吐司 `Command plugin:opener|open_url not allowed by ACL`——
+  capabilities 只发了 `opener:allow-default-urls`（mailto/tel），所有外链点击必死。修复 `ac54483`：
+  补 `opener:allow-open-url` + `check_user_flow` 新增 2 条断言（直接解析 default.json；摘掉授权行当场变红已演示）。
+  这条是"grep 命令字符串永远看不见能力清单"的门禁盲区，由用户而非任何门抓到。
+- tag 再次移到 `ac54483`（对象 `c5995be`），ACL 修复版 bundle run `36973698922` 在跑，watcher `b0f9bp69l` 盯终态。
+- Typora 那侧注意：他机器上 PicGo 仍在（`D:\PicGo\PicGo.exe`），当前上传服务已切自定义命令；两不冲突，但以后看到"上传走了 PicGo"先查这个下拉框。
+
 ## 1.4.5 - Legible Read-Failure Panels and Measured Contrast Floors
 
 自 `v1.4.4` 起 115 笔提交（09-29 43 / 09-30 54 / 10-01 18）。改到 `apps/desktop/src` 的只有 8 笔；
