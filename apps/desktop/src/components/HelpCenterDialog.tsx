@@ -6,7 +6,7 @@ type GuideTint = 'info' | 'accent' | 'success' | 'warning'
 const TINT: Record<GuideTint, { ink: string; bed: string }> = {
   info: { ink: 'var(--info)', bed: 'var(--info-soft)' },
   accent: { ink: 'var(--accent)', bed: 'var(--accent-soft)' },
-  success: { ink: 'var(--success)', bed: 'var(--success-soft)' },
+  success: { ink: 'var(--tutorial-success-text)', bed: 'var(--success-soft)' },
   warning: { ink: 'var(--tutorial-warning-text)', bed: 'var(--warning-soft)' },
 }
 

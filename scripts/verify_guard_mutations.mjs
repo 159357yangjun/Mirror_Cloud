@@ -112,7 +112,7 @@ const mutations = [
   // The four visual invariants added for the onboarding dialog. Each breaks the property, not the
   // prose about it: dropping the `!` really does hand the button back to styles.css, and adding a
   // second ordinal list really does restate the six steps.
-  { id: 'M13', file: DIALOG, from: 'text-[12px]! font-medium! text-[var(--accent)] hover:underline', to: 'text-[12px] font-medium text-[var(--accent)] hover:underline', oracle: 'guard', expect: 'is discarded by styles.css' },
+  { id: 'M13', file: DIALOG, from: 'className="mt-4 self-start text-[12px]! font-medium! hover:underline"', to: 'className="mt-4 self-start text-[12px] font-medium hover:underline"', oracle: 'guard', expect: 'is discarded by styles.css' },
   { id: 'M14', file: DIALOG, from: '          </div>\n        </div>\n      </section>', to: '          </div>\n          <div className="mt-5 text-sm font-semibold">推荐的第一次使用顺序</div>\n          <div className="mt-4 grid grid-cols-5 gap-2">{[\'连接 GitHub\', \'上传 1 张图\'].map((t, i) => <div key={t} className="rounded-xl px-3 py-3 text-[12px]! font-medium!">{i + 1}.{t}</div>)}</div>\n        </div>\n      </section>', oracle: 'guard', expect: 'the duplicated five-chip ordering block stays deleted' },
   { id: 'M15', file: DIALOG, from: 'text-[var(--text-secondary)]">先完成第一次真实云端上传', to: 'text-[var(--text-muted)]">先完成第一次真实云端上传', oracle: 'guard', expect: 'the dialog avoids the muted grey measured at' },
   { id: 'M16', file: DIALOG, from: ' [font-variant-numeric:tabular-nums]', to: '', oracle: 'guard', expect: 'the STEP ordinals are tabular' },
