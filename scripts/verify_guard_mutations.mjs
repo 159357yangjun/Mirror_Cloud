@@ -294,7 +294,7 @@ for (const m of selected) {
       // would be the cosmetic gate. The version comes from Cargo.toml at run time - a hardcoded
       // 1.4.5 died the moment v1.4.6 bumped the lock (aggregate caught it).
       const text = original.toString('utf8')
-      const currentVersion = require('node:fs').readFileSync(`${REPO}/Cargo.toml`, 'utf8')
+      const currentVersion = readFileSync(`${REPO}/Cargo.toml`, 'utf8')
         .match(/\[workspace\.package\][\s\S]*?version = "([\d.]+)"/)[1]
       const i = text.indexOf('name = "application"')
       const j = text.indexOf(`version = "${currentVersion}"`, i)
