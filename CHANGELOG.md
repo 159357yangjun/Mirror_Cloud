@@ -183,7 +183,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | `scripts/verify_guard_mutations.mjs` | 331 | 26,768 | `9c0e71adc375a5e3d7793280911275a7e7e52ff7ae737b9ca18c5a490d81e709` | 24 个变异（M1–M24），每个都必须被它指定的那台 oracle 抓到；本轮 M18/M19/M21/M22/M23/M24 的逐条读数见下面"本轮末次运行读数"一节 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
 | `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 770 | 47,295 | `5c4466e2c831de43b533063e19127d934e0b70747e9eb3459570ce63d827b8b7` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
-| `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,897 | `d54d83cb52a1f8489efa4c59162ce8d44f96f34505d3396a5d4e59675460833b` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
+| `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,887 | `e6e9b182585b7ece6b8811d06ab67412d90f6c23a7404633c8a22c91590b6fc1` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
 | `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 881 | 70,748 | `180d738e236c397914288b6d6c6640da17a78a0cd62e5bc1a0ab1f49dc809a69` | `USERFLOW_CHECKS total=222 failed=0`（落盘后；未提交时它必然报 10 条"HEAD blob 里没有这个文件"，见本节末） | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16 M19 M20` |
 | `scripts/theme_token_census.mjs`（主题 token 普查 + 口径断言：族内声明方式必须一致） | 148 | 8,483 | `4fd961d1cb1fea90d46a879c9db8c1561ddbcded15733bddfaecbcf4b82e2968` | `TOKEN_POLICY_SELFTEST cases=5 failed=0` + `TOKEN_POLICY families=13 breaches=0` | 立口径那一轮它当场咬到 `--accent-solid`（exit 1）；把 `--accent-solid` 从 :root 删掉再 `--verify` 就会重新红 |
 | `scripts/__fixtures__/hanging_stage.mjs`（永不结束的假 stage，自己再 spawn 一个孙进程：`timeout-demo` 的靶子） | 20 | 1,155 | `16d702ee2dda998f2e7538d739f82d61656b075194ada2cb87fa014a80cf509a` | 只被 `verify_all.mjs timeout-demo` 生成，没有任何门读它 | `node scripts/verify_all.mjs timeout-demo`（六例，含"不调 taskkill 也不留孤儿"的消融与"正常结束不得报成 timeout"的负对照） |
@@ -1957,6 +1957,26 @@ P3（冷启动 ms / 空闲 RSS MB）**本机测不了，原因不是工具而是
 
 `website/src/content/docs` 的孤儿门只扫站点内容目录，`docs/*.md` 不在其枚举范围（`check_docs_site.py:21`），新增文档不会造孤儿。
 本轮聚合复跑：`22 passed, 0 failed, 0 skipped of 22`，`wall=216.7s`。
+
+### 14. 改名：图床 → 镜云 | Mirror Cloud（2026-10-02，`d2ed700`）
+
+用户拍板"名字要短而可独占"。旧名两头都输：**"图床"是类别词**（谁都自称图床，占不住搜索位次），
+英文名与 Kuingsmile/PicList（3774★）撞车。我先提"多云发布台"（过长被否）、再提"云栈/Cloudstack"
+（自查撞 Apache CloudStack，风险非零），最终定 **镜云 / Mirror Cloud**——两字、几乎无冲突、自带机制含义（一次发布、多镜像）。
+
+- **改动面**：UI 侧栏品牌区、窗口标题、`productName`、release.yml Release 名、冒烟脚本 `-ProductName`、
+  validate.py 断言、身份门夹具、Cargo authors、README/docs/website 文案，共 20 个文件 51 行。
+- **盲替换咬到 10 处类别词**（"切换图床""公网图床""很多图床"这类把图床当普通名词用的句子被连坐换成品牌名），
+  逐锚点 `count==1` 断言改回；8 个只含类别词用法的文件因此净变化为零、未进提交。**批量改名后必须人工读句子，这条写死在这里。**
+- **刻意不动的四类**：`identifier dev.multicloud.publisher`（动了老用户 `%APPDATA%` 数据目录"消失"）、
+  crate/二进制名 `image-hosting-platform-desktop`、Release 资产文件名、GitHub 仓库 slug——
+  前两类动的是升级兼容，后两类属 P1 范围之外，等一句授权再开。
+- **指纹台账同笔更新**：夹具字节数变了（3,897→3,887），`fingerprint_rows --patch` 与改动同笔落，
+  HEAD-blob 双向断言在提交态过（`USERFLOW_CHECKS total=253 failed=0`）。
+- 渲染证人：`docs/rebrand-2026-10-02-after-default.png`（侧栏「镜云 / Mirror Cloud」、页脚、资源页文案三处可见）。
+- **遗留要说准**：截图里那条红色吐司 `Cannot read properties of undefined (reading 'invoke')` 是无头 harness
+  没有 Tauri IPC 通道的既有现象，不是本轮回归；但"浏览器里测功能完整性"那一轮我报过"无报错"，
+  这个吐司当时是否也在、我当时是否漏看，属于未解释事项，不顺手归因。
 
 ## 1.4.5 - Legible Read-Failure Panels and Measured Contrast Floors
 
