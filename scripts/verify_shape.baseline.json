@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-10-02T08:24:33",
-    "head": "5dfe8e4ce6a2d7577191940738c633f0c1dad97c",
-    "reason": "thirty-fifth signing: M30 added to verify_guard_mutations (+9 lines/+837 bytes) - the release-version oracle, its LOCK_CHECK_POISONED marker, and the mutation entry with tripwire. Drift rows named exactly this file and the totals; check_release_version.py's own growth is outside the ledger's six files by design."
+    "takenAt": "2026-10-02T09:41:46",
+    "head": "ed8bbba66454f13bbf6c7f3d488e91794f36c2ff",
+    "reason": "thirty-sixth signing: M13 anchor retargeted to the action button's remaining !-classes after the help-center redesign (+14 bytes on verify_guard_mutations.mjs); product-side color fix is outside the ledger's six files."
   },
   "files": [
     {
@@ -37,7 +37,7 @@
       "file": "scripts/verify_guard_mutations.mjs",
       "exists": true,
       "lines": 341,
-      "bytes": 27605,
+      "bytes": 27619,
       "families": {
         "failures.push": 1,
         "emitGate": 0,
@@ -93,7 +93,7 @@
   "totals": {
     "files": 6,
     "lines": 5621,
-    "bytes": 433615,
+    "bytes": 433629,
     "families": {
       "failures.push": 31,
       "emitGate": 16,
