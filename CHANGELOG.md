@@ -2012,6 +2012,18 @@ P3（冷启动 ms / 空闲 RSS MB）**本机测不了，原因不是工具而是
 - tag 再次移到 `ac54483`（对象 `c5995be`），ACL 修复版 bundle run `36973698922` 在跑，watcher `b0f9bp69l` 盯终态。
 - Typora 那侧注意：他机器上 PicGo 仍在（`D:\PicGo\PicGo.exe`），当前上传服务已切自定义命令；两不冲突，但以后看到"上传走了 PicGo"先查这个下拉框。
 
+### 17. ACL 修复包发布 + "浏览器能看 Typora 不能"的真因（2026-10-02）
+
+**ACL 修复版出包闭环**：run `36973698922` = completed/success（watcher pass=10 TERMINAL + API 复核 `updated=06:50:56Z`）。
+三方哈希对账 **3/3 一致**：setup.exe `809f84cd…` / msi `7115c855…` / source.zip `c3bfd8e7…`。
+exe 与上一版差 418 B、msi 回到 12,161,024 B，符合"只动了 capabilities JSON"的量级。tag 现指 `ac54483`（对象 `c5995be`）。
+
+**§16 里那条"CDN 缓存延迟"的猜测被用户实测推翻，撤回**：真因是网络出口差异——
+`raw.githubusercontent.com` 直连不可达；浏览器走代理插件所以能看图，Typora（Electron）只认系统代理，
+没开加速器时它加载外链必挂，开加速器即好。**这不是产品缺陷，但暴露了 GitHub 当 Primary 的真实短板**：
+分享出去的链接对国内读者同样不稳。⇒ 根治方向是把 R2/OSS 配成 Primary、GitHub 降为 Mirror（多云副本本来就是为此设计的），
+待用户提供 Cloudflare 侧操作。引用"上传成功但显示不出"类问题时，先问"对方开没开代理"，不再猜 CDN。
+
 ## 1.4.5 - Legible Read-Failure Panels and Measured Contrast Floors
 
 自 `v1.4.4` 起 115 笔提交（09-29 43 / 09-30 54 / 10-01 18）。改到 `apps/desktop/src` 的只有 8 笔；
