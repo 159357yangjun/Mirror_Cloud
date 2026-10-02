@@ -1,15 +1,15 @@
 {
   "_meta": {
-    "takenAt": "2026-10-02T03:02:14",
-    "head": "7aa22f3f844e2a0896a6b7bb8f8e843781bda845",
-    "reason": "thirty-third signing: finish() stops guessing the teardown. A fixed 300ms process.exit aborted stages with 0xC0000409 when the CDP socket or browser child was still closing (seen once in four aggregate runs, settings-guard, 2026-10-01). The verdict code is now carried by process.exitCode and the loop drains; a 5s unref'd watchdog force-exits and says so. Harness-only change in verify_dialog_interactions.mjs."
+    "takenAt": "2026-10-02T08:07:14",
+    "head": "cc171f8422361f67eca363b6a8f8ae82ab396474",
+    "reason": "thirty-fourth signing: check_release_version grew the Cargo.lock member reconciliation (cc171f8) and verify_all's count regex for that stage moved to the in-sync n/n form; +15 bytes on verify_all.mjs, total 432763->432778. Both are intended gate-side changes, product code untouched."
   },
   "files": [
     {
       "file": "scripts/verify_all.mjs",
       "exists": true,
       "lines": 361,
-      "bytes": 26699,
+      "bytes": 26714,
       "families": {
         "failures.push": 0,
         "emitGate": 0,
@@ -93,7 +93,7 @@
   "totals": {
     "files": 6,
     "lines": 5612,
-    "bytes": 432763,
+    "bytes": 432778,
     "families": {
       "failures.push": 31,
       "emitGate": 16,
