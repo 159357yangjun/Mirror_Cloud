@@ -1938,6 +1938,26 @@ tag `v1.4.5` 移到 `f922ce5` 并 force 推单 refspec 后，`Release Bundle` �
 - 下载产物落在 `%TEMP%/v145_assets/`（我的临时产物，不入仓；入仓的是上面的哈希与结论）。
 - **未覆盖的部分要说准**：对账证明"发布的就是构建的"，不证明"装得上、跑得起来"——安装冒烟仍是 Windows 侧人工验收项。
 
+### 13. P2 的估计被实测推翻，P3 缺的是设备不是算力（2026-10-02）
+
+上一轮我按"四家加 opendal feature 即可"把后端差距排成性价比最高的一档。本轮核对依赖后**其中三条是错的**，逐条入档防止再被估错：
+
+- crates.io `opendal/0.58.2` 的 103 个 features 里只有 **`services-upyun`** 存在；
+  `services-qiniu` / `services-imgur` / `services-smms` **不存在**（上游 `v0.58.2/core/Cargo.toml` grep `qiniu` = 0 命中）。
+  ⇒ PicList 那三家是自实现的，我们接同样要每家写完整 HTTP 集成，功能差距里只有 1/4 是配置项。
+- 新 provider 在本仓的接线面测绘为 **9 个点**（两处 `build_provider` + cli.rs 第三处、ProviderSummary 目录、Input struct、
+  create 命令、lib.rs 注册、前端 6 个文件）；`storages.provider_key` 无 CHECK 约束 ⇒ 不需要迁移。
+- 落点：`docs/REFERENCE_COMPARISON_PICGO_PICLIST_PICUPLOADER.md` §5「下一步」下的实测底数表。
+
+P3（冷启动 ms / 空闲 RSS MB）**本机测不了，原因不是工具而是机器状态**：三处独立取证一致——
+进程表按 CommandLine 匹配 `image|hosting|piclist|tauri` = 0 条、卸载注册表 HKCU/HKLM/WOW6432Node 对 `image-hosting` = 0 匹配、
+四个常见安装目录全 absent ⇒ 这台机器从未装过 v1.4.x。CI 的 `smoke_windows_installers.ps1` 装完即卸且 runner 无头，
+云端也产不出这两个数。已交付 `docs/PRE_RELEASE_PERF_CHECKLIST.md`（含 n=5、冷/热分开、多进程 WebView2 必须整组相加的采样纪律），
+数值回来后进 `verify_shape.mjs` 棘轮。**清单里没有预填任何推测数字。**
+
+`website/src/content/docs` 的孤儿门只扫站点内容目录，`docs/*.md` 不在其枚举范围（`check_docs_site.py:21`），新增文档不会造孤儿。
+本轮聚合复跑：`22 passed, 0 failed, 0 skipped of 22`，`wall=216.7s`。
+
 ## 1.4.5 - Legible Read-Failure Panels and Measured Contrast Floors
 
 自 `v1.4.4` 起 115 笔提交（09-29 43 / 09-30 54 / 10-01 18）。改到 `apps/desktop/src` 的只有 8 笔；

@@ -108,6 +108,30 @@ Host Runtime exposes only granted APIs
 - persistent upload/download queue；
 - Local API 扩展为第三方工具稳定协议。
 
+#### 后端差距的实测底数（2026-10-02，opendal 0.58.2）
+
+上一轮把"qiniu / upyun / imgur / smms 四家加 feature 即可"排进迭代计划，是未核对依赖的估计。本轮实测推翻其中三条：
+
+| Provider | opendal 0.58.2 是否有 `services-*` | 证据 | 结论 |
+|---|---|---|---|
+| upyun | **有** | crates.io `/api/v1/crates/opendal/0.58.2` 的 103 个 features 含 `services-upyun`；上游 `v0.58.2/core/Cargo.toml:216` = `services-upyun = ["dep:opendal-service-upyun"]` | 可走现成抽象 |
+| qiniu | **无** | 同一 Cargo.toml grep `qiniu` = 0 命中 | PicList 是自实现的，我们也要自写 HTTP 集成 |
+| imgur | **无** | 同上，features 全列表逐项核过 | 同上 |
+| sm.ms | **无** | 同上 | 同上 |
+
+⇒ "功能差距"里只有 1/4 是配置项，另外 3/4 每家都是一个完整的新 provider 开发。
+
+一个新 provider 在本仓要动的 **9 个接线点**（已测绘）：
+`crates/storage-opendal/Cargo.toml` feature、`storage-opendal/src/lib.rs`（Config + Credentials + 构造函数）、
+`src-tauri/src/commands.rs`（ProviderSummary 目录、Input struct、create 命令、两处 `build_provider`）、
+`src-tauri/src/lib.rs` 命令注册、`src-tauri/src/cli.rs` 第三处 `build_provider`、
+前端 `types.ts` / `data/mock.ts` / `ProviderPickerDialog` / `StorageSetupDialog` / `StoragesPage` / `lib/desktop.ts`。
+`storages.provider_key` 在 SQLite 无 CHECK 约束 ⇒ 不需要迁移。
+
+约束：本机无 cargo/rustc（`~/.cargo/bin` 不存在、`where cargo` 空），Rust 侧改动只能由 CI 的 `cargo check --locked` 验证；
+`scripts/check_user_flow.py:382` 有一条计数断言（"公开访问域名（发布到该云端时必填"文案必须恰好 3 处），
+新 provider 若免填域名则不碰它，若要填则连断言一起改并过聚合门。
+
 ## 6. 不采用
 
 - 不切回 Electron；
