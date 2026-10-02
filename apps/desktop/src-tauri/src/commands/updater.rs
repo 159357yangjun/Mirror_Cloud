@@ -53,9 +53,7 @@ fn client() -> CmdResult<reqwest::Client> {
 pub async fn check_for_updates(app: tauri::AppHandle) -> CmdResult<UpdateCheckResult> {
     let current_version = app.package_info().version.to_string();
     let response: serde_json::Value = client()?
-        .get(format!(
-            "https://api.github.com/repos/{UPDATE_REPO}/releases/latest"
-        ))
+        .get(format!("https://api.github.com/repos/{UPDATE_REPO}/releases/latest"))
         .header("Accept", "application/vnd.github+json")
         .send()
         .await
