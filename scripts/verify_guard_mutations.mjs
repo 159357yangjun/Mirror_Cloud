@@ -160,6 +160,15 @@ const mutations = [
     id: 'M28', file: HARNESS, oracle: 'gate-unit', expect: 'doc-table: doc written with CRLF still equals the run',
     from: "const stripCountCol = (text) => normBlock(text).split('\\n')", to: "const stripCountCol = (text) => String(text).split('\\n')",
   },
+  {
+    // The dialog verdict was written today, so the question is not "does it find app bugs" but
+    // "would it still say so if it stopped finding them". This disarms the reporting half of the
+    // predicate - counts keep ticking, nothing is ever pushed - and the mode's own fixtures are what
+    // notice, seven of them, before the app is judged at all.
+    id: 'M29', file: HARNESS, oracle: 'confirm-gate', expect: 'confirm: Escape leaving the dialog open is caught',
+    from: '  const need = (label, ok, got) => { checked += 1; if (!ok) failures.push(`${label} - got ${got}`) }',
+    to: '  const need = (label, ok, got) => { checked += 1 }',
+  },
 ]
 
 const selected = only ? mutations.filter((m) => only.has(m.id)) : mutations
@@ -226,10 +235,13 @@ const runOracle = (oracle) => {
     // code plus its message, not anything the run could measure.
     'bogus-mode': [process.execPath, [`${REPO}/${HARNESS}`, 'definitely-not-a-mode', 'gate-unit']],
     'latched-exit': [process.execPath, [`${REPO}/${HARNESS}`, 'contrast-tier', '--routes', '设置', '--deadline', '1', '--port', port(9900)]],
+    // The dialog verdict's own oracle: `confirm` runs its fixtures before judging the app, so a
+    // disarmed predicate is caught without needing the app to misbehave first.
+    'confirm-gate': [process.execPath, [`${REPO}/${HARNESS}`, 'confirm', '--port', port(10000)]],
   }
   const cmd = CMD[oracle] || [python.exe, [...python.pre, 'scripts/check_user_flow.py']]
   const r = spawnSync(cmd[0], cmd[1], { cwd: REPO, encoding: 'utf8', timeout: oracle === 'gate-unit' || oracle === 'bogus-mode' ? 120_000 : 420_000 })
-  const marker = { 'gate-unit': 'gate unit check', layout: 'LAYOUT_GATE', settings: 'SETTINGS_GATE', surfaces: 'SURFACE_GATE', contrast: 'CONTRAST_GATE', 'bogus-mode': 'HARNESS FAULT', 'latched-exit': 'HarnessFinishing' }[oracle] || 'USERFLOW_CHECKS'
+  const marker = { 'gate-unit': 'gate unit check', layout: 'LAYOUT_GATE', settings: 'SETTINGS_GATE', surfaces: 'SURFACE_GATE', contrast: 'CONTRAST_GATE', 'bogus-mode': 'HARNESS FAULT', 'latched-exit': 'HarnessFinishing', 'confirm-gate': 'VERDICT_SELFTEST' }[oracle] || 'USERFLOW_CHECKS'
   if (oracle === 'bogus-mode') {
     // This oracle's whole job is to notice that the startup refusal was disarmed: with the guard in
     // place the run stops before touching a browser and exits 2 naming the mode.

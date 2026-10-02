@@ -180,7 +180,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | --- | --- | --- | --- | --- | --- |
 | `scripts/verify_all.mjs` | 356 | 26,240 | `b712fc05dc53f2c0811ad5b8851883ddf1f0cf7c872c2ff29a60449bb0696208` | 18 stages：七道静态守卫 + 两份台账（`theme_face_inventory`、`verify_shape`）+ 七个测具模式（新增 `contrast-tier`、`theme-surfaces`）+ `red-demo` + 变异套件；`layout` 仍不接入，原因见其注释 | `cd apps/desktop && npm run verify:all`（把表里任一哈希改一个字符，它会以非 0 退出并点名那一行）；`node scripts/verify_all.mjs selftest`（往 stage 表里粘一行重复名字，必须被点名） |
 | `scripts/verify_dialog_interactions.mjs` | 3721 | 305,370 | `56b0d6b1a93d435e0799d310a6e43c151cb5d0287c7f2492a246db6c6330a0a5` | `gate-unit` 29/29（viewport 6 + coverage 5 + doc-table 8 + **staleness 10**，后者含植入 470px 位移与"缺盒子必须回 null"）；`ab` `deltaOverflowX: 210`；identity 75 个导出全中；`visual` `VISUAL_GATE total=4 failed=0`；`layout` `checked=21 matched=21 skipped=0`，七道控制全过（含逐轴 CONTROL-F）；`theme-surfaces` 控制能区分跟主题/写死 | `node scripts/verify_dialog_interactions.mjs red-demo`（两次 rc=2）；`node scripts/verify_guard_mutations.mjs M1 M2 M3 M4 M5`；`visual` 对 `ab13df8` 的旧弹窗实测 rc=1 并点名 4 条回归；`node scripts/verify_guard_mutations.mjs M17`；`node scripts/verify_guard_mutations.mjs M18`；`node scripts/verify_guard_mutations.mjs M26 M27`（把逐元素比较循环拔空、把"比不了"当"没动"，两条都必须被 `gate-unit` 点名） |
-| `scripts/verify_guard_mutations.mjs` | 319 | 25,797 | `1d48c874923c110ccd469f6bc99879afbb071ed36058bacbae8da3e3dedd727e` | 24 个变异（M1–M24），每个都必须被它指定的那台 oracle 抓到；本轮 M18/M19/M21/M22/M23/M24 的逐条读数见下面"本轮末次运行读数"一节 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
+| `scripts/verify_guard_mutations.mjs` | 331 | 26,768 | `9c0e71adc375a5e3d7793280911275a7e7e52ff7ae737b9ca18c5a490d81e709` | 24 个变异（M1–M24），每个都必须被它指定的那台 oracle 抓到；本轮 M18/M19/M21/M22/M23/M24 的逐条读数见下面"本轮末次运行读数"一节 | 它本身就是报警器；表未更新时 `node scripts/verify_guard_mutations.mjs M11` 报 rc=2 |
 | `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 770 | 47,295 | `5c4466e2c831de43b533063e19127d934e0b70747e9eb3459570ce63d827b8b7` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
 | `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,897 | `d54d83cb52a1f8489efa4c59162ce8d44f96f34505d3396a5d4e59675460833b` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
@@ -189,7 +189,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | `scripts/__fixtures__/hanging_stage.mjs`（永不结束的假 stage，自己再 spawn 一个孙进程：`timeout-demo` 的靶子） | 20 | 1,155 | `16d702ee2dda998f2e7538d739f82d61656b075194ada2cb87fa014a80cf509a` | 只被 `verify_all.mjs timeout-demo` 生成，没有任何门读它 | `node scripts/verify_all.mjs timeout-demo`（六例，含"不调 taskkill 也不留孤儿"的消融与"正常结束不得报成 timeout"的负对照） |
 | `scripts/verify_modes.mjs`（模式名单 + 锚定的 dispatch 正则，纯数据、零控制流；runner 与 shape 台账读同一份） | 36 | 1,449 | `0b250811609418512489e3de9ffb70c1dbe24c7adc2d0b6cfe8da739bc6c2f87` | 每次启动三方核对：声明↔已派发用法块已文档化（15 个模式） | `node scripts/verify_guard_mutations.mjs M24`（把启动拒绝拔掉的变异，必须仍红） |
 | `scripts/verify_shape.mjs`（拆分对账台账：模式集合双向差、总行/字节、六族决策点数、以及"拆出去的探针是否仍逐字节等于拆之前"） | 313 | 18,455 | `cf453e6bd75acf90ab59a0780968fc52c4083da36b325de19a69a82524b7aa6c` | `SHAPE_SELFTEST cases=6 failed=0` + `SPLIT_SHAPE OK checked=17 failed=0` | 它自己先跑 6 例植入式夹具（改一个字节、删一个模式、把 extraction 弄瞎），任一抓不到就 exit 2；`--snapshot` 无 `--reason` 直接拒绝 |
-| `scripts/verify_shape.baseline.json`（上一行那本台账**签过的基线**：文件清单、总行/字节、六族决策点数、模式集合、extraction 长度与 `--snapshot --reason` 的原文） | 143 | 3,414 | `9e83a902531bf7c5f718d66a4b1a6c0a7060389a9db59a16cf982f31d354c7db` | `SPLIT_SHAPE OK checked=17 failed=0`（它变了而代码没变 ⇒ 要么有人重签，要么有人偷改） | 它自己不会报红，是 `verify_shape.mjs --verify` 报红；本轮把它纳入指纹表，是因为"改基线"这件事此前只存在于 JSON 被碰过这一种痕迹里 |
+| `scripts/verify_shape.baseline.json`（上一行那本台账**签过的基线**：文件清单、总行/字节、六族决策点数、模式集合、extraction 长度与 `--snapshot --reason` 的原文） | 143 | 3,128 | `5dd4daa914519566d15d16fe0069bccd28c77305c0f1745badb884cb448eef90` | `SPLIT_SHAPE OK checked=17 failed=0`（它变了而代码没变 ⇒ 要么有人重签，要么有人偷改） | 它自己不会报红，是 `verify_shape.mjs --verify` 报红；本轮把它纳入指纹表，是因为"改基线"这件事此前只存在于 JSON 被碰过这一种痕迹里 |
 | `scripts/theme_face_inventory.mjs`（逐面三档清单的生成器，`docs/VISUAL_BASELINE.md` 4.1 那张表由它核对） | 204 | 12,424 | `8eee9bedb20ce49f30d61f30f23b69b9e92da624c1564709fa9e1208a6c702b9` | `THEME_FACE_VERIFY faces=23 docLines=25 mismatch=0`（`faces=23` = **22 个面 + 1 合计行**，2026-10-01 起该行把拆解一并印出，比对定义未改） | `node scripts/theme_face_inventory.mjs --selftest`（7 例：自己的输出干净、改一个数字恰好报 1 行、截断要报、行号要点对，加 **CRLF 整表必须干净 / 开头一个空行必须干净 / 混合行尾下改一个数字仍报 1 行**；抓不到 exit 2。后三例是 2026-10-01 那次"内容一致却 25 行全报红"的现场，见十六节） |
 
 **这张表现在是断言，不是纪律**：`check_user_flow.py` 解析上面每一行，对每个文件重算 `git show HEAD:<path>` 的行数/字节/sha256 并逐项比对，还断言"表里的行集合 == 磁盘上成员集合"，成员由四条规则导出而不是由名字导出：`scripts/verify_*.mjs`、`scripts/__fixtures__/*.mjs`、`verify_all.mjs` 里被当作 stage 引用的 `scripts/*.mjs`、以及 `scripts/*.baseline.json`（外加 `check_user_flow.py` 自己）。所以：新加一个测具忘了上表 → 红；改了测具忘了更新表 → 红；哈希对不上 → 红，并附一句"该文件另有未提交改动"。上一版这张表就是**手写漂移了一笔提交**（记 965 行 / `9341e4ba…`，实际 1119 行 / `d9572a31…`），而它上面那句"改完必须回来更新"正是被漂移的那句——所以规则本身不解决问题，断言才解决。`.baseline.json` 这一类是本轮补的：`verify_shape.baseline.json` 早就在仓里、早就被 `--snapshot` 重签过十次，而指纹表按名字匹配 `.mjs` 一直没看见它——**门禁自己的输入清单漏了门禁签过的那张纸**。
@@ -1740,6 +1740,28 @@ SPLIT_SHAPE OK checked=65 failed=0
 
 基线重签为第三十次，理由里写明"这次改的是口径不是计数"，并把 319 字节的去向写进去，
 免得下一次有人把它读成"少了内容"。
+
+### 8. 把上面那次一次性消融变成可重跑的变异 `M29`
+
+§6 里那次"把 `confirmVerdict` 拔空"是我手工做的、只在 `%TEMP%` 留了一份输出——**口头跑过不可复算**，
+所以它不算证据链的一环。现在它是变异表里的一条，每次 `verify:all` 都会重跑：
+
+```text
+$ node scripts/verify_guard_mutations.mjs M29
+OK   M29 scripts/verify_dialog_interactions.mjs -> oracle ran: true, exit 2, named expected failure: true
+GATE_JSON {"gate":"mutations","checked":1,"failed":0,"ok":true,"unrestored":0}
+guard mutations: 1/1 alarms reproduced | tree restored: clean
+```
+
+变异内容是把判定的**上报那一半**摘掉（`checked` 照常累加、`failures` 永远不 push），
+证人换成新加的 `confirm-gate` oracle（marker `VERDICT_SELFTEST`）：抓到的不是"应用坏了"，
+而是**七条植入夹具当场点名**、模式退 2。这回答的是新门特有的那个问题——
+"如果它停止发现缺陷，还有谁知道"。
+
+**没被变异证明的部分照实说**：`emitGate`/`finish` 那一层接线没有对应变异（试着加过，它不会被夹具抓到——
+判定完好时没人报警）。它由另一条独立机制看着：聚合对每个 stage 做**退码与 `ok`/`failed` 的双向对账**
+（`exit 0 but failed>0`、`exit!=0 but ok=true` 都算 problem），不是"我测过了"，是"另一把尺子会拦"。
+第 31 次签字就是这次变异表增长本身。
 
 ### 本轮验证命令与实际输出
 

@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-10-02T02:02:46",
-    "head": "466f311c45423267cb44ce1fde73e8c352bd8af1",
-    "reason": "thirtieth signing, and it changes a convention rather than a count: measurements are taken over the blob's LF form (toLF), because core.autocrlf=true checks files out with CRLF and a bare git checkout reddened every byte row without a line of code changing - it did, today, after an ablation was reverted. Consequence visible in the diff: verify_guard_mutations.mjs 26116 -> 25797 bytes, the 319 gone is exactly its 319 CR bytes, not lost content. verify_shape.mjs itself grew by the normaliser, its fixture case, and readSource."
+    "takenAt": "2026-10-02T02:09:59",
+    "head": "f1b5eb52e0f92def5d9f45727748a946c8ed90eb",
+    "reason": "thirty-first signing: verify_guard_mutations.mjs gained the confirm-gate oracle and mutation M29, which disarms the dialog verdict's reporting half and expects the mode's own fixtures to notice. No product code and no other harness file moved."
   },
   "files": [
     {
@@ -36,10 +36,10 @@
     {
       "file": "scripts/verify_guard_mutations.mjs",
       "exists": true,
-      "lines": 320,
-      "bytes": 25797,
+      "lines": 332,
+      "bytes": 26768,
       "families": {
-        "failures.push": 0,
+        "failures.push": 1,
         "emitGate": 0,
         "harness-fault exit": 2,
         "gate line": 0,
@@ -92,10 +92,10 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 5521,
-    "bytes": 424606,
+    "lines": 5533,
+    "bytes": 425577,
     "families": {
-      "failures.push": 23,
+      "failures.push": 24,
       "emitGate": 15,
       "harness-fault exit": 46,
       "gate line": 10,
