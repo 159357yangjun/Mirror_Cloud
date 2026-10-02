@@ -1763,6 +1763,20 @@ guard mutations: 1/1 alarms reproduced | tree restored: clean
 （`exit 0 but failed>0`、`exit!=0 but ok=true` 都算 problem），不是"我测过了"，是"另一把尺子会拦"。
 第 31 次签字就是这次变异表增长本身。
 
+**本节的终态读数**（干净树、`HEAD=bdd92be`，退出码 0）：
+
+```text
+$ node scripts/verify_all.mjs
+verify:all | wall=190.9s stages=21 sumOfStageWalls=190.7s
+verify:all | cost (slowest first): contrast-tier=77.0 mutations=46.7 theme-surfaces=14.4 confirm=13.3 pages=12.0 visual=12.0
+verify:all | 21 passed, 0 failed, 0 skipped of 21
+--- mutations
+    => passed (exit 0) 46.7s mutations checked=28 failed=0
+```
+
+变异从 27 涨到 28（`M29`），聚合从 19 涨到 21（`confirm`、`pages`）。
+产物：`image-hosting-probes/2026-10-01/verify-all-FINAL3.log`、`mutation-M29.txt`。
+
 ### 本轮验证命令与实际输出
 
 ```text
