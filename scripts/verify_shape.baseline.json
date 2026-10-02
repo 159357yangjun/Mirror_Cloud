@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-10-02T10:01:47",
-    "head": "b3add8fbf633d454ac0567935a6930620818587a",
-    "reason": "thirty-seventh signing: M31 added to verify_guard_mutations (stale-member data corruption path + its oracle branch) - the second witness for the lock reconciliation. Drift rows named only this harness file and the totals."
+    "takenAt": "2026-10-02T12:12:47",
+    "head": "512bcfd9aab4c423f8de4503732cdb9a0caa0f0e",
+    "reason": "thirty-eighth signing: M31 became version-agnostic (reads workspace version from Cargo.toml at run time, corrupts current-minus-one) across two commits - the hardcoded 1.4.5 anchor died honestly when v1.4.6 bumped (+6 lines/+451 bytes on verify_guard_mutations.mjs). Drift rows named only this file and the totals."
   },
   "files": [
     {
@@ -36,8 +36,8 @@
     {
       "file": "scripts/verify_guard_mutations.mjs",
       "exists": true,
-      "lines": 366,
-      "bytes": 29464,
+      "lines": 372,
+      "bytes": 29915,
       "families": {
         "failures.push": 1,
         "emitGate": 0,
@@ -92,8 +92,8 @@
   ],
   "totals": {
     "files": 6,
-    "lines": 5646,
-    "bytes": 435474,
+    "lines": 5652,
+    "bytes": 435925,
     "families": {
       "failures.push": 31,
       "emitGate": 16,
