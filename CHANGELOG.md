@@ -1978,6 +1978,27 @@ P3（冷启动 ms / 空闲 RSS MB）**本机测不了，原因不是工具而是
   没有 Tauri IPC 通道的既有现象，不是本轮回归；但"浏览器里测功能完整性"那一轮我报过"无报错"，
   这个吐司当时是否也在、我当时是否漏看，属于未解释事项，不顺手归因。
 
+### 15. Mirror Cloud v1.4.5：改名后的重打包 + 本机首次真装实测（2026-10-02）
+
+他点名"快打包我要使用"⇒ 解除移 tag/出包边界。tag `v1.4.5` 从 `f922ce5`（tag 对象 `3b3fe1e`，已存档
+`image-hosting-probes/2026-10-02/tag-v1.4.5-pre-move-r2.txt`）移到 `2808d25`（新对象 `34f5c1e`），force 推单 refspec 复核一致。
+
+- run `36969276229` = **completed/success**（watcher pass=10 TERMINAL + API 独立复核 `updated=05:53:00Z`）。
+- Release 标题更新为 **"Mirror Cloud v1.4.5"**（同一 release_id `401526603`，`softprops/action-gh-release` 的更新语义确认：
+  同名资产被覆盖、**没有留下旧名与新名并存的孤儿资产**，assets=4）。published 时间戳仍是旧的 03:48 ⇒ 它记的是首次发布不是本次刷新。
+- **注意**：资产文件名仍是 `image-hosting-platform-*`（§14 刻意未动项），所以"名字变了但文件名没变"是预期状态不是漏改。
+- 三方哈希对账 **3/3 一致**（本地 Node crypto / SHA256SUMS.txt / API digest）：
+  source.zip `5e25d88b…` / setup.exe `f3065d1a…` / msi `db82c85f…`。与早间旧包对比：exe 仅 **+4 B**、msi −4 KB、
+  source.zip +107 KB（docs/README 文本变化），量级符合"只改了文案与元数据"的预期。
+- **本机首次真装**（授权范围内，测完已卸）：静默安装成功，注册表 `HKCU\…\Uninstall\Mirror Cloud` DisplayName 即新名；
+  测量后 `uninstall.exe /S` → 注册表 CLEAN、安装目录 GONE 复证。
+- **P3 两个欠数首次有真值（n=5，本机）**：
+  - 冷启动（进程创建→主窗口可见）：**首启 938 ms**（冷缓存），热启 138–211 ms，中位 **~150 ms**。
+  - 空闲内存（静置 ≥20s，**含 WebView2 子进程整组**，MEMBERS=7）：WS ≈ **623–646 MB**，私有 ≈ **373–407 MB**。
+  - ⚠️ **诚实限定**：这台机同时跑着别的会话（Defender、多路 vite），WS 绝对值偏高且不可跨机引用；
+    "比 Electron 低一档"的说法**没有被本轮数字证实**——Electron 对照组没在同机测过。可引用的只有"镜云自身基线五连读"。
+  - 采样脚本在 `%TEMP%\v145_assets\measure_*.ps1`，可复算。
+
 ## 1.4.5 - Legible Read-Failure Panels and Measured Contrast Floors
 
 自 `v1.4.4` 起 115 笔提交（09-29 43 / 09-30 54 / 10-01 18）。改到 `apps/desktop/src` 的只有 8 笔；
