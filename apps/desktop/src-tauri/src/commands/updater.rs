@@ -142,7 +142,10 @@ fn parse_sums(text: &str, wanted_name: &str) -> Option<String> {
     for line in text.lines() {
         let mut fields = line.split_whitespace();
         if let (Some(hash), Some(name)) = (fields.next(), fields.next()) {
-            if name == wanted_name && hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+            if name == wanted_name
+                && hash.len() == 64
+                && hash.bytes().all(|b| b.is_ascii_hexdigit())
+            {
                 return Some(hash.to_ascii_lowercase());
             }
         }
