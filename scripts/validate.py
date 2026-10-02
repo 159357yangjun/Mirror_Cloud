@@ -55,8 +55,8 @@ if tauri_config.get('version') != workspace_version:
     errors.append(
         f"Tauri version {tauri_config.get('version')} does not match workspace version {workspace_version}"
     )
-if tauri_config.get('productName') != 'Image Hosting Platform':
-    errors.append('Tauri productName must remain Image Hosting Platform')
+if tauri_config.get('productName') != 'Mirror Cloud':
+    errors.append('Tauri productName must remain Mirror Cloud')
 
 github_cargo = tomllib.loads((ROOT / 'crates/storage-github/Cargo.toml').read_text(encoding='utf-8'))
 expected_github_lib = 'src/lib_with_queue.rs'

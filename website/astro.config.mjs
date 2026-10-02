@@ -8,7 +8,7 @@ export default defineConfig({
   base: '/image-hosting-platform',
   integrations: [
     starlight({
-      title: '图床 · Image Hosting Platform',
+      title: '镜云 · Mirror Cloud',
       description: 'A multi-cloud image hosting, management and publishing platform.',
       sidebar: [
         { label: '开始', items: [{ label: '5 分钟上手', slug: 'index' }] },

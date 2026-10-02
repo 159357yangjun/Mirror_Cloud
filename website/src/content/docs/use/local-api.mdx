@@ -1,11 +1,11 @@
 ---
 title: 本机 HTTP API
-summary: 让 ShareX、脚本和编辑器直接调用图床的默认上传链。
+summary: 让 ShareX、脚本和编辑器直接调用镜云的默认上传链。
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components'
 
-图床桌面版内置一个**只监听本机回环地址**的 HTTP 服务。它不是一个独立的上传器：请求最终进入的是与 Typora、命令行和全局快捷键完全相同的 `PublisherCore` 默认上传链，所以 Resize / WebP / 重命名 / 多云策略 / 已启用插件全部照常生效。
+镜云桌面版内置一个**只监听本机回环地址**的 HTTP 服务。它不是一个独立的上传器：请求最终进入的是与 Typora、命令行和全局快捷键完全相同的 `PublisherCore` 默认上传链，所以 Resize / WebP / 重命名 / 多云策略 / 已启用插件全部照常生效。
 
 ## 基本信息
 
@@ -45,7 +45,7 @@ curl.exe -s http://127.0.0.1:36677/health
 
 ## 2. `POST /v1/upload-paths`：提交本机路径
 
-适合编辑器插件和批处理脚本——文件已经在磁盘上，只把路径交给图床。一次 1 到 100 条。
+适合编辑器插件和批处理脚本——文件已经在磁盘上，只把路径交给镜云。一次 1 到 100 条。
 
 ```bash
 curl.exe -s -X POST "http://127.0.0.1:36677/v1/upload-paths" ^

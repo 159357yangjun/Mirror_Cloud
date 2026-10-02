@@ -128,7 +128,7 @@ export function AssetsPage() {
     <div className="mx-auto max-w-[1380px] px-10 py-9">
       <PageHeader
         title="资源"
-        description="这里是图床维护的发布索引：记录上传结果、公开 URL、多云副本和插件输出；图片本体仍保存在真实云端。"
+        description="这里是镜云维护的发布索引：记录上传结果、公开 URL、多云副本和插件输出；图片本体仍保存在真实云端。"
         action={
           <div className="flex items-center gap-2">
             <button onClick={() => setPage('gallery')} className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-sm font-medium text-[var(--text-secondary)]">

@@ -33,7 +33,7 @@ export function HelpCenterDialog({
         <header className="flex items-start gap-4 border-b border-[var(--border)] px-6 py-5">
           <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[var(--accent-soft)] text-[var(--accent)]"><BookOpen size={18} /></span>
           <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-semibold">新手教程 · 图床</h2>
+            <h2 className="text-lg font-semibold">新手教程 · 镜云</h2>
             <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">先完成第一次真实云端上传，再按需配置 Typora、插件和多云策略。这里的教程始终随应用提供，不依赖外部网站。</p>
           </div>
           {onlineDocsUrl && <button onClick={() => openExternalUrl(onlineDocsUrl)} className="shrink-0 rounded-xl border border-[var(--border)] px-3 py-2 text-[12px]! font-medium! text-[var(--text-secondary)] hover:bg-[var(--surface-soft)]"><ExternalLink size={13} className="mr-1 inline" />在线文档</button>}
@@ -45,9 +45,9 @@ export function HelpCenterDialog({
             <GuideCard icon={Cloud} step="1" title="连接一个真实云端" description="建议第一次先用 GitHub。填写 Owner、仓库、分支和 Token，点击“测试并保存”。Provider 配置窗口右上角还有对应平台的内置教程。" action="去云端" onClick={() => go('storages')} />
             <GuideCard icon={Upload} step="2" title="上传第一张图片" description="点击左侧“快速发布”，上传一张测试图片。任务成功意味着远端 Provider 已确认文件存在，而不是只写入了本地记录。" action="开始发布" onClick={() => go('publish')} />
             <GuideCard icon={Images} step="3" title="用“图库”检查远端" description="图库直接浏览 GitHub / R2 / OSS 等真实云端文件。以前就存在于云端的图片也应该从这里查看；它不依赖本机上传历史。" action="打开图库" onClick={() => go('gallery')} />
-            <GuideCard icon={Boxes} step="4" title="理解“资源”页面" description="资源是图床维护的发布索引：记录名称、URL、部署状态和插件结果。图片本体仍在云端。旧的云端文件不会因为连接云端就自动变成本地发布记录。" action="查看资源" onClick={() => go('assets')} />
+            <GuideCard icon={Boxes} step="4" title="理解“资源”页面" description="资源是镜云维护的发布索引：记录名称、URL、部署状态和插件结果。图片本体仍在云端。旧的云端文件不会因为连接云端就自动变成本地发布记录。" action="查看资源" onClick={() => go('assets')} />
             <GuideCard icon={Copy} step="5" title="“复制”到底复制什么" description="资源页会按当前格式复制 URL、Markdown、HTML、BBCode 或自定义模板；图库里的“复制”表示复制该远端文件的公开 URL。" action="查看设置" onClick={() => go('settings')} />
-            <GuideCard icon={Workflow} step="6" title="Typora 不是只能用 PicGo" description="图床通过 Typora 的“自定义命令”接入。配置向导会复制命令并打开 Typora；你需要在 Typora → 偏好设置 → 图像中把上传服务改成“自定义命令”，粘贴后验证。" action="Typora 配置" onClick={() => go('settings')} />
+            <GuideCard icon={Workflow} step="6" title="Typora 不是只能用 PicGo" description="镜云通过 Typora 的“自定义命令”接入。配置向导会复制命令并打开 Typora；你需要在 Typora → 偏好设置 → 图像中把上传服务改成“自定义命令”，粘贴后验证。" action="Typora 配置" onClick={() => go('settings')} />
           </div>
         </div>
       </section>

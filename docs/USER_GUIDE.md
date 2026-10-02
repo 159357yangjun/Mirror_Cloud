@@ -1,4 +1,4 @@
-# 图床 | Image Hosting Platform 用户指南
+# 镜云 | Mirror Cloud 用户指南
 
 当前文档对应 **v1.4.5**。
 
@@ -11,7 +11,7 @@
 3. 打开 **发布**，上传一张测试图片。
 4. 去 **任务** 看真实上传状态。
 5. 去 **图库** 看 Provider 远端真实文件。
-6. 去 **资源** 看图床维护的 Asset Index，并复制 URL / Markdown / HTML / BBCode。
+6. 去 **资源** 看镜云维护的 Asset Index，并复制 URL / Markdown / HTML / BBCode。
 
 插件、AI、多云组、Typora、快捷键和右键菜单都可以等第一张图片上传成功后再配置。
 
@@ -122,18 +122,18 @@ Root 是这个 Storage 的远端根目录。
 
 ## 8. Typora 配置向导
 
-图床不会偷偷改 Typora 配置。
+镜云不会偷偷改 Typora 配置。
 
 正确流程：
 
-1. 图床 → **设置 → Typora 集成**；
+1. 镜云 → **设置 → Typora 集成**；
 2. 检查默认上传目标和桥接状态；
 3. 点击 **复制命令并打开 Typora**；
 4. Typora → 偏好设置 → 图像；
 5. 上传服务选择 **Custom Command / 自定义命令**；
 6. 粘贴命令；
 7. 点击 **验证图片上传选项**；
-8. 回到图床确认任务和资源记录。
+8. 回到镜云确认任务和资源记录。
 
 详细说明见 `docs/TYPORA_INTEGRATION.md`。
 

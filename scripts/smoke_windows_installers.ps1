@@ -1,6 +1,6 @@
 param(
     [string]$BundleRoot = (Join-Path (Split-Path -Parent $PSScriptRoot) "target\release\bundle"),
-    [string]$ProductName = "Image Hosting Platform"
+    [string]$ProductName = "Mirror Cloud"
 )
 
 $ErrorActionPreference = "Stop"

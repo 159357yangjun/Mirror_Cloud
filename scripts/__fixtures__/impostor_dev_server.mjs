@@ -43,7 +43,7 @@ const servedPackage = mode === 'other-app'
   ? `${JSON.stringify({ name: 'some-other-app', private: true, version: '9.9.9' }, null, 2)}\n`
   : realPackage
 
-const servedTitle = mode === 'other-app' ? 'Some Other App' : '图床 | Image Hosting Platform'
+const servedTitle = mode === 'other-app' ? 'Some Other App' : '镜云 | Mirror Cloud'
 
 // Only the declaration is removed, so the served text stays valid-looking; the export name simply
 // stops existing, which is what a checkout from before that commit would serve.

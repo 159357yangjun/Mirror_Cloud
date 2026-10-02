@@ -20,7 +20,7 @@ members = [
 version = "1.4.5"
 edition = "2024"
 license = "MIT"
-authors = ["Image Hosting Platform Contributors"]
+authors = ["Mirror Cloud Contributors"]
 
 [workspace.dependencies]
 base64 = "0.22"

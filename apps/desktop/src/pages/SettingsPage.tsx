@@ -216,7 +216,7 @@ export function SettingsPage() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-sm font-semibold text-indigo-950"><Workflow size={17} /> Typora 集成</div>
-            <p className="mt-1 max-w-2xl text-xs leading-6 text-indigo-700">Typora 的“自定义命令”会调用 图床自动维护的上传链，并在上传成功后依次执行当前已启用插件，再把最终公网 URL 返回给 Typora。</p>
+            <p className="mt-1 max-w-2xl text-xs leading-6 text-indigo-700">Typora 的“自定义命令”会调用 镜云自动维护的上传链，并在上传成功后依次执行当前已启用插件，再把最终公网 URL 返回给 Typora。</p>
           </div>
           <button onClick={() => void refreshTypora()} className="flex items-center gap-1.5 rounded-xl border border-indigo-100 bg-white px-3 py-2 text-xs font-medium text-indigo-700">
             {typoraChecking ? <LoaderCircle size={13} className="animate-spin" /> : <RefreshCw size={13} />}重新检测
@@ -267,7 +267,7 @@ export function SettingsPage() {
           <div className="rounded-xl bg-white/80 p-3"><div className="font-semibold text-slate-700">3</div><div className="mt-1">上传服务选“自定义命令”并粘贴</div></div>
           <div className="rounded-xl bg-white/80 p-3"><div className="font-semibold text-slate-700">4</div><div className="mt-1">点击“验证图片上传选项”</div></div>
         </div>
-        <p className="mt-3 text-[11px] leading-5 text-slate-400">之后在 Typora 粘贴、拖入图片，或使用“上传所有本地图片”，都会调用 图床默认上传链，并执行当前开启的插件。图床界面不需要保持打开。</p>
+        <p className="mt-3 text-[11px] leading-5 text-slate-400">之后在 Typora 粘贴、拖入图片，或使用“上传所有本地图片”，都会调用 镜云默认上传链，并执行当前开启的插件。镜云界面不需要保持打开。</p>
       </section>
 
       <section className="mt-6 grid grid-cols-2 gap-4 max-lg:grid-cols-1">

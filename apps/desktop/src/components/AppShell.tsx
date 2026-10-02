@@ -53,8 +53,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-3 px-2 py-3">
             <div className="grid size-9 place-items-center rounded-2xl bg-slate-950 text-white shadow-sm"><Zap size={17} /></div>
             <div className="app-brand-copy">
-              <div className="text-[15px] font-semibold tracking-[-0.02em]">图床</div>
-              <div className="text-[11px] text-[var(--text-muted)]">Image Hosting Platform</div>
+              <div className="text-[15px] font-semibold tracking-[-0.02em]">镜云</div>
+              <div className="text-[11px] text-[var(--text-muted)]">Mirror Cloud</div>
             </div>
           </div>
 
@@ -98,7 +98,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <BookOpen size={14} /> <span className="app-docs-label">教程与帮助</span>
             </button>
             <div className="app-sidebar-footer theme-surface rounded-2xl border p-3">
-              <div className="text-xs font-medium text-[var(--text-secondary)]">v1.4 Preview · Image Hosting Platform</div>
+              <div className="text-xs font-medium text-[var(--text-secondary)]">v1.4 Preview · Mirror Cloud</div>
               <div className="mt-1 text-[11px] leading-5 text-[var(--text-muted)]">托管 · 管理 · 发布 · 多云可靠性</div>
               <div className="mt-3 flex items-center gap-2 text-[11px] text-emerald-600"><span className="size-1.5 rounded-full bg-emerald-500" /> UX / Sync / Theme 开发中</div>
             </div>

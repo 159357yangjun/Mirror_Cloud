@@ -1,22 +1,22 @@
-# Typora 配置向导 — Image Hosting Platform v1.4 Preview
+# Typora 配置向导 — Mirror Cloud v1.4 Preview
 
 ## 目标
 
-Typora 通过 **Custom Command / 自定义命令** 调用图床维护的默认上传链。Typora 不需要 PicGo；图床也不会偷偷修改 Typora 设置。
+Typora 通过 **Custom Command / 自定义命令** 调用镜云维护的默认上传链。Typora 不需要 PicGo；镜云也不会偷偷修改 Typora 设置。
 
 ## 前提
 
-先在图床里完成：
+先在镜云里完成：
 
 1. 至少连接一个可写 Storage；
 2. 设置默认上传目标；
 3. 最好先在“发布”页手动上传一张测试图，确认 Provider 本身正常。
 
-普通用户不需要自己创建 Workflow。图床内部会维护默认上传链。
+普通用户不需要自己创建 Workflow。镜云内部会维护默认上传链。
 
 ## 一次性配置
 
-1. 图床 → **设置 → Typora 集成**；
+1. 镜云 → **设置 → Typora 集成**；
 2. 点击“重新检测”，确认命令已生成；
 3. 点击 **复制命令并打开 Typora**；
 4. Typora 打开偏好设置（常见快捷键 `Ctrl + ,`）；
@@ -24,7 +24,7 @@ Typora 通过 **Custom Command / 自定义命令** 调用图床维护的默认�
 6. 上传服务选择 **Custom Command / 自定义命令**；
 7. 粘贴刚才复制的命令；
 8. 点击 Typora 的 **Test Uploader / 验证图片上传选项**；
-9. 回图床查看“任务”和“资源”，确认测试图片真实上传并产生公网 URL。
+9. 回镜云查看“任务”和“资源”，确认测试图片真实上传并产生公网 URL。
 
 > “复制命令并打开 Typora”只做两件事：复制命令、启动 Typora。它不会自动改 Typora 偏好设置，所以不再称为“一键配置”。
 
@@ -33,7 +33,7 @@ Typora 通过 **Custom Command / 自定义命令** 调用图床维护的默认�
 ```text
 Typora 图片
   ↓
-Image Hosting Platform executable --typora-upload --data-dir "<数据目录>" -- "<图片路径>"
+Mirror Cloud executable --typora-upload --data-dir "<数据目录>" -- "<图片路径>"
   ↓
 默认上传链（处理 / 重命名 / 默认云端）
   ↓
@@ -64,7 +64,7 @@ Typora 命令通常不用重配：
 
 不要只看 Typora 是否显示“成功”，按下面顺序核实：
 
-1. 图床“任务”出现 `Typora 发布`；
+1. 镜云“任务”出现 `Typora 发布`；
 2. Provider 远端真的出现文件；
 3. “资源”出现 Asset / Deployment；
 4. Typora Markdown 中本地图片地址被替换为公网 URL；

@@ -17,7 +17,7 @@ CI 侧的 `scripts/smoke_windows_installers.ps1` 装完即卸（[2/4]、[4/4] �
 - `image-hosting-platform-v1.4.5-windows-x64-setup.exe` — sha256 `b54c4a92…f2502000`
 - 或 `image-hosting-platform-v1.4.5-windows-x64.msi` — sha256 `4485c4d6…daeef2a1`
 
-装完后程序名是 **"Image Hosting Platform"**，二进制 `image-hosting-platform-desktop.exe`，
+装完后程序名是 **"Mirror Cloud"**，二进制 `image-hosting-platform-desktop.exe`，
 数据目录 `%APPDATA%\dev.multicloud.publisher`。
 
 ## 测量一：冷启动
