@@ -258,8 +258,10 @@ pub async fn download_update(
     let canonical = tokio::fs::canonicalize(&path)
         .await
         .map_err(|error| format!("无法解析安装包绝对路径: {error}"))?;
-    let update_id = format!("{:x}", Sha256::digest(canonical.as_os_str().as_encoded_bytes()))
-        [..16]
+    let update_id = format!(
+        "{:x}",
+        Sha256::digest(canonical.as_os_str().as_encoded_bytes())
+    )[..16]
         .to_string();
     pending
         .lock()
