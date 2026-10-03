@@ -92,6 +92,18 @@ jobs:
           cargo check --workspace --locked 2>&1 | Tee-Object -FilePath rustcheck.log
           if ($LASTEXITCODE -ne 0) {
             Write-Host 'cargo check failed. See the rustcheck-log artifact.'
+            # The artifact endpoint needs auth, so also push the compiler's first error
+            # through an annotation - the annotations list is public on a public repo.
+            $log = Get-Content rustcheck.log
+            $i = ($log | Select-String -Pattern '^error' | Select-Object -First 1).LineNumber
+            if ($i) {
+              $block = $log[($i - 1)..([Math]::Min($i + 8, $log.Count - 1))]
+              $escaped = ($block -join ' | ') -replace '%', '%25' -replace "`r", '' -replace "`n", ''
+              Write-Output "::error::rustcheck: $escaped"
+            } else {
+              $tail = ($log | Select-Object -Last 6) -join ' | '
+              Write-Output "::error::rustcheck: (no ^error line matched; tail) $tail"
+            }
             exit 1
           }
       - name: Upload Rust check log
