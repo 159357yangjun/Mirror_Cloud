@@ -125,6 +125,14 @@ require('_primary_succeeded' not in _pwb and 'if !primary_succeeded {' not in _p
         'no lane gates another: PrimaryWithBackups has no primary-success conditional left (offenders: '
         + ', '.join(l.strip() for l in _pwb.splitlines() if 'primary_succeeded' in l)[:120] + ')')
 require('Backup 仅在 Primary 失败时接管' in group_dialog, 'Storage Group UI explains failover semantics')
+# audit item A (2026-10-03): the public-URL pick must live in exactly one place and a
+# Mirror must never win it; both consumers used to hand-roll `.or_else(first-successful)`.
+require('pub fn select_public_url' in application and 'DeploymentRole::Backup' in application[application.index('fn select_public_url'):],
+        'PublisherCore owns the public-URL selection with an explicit Backup role filter')
+require('.or_else(|| outcomes.iter().find(|outcome| outcome.error.is_none()))' not in cli,
+        'CLI delegates the public-URL pick to PublisherCore instead of first-successful')
+require('.or_else(|| {' not in commands[commands.index('let published_url'):commands.index('let published_url')+400],
+        'desktop publish path delegates the public-URL pick to PublisherCore too')
 require('PermissionDenied' in plugin_runtime and 'require_permission' in plugin_runtime, 'plugin runtime enforces manifest permissions')
 require('PluginPermission::ExternalWrite' in plugin_runtime, 'webhook requires external_write permission at runtime')
 require('PluginPermission::Secret' in plugin_runtime, 'AI API key access requires secret permission at runtime')

@@ -65,6 +65,26 @@ pub struct PublishOutcome {
 pub struct PublisherCore;
 
 impl PublisherCore {
+    /// The single public-URL pick for any strategy outcome list: the Primary's
+    /// URL when the Primary succeeded, otherwise the first successful **Backup**
+    /// (outcomes are ordered primary → mirrors → backups-by-priority). A Mirror
+    /// never takes over the main URL — replicas are not failover targets.
+    pub fn select_public_url(outcomes: &[PublishOutcome]) -> Option<String> {
+        if let Some(primary) = outcomes.iter().find(|outcome| {
+            outcome.role == DeploymentRole::Primary && outcome.error.is_none()
+        }) {
+            return primary.public_url.clone();
+        }
+        outcomes
+            .iter()
+            .find(|outcome| {
+                outcome.role == DeploymentRole::Backup
+                    && outcome.error.is_none()
+                    && outcome.public_url.is_some()
+            })
+            .and_then(|outcome| outcome.public_url.clone())
+    }
+
     pub async fn publish_group(
         strategy: StorageGroupStrategy,
         members: Vec<PublishMember>,
@@ -293,5 +313,49 @@ impl CloudMutationCore {
         }
 
         Ok(uploaded)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PublishOutcome, PublisherCore};
+    use domain::{DeploymentRole, StorageId};
+    use uuid::Uuid;
+
+    fn outcome(role: DeploymentRole, ok: bool, url: Option<&str>) -> PublishOutcome {
+        PublishOutcome {
+            storage_id: Uuid::nil(),
+            storage_name: "s".into(),
+            role,
+            remote_path: "p".into(),
+            public_url: url.map(str::to_string),
+            error: if ok { None } else { Some("boom".into()) },
+        }
+    }
+
+    #[test]
+    fn mirrors_never_take_over_the_public_url() {
+        let backup_url = "https://backup.example/a.png";
+        let outcomes = vec![
+            outcome(DeploymentRole::Primary, false, None),
+            outcome(DeploymentRole::Mirror, true, Some("https://mirror.example/a.png")),
+            outcome(DeploymentRole::Backup, true, Some(backup_url)),
+        ];
+        assert_eq!(
+            PublisherCore::select_public_url(&outcomes).as_deref(),
+            Some(backup_url)
+        );
+    }
+
+    #[test]
+    fn primary_wins_when_it_succeeds() {
+        let outcomes = vec![
+            outcome(DeploymentRole::Primary, true, Some("https://primary.example/a.png")),
+            outcome(DeploymentRole::Backup, true, Some("https://backup.example/a.png")),
+        ];
+        assert_eq!(
+            PublisherCore::select_public_url(&outcomes).as_deref(),
+            Some("https://primary.example/a.png")
+        );
     }
 }

@@ -621,12 +621,7 @@ async fn publish_one(
             last_error: outcome.error.clone(),
         })
         .collect::<Vec<_>>();
-    let public_url = match outcomes
-        .iter()
-        .find(|outcome| outcome.role == DeploymentRole::Primary && outcome.error.is_none())
-        .or_else(|| outcomes.iter().find(|outcome| outcome.error.is_none()))
-        .and_then(|outcome| outcome.public_url.clone())
-    {
+    let public_url = match PublisherCore::select_public_url(&outcomes) {
         Some(public_url) => public_url,
         None => {
             let rollback_failures = rollback_successful_uploads(context, &outcomes).await;

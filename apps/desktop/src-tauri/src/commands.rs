@@ -2467,25 +2467,20 @@ async fn run_workflow_publish_task(
             }
             return Err(message);
         }
-        let published_url = outcomes
-            .iter()
-            .find(|outcome| outcome.role == DeploymentRole::Primary && outcome.error.is_none())
-            .and_then(|outcome| outcome.public_url.as_deref())
-            .or_else(|| {
-                outcomes
-                    .iter()
-                    .find(|outcome| outcome.error.is_none())
-                    .and_then(|outcome| outcome.public_url.as_deref())
-            });
-        let mut plugin_run =
-            run_enabled_plugins_for_asset(&state, &asset.name, published_url, &variant.mime_type)
-                .await;
+        let published_url = PublisherCore::select_public_url(&outcomes);
+        let mut plugin_run = run_enabled_plugins_for_asset(
+            &state,
+            &asset.name,
+            published_url.as_deref(),
+            &variant.mime_type,
+        )
+        .await;
         if let Err(error) = persist_plugin_outputs(&state, asset.id, &plugin_run.outputs).await {
             plugin_run
                 .failures
                 .push(format!("插件结果保存失败：{error}"));
         }
-        emit_asset_published(&app, &asset.name, published_url, &plugin_run.outputs);
+        emit_asset_published(&app, &asset.name, published_url.as_deref(), &plugin_run.outputs);
         let mut plugin_failures = plugin_run.failures;
         plugin_failures.extend(before_process.failures);
         plugin_failures.extend(after_process.failures);
