@@ -598,7 +598,9 @@ mod tests {
             .build()
             .unwrap_err();
         let error_again = reqwest::Client::new()
-            .get(format!("https://gitee.com/api/v5/user?access_token={token}"))
+            .get(format!(
+                "https://gitee.com/api/v5/user?access_token={token}"
+            ))
             .build()
             .unwrap_err();
         let message = safe_ctx(error, token);
