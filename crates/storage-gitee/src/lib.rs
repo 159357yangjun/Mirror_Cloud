@@ -576,7 +576,9 @@ mod tests {
         // A reqwest error built from a URL carrying the token must never echo it back.
         let token = "secret-token-abc";
         let error = reqwest::Client::new()
-            .get(format!("https://gitee.com/api/v5/user?access_token={token}"))
+            .get(format!(
+                "https://gitee.com/api/v5/user?access_token={token}"
+            ))
             .build()
             .unwrap_err();
         let message = safe_ctx(&error, token);
