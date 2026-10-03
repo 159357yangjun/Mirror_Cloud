@@ -598,7 +598,8 @@ mod tests {
     }
 
     #[test]
-    fn repository_paths_stay_relative_to_storage_root() {        let storage = storage();
+    fn repository_paths_stay_relative_to_storage_root() {
+        let storage = storage();
         assert_eq!(
             storage.repository_path("2026/a.png"),
             "assets/blog/2026/a.png"
