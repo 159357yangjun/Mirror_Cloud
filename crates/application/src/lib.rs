@@ -339,7 +339,11 @@ mod tests {
         let backup_url = "https://backup.example/a.png";
         let outcomes = vec![
             outcome(DeploymentRole::Primary, false, None),
-            outcome(DeploymentRole::Mirror, true, Some("https://mirror.example/a.png")),
+            outcome(
+                DeploymentRole::Mirror,
+                true,
+                Some("https://mirror.example/a.png"),
+            ),
             outcome(DeploymentRole::Backup, true, Some(backup_url)),
         ];
         assert_eq!(
@@ -351,8 +355,16 @@ mod tests {
     #[test]
     fn primary_wins_when_it_succeeds() {
         let outcomes = vec![
-            outcome(DeploymentRole::Primary, true, Some("https://primary.example/a.png")),
-            outcome(DeploymentRole::Backup, true, Some("https://backup.example/a.png")),
+            outcome(
+                DeploymentRole::Primary,
+                true,
+                Some("https://primary.example/a.png"),
+            ),
+            outcome(
+                DeploymentRole::Backup,
+                true,
+                Some("https://backup.example/a.png"),
+            ),
         ];
         assert_eq!(
             PublisherCore::select_public_url(&outcomes).as_deref(),
