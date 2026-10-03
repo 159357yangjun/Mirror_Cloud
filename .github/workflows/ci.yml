@@ -74,13 +74,11 @@ jobs:
           git diff -- '*.rs' | Out-File -Encoding utf8 rustfmt.patch
           if ((Get-Item rustfmt.patch).Length -gt 3) {
             Write-Host 'rustfmt changed tracked Rust files. See the rustfmt-diff artifact.'
-            # The artifact endpoint needs auth; ship the whole patch through a public
-            # annotation. Newlines break workflow-command syntax, so base64 it first.
-            $bytes = [System.Text.Encoding]::UTF8.GetBytes((Get-Content rustfmt.patch -Raw))
-            $b64 = [Convert]::ToBase64String($bytes)
-            Write-Output "[group=end]::error::"
-            foreach ($chunk in ([regex]::Matches($b64, '.{1,200}') | ForEach-Object { $_.Value })) {
-              Write-Output "[issue=file://$env:GITHUB_WORKSPACE/.github/workflows/ci.yml line=1 endLine=1 column=1 title=rustfmt-b64]::error::$chunk"
+            # The artifact endpoint needs auth; workflow-command annotations proved
+            # unreliable on this runner. Use the step summary, which the public
+            # /actions/runs/{id}/attempts/1/summary endpoint renders verbatim.
+            Get-Content rustfmt.patch | ForEach-Object {
+              Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "``$_``"
             }
             git diff --check -- '*.rs'
             exit 1
