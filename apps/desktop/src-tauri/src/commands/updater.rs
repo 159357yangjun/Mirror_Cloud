@@ -134,6 +134,7 @@ fn parse_sums(text: &str, wanted_name: &str) -> Option<String> {
     for line in text.lines() {
         let mut fields = line.split_whitespace();
         if let (Some(hash), Some(name)) = (fields.next(), fields.next()) {
+            // Split form is what rustfmt 1.98 emits: joined this condition is 100 columns.
             if name == wanted_name
                 && hash.len() == 64
                 && hash.bytes().all(|b| b.is_ascii_hexdigit())
