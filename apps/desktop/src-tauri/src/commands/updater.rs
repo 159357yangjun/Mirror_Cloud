@@ -90,12 +90,21 @@ pub async fn check_for_updates(app: tauri::AppHandle) -> CmdResult<UpdateCheckRe
         ));
     }
     let setup = setup_candidates[0];
-    let setup_bytes = setup.get("size").and_then(serde_json::Value::as_u64).unwrap_or(0);
+    let setup_bytes = setup
+        .get("size")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
     if setup_bytes == 0 || setup_bytes > MAX_SETUP_BYTES {
         return Err(format!("安装包大小不合理: {setup_bytes} B"));
     }
-    let setup_url = setup["browser_download_url"]
-        .as_str()
+    let setup_name = setup
+        .get("name")
+        .and_then(serde_json::Value::as_str)
+        .ok_or("安装包资产缺少文件名")?
+        .to_string();
+    let setup_url = setup
+        .get("browser_download_url")
+        .and_then(serde_json::Value::as_str)
         .ok_or("安装包缺少下载地址")?
         .to_string();
 
@@ -103,10 +112,20 @@ pub async fn check_for_updates(app: tauri::AppHandle) -> CmdResult<UpdateCheckRe
         latest_version: tag.trim_start_matches('v').to_string(),
         update_available: version_is_newer(&current_version, tag),
         current_version,
-        release_notes: response["body"].as_str().unwrap_or_default().chars().take(2000).collect(),
+        release_notes: response
+            .get("body")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .chars()
+            .take(2000)
+            .collect(),
         setup_url,
         setup_bytes,
-        published_at: response["published_at"].as_str().unwrap_or_default().to_string(),
+        published_at: response
+            .get("published_at")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
     })
 }
 
@@ -120,17 +139,11 @@ pub struct DownloadedUpdate {
     pub bytes: u64,
 }
 
-/// 103 columns joined would be rustfmt-reformatted; ac54483's own green lines show the
-/// limit is width-after-joining, so this condition stays deliberately split.
 fn parse_sums(text: &str, wanted_name: &str) -> Option<String> {
     for line in text.lines() {
         let mut fields = line.split_whitespace();
         if let (Some(hash), Some(name)) = (fields.next(), fields.next()) {
-            // Split form is what rustfmt 1.98 emits: joined this condition is 100 columns.
-            if name == wanted_name
-                && hash.len() == 64
-                && hash.bytes().all(|b| b.is_ascii_hexdigit())
-            {
+            if name == wanted_name && hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit()) {
                 return Some(hash.to_ascii_lowercase());
             }
         }
@@ -179,7 +192,10 @@ pub async fn download_update(check: UpdateCheckResult) -> CmdResult<DownloadedUp
             return Err(format!("安装包超过上限: {len} B"));
         }
     }
-    let body = stream.bytes().await.map_err(|error| format!("安装包下载中断: {error}"))?;
+    let body = stream
+        .bytes()
+        .await
+        .map_err(|error| format!("安装包下载中断: {error}"))?;
     if body.len() as u64 != check.setup_bytes {
         return Err(format!(
             "安装包字节数与发行页不符（下载 {} B，声明 {} B）",
@@ -190,9 +206,13 @@ pub async fn download_update(check: UpdateCheckResult) -> CmdResult<DownloadedUp
     let actual = format!("{:x}", Sha256::digest(&body));
 
     let dir = std::env::temp_dir().join("mirror-updates");
-    tokio::fs::create_dir_all(&dir).await.map_err(|e| format!("无法创建更新临时目录: {e}"))?;
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .map_err(|error| format!("无法创建更新临时目录: {error}"))?;
     let path = dir.join(&file_name);
-    tokio::fs::write(&path, &body).await.map_err(|e| format!("无法写入安装包: {e}"))?;
+    tokio::fs::write(&path, &body)
+        .await
+        .map_err(|error| format!("无法写入安装包: {error}"))?;
 
     let verified = actual == expected;
     if !verified {
