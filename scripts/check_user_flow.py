@@ -117,8 +117,13 @@ migration9 = text('crates/persistence-sqlite/migrations/0009_upgrade_official_ai
 migration10 = text('crates/persistence-sqlite/migrations/0010_plugin_permission_grants.sql')
 
 require('permissions/push' in github and 'Contents: Read and write' in github, 'GitHub connection test checks repository write access')
-require('PublisherCore::publish_group' in commands and 'backups.sort_by_key(|member| member.priority)' in application and 'if !primary_succeeded {' in application, 'desktop group publish delegates ordered first-success backup failover to PublisherCore')
-require('PublisherCore::publish_group' in cli and 'UploadRequest' not in cli and 'if !primary_succeeded {' not in cli and 'backups.sort_by_key(' not in cli, 'Typora/CLI publish delegates multi-cloud strategy to PublisherCore instead of keeping a second implementation')
+require('PublisherCore::publish_group' in commands and 'backup_members.sort_by_key(|member| member.priority)' in application and 'futures::future::join3' in application, 'desktop group publish delegates priority-ordered backup failover to PublisherCore, concurrent with mirrors (PWB-semantics-fix)')
+require('PublisherCore::publish_group' in cli and 'UploadRequest' not in cli and 'futures::future::join3' not in cli and 'backup_members.sort_by_key(' not in cli, 'Typora/CLI publish delegates multi-cloud strategy to PublisherCore instead of keeping a second implementation')
+_pwb = application[application.index('StorageGroupStrategy::PrimaryWithBackups'):]
+_pwb = _pwb[:_pwb.index('Ok(outcomes)')]
+require('_primary_succeeded' not in _pwb and 'if !primary_succeeded {' not in _pwb,
+        'no lane gates another: PrimaryWithBackups has no primary-success conditional left (offenders: '
+        + ', '.join(l.strip() for l in _pwb.splitlines() if 'primary_succeeded' in l)[:120] + ')')
 require('Backup 仅在 Primary 失败时接管' in group_dialog, 'Storage Group UI explains failover semantics')
 require('PermissionDenied' in plugin_runtime and 'require_permission' in plugin_runtime, 'plugin runtime enforces manifest permissions')
 require('PluginPermission::ExternalWrite' in plugin_runtime, 'webhook requires external_write permission at runtime')

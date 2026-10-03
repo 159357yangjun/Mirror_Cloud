@@ -91,38 +91,39 @@ impl PublisherCore {
                     .cloned()
                     .ok_or(ApplicationError::MissingPrimary)?;
 
-                let primary_outcome = Self::upload_member(
+                // Mirrors are replicas and Backups are failover targets: neither may
+                // gate the other. All three lanes run concurrently; each lane's outcomes
+                // are concatenated in its own role order (primary, then mirrors, then
+                // backups ascending by priority) so a caller picking "first successful"
+                // gets the Backup that took over, never a Mirror that merely copied.
+                let mirror_members = members
+                    .iter()
+                    .filter(|member| member.role == DeploymentRole::Mirror)
+                    .cloned()
+                    .collect::<Vec<_>>();
+                let mut backup_members = members
+                    .into_iter()
+                    .filter(|member| member.role == DeploymentRole::Backup)
+                    .collect::<Vec<_>>();
+                backup_members.sort_by_key(|member| member.priority);
+
+                let primary_future = Self::upload_member(
                     primary,
                     bytes.clone(),
                     remote_path.clone(),
                     mime_type.clone(),
-                )
-                .await;
-                let primary_succeeded = primary_outcome.error.is_none();
-                let mut outcomes = vec![primary_outcome];
-
-                // Mirrors are replicas, not failover targets, so they always run.
-                let mirror_uploads = members
-                    .iter()
-                    .filter(|member| member.role == DeploymentRole::Mirror)
-                    .cloned()
-                    .map(|member| {
-                        Self::upload_member(
-                            member,
-                            bytes.clone(),
-                            remote_path.clone(),
-                            mime_type.clone(),
-                        )
-                    });
-                outcomes.extend(futures::future::join_all(mirror_uploads).await);
-
-                if !primary_succeeded {
-                    let mut backups = members
-                        .into_iter()
-                        .filter(|member| member.role == DeploymentRole::Backup)
-                        .collect::<Vec<_>>();
-                    backups.sort_by_key(|member| member.priority);
-                    for backup in backups {
+                );
+                let mirror_futures = mirror_members.into_iter().map(|member| {
+                    Self::upload_member(
+                        member,
+                        bytes.clone(),
+                        remote_path.clone(),
+                        mime_type.clone(),
+                    )
+                });
+                let backup_future = async move {
+                    let mut taken = Vec::new();
+                    for backup in backup_members {
                         let outcome = Self::upload_member(
                             backup,
                             bytes.clone(),
@@ -131,12 +132,23 @@ impl PublisherCore {
                         )
                         .await;
                         let succeeded = outcome.error.is_none();
-                        outcomes.push(outcome);
+                        taken.push(outcome);
                         if succeeded {
                             break;
                         }
                     }
-                }
+                    taken
+                };
+
+                let (primary_outcome, mirror_outcomes, backup_outcomes) = futures::future::join3(
+                    primary_future,
+                    futures::future::join_all(mirror_futures),
+                    backup_future,
+                )
+                .await;
+                let mut outcomes = vec![primary_outcome];
+                outcomes.extend(mirror_outcomes);
+                outcomes.extend(backup_outcomes);
 
                 Ok(outcomes)
             }
