@@ -479,8 +479,7 @@ impl StorageProvider for GiteeStorage {
             .map_err(|e| net_err(e, tok))?;
         if !response.status().is_success() {
             return Err(
-                Self::response_error(response, "Gitee download failed", self.token())
-                    .await,
+                Self::response_error(response, "Gitee download failed", self.token()).await,
             );
         }
         let payload: Value = response.json().await.map_err(|e| prov_err(e, tok))?;
