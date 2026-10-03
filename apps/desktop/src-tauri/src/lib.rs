@@ -77,6 +77,7 @@ pub fn run() {
                 local_api_running: local_api_running.clone(),
             };
             app.manage(state);
+            app.manage(commands::updater::new_pending_store());
             commands::integrations::setup_tray(app)?;
             commands::integrations::setup_global_shortcut(app)?;
             commands::integrations::start_local_http_api(

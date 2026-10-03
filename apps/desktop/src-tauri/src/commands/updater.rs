@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -7,6 +10,31 @@ const UPDATE_REPO: &str = "159357yangjun/image-hosting-platform";
 const SETUP_ASSET_SUFFIX: &str = "-windows-x64-setup.exe";
 const SUMS_ASSET_NAME: &str = "SHA256SUMS.txt";
 const MAX_SETUP_BYTES: u64 = 64 * 1024 * 1024;
+const CONTROLLED_DIR_NAME: &str = "mirror-updates";
+
+/// Backend-owned record of a verified download (G1 trust boundary): the frontend
+/// only ever sees the opaque id. install_update re-reads this map, canonicalizes
+/// the path, confirms it still lives under %TEMP%\mirror-updates and recomputes the
+/// SHA256 from disk before spawning anything.
+pub type PendingUpdates = Arc<Mutex<HashMap<String, DownloadedUpdate>>>;
+
+pub fn new_pending_store() -> PendingUpdates {
+    Arc::new(Mutex::new(HashMap::new()))
+}
+
+fn controlled_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join(CONTROLLED_DIR_NAME)
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadedUpdateSummary {
+    pub update_id: String,
+    pub version: String,
+    pub file_name: String,
+    pub bytes: u64,
+    pub sha256: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -131,8 +159,7 @@ pub async fn check_for_updates(app: tauri::AppHandle) -> CmdResult<UpdateCheckRe
     })
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone)]
 pub struct DownloadedUpdate {
     pub installer_path: String,
     pub expected_sha256: String,
@@ -157,7 +184,10 @@ fn parse_sums(text: &str, wanted_name: &str) -> Option<String> {
 }
 
 #[tauri::command]
-pub async fn download_update(check: UpdateCheckResult) -> CmdResult<DownloadedUpdate> {
+pub async fn download_update(
+    check: UpdateCheckResult,
+    pending: tauri::State<'_, PendingUpdates>,
+) -> CmdResult<DownloadedUpdateSummary> {
     if !check.update_available {
         return Err("当前没有可用的更新".into());
     }
@@ -210,7 +240,7 @@ pub async fn download_update(check: UpdateCheckResult) -> CmdResult<DownloadedUp
     }
     let actual = format!("{:x}", Sha256::digest(&body));
 
-    let dir = std::env::temp_dir().join("mirror-updates");
+    let dir = controlled_dir();
     tokio::fs::create_dir_all(&dir)
         .await
         .map_err(|error| format!("无法创建更新临时目录: {error}"))?;
@@ -219,36 +249,88 @@ pub async fn download_update(check: UpdateCheckResult) -> CmdResult<DownloadedUp
         .await
         .map_err(|error| format!("无法写入安装包: {error}"))?;
 
-    let verified = actual == expected;
-    if !verified {
+    if actual != expected {
         let _ = tokio::fs::remove_file(&path).await;
         return Err(format!(
             "sha256 校验不一致，安装包已删除（期望 {expected}，实际 {actual}）"
         ));
     }
-    Ok(DownloadedUpdate {
-        installer_path: path.to_string_lossy().into_owned(),
-        expected_sha256: expected,
-        actual_sha256: actual,
-        verified,
+    let canonical = tokio::fs::canonicalize(&path)
+        .await
+        .map_err(|error| format!("无法解析安装包绝对路径: {error}"))?;
+    let update_id = format!("{:x}", Sha256::digest(canonical.as_os_str().as_encoded_bytes()))
+        [..16]
+        .to_string();
+    pending
+        .lock()
+        .map_err(|_| "更新状态锁毒化".to_string())?
+        .insert(
+            update_id.clone(),
+            DownloadedUpdate {
+                installer_path: canonical.to_string_lossy().into_owned(),
+                expected_sha256: expected.clone(),
+                actual_sha256: actual.clone(),
+                verified: true,
+                bytes: body.len() as u64,
+            },
+        );
+    Ok(DownloadedUpdateSummary {
+        update_id,
+        version: check.latest_version,
+        file_name,
         bytes: body.len() as u64,
+        sha256: actual,
     })
 }
 
 #[tauri::command]
-pub async fn install_update(update: DownloadedUpdate, app: tauri::AppHandle) -> CmdResult<()> {
-    if !update.verified || update.expected_sha256 != update.actual_sha256 {
+pub async fn install_update(
+    update_id: String,
+    pending: tauri::State<'_, PendingUpdates>,
+    app: tauri::AppHandle,
+) -> CmdResult<()> {
+    let record = pending
+        .lock()
+        .map_err(|_| "更新状态锁毒化".to_string())?
+        .get(&update_id)
+        .cloned()
+        .ok_or("未知或已过期的更新句柄，请重新下载")?;
+    if !record.verified || record.expected_sha256 != record.actual_sha256 {
         return Err("未通过校验的安装包不允许安装".into());
     }
-    let path = std::path::PathBuf::from(&update.installer_path);
-    if !tokio::fs::try_exists(&path).await.unwrap_or(false) {
-        return Err("安装包已不在临时目录，请重新下载".into());
+    let path = std::path::PathBuf::from(&record.installer_path);
+    let canonical = tokio::fs::canonicalize(&path)
+        .await
+        .map_err(|error| format!("安装包已不在临时目录，请重新下载: {error}"))?;
+    if canonical
+        .parent()
+        .map(|parent| parent.as_os_str() != controlled_dir().as_os_str())
+        .unwrap_or(true)
+    {
+        return Err("安装包路径不在受控更新目录，已拒绝".into());
+    }
+    let bytes = tokio::fs::read(&canonical)
+        .await
+        .map_err(|error| format!("无法重读安装包: {error}"))?;
+    if bytes.len() as u64 != record.bytes {
+        return Err(format!(
+            "安装包字节数与下载时不符（现在 {} B，登记 {} B）",
+            bytes.len(),
+            record.bytes
+        ));
+    }
+    let recomputed = format!("{:x}", Sha256::digest(&bytes));
+    if recomputed != record.expected_sha256 {
+        return Err(format!(
+            "安装前复核 sha256 不一致（期望 {}，实际 {}），已拒绝",
+            record.expected_sha256, recomputed
+        ));
     }
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-        std::process::Command::new(&path)
+        std::process::Command::new(&canonical)
             .args(["/S", "/NS"])
             .creation_flags(CREATE_NEW_PROCESS_GROUP)
             .spawn()

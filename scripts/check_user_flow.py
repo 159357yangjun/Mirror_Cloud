@@ -482,10 +482,18 @@ updater = text('apps/desktop/src-tauri/src/commands/updater.rs')
 require('pub async fn check_for_updates' in updater and 'pub async fn download_update' in updater and 'pub async fn install_update' in updater, 'the three updater commands exist')
 require(updater.count('ends_with(SETUP_ASSET_SUFFIX)') >= 2, 'both asset selection and the download URL re-check the setup.exe suffix')
 require('sha256 校验不一致' in updater and 'remove_file' in updater, 'a hash mismatch deletes the installer and refuses it')
-require('if !update.verified || update.expected_sha256 != update.actual_sha256' in updater, 'install refuses an unverified package before spawning anything')
+# G1 trust boundary (docs/RELEASE_GATE_UPDATER.md): install takes ONLY an opaque id;
+# the record comes from backend state and SHA256 is recomputed from disk pre-spawn.
+require('update_id: String,' in updater and 'PendingUpdates' in updater,
+        'install_update takes an opaque update id backed by PendingUpdates state, not a frontend object')
+require('let recomputed = format!("{:x}", Sha256::digest(&bytes));' in updater,
+        'install recomputes sha256 from the file on disk instead of trusting stored flags alone')
+require('mirror-updates' in updater and 'canonicalize' in updater and '.parent()' in updater,
+        'install canonicalizes and confines the installer path to the controlled directory')
+require('.or_else(|| outcomes.iter().find(|outcome| outcome.error.is_none()))' not in cli, 'CLI has no first-successful fallback pick')
 require('.error_for_status()' in updater and 'MAX_SETUP_BYTES' in updater, 'HTTP status is checked and a size ceiling exists')
 desktop_lib_upd = desktop
-require("invoke('check_for_updates')" in desktop_lib_upd and "invoke('download_update', { check })" in desktop_lib_upd and "invoke('install_update', { update })" in desktop_lib_upd, 'the frontend wires exactly the three updater commands')
+require("invoke('check_for_updates')" in desktop_lib_upd and "invoke('download_update', { check })" in desktop_lib_upd and "invoke('install_update', { updateId })" in desktop_lib_upd, 'the frontend wires exactly the three updater commands, install passing only the opaque id')
 # Release-gate contract (docs/RELEASE_GATE_UPDATER.md, approved 2026-10-02): the state machine,
 # the G1 trust-boundary shape, the tag discipline and the competitor-wording rule must stay on the
 # books until G5 retires them. Anchors are count==1 so a restructure trips the gate instead of
@@ -497,9 +505,8 @@ for anchor in ('## G1 验收标准', '## G3 保真矩阵', '## Tag 纪律', '## 
     require(gate_doc.count(anchor) == 1, f'release-gate doc has exactly one "{anchor}" section')
 require('RC 不使用正式版本 tag' in gate_doc, 'tag discipline states RCs never consume release tags')
 require('开发 / 验证中' in gate_doc and '领先 PicList' in gate_doc, 'competitor-wording ceiling is recorded until G5')
-interim = 'if !update.verified || update.expected_sha256 != update.actual_sha256'
-require(interim in updater or ('PendingUpdate' in updater and 'canonicalize' in updater.lower()),
-        'updater keeps either the interim verified-flag guard or the G1 PendingUpdate+canonicalize boundary')
+require('PendingUpdates' in updater and 'canonicalize' in updater,
+        'G1 landed: updater uses PendingUpdates state with canonicalized paths')
 
 
 # Shipped 2026-10-02 and caught by the user, not by any gate: the installed Mirror Cloud v1.4.5

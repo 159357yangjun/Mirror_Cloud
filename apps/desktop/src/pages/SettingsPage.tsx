@@ -38,7 +38,7 @@ import {
   uninstallWindowsContextMenu,
   saveOutputPreferences,
 } from '../lib/desktop'
-import type { DownloadedUpdate, UpdateCheckResult } from '../lib/desktop'
+import type { DownloadedUpdateSummary, UpdateCheckResult } from '../lib/desktop'
 import { useAppStore } from '../store/useAppStore'
 import { confirmAction } from '../store/useConfirmStore'
 import type { OutputFormat, OutputPreferences } from '../types'
@@ -90,7 +90,7 @@ export function SettingsPage() {
   })
 
   const [updateCheck, setUpdateCheck] = useState<UpdateCheckResult | null>(null)
-  const [updateDownloaded, setUpdateDownloaded] = useState<DownloadedUpdate | null>(null)
+  const [updateDownloaded, setUpdateDownloaded] = useState<DownloadedUpdateSummary | null>(null)
   const checkUpdateMutation = useMutation({
     mutationFn: checkForUpdates,
     onSuccess: (result) => { setUpdateCheck(result); setUpdateDownloaded(null) },
@@ -100,7 +100,7 @@ export function SettingsPage() {
     onSuccess: (downloaded) => setUpdateDownloaded(downloaded),
   })
   const installUpdateMutation = useMutation({
-    mutationFn: () => { if (!updateDownloaded) throw new Error('请先下载安装包'); return installUpdate(updateDownloaded) },
+    mutationFn: () => { if (!updateDownloaded) throw new Error('请先下载安装包'); return installUpdate(updateDownloaded.updateId) },
   })
   const updateError = checkUpdateMutation.error || downloadUpdateMutation.error || installUpdateMutation.error
 

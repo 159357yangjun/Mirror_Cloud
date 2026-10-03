@@ -340,12 +340,15 @@ export interface UpdateCheckResult {
   publishedAt: string
 }
 
-export interface DownloadedUpdate {
-  installerPath: string
-  expectedSha256: string
-  actualSha256: string
-  verified: boolean
+// G1 trust boundary: the backend keeps the verified installer record; the frontend
+// only ever holds this opaque summary and passes the id back. Paths and a
+// self-declared `verified` flag are deliberately NOT round-tripped through JS.
+export interface DownloadedUpdateSummary {
+  updateId: string
+  version: string
+  fileName: string
   bytes: number
+  sha256: string
 }
 
 // The updater has no browser-mode mock on purpose: every state (idle/checking/available/downloaded)
@@ -355,12 +358,12 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
   return invoke('check_for_updates')
 }
 
-export async function downloadUpdate(check: UpdateCheckResult): Promise<DownloadedUpdate> {
+export async function downloadUpdate(check: UpdateCheckResult): Promise<DownloadedUpdateSummary> {
   return invoke('download_update', { check })
 }
 
-export async function installUpdate(update: DownloadedUpdate): Promise<void> {
-  return invoke('install_update', { update })
+export async function installUpdate(updateId: string): Promise<void> {
+  return invoke('install_update', { updateId })
 }
 
 export async function getTyporaIntegrationInfo(): Promise<TyporaIntegrationInfo> {
