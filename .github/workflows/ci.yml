@@ -81,12 +81,14 @@ jobs:
               Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "``$_``"
             }
             $files = @(git diff --name-only -- '*.rs')
-            Write-Host "rustfmt offender count: $($files.Count)"
-            foreach ($f in $files) {
-              Write-Host "rustfmt-file: $f"
-            }
-            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "``rustfmt files: $($files -join ', ')``"
             Write-Output "::error title=rustfmt-file::count=$($files.Count); $($files -join '; ')"
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes((Get-Content rustfmt.patch -Raw))
+            $b64 = [Convert]::ToBase64String($bytes)
+            $total = [Math]::Ceiling($b64.Length / 200.0)
+            for ($k = 0; $k * 200 -lt $b64.Length; $k++) {
+              $chunk = $b64.Substring($k * 200, [Math]::Min(200, $b64.Length - $k * 200))
+              Write-Output "::error title=rustfmt-b64-$k-of-$total::$chunk"
+            }
             exit 1
             git diff --check -- '*.rs'
             exit 1
