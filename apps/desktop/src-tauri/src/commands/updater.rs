@@ -20,8 +20,8 @@ pub struct UpdateCheckResult {
     pub published_at: String,
 }
 
-/// Strict-enough semver for this repo's tags: `v?MAJOR.MINOR.PATCH`, numeric only.
-/// Anything else compares as "unknown" and never claims an update.
+/// Strict-enough semver for this repo's tags: `v?MAJOR.MINOR.PATCH`,
+/// numeric only. Anything else compares as "unknown" and never claims an update.
 fn parse_version(raw: &str) -> Option<[u64; 3]> {
     let core = raw.trim().trim_start_matches('v');
     let mut parts = core.split('.');
@@ -128,13 +128,15 @@ pub struct DownloadedUpdate {
     pub bytes: u64,
 }
 
-/// 103 columns joined would be rustfmt-reformatted; ac54483's own green lines show the
-/// limit is width-after-joining, so this condition stays deliberately split.
+/// 103 columns joined would be rustfmt-reformatted; ac54483's own green
+/// lines show the limit is width-after-joining, so this condition stays
+/// deliberately split.
 fn parse_sums(text: &str, wanted_name: &str) -> Option<String> {
     for line in text.lines() {
         let mut fields = line.split_whitespace();
         if let (Some(hash), Some(name)) = (fields.next(), fields.next()) {
-            // Split form is what rustfmt 1.98 emits: joined this condition is 100 columns.
+            // Split form is what rustfmt 1.98 emits: joined this condition
+            // is 100 columns.
             if name == wanted_name
                 && hash.len() == 64
                 && hash.bytes().all(|b| b.is_ascii_hexdigit())
