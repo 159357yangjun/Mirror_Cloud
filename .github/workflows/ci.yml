@@ -131,7 +131,24 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Rust tests
-        run: cargo test --workspace --locked
+        id: rusttest
+        shell: pwsh
+        run: |
+          cargo test --workspace --locked 2>&1 | Tee-Object -FilePath rusttest.log
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host 'cargo test failed.'
+            $log = Get-Content rusttest.log
+            $i = ($log | Select-String -Pattern '^error|^test .* FAILED|panicked' | Select-Object -First 1).LineNumber
+            if ($i) {
+              $block = $log[($i - 1)..([Math]::Min($i + 9, $log.Count - 1))]
+              $escaped = ($block -join ' | ') -replace '%', '%25' -replace "`r", '' -replace "`n", ''
+              Write-Output "::error title=rusttest-first::$escaped"
+            } else {
+              $tail = ($log | Select-Object -Last 6) -join ' | '
+              Write-Output "::error title=rusttest-first::(no pattern matched; tail) $tail"
+            }
+            exit 1
+          }
       - name: Desktop build
         working-directory: apps/desktop
         run: |
