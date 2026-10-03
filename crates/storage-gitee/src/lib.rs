@@ -336,12 +336,7 @@ impl StorageProvider for GiteeStorage {
             .await
             .map_err(redact_network)?;
         if !user_response.status().is_success() {
-            return Err(Self::response_error(
-                &user_response,
-                "Gitee authenticated user check failed",
-                self.token(),
-            )
-            .await);
+            return Err(self.fail(&user_response, "Gitee authenticated user check failed").await);
         }
         let user: Value = user_response
             .json()
@@ -365,12 +360,9 @@ impl StorageProvider for GiteeStorage {
             .await
             .map_err(redact_network)?;
         if !permission_response.status().is_success() {
-            return Err(Self::response_error(
-                &permission_response,
-                "Gitee repository permission check failed",
-                self.token(),
-            )
-            .await);
+            let context = "Gitee repository permission check failed";
+            let err = self.fail(&permission_response, context).await;
+            return Err(err);
         }
         let permission_payload: Value = permission_response
             .json()
