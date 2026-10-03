@@ -292,9 +292,12 @@ impl StorageProvider for GiteeStorage {
             .await
             .map_err(|e| net_err(e, tok))?;
         if !repo_response.status().is_success() {
-            return Err(self
-                .fail(&repo_response, "Gitee repository check failed")
-                .await);
+            return Err(Self::response_error(
+                repo_response,
+                "Gitee repository check failed",
+                self.token(),
+            )
+            .await);
         }
         let repo: Value = repo_response.json().await.map_err(|e| prov_err(e, tok))?;
         let is_private = repo
@@ -323,9 +326,12 @@ impl StorageProvider for GiteeStorage {
             .await
             .map_err(|e| net_err(e, tok))?;
         if !branch_response.status().is_success() {
-            return Err(self
-                .fail(&branch_response, "Gitee branch check failed")
-                .await);
+            return Err(Self::response_error(
+                branch_response,
+                "Gitee branch check failed",
+                self.token(),
+            )
+            .await);
         }
 
         // Read the authenticated identity, then ask Gitee for that user's repository
@@ -339,9 +345,12 @@ impl StorageProvider for GiteeStorage {
             .await
             .map_err(|e| net_err(e, tok))?;
         if !user_response.status().is_success() {
-            return Err(self
-                .fail(&user_response, "Gitee authenticated user check failed")
-                .await);
+            return Err(Self::response_error(
+                user_response,
+                "Gitee authenticated user check failed",
+                self.token(),
+            )
+            .await);
         }
         let user: Value = user_response.json().await.map_err(|e| prov_err(e, tok))?;
         let username = user
@@ -361,7 +370,7 @@ impl StorageProvider for GiteeStorage {
             .map_err(|e| net_err(e, tok))?;
         if !permission_response.status().is_success() {
             let perm_ctx = "Gitee repository permission check failed";
-            let err = self.fail(&permission_response, perm_ctx).await;
+            let err = Self::response_error(permission_response, perm_ctx, self.token()).await;
             return Err(err);
         }
         let permission_payload: Value = permission_response
