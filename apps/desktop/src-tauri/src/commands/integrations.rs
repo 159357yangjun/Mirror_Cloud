@@ -301,10 +301,9 @@ fn sanitize_api_filename(value: &str) -> Result<String, String> {
 }
 
 async fn read_http_head(stream: &mut TcpStream) -> Result<HttpHead, String> {
-    let head = timeout(LOCAL_API_HEADER_READ_TIMEOUT, read_http_head_inner(stream))
+    timeout(LOCAL_API_HEADER_READ_TIMEOUT, read_http_head_inner(stream))
         .await
-        .map_err(|_| "HTTP header read timed out".to_string())?;
-    head
+        .map_err(|_| "HTTP header read timed out".to_string())?
 }
 
 async fn read_http_head_inner(stream: &mut TcpStream) -> Result<HttpHead, String> {
@@ -329,8 +328,7 @@ async fn read_http_head_inner(stream: &mut TcpStream) -> Result<HttpHead, String
 
     let header_text = std::str::from_utf8(&buffer[..header_end])
         .map_err(|_| "HTTP headers must be UTF-8/ASCII".to_string())?;
-    let mut lines = header_text.split("
-");
+    let mut lines = header_text.split("\r\n");
     let request_line = lines
         .next()
         .ok_or_else(|| "Missing HTTP request line".to_string())?;
