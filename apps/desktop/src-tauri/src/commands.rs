@@ -41,8 +41,8 @@ pub use plugins::*;
 pub use remote_index::*;
 pub use storage_entries::*;
 
-pub(crate) type CmdResult<T> = Result<T, String>;
-pub(crate) const OUTPUT_PREFERENCES_KEY: &str = "output.preferences";
+type CmdResult<T> = Result<T, String>;
+const OUTPUT_PREFERENCES_KEY: &str = "output.preferences";
 const DEFAULT_TARGET_KEY: &str = "publish.default_target";
 const SYSTEM_PIPELINE_SOURCE: &str = "__system_default__";
 const AI_SETTINGS_KEY: &str = "ai.provider";
