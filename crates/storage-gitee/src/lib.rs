@@ -291,7 +291,9 @@ impl StorageProvider for GiteeStorage {
             .await
             .map_err(|e| net_err(e, tok))?;
         if !repo_response.status().is_success() {
-            return Err(self.fail(&repo_response, "Gitee repository check failed").await);
+            return Err(self
+                .fail(&repo_response, "Gitee repository check failed")
+                .await);
         }
         let repo: Value = repo_response.json().await.map_err(|e| prov_err(e, tok))?;
         let is_private = repo
@@ -320,7 +322,9 @@ impl StorageProvider for GiteeStorage {
             .await
             .map_err(|e| net_err(e, tok))?;
         if !branch_response.status().is_success() {
-            return Err(self.fail(&branch_response, "Gitee branch check failed").await);
+            return Err(self
+                .fail(&branch_response, "Gitee branch check failed")
+                .await);
         }
 
         // Read the authenticated identity, then ask Gitee for that user's repository
@@ -334,7 +338,9 @@ impl StorageProvider for GiteeStorage {
             .await
             .map_err(|e| net_err(e, tok))?;
         if !user_response.status().is_success() {
-            return Err(self.fail(&user_response, "Gitee authenticated user check failed").await);
+            return Err(self
+                .fail(&user_response, "Gitee authenticated user check failed")
+                .await);
         }
         let user: Value = user_response.json().await.map_err(|e| prov_err(e, tok))?;
         let username = user
