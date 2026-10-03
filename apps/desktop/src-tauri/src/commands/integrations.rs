@@ -22,7 +22,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
     sync::{RwLock, Semaphore},
-    time::{timeout, Duration},
+    time::{Duration, timeout},
 };
 use uuid::Uuid;
 
