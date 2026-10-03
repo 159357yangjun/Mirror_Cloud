@@ -54,6 +54,12 @@ impl GiteeStorage {
         }
     }
 
+    /// `self`-capturing wrapper: passing `self.token()` into the associated
+    /// `response_error` pushes several call sites to rustfmt's 99-column edge.
+    async fn fail(&self, response: &Response, context: &str) -> StorageError {
+        Self::response_error(response, context, self.token()).await
+    }
+
     fn token(&self) -> &str {
         &self.credentials.token
     }
@@ -218,10 +224,8 @@ impl GiteeStorage {
             return Ok(None);
         }
         if !response.status().is_success() {
-            return Err(
-                Self::response_error(&response, "Gitee content lookup failed", self.token())
-                    .await,
-            );
+            let err = self.fail(&response, "Gitee content lookup failed").await;
+            return Err(err);
         }
         let payload: Value = response
             .json()
@@ -284,10 +288,8 @@ impl StorageProvider for GiteeStorage {
             .await
             .map_err(redact_network)?;
         if !repo_response.status().is_success() {
-            return Err(
-                Self::response_error(&repo_response, "Gitee repository check failed", self.token())
-                    .await,
-            );
+            let err = self.fail(&repo_response, "Gitee repository check failed").await;
+            return Err(err);
         }
         let repo: Value = repo_response
             .json()
@@ -319,10 +321,8 @@ impl StorageProvider for GiteeStorage {
             .await
             .map_err(redact_network)?;
         if !branch_response.status().is_success() {
-            return Err(
-                Self::response_error(&branch_response, "Gitee branch check failed", self.token())
-                    .await,
-            );
+            let err = self.fail(&branch_response, "Gitee branch check failed").await;
+            return Err(err);
         }
 
         // Read the authenticated identity, then ask Gitee for that user's repository
@@ -428,7 +428,7 @@ impl StorageProvider for GiteeStorage {
             .await
             .map_err(redact_network)?;
         if !response.status().is_success() {
-            return Err(Self::response_error(&response, "Gitee upload failed", self.token()).await);
+            return Err(self.fail(&response, "Gitee upload failed").await);
         }
         let body: Value = response
             .json()
@@ -491,10 +491,8 @@ impl StorageProvider for GiteeStorage {
             .await
             .map_err(redact_network)?;
         if !response.status().is_success() {
-            return Err(
-                Self::response_error(&response, "Gitee download failed", self.token())
-                    .await,
-            );
+            let err = self.fail(&response, "Gitee download failed").await;
+            return Err(err);
         }
         let payload: Value = response
             .json()
@@ -536,7 +534,7 @@ impl StorageProvider for GiteeStorage {
             .await
             .map_err(redact_network)?;
         if !response.status().is_success() {
-            return Err(Self::response_error(&response, "Gitee delete failed", self.token()).await);
+            return Err(self.fail(&response, "Gitee delete failed").await);
         }
         Ok(())
     }
@@ -556,7 +554,7 @@ impl StorageProvider for GiteeStorage {
             .await
             .map_err(redact_network)?;
         if !response.status().is_success() {
-            return Err(Self::response_error(&response, "Gitee browse failed", self.token()).await);
+            return Err(self.fail(&response, "Gitee browse failed").await);
         }
         let payload: Value = response
             .json()
