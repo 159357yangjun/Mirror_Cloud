@@ -492,6 +492,22 @@ require('mirror-updates' in updater and 'canonicalize' in updater and '.parent()
         'install canonicalizes and confines the installer path to the controlled directory')
 require('.or_else(|| outcomes.iter().find(|outcome| outcome.error.is_none()))' not in cli, 'CLI has no first-successful fallback pick')
 require('.error_for_status()' in updater and 'MAX_SETUP_BYTES' in updater, 'HTTP status is checked and a size ceiling exists')
+# Audit item D (2026-10-03): the local API must never read a body before the bearer
+# token passed, must time out stalled reads, and must cap concurrent connections.
+local_api = text('apps/desktop/src-tauri/src/commands/integrations.rs')
+head_at = local_api.index('async fn read_http_head(')
+body_at = local_api.index('async fn read_http_body(')
+auth_at = local_api.index('if !head.authorized(&expected)')
+body_call_at = local_api.index('let body = read_http_body(&mut stream, &head, max_body)')
+require(body_call_at > auth_at,
+        'handle_http_connection reads the body only after the bearer check passes (auth-before-body order)')
+require('LOCAL_API_HEADER_READ_TIMEOUT' in local_api and 'LOCAL_API_BODY_READ_TIMEOUT' in local_api and 'timeout(' in local_api,
+        'both header and body reads are wrapped in tokio timeouts')
+require('Semaphore::new(MAX_CONCURRENT_LOCAL_API_CONNECTIONS)' in local_api and 'try_acquire_owned' in local_api,
+        'the accept loop bounds concurrent connections with an owned-permit semaphore')
+require('MAX_JSON_BODY_BYTES' in local_api and '_ => 0,' in local_api,
+        'authenticated body ceilings are per-route; unknown paths get a zero budget')
+require('fn authorized(&self, expected: &str)' in local_api, 'the bearer comparison lives on HttpHead (headers only)')
 desktop_lib_upd = desktop
 require("invoke('check_for_updates')" in desktop_lib_upd and "invoke('download_update', { check })" in desktop_lib_upd and "invoke('install_update', { updateId })" in desktop_lib_upd, 'the frontend wires exactly the three updater commands, install passing only the opaque id')
 # Release-gate contract (docs/RELEASE_GATE_UPDATER.md, approved 2026-10-02): the state machine,

@@ -21,7 +21,8 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
-    sync::RwLock,
+    sync::{RwLock, Semaphore},
+    time::{timeout, Duration},
 };
 use uuid::Uuid;
 
@@ -39,6 +40,12 @@ const WINDOWS_CONTEXT_MENU_KEY: &str =
 const LOCAL_API_CREDENTIAL_KEY: &str = "integration:local-api-token";
 const MAX_HEADER_BYTES: usize = 64 * 1024;
 const MAX_BODY_BYTES: usize = 32 * 1024 * 1024;
+// Auth-before-body: unauthenticated callers never transfer a body at all.
+// After the token passes, each POST route still caps its own body size.
+const MAX_JSON_BODY_BYTES: usize = 64 * 1024;
+const MAX_CONCURRENT_LOCAL_API_CONNECTIONS: usize = 8;
+const LOCAL_API_HEADER_READ_TIMEOUT: Duration = Duration::from_secs(10);
+const LOCAL_API_BODY_READ_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -97,6 +104,14 @@ struct LocalPathUploadRequest {
     paths: Vec<String>,
 }
 
+struct HttpHead {
+    method: String,
+    path: String,
+    headers: HashMap<String, String>,
+    content_length: u64,
+    preamble: Vec<u8>,
+}
+
 struct HttpRequest {
     method: String,
     path: String,
@@ -134,6 +149,7 @@ pub fn start_local_http_api(
         };
         running.store(true, Ordering::Release);
         tracing::info!(%address, "local Publisher API listening");
+        let connections = Arc::new(Semaphore::new(MAX_CONCURRENT_LOCAL_API_CONNECTIONS));
 
         loop {
             let (stream, peer) = match listener.accept().await {
@@ -148,10 +164,18 @@ pub fn start_local_http_api(
             }
             let data_dir = data_dir.clone();
             let token = token.clone();
+            let permit = match connections.clone().try_acquire_owned() {
+                Ok(permit) => permit,
+                Err(_) => {
+                    tracing::warn!("local Publisher API at connection cap; dropping connection");
+                    continue;
+                }
+            };
             tauri::async_runtime::spawn(async move {
                 if let Err(error) = handle_http_connection(stream, data_dir, token).await {
                     tracing::warn!(%error, "local Publisher API request failed");
                 }
+                drop(permit);
             });
         }
     });
@@ -162,9 +186,10 @@ async fn handle_http_connection(
     data_dir: PathBuf,
     token: Arc<RwLock<String>>,
 ) -> Result<(), String> {
-    let request = read_http_request(&mut stream).await?;
+    // Auth-before-body: only headers are read until the caller has proven itself.
+    let head = read_http_head(&mut stream).await?;
 
-    if request.method == "GET" && request.path == "/health" {
+    if head.method == "GET" && head.path == "/health" {
         return write_json_response(
             &mut stream,
             200,
@@ -173,18 +198,26 @@ async fn handle_http_connection(
         .await;
     }
 
-    if request.method != "POST" {
+    if head.method != "POST" {
         return write_json_response(&mut stream, 405, json!({"error": "method_not_allowed"})).await;
     }
 
     let expected = token.read().await.clone();
-    let authorized = request
-        .headers
-        .get("authorization")
-        .is_some_and(|value| value == &format!("Bearer {expected}"));
-    if !authorized {
+    if !head.authorized(&expected) {
         return write_json_response(&mut stream, 401, json!({"error": "unauthorized"})).await;
     }
+    let max_body = match head.path.as_str() {
+        "/v1/upload-paths" => MAX_JSON_BODY_BYTES,
+        "/v1/upload" => MAX_BODY_BYTES,
+        _ => 0,
+    };
+    let body = read_http_body(&mut stream, &head, max_body).await?;
+    let request = HttpRequest {
+        method: head.method,
+        path: head.path,
+        headers: head.headers,
+        body,
+    };
 
     match request.path.as_str() {
         "/v1/upload-paths" => {
@@ -267,7 +300,14 @@ fn sanitize_api_filename(value: &str) -> Result<String, String> {
     Ok(sanitized)
 }
 
-async fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String> {
+async fn read_http_head(stream: &mut TcpStream) -> Result<HttpHead, String> {
+    let head = timeout(LOCAL_API_HEADER_READ_TIMEOUT, read_http_head_inner(stream))
+        .await
+        .map_err(|_| "HTTP header read timed out".to_string())?;
+    head
+}
+
+async fn read_http_head_inner(stream: &mut TcpStream) -> Result<HttpHead, String> {
     let mut buffer = Vec::<u8>::with_capacity(8192);
     let header_end = loop {
         if buffer.len() > MAX_HEADER_BYTES {
@@ -289,7 +329,8 @@ async fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String
 
     let header_text = std::str::from_utf8(&buffer[..header_end])
         .map_err(|_| "HTTP headers must be UTF-8/ASCII".to_string())?;
-    let mut lines = header_text.split("\r\n");
+    let mut lines = header_text.split("
+");
     let request_line = lines
         .next()
         .ok_or_else(|| "Missing HTTP request line".to_string())?;
@@ -309,41 +350,64 @@ async fn read_http_request(stream: &mut TcpStream) -> Result<HttpRequest, String
         .get("content-length")
         .map(|value| {
             value
-                .parse::<usize>()
+                .trim()
+                .parse::<u64>()
                 .map_err(|_| "Invalid Content-Length".to_string())
         })
         .transpose()?
         .unwrap_or(0);
-    if content_length > MAX_BODY_BYTES {
-        return Err("HTTP request body exceeds 32 MB".into());
-    }
 
-    let body_start = header_end + 4;
-    let mut body = if buffer.len() > body_start {
-        buffer[body_start..].to_vec()
-    } else {
-        Vec::new()
-    };
-    while body.len() < content_length {
-        let remaining = content_length - body.len();
-        let mut chunk = vec![0u8; remaining.min(8192)];
-        let read = stream
-            .read(&mut chunk)
-            .await
-            .map_err(|error| error.to_string())?;
-        if read == 0 {
-            return Err("HTTP client closed before body completed".into());
-        }
-        body.extend_from_slice(&chunk[..read]);
-    }
-    body.truncate(content_length);
-
-    Ok(HttpRequest {
+    Ok(HttpHead {
         method,
         path,
         headers,
-        body,
+        content_length,
+        preamble: buffer[header_end + 4..].to_vec(),
     })
+}
+
+async fn read_http_body(
+    stream: &mut TcpStream,
+    head: &HttpHead,
+    max_body: usize,
+) -> Result<Vec<u8>, String> {
+    if head.content_length > max_body as u64 {
+        return Err(format!(
+            "HTTP request body exceeds the {} byte limit for this caller",
+            max_body
+        ));
+    }
+    let want = head.content_length as usize;
+    let collect = async {
+        let mut body = head.preamble.clone();
+        if body.len() > want {
+            return Err("more body bytes arrived than Content-Length promised".to_string());
+        }
+        while body.len() < want {
+            let remaining = want - body.len();
+            let mut chunk = vec![0u8; remaining.min(8192)];
+            let read = stream
+                .read(&mut chunk)
+                .await
+                .map_err(|error| error.to_string())?;
+            if read == 0 {
+                return Err("HTTP client closed before body completed".into());
+            }
+            body.extend_from_slice(&chunk[..read]);
+        }
+        Ok(body)
+    };
+    timeout(LOCAL_API_BODY_READ_TIMEOUT, collect)
+        .await
+        .map_err(|_| "HTTP body read timed out".to_string())?
+}
+
+impl HttpHead {
+    fn authorized(&self, expected: &str) -> bool {
+        self.headers
+            .get("authorization")
+            .is_some_and(|value| value == &format!("Bearer {expected}"))
+    }
 }
 
 fn find_header_end(buffer: &[u8]) -> Option<usize> {
