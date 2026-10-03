@@ -30,7 +30,7 @@ pub struct GiteeCredentials {
 /// `access_token` in the query string, so a raw `e.to_string()` would leak the
 /// credential into task records, toasts and diagnostics. Strip the URL (reqwest's
 /// own `without_url`) and redact any token echoed inside the message text.
-fn safe_ctx(error: &reqwest::Error, token: &str) -> String {
+fn safe_ctx(error: reqwest::Error, token: &str) -> String {
     let message = error.without_url().to_string();
     if message.is_empty() {
         return message;
@@ -43,11 +43,11 @@ fn safe_ctx(error: &reqwest::Error, token: &str) -> String {
 }
 
 fn net_err(error: reqwest::Error, token: &str) -> StorageError {
-    StorageError::Network(safe_ctx(&error, token))
+    StorageError::Network(safe_ctx(error, token))
 }
 
 fn prov_err(error: reqwest::Error, token: &str) -> StorageError {
-    StorageError::Provider(safe_ctx(&error, token))
+    StorageError::Provider(safe_ctx(error, token))
 }
 
 pub struct GiteeStorage {
@@ -597,9 +597,13 @@ mod tests {
             ))
             .build()
             .unwrap_err();
-        let message = safe_ctx(&error, token);
+        let error_again = reqwest::Client::new()
+            .get(format!("https://gitee.com/api/v5/user?access_token={token}"))
+            .build()
+            .unwrap_err();
+        let message = safe_ctx(error, token);
         assert!(!message.contains(token), "redaction leaked: {message}");
-        let passthrough = safe_ctx(&error, "");
+        let passthrough = safe_ctx(error_again, "");
         assert!(passthrough.contains(token) || !passthrough.contains("access_token"));
     }
 
