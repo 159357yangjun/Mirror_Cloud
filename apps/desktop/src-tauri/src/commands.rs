@@ -33,10 +33,10 @@ use workflow_engine::prepare_asset;
 use crate::AppState;
 
 pub(crate) mod integrations;
-pub(crate) mod updater;
 pub(crate) mod plugins;
 pub(crate) mod remote_index;
 pub(crate) mod storage_entries;
+pub(crate) mod updater;
 pub use plugins::*;
 pub use remote_index::*;
 pub use storage_entries::*;
