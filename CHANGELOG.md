@@ -184,7 +184,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | `scripts/verify_probes.mjs`（三段页面侧探针，纯字符串导出、零控制流） | 770 | 47,295 | `5c4466e2c831de43b533063e19127d934e0b70747e9eb3459570ce63d827b8b7` | 被 harness 的三个 evaluate 直接消费；本模块自身不含可执行逻辑 |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
 | `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,887 | `e6e9b182585b7ece6b8811d06ab67412d90f6c23a7404633c8a22c91590b6fc1` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
-| `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 904 | 72,971 | `65dca79056884d5b79b358e85bcd13adb5904d3b5b7db3c2a6383ee1713d5271` | `USERFLOW_CHECKS total=222 failed=0`（落盘后；未提交时它必然报 10 条"HEAD blob 里没有这个文件"，见本节末） | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16 M19 M20` |
+| `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 918 | 74,268 | `f91c1a99a03d928282845c4cc3ee6bef264f8a7638b714f9d3ee48b8bdedee6f` | `USERFLOW_CHECKS total=222 failed=0`（落盘后；未提交时它必然报 10 条"HEAD blob 里没有这个文件"，见本节末） | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16 M19 M20` |
 | `scripts/theme_token_census.mjs`（主题 token 普查 + 口径断言：族内声明方式必须一致） | 148 | 8,483 | `4fd961d1cb1fea90d46a879c9db8c1561ddbcded15733bddfaecbcf4b82e2968` | `TOKEN_POLICY_SELFTEST cases=5 failed=0` + `TOKEN_POLICY families=13 breaches=0` | 立口径那一轮它当场咬到 `--accent-solid`（exit 1）；把 `--accent-solid` 从 :root 删掉再 `--verify` 就会重新红 |
 | `scripts/__fixtures__/hanging_stage.mjs`（永不结束的假 stage，自己再 spawn 一个孙进程：`timeout-demo` 的靶子） | 20 | 1,155 | `16d702ee2dda998f2e7538d739f82d61656b075194ada2cb87fa014a80cf509a` | 只被 `verify_all.mjs timeout-demo` 生成，没有任何门读它 | `node scripts/verify_all.mjs timeout-demo`（六例，含"不调 taskkill 也不留孤儿"的消融与"正常结束不得报成 timeout"的负对照） |
 | `scripts/verify_modes.mjs`（模式名单 + 锚定的 dispatch 正则，纯数据、零控制流；runner 与 shape 台账读同一份） | 36 | 1,449 | `0b250811609418512489e3de9ffb70c1dbe24c7adc2d0b6cfe8da739bc6c2f87` | 每次启动三方核对：声明↔已派发用法块已文档化（15 个模式） | `node scripts/verify_guard_mutations.mjs M24`（把启动拒绝拔掉的变异，必须仍红） |
@@ -2070,6 +2070,19 @@ Release 资产原地刷新，setup.exe 三方对账一致（`68d3fa2f…`，msi/
 **注意**：这台机现在处于"未安装"状态（矩阵需要干净基线），直链在下面重报给用户。
 过程小坑两条如实记：settings 真表名是 `app_settings`/列 `value_json`（第一次 INSERT 撞 no-such-table）；
 cmd //c 吃带空格路径又翻车一次，改 PowerShell Start-Process 即好。
+
+### 21. 更新功能发布门禁 G0–G5 定稿 + rustfmt 归因反转三次收口（2026-10-02）
+
+**图标换装**：终选深海青水晶云（z6），裁水印→tauri icon→icons/ 50 文件替换，两笔（`70cd60e`+误提交预览图的`69e44bf`）。32px 实况可辨；任务栏观感留用户真机验收。
+
+**rustfmt 归因链（如实记三次反转）**：① "宽度判据"被 v1.4.5 绿色包内 60+ 条 >99 列的行推翻（那些全是字符串/注释，rustfmt 不动它们——此反驳过头一半，收回）；② run#29 step[8] 耗时 8m41s ⇒ 当时断言"红在 check/test 不在 fmt"，**未经日志证实**（未认证日志端点 404），维持 unknown；③ 外部审计贴出 CI #180 的 rustfmt diff 原文才定案：offender = parse_sums 条件（join 后恰 100 列）+ 三条 >90 列注释。修于 `838627d`（两处代码）与 `38d99ca`（注释重折行）。**规矩：本机无 cargo 时以 CI diff 原文为判据，不猜列数。**
+
+**tag 纪律事故入档**：v1.4.6 tag 本轮被 force-move 五次当测试触发器（b5cfec2/dd3d1aa/013cb3a/7614a0a/262a70d）。用户与外部会话定稿新规矩并批准为固定门禁：**RC 不用正式 tag**；tag 只在保真矩阵全绿后创建一次、不可变。当前远端 tag 停在 `262a70d`（失败候选），按新规不再挪动——G0 恢复后走 workflow_dispatch 出 RC。
+
+**G0–G5 状态机**（全文 `docs/RELEASE_GATE_UPDATER.md`，锚点由 check_user_flow 看护，门 262→267）：
+G0 dev 全绿 → G1 P0-4 信任边界（Rust 自持 PendingUpdate{version, canonical_path, expected_sha256, bytes}，前端只拿 opaque id；install 前 canonicalize+目录约束+重算 SHA256；**禁止前端传 verified/path 作安全证明**）→ G2 无 tag RC 构建 → G3 真机升级 E2E＝十行保真矩阵（版本/SQLite/Storage/token/默认目标/Typora bridge/主题/资源索引/插件配置/新传一图；版本号变了≠通过）→ G4 不可变 tag → G5 Release 成功——之后"应用内安全自更新"才许写进卖点。
+
+**竞品定性修正（用户校正为准绳）**：PicGo/PicList **有**检查更新+提醒（PicGo 开发分支明写 temporarily disable auto update＝主动不做），差异点只能是"Windows 单一发行面的完整闭环"，且 G5 前一律描述"开发/验证中"，禁写"更安全/更先进/领先"。固定约束：**不因竞品没做完整自动更新而推导镜云更先进**。
 
 ## 1.4.5 - Legible Read-Failure Panels and Measured Contrast Floors
 

@@ -473,6 +473,20 @@ require('if !update.verified || update.expected_sha256 != update.actual_sha256' 
 require('.error_for_status()' in updater and 'MAX_SETUP_BYTES' in updater, 'HTTP status is checked and a size ceiling exists')
 desktop_lib_upd = desktop
 require("invoke('check_for_updates')" in desktop_lib_upd and "invoke('download_update', { check })" in desktop_lib_upd and "invoke('install_update', { update })" in desktop_lib_upd, 'the frontend wires exactly the three updater commands')
+# Release-gate contract (docs/RELEASE_GATE_UPDATER.md, approved 2026-10-02): the state machine,
+# the G1 trust-boundary shape, the tag discipline and the competitor-wording rule must stay on the
+# books until G5 retires them. Anchors are count==1 so a restructure trips the gate instead of
+# silently orphaning it. When G1 lands, the interim assertion below flips to the real predicate:
+# install_update must take an opaque id and recompute SHA256 backend-side (PendingUpdate), never a
+# frontend-supplied path/verified pair.
+gate_doc = text('docs/RELEASE_GATE_UPDATER.md')
+for anchor in ('## G1 验收标准', '## G3 保真矩阵', '## Tag 纪律', '## 竞品表述准绳'):
+    require(gate_doc.count(anchor) == 1, f'release-gate doc has exactly one "{anchor}" section')
+require('RC 不使用正式版本 tag' in gate_doc, 'tag discipline states RCs never consume release tags')
+require('开发 / 验证中' in gate_doc and '领先 PicList' in gate_doc, 'competitor-wording ceiling is recorded until G5')
+interim = 'if !update.verified || update.expected_sha256 != update.actual_sha256'
+require(interim in updater or ('PendingUpdate' in updater and 'canonicalize' in updater.lower()),
+        'updater keeps either the interim verified-flag guard or the G1 PendingUpdate+canonicalize boundary')
 
 
 # Shipped 2026-10-02 and caught by the user, not by any gate: the installed Mirror Cloud v1.4.5
