@@ -168,11 +168,7 @@ impl GiteeStorage {
         Ok(url.to_string())
     }
 
-    async fn response_error(
-        response: &Response,
-        context: &str,
-        token: &str,
-    ) -> StorageError {
+    async fn response_error(response: &Response, context: &str, token: &str) -> StorageError {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
         let message = serde_json::from_str::<Value>(&body)
@@ -206,12 +202,8 @@ impl GiteeStorage {
     }
 
     async fn existing_sha(&self, repository_path: &str) -> Result<Option<String>, StorageError> {
-        let redact_network = |e: reqwest::Error| {
-            StorageError::Network(Self::safe_ctx(&e, self.token()))
-        };
-        let redact_provider = |e: reqwest::Error| {
-            StorageError::Provider(Self::safe_ctx(&e, self.token()))
-        };
+        let redact_network = |e| StorageError::Network(Self::safe_ctx(&e, self.token()));
+        let redact_provider = |e| StorageError::Provider(Self::safe_ctx(&e, self.token()));
         let response = self
             .client
             .get(self.contents_url(repository_path)?)
@@ -282,12 +274,8 @@ impl StorageProvider for GiteeStorage {
     }
 
     async fn test_connection(&self) -> Result<ConnectionReport, StorageError> {
-        let redact_network = |e: reqwest::Error| {
-            StorageError::Network(Self::safe_ctx(&e, self.token()))
-        };
-        let redact_provider = |e: reqwest::Error| {
-            StorageError::Provider(Self::safe_ctx(&e, self.token()))
-        };
+        let redact_network = |e| StorageError::Network(Self::safe_ctx(&e, self.token()));
+        let redact_provider = |e| StorageError::Provider(Self::safe_ctx(&e, self.token()));
         let repo_response = self
             .client
             .get(self.repo_url()?)
@@ -414,12 +402,8 @@ impl StorageProvider for GiteeStorage {
     }
 
     async fn upload(&self, request: UploadRequest) -> Result<UploadResult, StorageError> {
-        let redact_network = |e: reqwest::Error| {
-            StorageError::Network(Self::safe_ctx(&e, self.token()))
-        };
-        let redact_provider = |e: reqwest::Error| {
-            StorageError::Provider(Self::safe_ctx(&e, self.token()))
-        };
+        let redact_network = |e| StorageError::Network(Self::safe_ctx(&e, self.token()));
+        let redact_provider = |e| StorageError::Provider(Self::safe_ctx(&e, self.token()));
         let logical_path = request.path.clone();
         let repository_path = self.repository_path(&logical_path);
         let existing_sha = self.existing_sha(&repository_path).await?;
@@ -493,12 +477,8 @@ impl StorageProvider for GiteeStorage {
     }
 
     async fn download(&self, path: &str) -> Result<bytes::Bytes, StorageError> {
-        let redact_network = |e: reqwest::Error| {
-            StorageError::Network(Self::safe_ctx(&e, self.token()))
-        };
-        let redact_provider = |e: reqwest::Error| {
-            StorageError::Provider(Self::safe_ctx(&e, self.token()))
-        };
+        let redact_network = |e| StorageError::Network(Self::safe_ctx(&e, self.token()));
+        let redact_provider = |e| StorageError::Provider(Self::safe_ctx(&e, self.token()));
         let repository_path = self.repository_path(path);
         let response = self
             .client
@@ -537,9 +517,7 @@ impl StorageProvider for GiteeStorage {
     }
 
     async fn delete(&self, path: &str) -> Result<(), StorageError> {
-        let redact_network = |e: reqwest::Error| {
-            StorageError::Network(Self::safe_ctx(&e, self.token()))
-        };
+        let redact_network = |e| StorageError::Network(Self::safe_ctx(&e, self.token()));
         let repository_path = self.repository_path(path);
         let Some(sha) = self.existing_sha(&repository_path).await? else {
             return Ok(());
@@ -564,12 +542,8 @@ impl StorageProvider for GiteeStorage {
     }
 
     async fn list(&self, path: &str) -> Result<Vec<StorageEntry>, StorageError> {
-        let redact_network = |e: reqwest::Error| {
-            StorageError::Network(Self::safe_ctx(&e, self.token()))
-        };
-        let redact_provider = |e: reqwest::Error| {
-            StorageError::Provider(Self::safe_ctx(&e, self.token()))
-        };
+        let redact_network = |e| StorageError::Network(Self::safe_ctx(&e, self.token()));
+        let redact_provider = |e| StorageError::Provider(Self::safe_ctx(&e, self.token()));
         let repository_path = self.repository_path(path);
         let response = self
             .client

@@ -74,6 +74,11 @@ jobs:
           git diff -- '*.rs' | Out-File -Encoding utf8 rustfmt.patch
           if ((Get-Item rustfmt.patch).Length -gt 3) {
             Write-Host 'rustfmt changed tracked Rust files. See the rustfmt-diff artifact.'
+            # The artifact endpoint needs auth; mirror the first hunks into a public
+            # annotation so unattended runs can self-diagnose (same channel as rustcheck).
+            $patch = (Get-Content rustfmt.patch -Raw) -replace '%', '%25' -replace "`r", ''
+            $head = $patch.Substring(0, [Math]::Min(700, $patch.Length))
+            Write-Output "::error::rustfmt: $head"
             git diff --check -- '*.rs'
             exit 1
           }
