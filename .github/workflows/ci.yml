@@ -138,7 +138,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             Write-Host 'cargo test failed.'
             $log = Get-Content rusttest.log
-            $i = ($log | Select-String -Pattern '^error|^test .* FAILED|panicked' | Select-Object -First 1).LineNumber
+            $i = ($log | Select-String -Pattern 'FAILED\]|^error\[|^error\[E|panicked at' | Select-Object -First 1).LineNumber
             if ($i) {
               $block = $log[($i - 1)..([Math]::Min($i + 9, $log.Count - 1))]
               $escaped = ($block -join ' | ') -replace '%', '%25' -replace "`r", '' -replace "`n", ''
