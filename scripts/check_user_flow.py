@@ -139,7 +139,7 @@ require('PluginPermission::ExternalWrite' in plugin_runtime, 'webhook requires e
 # S3/R2/OSS/COS custom endpoints. The backend is the final gate; the UI mirrors it.
 plugin_lib = text('crates/plugin-runtime/src/lib.rs')
 commands_src = commands
-require('pub fn require_https_or_loopback' in plugin_lib and 'is_some_and(std::net::IpAddr::is_loopback)' in plugin_lib,
+require('pub fn require_https_or_loopback' in plugin_lib and '.is_ok_and(|address| address.is_loopback())' in plugin_lib,
         'plugin-runtime owns require_https_or_loopback with an IpAddr loopback check (not a prefix string test)')
 require(plugin_lib.count('require_https_or_loopback(value)') >= 1 and 'fn http_endpoint' in plugin_lib,
         'http_endpoint (webhook + AI baseUrl) routes through the policy before any request is sent')
