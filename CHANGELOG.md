@@ -2084,6 +2084,13 @@ G0 dev 全绿 → G1 P0-4 信任边界（Rust 自持 PendingUpdate{version, cano
 
 **竞品定性修正（用户校正为准绳）**：PicGo/PicList **有**检查更新+提醒（PicGo 开发分支明写 temporarily disable auto update＝主动不做），差异点只能是"Windows 单一发行面的完整闭环"，且 G5 前一律描述"开发/验证中"，禁写"更安全/更先进/领先"。固定约束：**不因竞品没做完整自动更新而推导镜云更先进**。
 
+### 22. 证据优先原则定稿：六轮猜测的真凶是一个 derive（2026-10-02 深夜，run#194–#198）
+
+**事实链**：#184–#190 五轮"Rust format"红期间我做的宽度/链形/注释折行假设全部作废（反例都在绿色 commands.rs 里）。#193 artifact（外部会话取到）确认 rustfmt 只剩两处 → `943553d` 照抄后 **#194 的 step[15] Rust format 首绿**，红点后移到 step[17] cargo check。给 CI 装自证通道两笔（`7d53041` rustcheck-log artifact + `4c2f3eb` 公开 annotation 回显），#197 第一次送达编译器原话：**E0277 CommandArg 不满足 @ updater.rs:238 = `DownloadedUpdate` 缺 `Deserialize`**（install_update 吃前端回传对象必须可反序列化）。修复 `757d5f4`，run#198 在验。
+**过程账（如实）**：`cdc6616` 把 CmdResult 降回私有、`d20629b` 又恢复——两轮都是无证据动作，最终树与 v1.4.6 bump 一致，但各消耗一次 CI。中途还误判过"pub(crate) 抬级是多余的"——它恰是 #[tauri::command] 对外签名所需。
+**沉淀规则（用户批准，写入本仓协作纪律）**：CI 红 ⇒ **先读一手诊断（annotation/compiler error/artifact），只有证据不足才允许假设；禁止沿同一假设连续多轮盲改**。顺序固定：读证据 → 锁第一错误 → 最小修复 → 复验。本次事故的正解路径本来只要两步：#194 起红已不在 fmt，早一天装 annotation 通道就早一天结案。
+**副产品（保留，非本轮验收项）**：ci.yml 的两条失败自证通道从此常驻——rustfmt 有 patch artifact，cargo check 有 log artifact + 公开 annotation（取首个 `^error` 起 9 行，GBK 无关、annotations API 无认证可读）。
+
 ## 1.4.5 - Legible Read-Failure Panels and Measured Contrast Floors
 
 自 `v1.4.4` 起 115 笔提交（09-29 43 / 09-30 54 / 10-01 18）。改到 `apps/desktop/src` 的只有 8 笔；
