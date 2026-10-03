@@ -131,7 +131,7 @@ pub async fn check_for_updates(app: tauri::AppHandle) -> CmdResult<UpdateCheckRe
     })
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DownloadedUpdate {
     pub installer_path: String,
