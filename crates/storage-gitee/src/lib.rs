@@ -228,10 +228,12 @@ impl GiteeStorage {
             return Ok(None);
         }
         if !response.status().is_success() {
-            return Err(
-                Self::response_error(response, "Gitee content lookup failed", self.token())
-                    .await,
-            );
+            return Err(Self::response_error(
+                response,
+                "Gitee content lookup failed",
+                self.token(),
+            )
+            .await);
         }
         let payload: Value = response.json().await.map_err(|e| prov_err(e, tok))?;
         Ok(payload
@@ -417,10 +419,7 @@ impl StorageProvider for GiteeStorage {
             .await
             .map_err(|e| net_err(e, tok))?;
         if !response.status().is_success() {
-            return Err(
-                Self::response_error(response, "Gitee upload failed", self.token())
-                    .await,
-            );
+            return Err(Self::response_error(response, "Gitee upload failed", self.token()).await);
         }
         let body: Value = response.json().await.map_err(|e| prov_err(e, tok))?;
         let response_sha = body
@@ -521,10 +520,7 @@ impl StorageProvider for GiteeStorage {
             .await
             .map_err(|e| net_err(e, tok))?;
         if !response.status().is_success() {
-            return Err(
-                Self::response_error(response, "Gitee delete failed", self.token())
-                    .await,
-            );
+            return Err(Self::response_error(response, "Gitee delete failed", self.token()).await);
         }
         Ok(())
     }
@@ -543,10 +539,7 @@ impl StorageProvider for GiteeStorage {
             .await
             .map_err(|e| net_err(e, tok))?;
         if !response.status().is_success() {
-            return Err(
-                Self::response_error(response, "Gitee browse failed", self.token())
-                    .await,
-            );
+            return Err(Self::response_error(response, "Gitee browse failed", self.token()).await);
         }
         let payload: Value = response.json().await.map_err(|e| prov_err(e, tok))?;
         let values: Vec<&Value> = match payload.as_array() {
