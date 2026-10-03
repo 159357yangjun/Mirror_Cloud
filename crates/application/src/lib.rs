@@ -70,9 +70,10 @@ impl PublisherCore {
     /// (outcomes are ordered primary → mirrors → backups-by-priority). A Mirror
     /// never takes over the main URL — replicas are not failover targets.
     pub fn select_public_url(outcomes: &[PublishOutcome]) -> Option<String> {
-        if let Some(primary) = outcomes.iter().find(|outcome| {
-            outcome.role == DeploymentRole::Primary && outcome.error.is_none()
-        }) {
+        if let Some(primary) = outcomes
+            .iter()
+            .find(|outcome| outcome.role == DeploymentRole::Primary && outcome.error.is_none())
+        {
             return primary.public_url.clone();
         }
         outcomes

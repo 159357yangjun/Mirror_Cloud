@@ -2480,7 +2480,12 @@ async fn run_workflow_publish_task(
                 .failures
                 .push(format!("插件结果保存失败：{error}"));
         }
-        emit_asset_published(&app, &asset.name, published_url.as_deref(), &plugin_run.outputs);
+        emit_asset_published(
+            &app,
+            &asset.name,
+            published_url.as_deref(),
+            &plugin_run.outputs,
+        );
         let mut plugin_failures = plugin_run.failures;
         plugin_failures.extend(before_process.failures);
         plugin_failures.extend(after_process.failures);
