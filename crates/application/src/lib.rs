@@ -113,6 +113,11 @@ impl PublisherCore {
                     remote_path.clone(),
                     mime_type.clone(),
                 );
+                // The backup lane's async block moves its captures, so hand it owned
+                // clones; the mirror closures below borrow theirs instead.
+                let backup_bytes = bytes.clone();
+                let backup_path = remote_path.clone();
+                let backup_mime = mime_type.clone();
                 let mirror_futures = mirror_members.into_iter().map(|member| {
                     Self::upload_member(
                         member,
@@ -126,9 +131,9 @@ impl PublisherCore {
                     for backup in backup_members {
                         let outcome = Self::upload_member(
                             backup,
-                            bytes.clone(),
-                            remote_path.clone(),
-                            mime_type.clone(),
+                            backup_bytes.clone(),
+                            backup_path.clone(),
+                            backup_mime.clone(),
                         )
                         .await;
                         let succeeded = outcome.error.is_none();

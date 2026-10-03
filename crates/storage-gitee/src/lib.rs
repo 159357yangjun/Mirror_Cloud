@@ -42,11 +42,11 @@ fn safe_ctx(error: &reqwest::Error, token: &str) -> String {
     }
 }
 
-fn net_err(token: &str) -> impl FnMut(reqwest::Error) -> StorageError + use {
+fn net_err(token: &str) -> impl FnMut(reqwest::Error) -> StorageError + '_ {
     move |error| StorageError::Network(safe_ctx(&error, token))
 }
 
-fn prov_err(token: &str) -> impl FnMut(reqwest::Error) -> StorageError + use {
+fn prov_err(token: &str) -> impl FnMut(reqwest::Error) -> StorageError + '_ {
     move |error| StorageError::Provider(safe_ctx(&error, token))
 }
 
