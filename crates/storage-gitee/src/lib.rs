@@ -30,16 +30,16 @@ pub struct GiteeCredentials {
 /// `access_token` in the query string, so a raw `e.to_string()` would leak the
 /// credential into task records, toasts and diagnostics. Strip the URL (reqwest's
 /// own `without_url`) and redact any token echoed inside the message text.
-fn safe_ctx(error: reqwest::Error, token: &str) -> String {
-    let message = error.without_url().to_string();
-    if message.is_empty() {
-        return message;
-    }
+fn redact(message: &str, token: &str) -> String {
     if token.is_empty() {
-        message
+        message.to_string()
     } else {
         message.replace(token, "[redacted]")
     }
+}
+
+fn safe_ctx(error: reqwest::Error, token: &str) -> String {
+    redact(&error.without_url().to_string(), token)
 }
 
 fn net_err(error: reqwest::Error, token: &str) -> StorageError {
@@ -200,11 +200,7 @@ impl GiteeStorage {
                 }
             });
         // Gitee sometimes echoes the requested URL (token included) inside error bodies.
-        let message = if token.is_empty() {
-            message
-        } else {
-            message.replace(token, "[redacted]")
-        };
+        let message = redact(&message, token);
         if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
             StorageError::Authentication(format!("{context}: {message}"))
         } else {
@@ -588,25 +584,13 @@ mod tests {
     }
 
     #[test]
-    fn safe_ctx_redacts_token_and_empty_token_passes_text_through() {
-        // A reqwest error built from a URL carrying the token must never echo it back.
+    fn redact_hides_the_token_and_empty_token_passes_text_through() {
         let token = "secret-token-abc";
-        let error = reqwest::Client::new()
-            .get(format!(
-                "https://gitee.com/api/v5/user?access_token={token}"
-            ))
-            .build()
-            .unwrap_err();
-        let error_again = reqwest::Client::new()
-            .get(format!(
-                "https://gitee.com/api/v5/user?access_token={token}"
-            ))
-            .build()
-            .unwrap_err();
-        let message = safe_ctx(error, token);
-        assert!(!message.contains(token), "redaction leaked: {message}");
-        let passthrough = safe_ctx(error_again, "");
-        assert!(passthrough.contains(token) || !passthrough.contains("access_token"));
+        let echoed = format!("failed calling https://gitee.com/x?access_token={token}");
+        let hidden = redact(&echoed, token);
+        assert!(!hidden.contains(token), "redaction leaked: {hidden}");
+        assert!(hidden.contains("[redacted]"));
+        assert_eq!(redact(&echoed, ""), echoed);
     }
 
     #[test]
