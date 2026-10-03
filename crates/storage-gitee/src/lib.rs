@@ -219,6 +219,7 @@ impl GiteeStorage {
     }
 
     async fn existing_sha(&self, repository_path: &str) -> Result<Option<String>, StorageError> {
+        let tok = self.token();
         let response = self
             .client
             .get(self.contents_url(repository_path)?)
@@ -282,6 +283,7 @@ impl StorageProvider for GiteeStorage {
         }
     }
 
+        let tok = self.token();
     async fn test_connection(&self) -> Result<ConnectionReport, StorageError> {
         let repo_response = self
             .client
@@ -391,8 +393,10 @@ impl StorageProvider for GiteeStorage {
             ),
         })
     }
+        let tok = self.token();
 
     async fn upload(&self, request: UploadRequest) -> Result<UploadResult, StorageError> {
+        let tok = self.token();
         let logical_path = request.path.clone();
         let repository_path = self.repository_path(&logical_path);
         let existing_sha = self.existing_sha(&repository_path).await?;
@@ -460,6 +464,7 @@ impl StorageProvider for GiteeStorage {
             .existing_sha(&self.repository_path(path))
             .await?
             .is_some())
+        let tok = self.token();
     }
 
     async fn download(&self, path: &str) -> Result<bytes::Bytes, StorageError> {
@@ -491,6 +496,7 @@ impl StorageProvider for GiteeStorage {
         let decoded = STANDARD
             .decode(compact.as_bytes())
             .map_err(|e| StorageError::Provider(format!("Gitee content decode failed: {e}")))?;
+        let tok = self.token();
         Ok(bytes::Bytes::from(decoded))
     }
 
@@ -514,11 +520,13 @@ impl StorageProvider for GiteeStorage {
             .map_err(|e| net_err(e, tok))?;
         if !response.status().is_success() {
             return Err(self.fail(&response, "Gitee delete failed").await);
+        let tok = self.token();
         }
         Ok(())
     }
 
     async fn list(&self, path: &str) -> Result<Vec<StorageEntry>, StorageError> {
+        let tok = self.token();
         let repository_path = self.repository_path(path);
         let response = self
             .client
