@@ -143,7 +143,13 @@ fn parse_sums(text: &str, wanted_name: &str) -> Option<String> {
     for line in text.lines() {
         let mut fields = line.split_whitespace();
         if let (Some(hash), Some(name)) = (fields.next(), fields.next()) {
-            if name == wanted_name && hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+            // RUSTFMT-BINDING: keep split. Joined, this condition is exactly 100 columns; the CI
+            // toolchain's limit (stable >= 1.60) is max_width=99, so a one-line form fails
+            // `cargo fmt --check` on every bundle run since v1.4.5.
+            if name == wanted_name
+                && hash.len() == 64
+                && hash.bytes().all(|b| b.is_ascii_hexdigit())
+            {
                 return Some(hash.to_ascii_lowercase());
             }
         }
