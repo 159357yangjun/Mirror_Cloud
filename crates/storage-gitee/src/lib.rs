@@ -42,12 +42,12 @@ fn safe_ctx(error: &reqwest::Error, token: &str) -> String {
     }
 }
 
-fn net_err(token: &str) -> impl Fn(reqwest::Error) -> StorageError + use + Send {
-    move |error| StorageError::Network(safe_ctx(&error, token))
+fn net_err(error: reqwest::Error, token: &str) -> StorageError {
+    StorageError::Network(safe_ctx(&error, token))
 }
 
-fn prov_err(token: &str) -> impl Fn(reqwest::Error) -> StorageError + use + Send {
-    move |error| StorageError::Provider(safe_ctx(&error, token))
+fn prov_err(error: reqwest::Error, token: &str) -> StorageError {
+    StorageError::Provider(safe_ctx(&error, token))
 }
 
 pub struct GiteeStorage {
@@ -228,7 +228,7 @@ impl GiteeStorage {
             ])
             .send()
             .await
-            .map_err(net_err(self.token()))?;
+            .map_err(|e| net_err(e, self.token()))?;
         if response.status() == StatusCode::NOT_FOUND {
             return Ok(None);
         }
@@ -238,7 +238,7 @@ impl GiteeStorage {
         let payload: Value = response
             .json()
             .await
-            .map_err(prov_err(self.token()))?;
+            .map_err(|e| prov_err(e, self.token()))?;
         Ok(payload
             .get("sha")
             .and_then(Value::as_str)
@@ -292,14 +292,14 @@ impl StorageProvider for GiteeStorage {
             .query(&[("access_token", self.credentials.token.as_str())])
             .send()
             .await
-            .map_err(net_err(self.token()))?;
+            .map_err(|e| net_err(e, self.token()))?;
         if !repo_response.status().is_success() {
             return Err(self.fail(&repo_response, "Gitee repository check failed").await);
         }
         let repo: Value = repo_response
             .json()
             .await
-            .map_err(prov_err(self.token()))?;
+            .map_err(|e| prov_err(e, self.token()))?;
         let is_private = repo
             .get("private")
             .and_then(Value::as_bool)
@@ -324,7 +324,7 @@ impl StorageProvider for GiteeStorage {
             .query(&[("access_token", self.credentials.token.as_str())])
             .send()
             .await
-            .map_err(net_err(self.token()))?;
+            .map_err(|e| net_err(e, self.token()))?;
         if !branch_response.status().is_success() {
             return Err(self.fail(&branch_response, "Gitee branch check failed").await);
         }
@@ -338,14 +338,14 @@ impl StorageProvider for GiteeStorage {
             .query(&[("access_token", self.credentials.token.as_str())])
             .send()
             .await
-            .map_err(net_err(self.token()))?;
+            .map_err(|e| net_err(e, self.token()))?;
         if !user_response.status().is_success() {
             return Err(self.fail(&user_response, "Gitee authenticated user check failed").await);
         }
         let user: Value = user_response
             .json()
             .await
-            .map_err(prov_err(self.token()))?;
+            .map_err(|e| prov_err(e, self.token()))?;
         let username = user
             .get("login")
             .and_then(Value::as_str)
@@ -360,7 +360,7 @@ impl StorageProvider for GiteeStorage {
             .query(&[("access_token", self.credentials.token.as_str())])
             .send()
             .await
-            .map_err(net_err(self.token()))?;
+            .map_err(|e| net_err(e, self.token()))?;
         if !permission_response.status().is_success() {
             let perm_ctx = "Gitee repository permission check failed";
             let err = self.fail(&permission_response, perm_ctx).await;
@@ -369,7 +369,7 @@ impl StorageProvider for GiteeStorage {
         let permission_payload: Value = permission_response
             .json()
             .await
-            .map_err(prov_err(self.token()))?;
+            .map_err(|e| prov_err(e, self.token()))?;
         let permission = permission_payload
             .get("permission")
             .and_then(Value::as_str)
@@ -418,14 +418,14 @@ impl StorageProvider for GiteeStorage {
             .json(&payload)
             .send()
             .await
-            .map_err(net_err(self.token()))?;
+            .map_err(|e| net_err(e, self.token()))?;
         if !response.status().is_success() {
             return Err(self.fail(&response, "Gitee upload failed").await);
         }
         let body: Value = response
             .json()
             .await
-            .map_err(prov_err(self.token()))?;
+            .map_err(|e| prov_err(e, self.token()))?;
         let response_sha = body
             .pointer("/content/sha")
             .and_then(Value::as_str)
@@ -479,14 +479,14 @@ impl StorageProvider for GiteeStorage {
             ])
             .send()
             .await
-            .map_err(net_err(self.token()))?;
+            .map_err(|e| net_err(e, self.token()))?;
         if !response.status().is_success() {
             return Err(self.fail(&response, "Gitee download failed").await);
         }
         let payload: Value = response
             .json()
             .await
-            .map_err(prov_err(self.token()))?;
+            .map_err(|e| prov_err(e, self.token()))?;
         let content = payload
             .get("content")
             .and_then(Value::as_str)
@@ -520,7 +520,7 @@ impl StorageProvider for GiteeStorage {
             .json(&payload)
             .send()
             .await
-            .map_err(net_err(self.token()))?;
+            .map_err(|e| net_err(e, self.token()))?;
         if !response.status().is_success() {
             return Err(self.fail(&response, "Gitee delete failed").await);
         }
@@ -538,14 +538,14 @@ impl StorageProvider for GiteeStorage {
             ])
             .send()
             .await
-            .map_err(net_err(self.token()))?;
+            .map_err(|e| net_err(e, self.token()))?;
         if !response.status().is_success() {
             return Err(self.fail(&response, "Gitee browse failed").await);
         }
         let payload: Value = response
             .json()
             .await
-            .map_err(prov_err(self.token()))?;
+            .map_err(|e| prov_err(e, self.token()))?;
         let values: Vec<&Value> = match payload.as_array() {
             Some(items) => items.iter().collect(),
             None => vec![&payload],
