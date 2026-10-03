@@ -41,6 +41,23 @@ impl GiteeStorage {
         }
     }
 
+    /// reqwest errors can carry the full request URL; every Gitee request puts
+    /// `access_token` in the query string, so a raw `e.to_string()` would leak the
+    /// credential into task records, toasts and diagnostics. Strip the URL (reqwest's
+    /// own `without_url`) and redact any token echoed inside the message text.
+    fn safe_ctx(error: &reqwest::Error, token: &str) -> String {
+        let message = error.without_url().to_string();
+        if token.is_empty() {
+            message
+        } else {
+            message.replace(token, "[redacted]")
+        }
+    }
+
+    fn token(&self) -> &str {
+        &self.credentials.token
+    }
+
     fn api_url(&self, tail: &[&str]) -> Result<Url, StorageError> {
         let mut url = Url::parse(API_ROOT).map_err(|e| StorageError::Provider(e.to_string()))?;
         {
@@ -151,7 +168,11 @@ impl GiteeStorage {
         Ok(url.to_string())
     }
 
-    async fn response_error(response: Response, context: &str) -> StorageError {
+    async fn response_error(
+        response: &Response,
+        context: &str,
+        token: &str,
+    ) -> StorageError {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
         let message = serde_json::from_str::<Value>(&body)
@@ -171,6 +192,12 @@ impl GiteeStorage {
                     body
                 }
             });
+        // Gitee sometimes echoes the requested URL (token included) inside error bodies.
+        let message = if token.is_empty() {
+            message
+        } else {
+            message.replace(token, "[redacted]")
+        };
         if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
             StorageError::Authentication(format!("{context}: {message}"))
         } else {
@@ -179,6 +206,12 @@ impl GiteeStorage {
     }
 
     async fn existing_sha(&self, repository_path: &str) -> Result<Option<String>, StorageError> {
+        let redact_network = |e: reqwest::Error| {
+            StorageError::Network(Self::safe_ctx(&e, self.token()))
+        };
+        let redact_provider = |e: reqwest::Error| {
+            StorageError::Provider(Self::safe_ctx(&e, self.token()))
+        };
         let response = self
             .client
             .get(self.contents_url(repository_path)?)
@@ -188,17 +221,20 @@ impl GiteeStorage {
             ])
             .send()
             .await
-            .map_err(|e| StorageError::Network(e.to_string()))?;
+            .map_err(redact_network)?;
         if response.status() == StatusCode::NOT_FOUND {
             return Ok(None);
         }
         if !response.status().is_success() {
-            return Err(Self::response_error(response, "Gitee content lookup failed").await);
+            return Err(
+                Self::response_error(&response, "Gitee content lookup failed", self.token())
+                    .await,
+            );
         }
         let payload: Value = response
             .json()
             .await
-            .map_err(|e| StorageError::Provider(e.to_string()))?;
+            .map_err(redact_provider)?;
         Ok(payload
             .get("sha")
             .and_then(Value::as_str)
@@ -246,20 +282,29 @@ impl StorageProvider for GiteeStorage {
     }
 
     async fn test_connection(&self) -> Result<ConnectionReport, StorageError> {
+        let redact_network = |e: reqwest::Error| {
+            StorageError::Network(Self::safe_ctx(&e, self.token()))
+        };
+        let redact_provider = |e: reqwest::Error| {
+            StorageError::Provider(Self::safe_ctx(&e, self.token()))
+        };
         let repo_response = self
             .client
             .get(self.repo_url()?)
             .query(&[("access_token", self.credentials.token.as_str())])
             .send()
             .await
-            .map_err(|e| StorageError::Network(e.to_string()))?;
+            .map_err(redact_network)?;
         if !repo_response.status().is_success() {
-            return Err(Self::response_error(repo_response, "Gitee repository check failed").await);
+            return Err(
+                Self::response_error(&repo_response, "Gitee repository check failed", self.token())
+                    .await,
+            );
         }
         let repo: Value = repo_response
             .json()
             .await
-            .map_err(|e| StorageError::Provider(e.to_string()))?;
+            .map_err(redact_provider)?;
         let is_private = repo
             .get("private")
             .and_then(Value::as_bool)
@@ -284,9 +329,12 @@ impl StorageProvider for GiteeStorage {
             .query(&[("access_token", self.credentials.token.as_str())])
             .send()
             .await
-            .map_err(|e| StorageError::Network(e.to_string()))?;
+            .map_err(redact_network)?;
         if !branch_response.status().is_success() {
-            return Err(Self::response_error(branch_response, "Gitee branch check failed").await);
+            return Err(
+                Self::response_error(&branch_response, "Gitee branch check failed", self.token())
+                    .await,
+            );
         }
 
         // Read the authenticated identity, then ask Gitee for that user's repository
@@ -298,18 +346,19 @@ impl StorageProvider for GiteeStorage {
             .query(&[("access_token", self.credentials.token.as_str())])
             .send()
             .await
-            .map_err(|e| StorageError::Network(e.to_string()))?;
+            .map_err(redact_network)?;
         if !user_response.status().is_success() {
             return Err(Self::response_error(
-                user_response,
+                &user_response,
                 "Gitee authenticated user check failed",
+                self.token(),
             )
             .await);
         }
         let user: Value = user_response
             .json()
             .await
-            .map_err(|e| StorageError::Provider(e.to_string()))?;
+            .map_err(redact_provider)?;
         let username = user
             .get("login")
             .and_then(Value::as_str)
@@ -326,18 +375,19 @@ impl StorageProvider for GiteeStorage {
             .query(&[("access_token", self.credentials.token.as_str())])
             .send()
             .await
-            .map_err(|e| StorageError::Network(e.to_string()))?;
+            .map_err(redact_network)?;
         if !permission_response.status().is_success() {
             return Err(Self::response_error(
-                permission_response,
+                &permission_response,
                 "Gitee repository permission check failed",
+                self.token(),
             )
             .await);
         }
         let permission_payload: Value = permission_response
             .json()
             .await
-            .map_err(|e| StorageError::Provider(e.to_string()))?;
+            .map_err(redact_provider)?;
         let permission = permission_payload
             .get("permission")
             .and_then(Value::as_str)
@@ -364,6 +414,12 @@ impl StorageProvider for GiteeStorage {
     }
 
     async fn upload(&self, request: UploadRequest) -> Result<UploadResult, StorageError> {
+        let redact_network = |e: reqwest::Error| {
+            StorageError::Network(Self::safe_ctx(&e, self.token()))
+        };
+        let redact_provider = |e: reqwest::Error| {
+            StorageError::Provider(Self::safe_ctx(&e, self.token()))
+        };
         let logical_path = request.path.clone();
         let repository_path = self.repository_path(&logical_path);
         let existing_sha = self.existing_sha(&repository_path).await?;
@@ -386,14 +442,14 @@ impl StorageProvider for GiteeStorage {
             .json(&payload)
             .send()
             .await
-            .map_err(|e| StorageError::Network(e.to_string()))?;
+            .map_err(redact_network)?;
         if !response.status().is_success() {
-            return Err(Self::response_error(response, "Gitee upload failed").await);
+            return Err(Self::response_error(&response, "Gitee upload failed", self.token()).await);
         }
         let body: Value = response
             .json()
             .await
-            .map_err(|e| StorageError::Provider(e.to_string()))?;
+            .map_err(redact_provider)?;
         let response_sha = body
             .pointer("/content/sha")
             .and_then(Value::as_str)
@@ -437,6 +493,12 @@ impl StorageProvider for GiteeStorage {
     }
 
     async fn download(&self, path: &str) -> Result<bytes::Bytes, StorageError> {
+        let redact_network = |e: reqwest::Error| {
+            StorageError::Network(Self::safe_ctx(&e, self.token()))
+        };
+        let redact_provider = |e: reqwest::Error| {
+            StorageError::Provider(Self::safe_ctx(&e, self.token()))
+        };
         let repository_path = self.repository_path(path);
         let response = self
             .client
@@ -447,14 +509,17 @@ impl StorageProvider for GiteeStorage {
             ])
             .send()
             .await
-            .map_err(|e| StorageError::Network(e.to_string()))?;
+            .map_err(redact_network)?;
         if !response.status().is_success() {
-            return Err(Self::response_error(response, "Gitee download failed").await);
+            return Err(
+                Self::response_error(&response, "Gitee download failed", self.token())
+                    .await,
+            );
         }
         let payload: Value = response
             .json()
             .await
-            .map_err(|e| StorageError::Provider(e.to_string()))?;
+            .map_err(redact_provider)?;
         let content = payload
             .get("content")
             .and_then(Value::as_str)
@@ -472,6 +537,9 @@ impl StorageProvider for GiteeStorage {
     }
 
     async fn delete(&self, path: &str) -> Result<(), StorageError> {
+        let redact_network = |e: reqwest::Error| {
+            StorageError::Network(Self::safe_ctx(&e, self.token()))
+        };
         let repository_path = self.repository_path(path);
         let Some(sha) = self.existing_sha(&repository_path).await? else {
             return Ok(());
@@ -488,14 +556,20 @@ impl StorageProvider for GiteeStorage {
             .json(&payload)
             .send()
             .await
-            .map_err(|e| StorageError::Network(e.to_string()))?;
+            .map_err(redact_network)?;
         if !response.status().is_success() {
-            return Err(Self::response_error(response, "Gitee delete failed").await);
+            return Err(Self::response_error(&response, "Gitee delete failed", self.token()).await);
         }
         Ok(())
     }
 
     async fn list(&self, path: &str) -> Result<Vec<StorageEntry>, StorageError> {
+        let redact_network = |e: reqwest::Error| {
+            StorageError::Network(Self::safe_ctx(&e, self.token()))
+        };
+        let redact_provider = |e: reqwest::Error| {
+            StorageError::Provider(Self::safe_ctx(&e, self.token()))
+        };
         let repository_path = self.repository_path(path);
         let response = self
             .client
@@ -506,14 +580,14 @@ impl StorageProvider for GiteeStorage {
             ])
             .send()
             .await
-            .map_err(|e| StorageError::Network(e.to_string()))?;
+            .map_err(redact_network)?;
         if !response.status().is_success() {
-            return Err(Self::response_error(response, "Gitee browse failed").await);
+            return Err(Self::response_error(&response, "Gitee browse failed", self.token()).await);
         }
         let payload: Value = response
             .json()
             .await
-            .map_err(|e| StorageError::Provider(e.to_string()))?;
+            .map_err(redact_provider)?;
         let values: Vec<&Value> = match payload.as_array() {
             Some(items) => items.iter().collect(),
             None => vec![&payload],
@@ -552,8 +626,21 @@ mod tests {
     }
 
     #[test]
-    fn repository_paths_stay_relative_to_storage_root() {
-        let storage = storage();
+    fn safe_ctx_redacts_token_and_empty_token_passes_text_through() {
+        // A reqwest error built from a URL carrying the token must never echo it back.
+        let token = "secret-token-abc";
+        let error = reqwest::Client::new()
+            .get(format!("https://gitee.com/api/v5/user?access_token={token}"))
+            .build()
+            .unwrap_err();
+        let message = GiteeStorage::safe_ctx(&error, token);
+        assert!(!message.contains(token), "redaction leaked: {message}");
+        let passthrough = GiteeStorage::safe_ctx(&error, "");
+        assert!(passthrough.contains(token) || !passthrough.contains("access_token"));
+    }
+
+    #[test]
+    fn repository_paths_stay_relative_to_storage_root() {        let storage = storage();
         assert_eq!(
             storage.repository_path("2026/a.png"),
             "assets/blog/2026/a.png"
