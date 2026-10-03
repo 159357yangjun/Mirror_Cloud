@@ -105,7 +105,8 @@ fn http_endpoint<'a>(config: &'a Value, key: &str) -> Result<&'a str, PluginErro
 /// HTTPS always passes; plain HTTP only for localhost/127.0.0.1/::1. LAN and public
 /// HTTP are refused outright (carriers of API keys, AK/SK, passwords, bearer tokens).
 pub fn require_https_or_loopback(url: &str) -> Result<(), String> {
-    let parsed = reqwest::Url::parse(url).map_err(|_| "endpoint must be a valid URL".to_string())?;
+    let parsed =
+        reqwest::Url::parse(url).map_err(|_| "endpoint must be a valid URL".to_string())?;
     match parsed.scheme() {
         "https" => Ok(()),
         "http" => {
@@ -299,7 +300,10 @@ mod tests {
             "ftp://example.com",
         ];
         for url in refused {
-            assert!(require_https_or_loopback(url).is_err(), "{url} must be refused");
+            assert!(
+                require_https_or_loopback(url).is_err(),
+                "{url} must be refused"
+            );
         }
     }
 
