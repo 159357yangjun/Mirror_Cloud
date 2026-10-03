@@ -80,9 +80,14 @@ jobs:
             Get-Content rustfmt.patch | ForEach-Object {
               Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "``$_``"
             }
-            foreach ($f in (git diff --name-only -- '*.rs')) {
-              Write-Output "[issue=title=rustfmt-file]::error::$f"
+            $files = @(git diff --name-only -- '*.rs')
+            Write-Host "rustfmt offender count: $($files.Count)"
+            foreach ($f in $files) {
+              Write-Host "rustfmt-file: $f"
             }
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "``rustfmt files: $($files -join ', ')``"
+            Write-Output "::error title=rustfmt-file::count=$($files.Count); $($files -join '; ')"
+            exit 1
             git diff --check -- '*.rs'
             exit 1
           }
