@@ -235,10 +235,7 @@ impl GiteeStorage {
         if !response.status().is_success() {
             return Err(self.fail(&response, "Gitee content lookup failed").await);
         }
-        let payload: Value = response
-            .json()
-            .await
-            .map_err(|e| prov_err(e, tok))?;
+        let payload: Value = response.json().await.map_err(|e| prov_err(e, tok))?;
         Ok(payload
             .get("sha")
             .and_then(Value::as_str)
@@ -296,10 +293,7 @@ impl StorageProvider for GiteeStorage {
         if !repo_response.status().is_success() {
             return Err(self.fail(&repo_response, "Gitee repository check failed").await);
         }
-        let repo: Value = repo_response
-            .json()
-            .await
-            .map_err(|e| prov_err(e, tok))?;
+        let repo: Value = repo_response.json().await.map_err(|e| prov_err(e, tok))?;
         let is_private = repo
             .get("private")
             .and_then(Value::as_bool)
@@ -342,10 +336,7 @@ impl StorageProvider for GiteeStorage {
         if !user_response.status().is_success() {
             return Err(self.fail(&user_response, "Gitee authenticated user check failed").await);
         }
-        let user: Value = user_response
-            .json()
-            .await
-            .map_err(|e| prov_err(e, tok))?;
+        let user: Value = user_response.json().await.map_err(|e| prov_err(e, tok))?;
         let username = user
             .get("login")
             .and_then(Value::as_str)
@@ -422,10 +413,7 @@ impl StorageProvider for GiteeStorage {
         if !response.status().is_success() {
             return Err(self.fail(&response, "Gitee upload failed").await);
         }
-        let body: Value = response
-            .json()
-            .await
-            .map_err(|e| prov_err(e, tok))?;
+        let body: Value = response.json().await.map_err(|e| prov_err(e, tok))?;
         let response_sha = body
             .pointer("/content/sha")
             .and_then(Value::as_str)
@@ -483,10 +471,7 @@ impl StorageProvider for GiteeStorage {
         if !response.status().is_success() {
             return Err(self.fail(&response, "Gitee download failed").await);
         }
-        let payload: Value = response
-            .json()
-            .await
-            .map_err(|e| prov_err(e, tok))?;
+        let payload: Value = response.json().await.map_err(|e| prov_err(e, tok))?;
         let content = payload
             .get("content")
             .and_then(Value::as_str)
@@ -542,10 +527,7 @@ impl StorageProvider for GiteeStorage {
         if !response.status().is_success() {
             return Err(self.fail(&response, "Gitee browse failed").await);
         }
-        let payload: Value = response
-            .json()
-            .await
-            .map_err(|e| prov_err(e, tok))?;
+        let payload: Value = response.json().await.map_err(|e| prov_err(e, tok))?;
         let values: Vec<&Value> = match payload.as_array() {
             Some(items) => items.iter().collect(),
             None => vec![&payload],
