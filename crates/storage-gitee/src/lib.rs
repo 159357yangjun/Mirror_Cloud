@@ -26,6 +26,30 @@ pub struct GiteeCredentials {
     pub token: String,
 }
 
+/// reqwest errors can carry the full request URL; every Gitee request puts
+/// `access_token` in the query string, so a raw `e.to_string()` would leak the
+/// credential into task records, toasts and diagnostics. Strip the URL (reqwest's
+/// own `without_url`) and redact any token echoed inside the message text.
+fn safe_ctx(error: &reqwest::Error, token: &str) -> String {
+    let message = error.without_url().to_string();
+    if message.is_empty() {
+        return message;
+    }
+    if token.is_empty() {
+        message
+    } else {
+        message.replace(token, "[redacted]")
+    }
+}
+
+fn net_err(error: reqwest::Error, token: &str) -> StorageError {
+    StorageError::Network(safe_ctx(&error, token))
+}
+
+fn prov_err(error: reqwest::Error, token: &str) -> StorageError {
+    StorageError::Provider(safe_ctx(&error, token))
+}
+
 pub struct GiteeStorage {
     client: Client,
     config: GiteeStorageConfig,
@@ -38,19 +62,6 @@ impl GiteeStorage {
             client: Client::new(),
             config,
             credentials,
-        }
-    }
-
-    /// reqwest errors can carry the full request URL; every Gitee request puts
-    /// `access_token` in the query string, so a raw `e.to_string()` would leak the
-    /// credential into task records, toasts and diagnostics. Strip the URL (reqwest's
-    /// own `without_url`) and redact any token echoed inside the message text.
-    fn safe_ctx(error: &reqwest::Error, token: &str) -> String {
-        let message = error.without_url().to_string();
-        if token.is_empty() {
-            message
-        } else {
-            message.replace(token, "[redacted]")
         }
     }
 
@@ -209,8 +220,8 @@ impl GiteeStorage {
 
     async fn existing_sha(&self, repository_path: &str) -> Result<Option<String>, StorageError> {
         let tok = self.token();
-        let redact_network = |e| StorageError::Network(Self::safe_ctx(&e, tok));
-        let redact_provider = |e| StorageError::Provider(Self::safe_ctx(&e, tok));
+        let redact_network = |e| net_err(e, tok);
+        let redact_provider = |e| prov_err(e, tok);
         let response = self
             .client
             .get(self.contents_url(repository_path)?)
@@ -279,8 +290,8 @@ impl StorageProvider for GiteeStorage {
 
     async fn test_connection(&self) -> Result<ConnectionReport, StorageError> {
         let tok = self.token();
-        let redact_network = |e| StorageError::Network(Self::safe_ctx(&e, tok));
-        let redact_provider = |e| StorageError::Provider(Self::safe_ctx(&e, tok));
+        let redact_network = |e| net_err(e, tok);
+        let redact_provider = |e| prov_err(e, tok);
         let repo_response = self
             .client
             .get(self.repo_url()?)
@@ -394,8 +405,8 @@ impl StorageProvider for GiteeStorage {
 
     async fn upload(&self, request: UploadRequest) -> Result<UploadResult, StorageError> {
         let tok = self.token();
-        let redact_network = |e| StorageError::Network(Self::safe_ctx(&e, tok));
-        let redact_provider = |e| StorageError::Provider(Self::safe_ctx(&e, tok));
+        let redact_network = |e| net_err(e, tok);
+        let redact_provider = |e| prov_err(e, tok);
         let logical_path = request.path.clone();
         let repository_path = self.repository_path(&logical_path);
         let existing_sha = self.existing_sha(&repository_path).await?;
@@ -470,8 +481,8 @@ impl StorageProvider for GiteeStorage {
 
     async fn download(&self, path: &str) -> Result<bytes::Bytes, StorageError> {
         let tok = self.token();
-        let redact_network = |e| StorageError::Network(Self::safe_ctx(&e, tok));
-        let redact_provider = |e| StorageError::Provider(Self::safe_ctx(&e, tok));
+        let redact_network = |e| net_err(e, tok);
+        let redact_provider = |e| prov_err(e, tok);
         let repository_path = self.repository_path(path);
         let response = self
             .client
@@ -508,7 +519,7 @@ impl StorageProvider for GiteeStorage {
 
     async fn delete(&self, path: &str) -> Result<(), StorageError> {
         let tok = self.token();
-        let redact_network = |e| StorageError::Network(Self::safe_ctx(&e, tok));
+        let redact_network = |e| net_err(e, tok);
         let repository_path = self.repository_path(path);
         let Some(sha) = self.existing_sha(&repository_path).await? else {
             return Ok(());
@@ -534,8 +545,8 @@ impl StorageProvider for GiteeStorage {
 
     async fn list(&self, path: &str) -> Result<Vec<StorageEntry>, StorageError> {
         let tok = self.token();
-        let redact_network = |e| StorageError::Network(Self::safe_ctx(&e, tok));
-        let redact_provider = |e| StorageError::Provider(Self::safe_ctx(&e, tok));
+        let redact_network = |e| net_err(e, tok);
+        let redact_provider = |e| prov_err(e, tok);
         let repository_path = self.repository_path(path);
         let response = self
             .client
@@ -599,9 +610,9 @@ mod tests {
             .get(format!("https://gitee.com/api/v5/user?access_token={token}"))
             .build()
             .unwrap_err();
-        let message = GiteeStorage::safe_ctx(&error, token);
+        let message = safe_ctx(&error, token);
         assert!(!message.contains(token), "redaction leaked: {message}");
-        let passthrough = GiteeStorage::safe_ctx(&error, "");
+        let passthrough = safe_ctx(&error, "");
         assert!(passthrough.contains(token) || !passthrough.contains("access_token"));
     }
 
