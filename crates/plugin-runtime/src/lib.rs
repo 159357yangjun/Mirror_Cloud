@@ -115,7 +115,7 @@ pub fn require_https_or_loopback(url: &str) -> Result<(), String> {
                 Some(host) => host
                     .trim_matches(['[', ']'])
                     .parse::<std::net::IpAddr>()
-                    .is_some_and(std::net::IpAddr::is_loopback),
+                    .is_ok_and(|address| address.is_loopback()),
                 None => false,
             };
             if host_ok {
