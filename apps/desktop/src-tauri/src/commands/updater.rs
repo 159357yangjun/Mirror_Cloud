@@ -97,14 +97,8 @@ pub async fn check_for_updates(app: tauri::AppHandle) -> CmdResult<UpdateCheckRe
     if setup_bytes == 0 || setup_bytes > MAX_SETUP_BYTES {
         return Err(format!("安装包大小不合理: {setup_bytes} B"));
     }
-    let setup_name = setup
-        .get("name")
-        .and_then(serde_json::Value::as_str)
-        .ok_or("安装包资产缺少文件名")?
-        .to_string();
-    let setup_url = setup
-        .get("browser_download_url")
-        .and_then(serde_json::Value::as_str)
+    let setup_url = setup["browser_download_url"]
+        .as_str()
         .ok_or("安装包缺少下载地址")?
         .to_string();
 
@@ -112,20 +106,15 @@ pub async fn check_for_updates(app: tauri::AppHandle) -> CmdResult<UpdateCheckRe
         latest_version: tag.trim_start_matches('v').to_string(),
         update_available: version_is_newer(&current_version, tag),
         current_version,
-        release_notes: response
-            .get("body")
-            .and_then(serde_json::Value::as_str)
+        release_notes: response["body"]
+            .as_str()
             .unwrap_or_default()
             .chars()
             .take(2000)
             .collect(),
         setup_url,
         setup_bytes,
-        published_at: response
-            .get("published_at")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
+        published_at: response["published_at"].as_str().unwrap_or_default().to_string(),
     })
 }
 
@@ -139,13 +128,12 @@ pub struct DownloadedUpdate {
     pub bytes: u64,
 }
 
+/// 103 columns joined would be rustfmt-reformatted; ac54483's own green lines show the
+/// limit is width-after-joining, so this condition stays deliberately split.
 fn parse_sums(text: &str, wanted_name: &str) -> Option<String> {
     for line in text.lines() {
         let mut fields = line.split_whitespace();
         if let (Some(hash), Some(name)) = (fields.next(), fields.next()) {
-            // RUSTFMT-BINDING: keep split. Joined, this condition is exactly 100 columns; the CI
-            // toolchain's limit (stable >= 1.60) is max_width=99, so a one-line form fails
-            // `cargo fmt --check` on every bundle run since v1.4.5.
             if name == wanted_name
                 && hash.len() == 64
                 && hash.bytes().all(|b| b.is_ascii_hexdigit())
