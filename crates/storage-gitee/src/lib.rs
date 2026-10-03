@@ -219,9 +219,6 @@ impl GiteeStorage {
     }
 
     async fn existing_sha(&self, repository_path: &str) -> Result<Option<String>, StorageError> {
-        let tok = self.token();
-        let redact_network = |e| net_err(e, tok);
-        let redact_provider = |e| prov_err(e, tok);
         let response = self
             .client
             .get(self.contents_url(repository_path)?)
@@ -231,7 +228,7 @@ impl GiteeStorage {
             ])
             .send()
             .await
-            .map_err(redact_network)?;
+            .map_err(|e| net_err(e, self.token()))?;
         if response.status() == StatusCode::NOT_FOUND {
             return Ok(None);
         }
@@ -241,7 +238,7 @@ impl GiteeStorage {
         let payload: Value = response
             .json()
             .await
-            .map_err(redact_provider)?;
+            .map_err(|e| prov_err(e, self.token()))?;
         Ok(payload
             .get("sha")
             .and_then(Value::as_str)
@@ -289,23 +286,20 @@ impl StorageProvider for GiteeStorage {
     }
 
     async fn test_connection(&self) -> Result<ConnectionReport, StorageError> {
-        let tok = self.token();
-        let redact_network = |e| net_err(e, tok);
-        let redact_provider = |e| prov_err(e, tok);
         let repo_response = self
             .client
             .get(self.repo_url()?)
             .query(&[("access_token", self.credentials.token.as_str())])
             .send()
             .await
-            .map_err(redact_network)?;
+            .map_err(|e| net_err(e, self.token()))?;
         if !repo_response.status().is_success() {
             return Err(self.fail(&repo_response, "Gitee repository check failed").await);
         }
         let repo: Value = repo_response
             .json()
             .await
-            .map_err(redact_provider)?;
+            .map_err(|e| prov_err(e, self.token()))?;
         let is_private = repo
             .get("private")
             .and_then(Value::as_bool)
@@ -330,7 +324,7 @@ impl StorageProvider for GiteeStorage {
             .query(&[("access_token", self.credentials.token.as_str())])
             .send()
             .await
-            .map_err(redact_network)?;
+            .map_err(|e| net_err(e, self.token()))?;
         if !branch_response.status().is_success() {
             return Err(self.fail(&branch_response, "Gitee branch check failed").await);
         }
@@ -344,22 +338,20 @@ impl StorageProvider for GiteeStorage {
             .query(&[("access_token", self.credentials.token.as_str())])
             .send()
             .await
-            .map_err(redact_network)?;
+            .map_err(|e| net_err(e, self.token()))?;
         if !user_response.status().is_success() {
             return Err(self.fail(&user_response, "Gitee authenticated user check failed").await);
         }
         let user: Value = user_response
             .json()
             .await
-            .map_err(redact_provider)?;
+            .map_err(|e| prov_err(e, self.token()))?;
         let username = user
             .get("login")
             .and_then(Value::as_str)
             .filter(|value| !value.trim().is_empty())
             .ok_or_else(|| {
-                StorageError::Provider(
-                    "Gitee authenticated user response did not include login".into(),
-                )
+                StorageError::Provider("Gitee authenticated user response missing login".into())
             })?;
 
         let permission_response = self
@@ -368,16 +360,16 @@ impl StorageProvider for GiteeStorage {
             .query(&[("access_token", self.credentials.token.as_str())])
             .send()
             .await
-            .map_err(redact_network)?;
+            .map_err(|e| net_err(e, self.token()))?;
         if !permission_response.status().is_success() {
-            let context = "Gitee repository permission check failed";
-            let err = self.fail(&permission_response, context).await;
+            let perm_ctx = "Gitee repository permission check failed";
+            let err = self.fail(&permission_response, perm_ctx).await;
             return Err(err);
         }
         let permission_payload: Value = permission_response
             .json()
             .await
-            .map_err(redact_provider)?;
+            .map_err(|e| prov_err(e, self.token()))?;
         let permission = permission_payload
             .get("permission")
             .and_then(Value::as_str)
@@ -404,9 +396,6 @@ impl StorageProvider for GiteeStorage {
     }
 
     async fn upload(&self, request: UploadRequest) -> Result<UploadResult, StorageError> {
-        let tok = self.token();
-        let redact_network = |e| net_err(e, tok);
-        let redact_provider = |e| prov_err(e, tok);
         let logical_path = request.path.clone();
         let repository_path = self.repository_path(&logical_path);
         let existing_sha = self.existing_sha(&repository_path).await?;
@@ -429,14 +418,14 @@ impl StorageProvider for GiteeStorage {
             .json(&payload)
             .send()
             .await
-            .map_err(redact_network)?;
+            .map_err(|e| net_err(e, self.token()))?;
         if !response.status().is_success() {
             return Err(self.fail(&response, "Gitee upload failed").await);
         }
         let body: Value = response
             .json()
             .await
-            .map_err(redact_provider)?;
+            .map_err(|e| prov_err(e, self.token()))?;
         let response_sha = body
             .pointer("/content/sha")
             .and_then(Value::as_str)
@@ -480,9 +469,6 @@ impl StorageProvider for GiteeStorage {
     }
 
     async fn download(&self, path: &str) -> Result<bytes::Bytes, StorageError> {
-        let tok = self.token();
-        let redact_network = |e| net_err(e, tok);
-        let redact_provider = |e| prov_err(e, tok);
         let repository_path = self.repository_path(path);
         let response = self
             .client
@@ -493,14 +479,14 @@ impl StorageProvider for GiteeStorage {
             ])
             .send()
             .await
-            .map_err(redact_network)?;
+            .map_err(|e| net_err(e, self.token()))?;
         if !response.status().is_success() {
             return Err(self.fail(&response, "Gitee download failed").await);
         }
         let payload: Value = response
             .json()
             .await
-            .map_err(redact_provider)?;
+            .map_err(|e| prov_err(e, self.token()))?;
         let content = payload
             .get("content")
             .and_then(Value::as_str)
@@ -518,8 +504,6 @@ impl StorageProvider for GiteeStorage {
     }
 
     async fn delete(&self, path: &str) -> Result<(), StorageError> {
-        let tok = self.token();
-        let redact_network = |e| net_err(e, tok);
         let repository_path = self.repository_path(path);
         let Some(sha) = self.existing_sha(&repository_path).await? else {
             return Ok(());
@@ -536,7 +520,7 @@ impl StorageProvider for GiteeStorage {
             .json(&payload)
             .send()
             .await
-            .map_err(redact_network)?;
+            .map_err(|e| net_err(e, self.token()))?;
         if !response.status().is_success() {
             return Err(self.fail(&response, "Gitee delete failed").await);
         }
@@ -544,9 +528,6 @@ impl StorageProvider for GiteeStorage {
     }
 
     async fn list(&self, path: &str) -> Result<Vec<StorageEntry>, StorageError> {
-        let tok = self.token();
-        let redact_network = |e| net_err(e, tok);
-        let redact_provider = |e| prov_err(e, tok);
         let repository_path = self.repository_path(path);
         let response = self
             .client
@@ -557,14 +538,14 @@ impl StorageProvider for GiteeStorage {
             ])
             .send()
             .await
-            .map_err(redact_network)?;
+            .map_err(|e| net_err(e, self.token()))?;
         if !response.status().is_success() {
             return Err(self.fail(&response, "Gitee browse failed").await);
         }
         let payload: Value = response
             .json()
             .await
-            .map_err(redact_provider)?;
+            .map_err(|e| prov_err(e, self.token()))?;
         let values: Vec<&Value> = match payload.as_array() {
             Some(items) => items.iter().collect(),
             None => vec![&payload],
