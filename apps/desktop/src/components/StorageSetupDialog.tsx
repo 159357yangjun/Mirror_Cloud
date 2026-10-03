@@ -183,6 +183,19 @@ export function StorageSetupDialog({
   const missingFields: string[] = []
   const blank = (value: string | undefined | null) => !value || !value.trim()
   const notHttp = (value: string | undefined | null) => !/^https?:\/\//i.test((value ?? '').trim())
+  // Mirrors the backend's final gate (plugin_runtime::require_https_or_loopback):
+  // plain HTTP only for localhost/127.0.0.1/[::1]; anything else must be https.
+  const insecureHttp = (value: string | undefined | null) => {
+    const raw = (value ?? '').trim().toLowerCase()
+    if (!raw.startsWith('http://')) return false
+    let host = ''
+    try {
+      host = new URL(raw).hostname
+    } catch {
+      return false
+    }
+    return !(host === 'localhost' || host === '127.0.0.1' || host === '[::1]')
+  }
   if (isRepository) {
     if (blank(repoForm.name)) missingFields.push('显示名称')
     if (blank(repoForm.owner)) missingFields.push('Owner')
@@ -195,16 +208,16 @@ export function StorageSetupDialog({
     if (blank(s3Form.accessKeyId)) missingFields.push('Access Key ID')
     if (blank(s3Form.secretAccessKey)) missingFields.push('Secret Access Key')
     if (s3Form.providerKey === 'r2' && blank(s3Form.accountId)) missingFields.push('Account ID')
-    if (s3Form.providerKey === 's3' && notHttp(s3Form.endpoint)) missingFields.push('Endpoint（需 http/https 开头）')
+    if (s3Form.providerKey === 's3' && (notHttp(s3Form.endpoint) || insecureHttp(s3Form.endpoint))) missingFields.push('Endpoint（需 https，或本机 http://127.0.0.1）')
   } else if (isObject) {
     if (blank(objectForm.name)) missingFields.push('显示名称')
     if (blank(objectForm.bucket)) missingFields.push('Bucket')
     if (blank(objectForm.accessKeyId)) missingFields.push('Access Key ID')
     if (blank(objectForm.secretAccessKey)) missingFields.push('Secret Access Key')
-    if (notHttp(objectForm.endpoint)) missingFields.push('Endpoint（需 http/https 开头）')
+    if (notHttp(objectForm.endpoint) || insecureHttp(objectForm.endpoint)) missingFields.push('Endpoint（需 https，或本机 http://127.0.0.1）')
   } else if (isWebDav) {
     if (blank(webdavForm.name)) missingFields.push('显示名称')
-    if (notHttp(webdavForm.endpoint)) missingFields.push('WebDAV Endpoint（需 http/https 开头）')
+    if (notHttp(webdavForm.endpoint) || insecureHttp(webdavForm.endpoint)) missingFields.push('WebDAV Endpoint（需 https，或本机 http://127.0.0.1）')
   }
 
   async function openGitHubTokenPage() {

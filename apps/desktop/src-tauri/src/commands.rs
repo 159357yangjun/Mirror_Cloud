@@ -787,6 +787,7 @@ fn normalize_s3(
     let public_base_url = normalize_public_base_url(input.public_base_url.as_deref())?;
 
     let endpoint = if provider_key == "r2" {
+        // R2's synthesized URL is https-by-construction below; user endpoints are checked after.
         let account = input
             .account_id
             .as_deref()
@@ -803,6 +804,7 @@ fn normalize_s3(
             .ok_or("S3 Compatible requires endpoint")?
             .to_string()
     };
+    plugin_runtime::require_https_or_loopback(&endpoint)?;
 
     let region = input
         .region
@@ -878,9 +880,7 @@ pub async fn create_object_storage(
     {
         return Err("Name, endpoint, bucket and credentials are required".into());
     }
-    if !input.endpoint.starts_with("https://") && !input.endpoint.starts_with("http://") {
-        return Err("Endpoint must start with http:// or https://".into());
-    }
+    plugin_runtime::require_https_or_loopback(input.endpoint.trim())?;
     let public_base_url = normalize_public_base_url(input.public_base_url.as_deref())?;
     let root = input
         .root
@@ -971,9 +971,7 @@ pub async fn create_webdav_storage(
     if input.name.trim().is_empty() || input.endpoint.trim().is_empty() {
         return Err("Name and WebDAV endpoint are required".into());
     }
-    if !input.endpoint.starts_with("https://") && !input.endpoint.starts_with("http://") {
-        return Err("WebDAV endpoint must start with http:// or https://".into());
-    }
+    plugin_runtime::require_https_or_loopback(input.endpoint.trim())?;
     let config = WebDavStorageConfig {
         endpoint: input.endpoint.trim().trim_end_matches('/').into(),
         root: input

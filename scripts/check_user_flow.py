@@ -135,6 +135,23 @@ require('.or_else(|| {' not in commands[commands.index('let published_url'):comm
         'desktop publish path delegates the public-URL pick to PublisherCore too')
 require('PermissionDenied' in plugin_runtime and 'require_permission' in plugin_runtime, 'plugin runtime enforces manifest permissions')
 require('PluginPermission::ExternalWrite' in plugin_runtime, 'webhook requires external_write permission at runtime')
+# Audit item E (2026-10-03): one endpoint policy across AI base URL, webhook, WebDAV,
+# S3/R2/OSS/COS custom endpoints. The backend is the final gate; the UI mirrors it.
+plugin_lib = text('crates/plugin-runtime/src/lib.rs')
+commands_src = commands
+require('pub fn require_https_or_loopback' in plugin_lib and 'is_some_and(std::net::IpAddr::is_loopback)' in plugin_lib,
+        'plugin-runtime owns require_https_or_loopback with an IpAddr loopback check (not a prefix string test)')
+require(plugin_lib.count('require_https_or_loopback(value)') >= 1 and 'fn http_endpoint' in plugin_lib,
+        'http_endpoint (webhook + AI baseUrl) routes through the policy before any request is sent')
+require(commands_src.count('plugin_runtime::require_https_or_loopback(') == 3,
+        f'all three storage-creation paths call the policy exactly once each (found {commands_src.count("plugin_runtime::require_https_or_loopback(")})')
+setup_dialog = text('apps/desktop/src/components/StorageSetupDialog.tsx')
+require('const insecureHttp' in setup_dialog and setup_dialog.count('insecureHttp(s3Form.endpoint)') == 1
+        and setup_dialog.count('insecureHttp(objectForm.endpoint)') == 1
+        and setup_dialog.count('insecureHttp(webdavForm.endpoint)') == 1,
+        'the UI mirrors the policy on all three endpoint forms: localhost-only plain HTTP')
+require('plain HTTP is only allowed for loopback hosts' in plugin_lib,
+        'the refusal message names the loopback carve-out explicitly')
 require('PluginPermission::Secret' in plugin_runtime, 'AI API key access requires secret permission at runtime')
 require('"type": "image_url"' in plugin_runtime and '"detail": "auto"' in plugin_runtime, 'AI caption sends actual image as multimodal input')
 require('official.ai-caption' in migration9 and '"secret"' in migration9, 'existing AI Caption installs migrate to secret permission')

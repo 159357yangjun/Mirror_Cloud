@@ -96,12 +96,36 @@ fn http_endpoint<'a>(config: &'a Value, key: &str) -> Result<&'a str, PluginErro
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| PluginError::InvalidConfig(format!("{key} is required")))?;
-    if value.starts_with("https://") || value.starts_with("http://") {
-        Ok(value)
-    } else {
-        Err(PluginError::InvalidConfig(format!(
-            "{key} must use http:// or https://"
-        )))
+    // Credential-bearing outbound calls (webhook secrets, AI bearer keys) must not
+    // traverse plain HTTP outside loopback; this is the final gate, not the UI.
+    require_https_or_loopback(value).map_err(PluginError::InvalidConfig)?;
+    Ok(value)
+}
+
+/// HTTPS always passes; plain HTTP only for localhost/127.0.0.1/::1. LAN and public
+/// HTTP are refused outright (carriers of API keys, AK/SK, passwords, bearer tokens).
+pub fn require_https_or_loopback(url: &str) -> Result<(), String> {
+    let parsed = reqwest::Url::parse(url).map_err(|_| "endpoint must be a valid URL".to_string())?;
+    match parsed.scheme() {
+        "https" => Ok(()),
+        "http" => {
+            let host_ok = match parsed.host_str() {
+                Some("localhost") => true,
+                Some(host) => host
+                    .trim_matches(['[', ']'])
+                    .parse::<std::net::IpAddr>()
+                    .is_some_and(std::net::IpAddr::is_loopback),
+                None => false,
+            };
+            if host_ok {
+                Ok(())
+            } else {
+                Err(format!(
+                    "plain HTTP is only allowed for loopback hosts (got {url}); use https://"
+                ))
+            }
+        }
+        other => Err(format!("unsupported URL scheme {other}: use https://")),
     }
 }
 
@@ -254,6 +278,30 @@ pub async fn execute(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn https_and_loopback_http_pass_lan_and_public_http_fail() {
+        let accepted = [
+            "https://example.com",
+            "http://localhost:11434",
+            "http://127.0.0.1:9000",
+            "http://[::1]:11434",
+        ];
+        for url in accepted {
+            require_https_or_loopback(url)
+                .unwrap_or_else(|error| panic!("{url} rejected: {error}"));
+        }
+        let refused = [
+            "http://example.com",
+            "http://192.168.1.10",
+            "http://10.0.0.2",
+            "http://172.16.5.4",
+            "ftp://example.com",
+        ];
+        for url in refused {
+            assert!(require_https_or_loopback(url).is_err(), "{url} must be refused");
+        }
+    }
 
     #[test]
     fn ai_payload_contains_visual_input() {
