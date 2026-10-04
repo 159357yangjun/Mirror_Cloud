@@ -56,3 +56,5 @@ Desktop.ini
 
 # Archived process screenshots (kept on disk, out of the repo)
 docs/_archive-*/
+
+__pycache__/

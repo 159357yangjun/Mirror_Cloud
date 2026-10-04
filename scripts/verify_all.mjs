@@ -79,6 +79,7 @@ const stages = [
   { name: 'check_workflow_action_pins', run: 'python', args: ['scripts/check_workflow_action_pins.py'], count: /passed for (\d+) external action reference/ },
   { name: 'check_release_version', run: 'python', args: ['scripts/check_release_version.py'], count: /Cargo.lock workspace members in sync: (\d+)\/\d+ at/ },
   { name: 'check_tauri_dependency_family', run: 'python', args: ['scripts/check_tauri_dependency_family.py'], count: /tauri=([\d.]+)/ },
+  { name: 'project_state', run: 'python', args: ['scripts/project_state.py', '--verify'], count: /PROJECT_STATE_VERIFY facts=(\d+) problems=(\d+)/ },
   // Two ledgers that cost no browser and catch two drift classes the other stages cannot see:
   // numbers typed into docs/VISUAL_BASELINE.md that no longer match the source, and harness content
   // that changed size or lost a mode between one commit and the next.

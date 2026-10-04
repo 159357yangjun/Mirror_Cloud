@@ -982,6 +982,21 @@ require(not _unused, f'all four read-failure panels render the shared component 
 require('<details' in text('apps/desktop/src/components/ReadFailurePanel.tsx'),
         'the raw exception stays retrievable on screen (folded in a details, not deleted)')
 
+# Single-source project state (piclist.md #29-#31: STATE.md / TASKS.md / README had drifted three ways).
+# Facts must be read from git/Cargo/package.json/API by one generator, and the prose that repeats them
+# is checked against that generator - never the other way round.
+project_state = text('scripts/project_state.py')
+require('def canonical_repo_name()' in project_state and '--verify' in project_state,
+        'project_state.py both generates facts and verifies hand-written prose against them')
+require(re.search(r're\.sub\(r"\^\.\*refs/tags/", ""', project_state) is not None,
+        'tag names are stripped of the ls-remote "<sha>\\t" prefix before matching (a raw match silently reports "no tags")')
+require('SKIP clone-URL check' in project_state,
+        'the clone-URL assertion degrades visibly when the API is unreachable instead of falling back to origin, which still carries the pre-rename path')
+require("PROJECT_STATE_VERIFY facts=(\\d+) problems=(\\d+)" in text('scripts/verify_all.mjs'),
+        'verify_all runs project_state --verify as a stage, so drift cannot pass an aggregate green')
+require('本文件不再手写事实' in text('.ai/STATE.md'),
+        'STATE.md states that it holds narrative only, pointing at the generated JSON for facts')
+
 failed = [label for ok, label in checks if not ok]
 # Print every failure, then a short tail of passing checks for context. Printing only the last 20
 # checks meant a failing assertion outside that window exited 1 without ever naming itself, which the
