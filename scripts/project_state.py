@@ -153,27 +153,40 @@ def verify(facts: dict) -> list[str]:
     state = ROOT / ".ai" / "STATE.md"
     if state.exists():
         body = state.read_text(encoding="utf-8")
-        for pat, label in (
-            (r"`([0-9a-f]{7})` = CI run", "dev baseline sha"),
-            (r"版本声明：([0-9.]+)", "version declaration"),
-        ):
-            found = re.search(pat, body)
-            if not found:
-                continue
-            value = found.group(1)
-            if label == "dev baseline sha" and value != facts["head_sha"]:
-                problems.append(
-                    f".ai/STATE.md pins dev baseline {value} but HEAD is {facts['head_sha']} "
-                    "(the drift this generator exists to prevent)"
-                )
-            if label == "version declaration" and value != version:
-                problems.append(f".ai/STATE.md declares version {value} but code says {version}")
+        # Prohibition, not optional matching. The earlier shape here searched for a pinned sha and
+        # skipped when absent - which was the normal case after STATE.md became narrative-only, so the
+        # assertion had zero coverage while looking like it did work. Now any re-pinned fact is itself
+        # the violation, and the check bites on every run.
+        pinned_sha = re.search(r"`([0-9a-f]{7})`\s*=\s*CI run", body)
+        if pinned_sha:
+            problems.append(
+                f".ai/STATE.md re-pins a baseline sha ({pinned_sha.group(1)}); facts belong in "
+                f"{GENERATED.name}, STATE.md holds narrative only"
+            )
+        pinned_version = re.search(r"版本声明：\s*([0-9]+\.[0-9]+\.[0-9]+)", body)
+        if pinned_version and pinned_version.group(1) != version:
+            problems.append(
+                f".ai/STATE.md declares version {pinned_version.group(1)} but code says {version}"
+            )
+        elif pinned_version:
+            problems.append(".ai/STATE.md repeats a version number; drop it and read the generated state")
+        # No repository-name assertion here on purpose: the only local witness is `git remote`, which
+        # still carries the pre-rename path (pushes work via GitHub's redirect), so it would blame a
+        # correct file. The canonical name is checked where an independent witness exists - README
+        # clone URL against the GitHub API, above.
 
     if GENERATED.exists():
         committed = json.loads(GENERATED.read_text(encoding="utf-8"))
-        # working_tree_dirty can never be recorded truthfully while the only uncommitted change is
-        # this very file, so it is excluded from the staleness comparison; it still alarms on its own.
-        volatile = {"head_subject", "working_tree_dirty"}
+        # Any field that moves *because* you commit can never be recorded truthfully: writing the
+        # JSON is itself a commit, which advances HEAD and re-stales it. Those are excluded from the
+        # staleness comparison (they remain visible in the file with their as-of provenance below).
+        volatile = {
+            "head_subject",
+            "working_tree_dirty",
+            "head_sha",
+            "head_full",
+            "commit_count_since_newest_tag",
+        }
         stale = [k for k, v in committed.items() if k not in volatile and facts.get(k) != v]
         if stale:
             problems.append(f"{GENERATED.name} is stale for keys {stale}; re-run --write")
