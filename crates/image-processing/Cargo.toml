@@ -1,0 +1,12 @@
+[package]
+name = "image-processing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+bytes.workspace = true
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp"] }
+serde.workspace = true
+thiserror.workspace = true
+webp = "0.3.1"

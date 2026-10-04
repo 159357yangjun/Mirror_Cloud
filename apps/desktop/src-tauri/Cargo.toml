@@ -1,0 +1,44 @@
+[package]
+name = "image-hosting-platform-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+# Keep the legacy library crate name for source compatibility with main.rs and existing integrations.
+name = "multicloud_publisher_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "=2.6.3", features = [] }
+
+[dependencies]
+application = { path = "../../../crates/application" }
+bytes.workspace = true
+chrono.workspace = true
+credential-store = { path = "../../../crates/credential-store" }
+domain = { path = "../../../crates/domain" }
+hex.workspace = true
+image-processing = { path = "../../../crates/image-processing" }
+futures.workspace = true
+mime_guess.workspace = true
+persistence-sqlite = { path = "../../../crates/persistence-sqlite" }
+plugin-runtime = { path = "../../../crates/plugin-runtime" }
+reqwest.workspace = true
+workflow-engine = { path = "../../../crates/workflow-engine" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+storage-core = { path = "../../../crates/storage-core" }
+storage-gitee = { path = "../../../crates/storage-gitee" }
+storage-github = { path = "../../../crates/storage-github" }
+storage-opendal = { path = "../../../crates/storage-opendal" }
+task-engine = { path = "../../../crates/task-engine" }
+tauri = { version = "=2.11.5", features = ["tray-icon"] }
+tauri-plugin-dialog = "=2.7.3"
+tauri-plugin-opener = "=2.5.5"
+tauri-plugin-clipboard-manager = "=2.3.3"
+tauri-plugin-global-shortcut = "=2.3.2"
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true

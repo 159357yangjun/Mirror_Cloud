@@ -1,0 +1,28 @@
+---
+title: 连接 WebDAV
+description: NAS、自建服务和通用 WebDAV 的完整接入流程。
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components'
+
+WebDAV 解决“怎么读写文件”，但**不天然解决“别人怎么通过公网 URL 看图片”**。因此 Publisher 把 Endpoint 和 Public Base URL 分开。
+
+<Steps>
+1. 在 NAS/云盘/自建服务中开启 WebDAV，记录 Endpoint。
+2. 创建独立用户名与密码；如果服务支持 App Password，优先使用 App Password。
+3. 确认你有一个能直接访问这些文件的公网地址，例如反向代理或静态文件域名。
+4. Publisher 选择 **WebDAV**，填写 Endpoint、用户名、密码、可选 Root。
+5. 在“公开访问域名”填写真正给别人访问的 URL 前缀。
+6. 点击 **测试并保存**，再上传一张测试图确认公网 URL 可访问。
+</Steps>
+
+<Aside type="caution" title="不要直接假设 Endpoint 就是公开 URL">
+很多 WebDAV Endpoint 需要 Basic Auth 或登录 Cookie。这样的地址不适合作为公开图床 URL。可以让 WebDAV 只承担 Backup，Primary 使用对象存储。
+</Aside>
+
+## 推荐场景
+
+- NAS 备份
+- 自建服务器资源同步
+- Storage Group 的 Backup
+- 已经有独立静态文件网关的团队

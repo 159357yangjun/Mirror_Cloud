@@ -1,0 +1,12 @@
+---
+title: 多云组与自动修复
+---
+
+Storage Group 把多个存储组合成一个发布目标。
+
+- **Mirror All**：多个目标并行发布。
+- **Primary + Backups**：主存储优先；Mirror 始终同步，Backup 仅在 Primary 失败时接管。
+- 每个 Deployment 独立记录成功或失败状态。
+- 发生部分失败时，资源仍会保留；可以从健康副本直接跨云读取并重建失败副本。
+
+修复不依赖本地原图，这也是 Publisher 与普通“切换图床”工具的重要区别。

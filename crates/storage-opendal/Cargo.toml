@@ -1,0 +1,14 @@
+[package]
+name = "storage-opendal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+bytes.workspace = true
+async-trait.workspace = true
+domain = { path = "../domain" }
+opendal = { version = "0.58.2", default-features = false, features = ["services-s3", "services-oss", "services-cos", "services-webdav", "executors-tokio", "http-transport-reqwest-rustls"] }
+serde.workspace = true
+storage-core = { path = "../storage-core" }
+uuid.workspace = true
