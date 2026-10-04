@@ -1130,6 +1130,7 @@ version = "1.4.7"
 dependencies = [
  "chrono",
  "serde",
+ "serde_json",
  "uuid",
 ]
 
