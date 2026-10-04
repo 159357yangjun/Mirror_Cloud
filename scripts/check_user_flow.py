@@ -194,6 +194,42 @@ require('complete_with_note(task.id' in cli and 'Publisher warning:' in cli, 'Ty
 require('warningTasks' in upload and 'TriangleAlert' in upload, 'upload dialog surfaces completed-with-warning state')
 require('API Key 不能写入插件 JSON' in commands and re.search(r'config\s*\.\s*get\(\s*"apiKey"\s*\)', commands) is not None, 'generic plugin JSON cannot persist AI API keys')
 require('let verified_sha = self.existing_sha(&repository_path).await?' in gitee and 'remote SHA verification failed' in gitee, 'Gitee upload verifies remote object after write')
+# Gitee puts access_token in the query string on every request, so a raw reqwest error would carry
+# the credential into task records, toasts and diagnostics. Two-sided: the redaction helper must
+# exist AND no network/provider error path may stringify a reqwest error directly.
+require('fn redact(message: &str, token: &str) -> String' in gitee and '[redacted]' in gitee,
+        'Gitee shares one redaction helper that replaces the token in message text')
+require('without_url()' in gitee, 'Gitee strips the request URL from reqwest errors before surfacing them')
+require(gitee.count('StorageError::Network(e.to_string())') == 0
+        and len(re.findall(r'\.map_err\(\|e\| StorageError::Provider\(e\.to_string\(\)\)\)', gitee)) == 2,
+        'no Gitee reqwest error is stringified raw; the only two remaining Provider(e.to_string()) calls '
+        'are Url::parse on the compile-time API_ROOT/WEB_ROOT constants, which carry no credential')
+# Per-call-site predicate: every transport boundary must route through a redacting helper. A bare
+# count would stay green if someone swapped safe_ctx() for to_string() inside the helpers, so match
+# each .send()/.json()/.text() site to its map_err instead of trusting the helper body.
+_gitee_send = len(re.findall(r'\.send\(\)', gitee))
+_gitee_net = len(re.findall(r'\.map_err\(\|e\| net_err\(e, tok\)\)\?;', gitee))
+_gitee_prov = len(re.findall(r'\.map_err\(\|e\| prov_err\(e, tok\)\)\?;', gitee))
+require(_gitee_send >= 1 and _gitee_net == _gitee_send,
+        f'every one of the {_gitee_send} Gitee .send() sites maps its error through net_err (found {_gitee_net})')
+require(_gitee_prov >= 7,
+        f'Gitee response-body parses map their errors through prov_err (found {_gitee_prov})')
+require(re.search(r'fn net_err\(error: reqwest::Error, token: &str\) -> StorageError \{\s*StorageError::Network\(safe_ctx\(error, token\)\)', gitee) is not None,
+        'net_err itself delegates to safe_ctx — it may not stringify the error directly')
+require(re.search(r'fn prov_err\(error: reqwest::Error, token: &str\) -> StorageError \{\s*StorageError::Provider\(safe_ctx\(error, token\)\)', gitee) is not None,
+        'prov_err itself delegates to safe_ctx — it may not stringify the error directly')
+require(re.search(r'fn safe_ctx\(error: reqwest::Error, token: &str\) -> String \{\s*redact\(&error\.without_url\(\)\.to_string\(\), token\)\s*\}', gitee) is not None,
+        'safe_ctx is exactly without_url + redact, in that order')
+require(gitee.count('net_err(e, tok)') + gitee.count('prov_err(e, tok)') >= 16,
+        f'Gitee routes its transport errors through the redacting helpers (found {gitee.count("net_err(e, tok)") + gitee.count("prov_err(e, tok)")})')
+require('fn response_error(response: Response, context: &str, token: &str)' in gitee,
+        'Gitee scrubs server response bodies with the token too')
+require('redact_hides_the_token_and_empty_token_passes_text_through' in gitee,
+        'the redaction behaviour has a two-sided test (token hidden, empty token passed through verbatim)')
+require('self.credentials.token.trim())' not in github or 'bearer_auth' in github,
+        'GitHub keeps the token in an Authorization header rather than the query string')
+require(github.count('StorageError::Network(e.to_string())') > 0,
+        'KNOWN GAP: GitHub still stringifies raw reqwest errors — safe today only because bearer_auth keeps the token out of the URL; re-check before any change moves the token into a query parameter')
 require('self.operator.stat(&remote_path)' in opendal and 'content_length() != expected_len' in opendal, 'OpenDAL upload verifies remote size after write')
 require('reqwest::Url::parse(value)' in commands and 'url.host_str().is_none()' in commands, 'public base URLs are structurally validated')
 require('rollback_successful_uploads' in commands and '可能存在孤儿文件' in commands, 'desktop compensates remote uploads when local persistence fails')
