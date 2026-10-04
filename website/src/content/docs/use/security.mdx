@@ -1,0 +1,9 @@
+---
+title: 凭据与安全
+---
+
+- Token、Secret Key、WebDAV 密码保存在操作系统凭据库。
+- SQLite 只保存 Storage 配置、资源索引、任务状态和 credential reference。
+- 教程网站不会要求粘贴任何 Secret。
+- 删除仍被 Deployment、Storage Group 或 Workflow 引用的 Storage 时，应用会拒绝操作。
+- URL 导入限制为 HTTP/HTTPS 图片，并设置下载超时与大小上限。

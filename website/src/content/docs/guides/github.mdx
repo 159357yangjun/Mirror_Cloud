@@ -1,0 +1,38 @@
+---
+title: 连接 GitHub
+description: Repository Storage 的完整接入流程。
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components'
+
+GitHub Provider 更适合 **README、项目文档、少量静态资源和多云镜像**，不把它定位成专业 CDN。
+
+## 需要准备
+
+- GitHub 账号
+- 一个 Repository
+- Branch（通常是 `main`）
+- 对该仓库有 Contents 读写权限的 Token
+
+<Steps>
+1. 新建或选择一个专门用于资源的 Repository，例如 `images`。
+2. 创建细粒度访问令牌，尽量只授权这个仓库，并授予仓库 Contents 读写能力。
+3. 在 Publisher 选择 **GitHub**，填写 Owner、Repository、Branch、Token。
+4. Root 可填写 `assets`，也可以留空。
+5. 公开仓库可以直接使用 Raw URL；如果你有自己的代理/CDN，可填写“自定义公开域名”。
+6. 点击 **测试并保存**。
+</Steps>
+
+<Aside type="caution" title="私有仓库">
+私有仓库的 Raw 地址不能天然作为“别人都能访问”的图床链接。若要公开分享，请提供你自己的公开代理/CDN 地址，或使用对象存储作为 Primary。
+</Aside>
+
+## 推荐用法
+
+在 Storage Group 中把 R2/OSS/COS 作为 Primary，把 GitHub 作为 Mirror 或 Backup。这样仓库保留副本，但高流量访问仍由对象存储承担。
+
+## 常见问题
+
+- **404**：Owner/Repository/Branch 写错，或 Token 无权访问私有仓库。
+- **更新失败**：仓库内容 API 更新已有文件需要当前文件 SHA，Publisher 会自动读取并处理；若仍失败，检查 Token 的 Contents 写权限。
+- **Raw URL 不能访问**：确认仓库公开，或配置自定义公开域名。

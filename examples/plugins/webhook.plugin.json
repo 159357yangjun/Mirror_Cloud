@@ -1,0 +1,17 @@
+{
+  "id": "example.webhook",
+  "name": "Webhook Example",
+  "version": "1.0.0",
+  "description": "Example manifest for a webhook plugin",
+  "kind": "webhook",
+  "permissions": [
+    "read_asset",
+    "network",
+    "external_write"
+  ],
+  "config_schema": {
+    "endpoint": {
+      "type": "url"
+    }
+  }
+}

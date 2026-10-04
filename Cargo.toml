@@ -1,0 +1,40 @@
+[workspace]
+resolver = "2"
+members = [
+  "apps/desktop/src-tauri",
+  "crates/domain",
+  "crates/storage-core",
+  "crates/application",
+  "crates/task-engine",
+  "crates/credential-store",
+  "crates/storage-opendal",
+  "crates/storage-github",
+  "crates/storage-gitee",
+  "crates/persistence-sqlite",
+  "crates/image-processing",
+  "crates/workflow-engine",
+  "crates/plugin-runtime",
+]
+
+[workspace.package]
+version = "1.4.7"
+edition = "2024"
+license = "MIT"
+authors = ["Mirror Cloud Contributors"]
+
+[workspace.dependencies]
+base64 = "0.22"
+async-trait = "0.1"
+bytes = { version = "1", features = ["serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+hex = "0.4"
+futures = "0.3"
+mime_guess = "2"
+reqwest = { version = "0.13", features = ["json", "multipart", "query"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "net", "io-util"] }
+tracing = "0.1"
+uuid = { version = "1", features = ["v4", "serde"] }

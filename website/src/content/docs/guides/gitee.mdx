@@ -1,0 +1,43 @@
+---
+title: 连接 Gitee
+description: 国内仓库资源、镜像与备份的完整接入流程。
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components'
+
+Gitee 在 Publisher 中属于 **Repository Storage**。它适合项目文档、少量资源、国内仓库协作以及多云镜像/备份。
+
+## 准备项
+
+- Gitee 账号
+- 用于资源的仓库
+- 分支（通常是 `master` 或 `main`，以你的仓库为准）
+- 具备目标仓库内容读写权限的 Personal Access Token
+
+<Steps>
+1. 创建或选择资源仓库，例如 `images`。
+2. 在账号安全/访问令牌页面创建 Token，只授予实际需要的仓库读写权限。
+3. Publisher 中进入 **云端 → 添加存储 → Gitee**。
+4. 填写 Owner、Repository、Branch、Token；Root 可设置为 `assets`。
+5. 留空“自定义公开域名”时，应用会自己拼出 Raw 地址：`https://gitee.com/<Owner>/<Repository>/raw/<Branch>/<Root>/<文件>`；有独立公开域名或代理再填这一项。访客能否打开这条地址，取决于仓库本身是否公开。
+6. 点击 **测试并保存**。
+</Steps>
+
+<Aside type="note" title="定位说明">
+代码托管平台并不是专业对象存储/CDN。Publisher 支持 Gitee，但更推荐把它用于仓库资源、镜像或备份；大规模公网流量优先使用 R2、OSS 或 COS。
+</Aside>
+
+## 多云推荐
+
+一个常见组合：
+
+- Primary：Cloudflare R2 / OSS / COS
+- Backup：Gitee
+
+如果主云某个 Deployment 失败，可以从健康副本跨云 Repair，不依赖本地保留原图。
+
+## 常见问题
+
+- **鉴权失败**：重新确认 Token 有仓库内容读写权限。
+- **找不到分支**：Gitee 仓库的默认分支不一定是 `main`，以实际仓库为准。
+- **公开链接不稳定/不适合高流量**：把 Gitee 调整为 Backup，并让对象存储承担公开访问。

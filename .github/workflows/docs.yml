@@ -1,0 +1,110 @@
+name: Docs Site
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+    paths:
+      - 'website/**'
+      - 'scripts/check_docs_site.py'
+      - '.github/workflows/docs.yml'
+      - '.node-version'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: docs-site
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - name: Docs site contract validation
+        run: python3 scripts/check_docs_site.py
+      - name: Build static docs
+        working-directory: website
+        run: |
+          npm ci
+          npm run build
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: website/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+      - name: Verify every tutorial route the desktop app links to
+        shell: bash
+        run: |
+          base="https://159357yangjun.github.io/image-hosting-platform"
+          status_of() {
+            local url="$1" code
+            code="$(curl -s -o /dev/null -L -w '%{http_code}' "$url" || true)"
+            echo "${code:-000}"
+          }
+          mapfile -t slugs < <(grep -oE "slug: '[^']+'" website/astro.config.mjs | sed "s/slug: '//; s/'$//")
+          if [ "${#slugs[@]}" -eq 0 ]; then
+            echo "No sidebar slugs found; the check would prove nothing." >&2
+            exit 1
+          fi
+          root_ready=""
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            code="$(status_of "$base/")"
+            if [ "$code" = "200" ]; then
+              root_ready="yes"
+              break
+            fi
+            echo "waiting for Pages to serve $base/ (got $code, attempt $attempt)"
+            sleep 15
+          done
+          if [ -z "$root_ready" ]; then
+            echo "GitHub Pages never started serving $base/. Check Settings -> Pages build source = GitHub Actions." >&2
+            exit 1
+          fi
+          failed=()
+          for slug in "${slugs[@]}"; do
+            url="$base/$slug/"
+            if [ "$slug" = "index" ]; then
+              url="$base/"
+            fi
+            code=""
+            for attempt in 1 2 3; do
+              code="$(status_of "$url")"
+              if [ "$code" = "200" ]; then
+                break
+              fi
+              sleep 10
+            done
+            echo "$code $url"
+            if [ "$code" != "200" ]; then
+              failed+=("$code $url")
+            fi
+          done
+          if [ "${#failed[@]}" -gt 0 ]; then
+            printf 'Published docs missing: %s\n' "${failed[@]}" >&2
+            exit 1
+          fi
+          echo "All ${#slugs[@]} docs routes are live."

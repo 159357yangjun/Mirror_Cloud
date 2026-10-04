@@ -1,0 +1,171 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop-check:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+          cache-dependency-path: |
+            apps/desktop/package-lock.json
+            website/package-lock.json
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable, 2026-09-03
+        with:
+          toolchain: '1.98.1'
+          components: rustfmt
+      - name: Cache Rust dependencies and debug build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/debug
+          key: ${{ runner.os }}-rust-debug-v2-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-${{ hashFiles('.github/workflows/ci.yml') }}
+      - name: Static validation
+        run: python scripts/validate.py
+      - name: Command contract validation
+        run: python scripts/check_contracts.py
+      - name: User-flow contract validation
+        run: python scripts/check_user_flow.py
+      - name: Docs site contract validation
+        run: python scripts/check_docs_site.py
+      - name: Workflow action pin validation
+        run: python scripts/check_workflow_action_pins.py
+      - name: Release version consistency validation
+        run: python scripts/check_release_version.py
+      - name: Tauri dependency family validation
+        run: python scripts/check_tauri_dependency_family.py
+      - name: Verify Node matches .node-version
+        shell: pwsh
+        run: |
+          $expectedNode = (Get-Content '.node-version').Trim()
+          $actualNode = (node --version).Substring(1)
+          Write-Host "node=$actualNode npm=$(npm --version)"
+          if ($actualNode -ne $expectedNode) {
+            throw "CI resolved Node $actualNode but .node-version pins $expectedNode; setup-node is not honoring node-version-file."
+          }
+      - name: Verify committed dependency locks
+        shell: pwsh
+        run: |
+          $locks = @('Cargo.lock', 'apps/desktop/package-lock.json', 'website/package-lock.json')
+          foreach ($lock in $locks) {
+            if (-not (Test-Path $lock)) { throw "Missing committed dependency lock: $lock" }
+          }
+      - name: Rust format
+        id: rustfmt
+        shell: pwsh
+        run: |
+          cargo fmt --all
+          git diff -- '*.rs' | Out-File -Encoding utf8 rustfmt.patch
+          if ((Get-Item rustfmt.patch).Length -gt 3) {
+            Write-Host 'rustfmt changed tracked Rust files. See the rustfmt-diff artifact.'
+            # The artifact endpoint needs auth; workflow-command annotations proved
+            # unreliable on this runner. Use the step summary, which the public
+            # /actions/runs/{id}/attempts/1/summary endpoint renders verbatim.
+            Get-Content rustfmt.patch | ForEach-Object {
+              Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "``$_``"
+            }
+            $files = @(git diff --name-only -- '*.rs')
+            Write-Output "::error title=rustfmt-file::count=$($files.Count); $($files -join '; ')"
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes((Get-Content rustfmt.patch -Raw))
+            $b64 = [Convert]::ToBase64String($bytes)
+            $total = [Math]::Ceiling($b64.Length / 200.0)
+            for ($k = 0; $k * 200 -lt $b64.Length; $k++) {
+              $chunk = $b64.Substring($k * 200, [Math]::Min(200, $b64.Length - $k * 200))
+              Write-Output "::error title=rustfmt-b64-$k-of-$total::$chunk"
+            }
+            exit 1
+            git diff --check -- '*.rs'
+            exit 1
+          }
+      - name: Upload rustfmt diff
+        if: failure() && steps.rustfmt.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rustfmt-diff
+          path: rustfmt.patch
+          if-no-files-found: error
+          retention-days: 14
+      - name: Rust check
+        id: rustcheck
+        shell: pwsh
+        run: |
+          cargo check --workspace --locked 2>&1 | Tee-Object -FilePath rustcheck.log
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host 'cargo check failed. See the rustcheck-log artifact.'
+            # The artifact endpoint needs auth, so also push the compiler's first error
+            # through an annotation - the annotations list is public on a public repo.
+            $log = Get-Content rustcheck.log
+            $i = ($log | Select-String -Pattern '^error' | Select-Object -First 1).LineNumber
+            if ($i) {
+              $block = $log[($i - 1)..([Math]::Min($i + 8, $log.Count - 1))]
+              $escaped = ($block -join ' | ') -replace '%', '%25' -replace "`r", '' -replace "`n", ''
+              Write-Output "::error::rustcheck: $escaped"
+            } else {
+              $tail = ($log | Select-Object -Last 6) -join ' | '
+              Write-Output "::error::rustcheck: (no ^error line matched; tail) $tail"
+            }
+            exit 1
+          }
+      - name: Upload Rust check log
+        if: failure() && steps.rustcheck.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rustcheck-log
+          path: rustcheck.log
+          if-no-files-found: error
+          retention-days: 14
+      - name: Rust tests
+        id: rusttest
+        shell: pwsh
+        run: |
+          cargo test --workspace --locked 2>&1 | Tee-Object -FilePath rusttest.log
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host 'cargo test failed.'
+            $log = Get-Content rusttest.log
+            $i = ($log | Select-String -Pattern 'FAILED\]|^error\[|^error\[E|panicked at' | Select-Object -First 1).LineNumber
+            if ($i) {
+              $block = $log[($i - 1)..([Math]::Min($i + 9, $log.Count - 1))]
+              $escaped = ($block -join ' | ') -replace '%', '%25' -replace "`r", '' -replace "`n", ''
+              Write-Output "::error title=rusttest-first::$escaped"
+            } else {
+              $tail = ($log | Select-Object -Last 6) -join ' | '
+              Write-Output "::error title=rusttest-first::(no pattern matched; tail) $tail"
+            }
+            exit 1
+          }
+      - name: Desktop build
+        working-directory: apps/desktop
+        run: |
+          npm ci
+          npm run build
+      - name: Docs build
+        working-directory: website
+        run: |
+          npm ci
+          npm run build
+      - name: Upload committed dependency locks
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dependency-locks
+          path: |
+            Cargo.lock
+            apps/desktop/package-lock.json
+            website/package-lock.json
+          if-no-files-found: error
+          retention-days: 14

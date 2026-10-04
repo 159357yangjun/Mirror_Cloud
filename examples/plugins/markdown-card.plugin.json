@@ -1,0 +1,15 @@
+{
+  "id": "example.markdown-card",
+  "name": "Markdown Card Example",
+  "version": "1.0.0",
+  "description": "Example manifest for a template plugin",
+  "kind": "template",
+  "permissions": [
+    "read_asset"
+  ],
+  "config_schema": {
+    "template": {
+      "type": "string"
+    }
+  }
+}

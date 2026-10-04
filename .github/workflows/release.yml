@@ -1,0 +1,183 @@
+name: Release Bundle
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-bundle:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    env:
+      DOCS_BASE_URL: https://159357yangjun.github.io/image-hosting-platform
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable, 2026-09-03
+        with:
+          toolchain: '1.98.1'
+          components: rustfmt
+
+      - name: Validate source contracts
+        run: |
+          python scripts/validate.py
+          python scripts/check_contracts.py
+          python scripts/check_user_flow.py
+          python scripts/check_docs_site.py
+          python scripts/check_workflow_action_pins.py
+          python scripts/check_release_version.py
+          python scripts/check_tauri_dependency_family.py
+
+      - name: Resolve the docs base URL to bake into the bundle
+        shell: pwsh
+        run: |
+          $candidate = $env:DOCS_BASE_URL
+          $baked = 'VITE_DOCS_BASE_URL='
+          if ([string]::IsNullOrWhiteSpace($candidate)) {
+            Write-Host '::warning:: DOCS_BASE_URL is empty, so online tutorial links stay hidden in this bundle.'
+            Add-Content -Path $env:GITHUB_ENV -Value $baked -Encoding utf8NoBOM
+            exit 0
+          }
+          $probe = "$candidate/guides/github/"
+          try {
+            $code = [int](Invoke-WebRequest -Uri $probe -UseBasicParsing -TimeoutSec 30).StatusCode
+          } catch {
+            $code = 0
+          }
+          if ($code -eq 200) {
+            Write-Host "docs reachable: HTTP $code $probe"
+            Add-Content -Path $env:GITHUB_ENV -Value "$baked$candidate" -Encoding utf8NoBOM
+          } else {
+            Write-Host "::warning:: Docs at $probe are not published (HTTP $code), so this bundle hides the online tutorial links instead of shipping dead ones. Enable GitHub Pages (Settings -> Pages -> Source: GitHub Actions) and run the Docs Site workflow to include them."
+            Add-Content -Path $env:GITHUB_ENV -Value $baked -Encoding utf8NoBOM
+          }
+
+      - name: Verify committed dependency locks
+        shell: pwsh
+        run: |
+          $locks = @('Cargo.lock', 'apps/desktop/package-lock.json', 'website/package-lock.json')
+          foreach ($lock in $locks) {
+            if (-not (Test-Path $lock)) { throw "Missing committed dependency lock: $lock" }
+          }
+
+      - name: Validate locked Rust dependency graph
+        run: |
+          cargo fmt --all -- --check
+          cargo check --workspace --locked
+          cargo test --workspace --locked
+
+      - name: Install desktop dependencies from lock
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Build desktop frontend
+        working-directory: apps/desktop
+        run: npm run build
+
+      - name: Build Windows bundles
+        working-directory: apps/desktop
+        run: npm run tauri build
+
+      - name: Verify build did not mutate dependency locks
+        shell: pwsh
+        run: |
+          git diff --exit-code -- Cargo.lock apps/desktop/package-lock.json website/package-lock.json
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Release build modified a committed dependency lock. Update dependencies explicitly before releasing.'
+          }
+
+      - name: Smoke-test NSIS and MSI installers
+        id: installer-smoke
+        shell: pwsh
+        run: ./scripts/smoke_windows_installers.ps1
+
+      - name: Upload installer smoke logs on failure
+        if: failure() && steps.installer-smoke.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-installer-smoke-logs
+          path: ${{ runner.temp }}/image-hosting-platform-installer-smoke/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Stage release files and checksums
+        shell: pwsh
+        run: |
+          $releaseDir = Join-Path $env:GITHUB_WORKSPACE 'release'
+          New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
+
+          $version = (Get-Content (Join-Path $env:GITHUB_WORKSPACE 'apps\desktop\package.json') -Raw | ConvertFrom-Json).version
+          $bundleRoot = Join-Path $env:GITHUB_WORKSPACE 'target\release\bundle'
+          $exeFiles = @(Get-ChildItem $bundleRoot -Recurse -File -Filter '*.exe')
+          $msiFiles = @(Get-ChildItem $bundleRoot -Recurse -File -Filter '*.msi')
+          if ($exeFiles.Count -ne 1) { throw "Expected exactly one Windows EXE installer, found $($exeFiles.Count)." }
+          if ($msiFiles.Count -ne 1) { throw "Expected exactly one Windows MSI installer, found $($msiFiles.Count)." }
+
+          $exeName = "image-hosting-platform-v$version-windows-x64-setup.exe"
+          $msiName = "image-hosting-platform-v$version-windows-x64.msi"
+          Copy-Item $exeFiles[0].FullName -Destination (Join-Path $releaseDir $exeName)
+          Copy-Item $msiFiles[0].FullName -Destination (Join-Path $releaseDir $msiName)
+
+          $sourceName = "image-hosting-platform-v$version-source.zip"
+          git archive --format=zip -o (Join-Path $releaseDir $sourceName) HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'git archive failed' }
+
+          $checksumPath = Join-Path $releaseDir 'SHA256SUMS.txt'
+          Get-ChildItem $releaseDir -File |
+            Where-Object { $_.Name -ne 'SHA256SUMS.txt' } |
+            Sort-Object Name |
+            ForEach-Object {
+              $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$hash  $($_.Name)"
+            } | Set-Content -Encoding utf8 $checksumPath
+
+      - name: Upload Windows release files
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: image-hosting-platform-release-files
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload dependency locks used by this release
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: image-hosting-platform-dependency-locks
+          path: |
+            Cargo.lock
+            apps/desktop/package-lock.json
+            website/package-lock.json
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - windows-bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download staged release files
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: image-hosting-platform-release-files
+          path: release
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          name: Mirror Cloud ${{ github.ref_name }}
+          generate_release_notes: true
+          files: release/*
+          fail_on_unmatched_files: true

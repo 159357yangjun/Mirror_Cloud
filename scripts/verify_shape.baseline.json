@@ -1,0 +1,143 @@
+{
+  "_meta": {
+    "takenAt": "2026-10-04T12:32:09",
+    "head": "157d0e781b7d61022601e6dd3b3a9cd0ced9f27b",
+    "reason": "Added dialog focus-trap and focus-restoration assertions to the confirm harness"
+  },
+  "files": [
+    {
+      "file": "scripts/verify_all.mjs",
+      "exists": true,
+      "lines": 361,
+      "bytes": 26714,
+      "families": {
+        "failures.push": 0,
+        "emitGate": 0,
+        "harness-fault exit": 0,
+        "gate line": 0,
+        "positive control": 0,
+        "throw": 0
+      }
+    },
+    {
+      "file": "scripts/verify_dialog_interactions.mjs",
+      "exists": true,
+      "lines": 3814,
+      "bytes": 313539,
+      "families": {
+        "failures.push": 29,
+        "emitGate": 16,
+        "harness-fault exit": 45,
+        "gate line": 11,
+        "positive control": 15,
+        "throw": 16
+      }
+    },
+    {
+      "file": "scripts/verify_guard_mutations.mjs",
+      "exists": true,
+      "lines": 372,
+      "bytes": 29915,
+      "families": {
+        "failures.push": 1,
+        "emitGate": 0,
+        "harness-fault exit": 2,
+        "gate line": 0,
+        "positive control": 0,
+        "throw": 0
+      }
+    },
+    {
+      "file": "scripts/verify_modes.mjs",
+      "exists": true,
+      "lines": 37,
+      "bytes": 1449,
+      "families": {
+        "failures.push": 0,
+        "emitGate": 0,
+        "harness-fault exit": 0,
+        "gate line": 0,
+        "positive control": 0,
+        "throw": 0
+      }
+    },
+    {
+      "file": "scripts/verify_probes.mjs",
+      "exists": true,
+      "lines": 771,
+      "bytes": 47295,
+      "families": {
+        "failures.push": 0,
+        "emitGate": 0,
+        "harness-fault exit": 0,
+        "gate line": 0,
+        "positive control": 1,
+        "throw": 0
+      }
+    },
+    {
+      "file": "scripts/verify_shape.mjs",
+      "exists": true,
+      "lines": 314,
+      "bytes": 18455,
+      "families": {
+        "failures.push": 1,
+        "emitGate": 0,
+        "harness-fault exit": 0,
+        "gate line": 0,
+        "positive control": 0,
+        "throw": 0
+      }
+    }
+  ],
+  "totals": {
+    "files": 6,
+    "lines": 5669,
+    "bytes": 437367,
+    "families": {
+      "failures.push": 31,
+      "emitGate": 16,
+      "harness-fault exit": 47,
+      "gate line": 11,
+      "positive control": 16,
+      "throw": 16
+    }
+  },
+  "modes": {
+    "reachable": [
+      "ab",
+      "confirm",
+      "contrast",
+      "contrast-tier",
+      "external",
+      "gate",
+      "gate-unit",
+      "layout",
+      "links",
+      "pages",
+      "red-demo",
+      "settings-guard",
+      "theme-surfaces",
+      "visual"
+    ],
+    "declared": [
+      "ab",
+      "confirm",
+      "contrast",
+      "contrast-tier",
+      "external",
+      "gate",
+      "gate-unit",
+      "help",
+      "layout",
+      "links",
+      "pages",
+      "red-demo",
+      "settings-guard",
+      "theme-surfaces",
+      "visual"
+    ],
+    "undeclared": [],
+    "undispatchable": []
+  }
+}

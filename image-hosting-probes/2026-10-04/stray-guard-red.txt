@@ -1,0 +1,4 @@
+docs/outline.old	suffix
+notes.log	suffix
+scratch_probe.mjs	name
+tmp-readme-fix.cjs	name

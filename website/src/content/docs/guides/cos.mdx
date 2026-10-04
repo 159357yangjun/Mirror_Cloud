@@ -1,0 +1,27 @@
+---
+title: 连接腾讯云 COS
+description: Bucket、SecretId/SecretKey、Endpoint 与公开访问配置。
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components'
+
+预计时间：**5–10 分钟**。需要 Bucket、Endpoint、SecretId、SecretKey 与公网访问域名。应用目前要求配置公网访问域名才能测试并保存 COS 连接。
+
+<Steps>
+1. 登录腾讯云并创建 COS Bucket，记录地域与 Bucket 名称。
+2. 确认 COS Endpoint，例如 `https://cos.ap-guangzhou.myqcloud.com`。
+3. 创建独立 CAM 子用户/密钥，只授予目标 Bucket 所需对象读写/删除权限。
+4. 准备自定义域名或 CDN 地址，作为别人实际访问图片的 URL 前缀。
+5. Publisher 中选择 **腾讯云 COS**，填写 Bucket、Endpoint、SecretId、SecretKey 和 **公开访问域名**；Root 可选。应用不会从 Endpoint 推导图片地址，连接测试和保存都要求提供公开访问域名，因此当前不能将无公网地址的 COS 连接保存为镜像 / 备份成员。
+6. 点击 **测试并保存**。
+</Steps>
+
+<Aside type="note" title="两种地址不要混淆">
+Endpoint 是 Publisher 调用 COS API 的地址；公开访问域名是博客、Markdown 和其他用户打开图片时使用的地址。
+</Aside>
+
+## 常见问题
+
+- **403 / Signature 错误**：检查 SecretId/SecretKey 和 CAM 权限。
+- **地域错误**：Endpoint 必须与 Bucket 地域对应。
+- **公网链接 404**：确认公开域名/CDN 回源 Bucket 与路径配置。
