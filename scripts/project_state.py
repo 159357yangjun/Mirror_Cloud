@@ -69,20 +69,38 @@ def local_facts() -> dict:
     repo = repo.split("github.com/")[-1] if "github.com/" in repo else repo
 
     dirty = bool(git("status", "--porcelain"))
-    # ls-remote lines are "<sha>\trefs/tags/<name>" (annotated tags add a second "^{}" line).
-    # Strip through the ref prefix before matching: matching the raw line makes every name fail
-    # the regex and silently reports "no tags" - a zero that means "the gauge is blind".
-    tag_names = {
-        re.sub(r"^.*refs/tags/", "", line.split("\t")[-1]).replace("^{}", "")
-        for line in git("ls-remote", "--tags", "origin").splitlines()
-        if line.strip()
-    }
-    versioned = sorted(t for t in tag_names if re.fullmatch(r"v\d+\.\d+\.\d+", t))
+    # ls-remote reaches the network and fails without the local proxy. Empty output is NOT "the repo
+    # has no tags": conflating a transport failure with an observation lets a connection blip rewrite
+    # a fact to null and then report that same fact as drift. Probe once, keep rc and stdout together.
+    probe = subprocess.run(
+        ["git", "ls-remote", "--tags", "origin"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if probe.returncode != 0:
+        newest_tag: str | None = "unreachable"
+        commits_since: int | str | None = "unreachable"
+    else:
+        # Strip through the ref prefix before matching: matching the raw "<sha>\trefs/tags/<name>"
+        # line makes every name fail the regex and silently reports "no tags".
+        tag_names = {
+            re.sub(r"^.*refs/tags/", "", line.split("\t")[-1]).replace("^{}", "")
+            for line in probe.stdout.splitlines()
+            if line.strip()
+        }
+        versioned = sorted(t for t in tag_names if re.fullmatch(r"v\d+\.\d+\.\d+", t))
 
-    def vkey(tag: str) -> tuple[int, ...]:
-        return tuple(int(p) for p in tag[1:].split("."))
+        def vkey(tag: str) -> tuple[int, ...]:
+            return tuple(int(p) for p in tag[1:].split("."))
 
-    newest_tag = max(versioned, key=vkey) if versioned else None
+        newest_tag = max(versioned, key=vkey) if versioned else None
+        count = (
+            git("rev-list", "--count", f"{newest_tag}..HEAD") if newest_tag else ""
+        )
+        commits_since = int(count) if count.isdigit() else None
 
     return {
         "schema": SCHEMA_VERSION,
@@ -100,9 +118,7 @@ def local_facts() -> dict:
         },
         "workspace_members": len(members),
         "newest_version_tag_on_origin": newest_tag,
-        "commit_count_since_newest_tag": (
-            int(git("rev-list", "--count", f"{newest_tag}..HEAD")) if newest_tag else None
-        ),
+        "commit_count_since_newest_tag": commits_since,
         "hand_maintained_files": [".ai/STATE.md", ".ai/TASKS.md", "README.md"],
     }
 
@@ -187,6 +203,13 @@ def verify(facts: dict) -> list[str]:
             "head_full",
             "commit_count_since_newest_tag",
         }
+        # "unreachable" means the gauge could not reach the network, not that the fact changed.
+        # Comparing across it would turn a connection blip into a red gate; the value is still
+        # written to the file so a reader sees the last known state rather than a silent null.
+        tag_states = {committed.get("newest_version_tag_on_origin"), facts.get("newest_version_tag_on_origin")}
+        if "unreachable" in tag_states:
+            print("SKIP tag staleness comparison (origin tags unreachable in one of the two states)")
+            volatile = volatile | {"newest_version_tag_on_origin"}
         stale = [k for k, v in committed.items() if k not in volatile and facts.get(k) != v]
         if stale:
             problems.append(f"{GENERATED.name} is stale for keys {stale}; re-run --write")
