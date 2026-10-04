@@ -2,6 +2,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+pub mod publish_plan;
+
 pub type AssetId = Uuid;
 pub type VariantId = Uuid;
 pub type DeploymentId = Uuid;
