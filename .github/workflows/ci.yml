@@ -35,7 +35,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target/debug
-          key: ${{ runner.os }}-rust-debug-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}
+          key: ${{ runner.os }}-rust-debug-v2-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-${{ hashFiles('.github/workflows/ci.yml') }}
       - name: Static validation
         run: python scripts/validate.py
       - name: Command contract validation
