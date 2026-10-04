@@ -18,7 +18,9 @@
 //! a plan that can be edited mid-flight is not evidence of what ran.
 //!
 //! ```text
-//! PublishIntent (frozen decision) --compile()--> PublishPlan (ordered steps) --execute()--> Vec<PublishOutcome>
+//! PublishIntent (frozen decision)
+//!     --compile()-->  PublishPlan (ordered steps)
+//!     --execute()-->  Vec<PublishOutcome>
 //! ```
 
 use chrono::{DateTime, Utc};
@@ -170,23 +172,22 @@ impl PublishPlan {
     /// `storages` supplies the concrete destinations for a `TargetSelection::Group`; an empty or
     /// unmatched set yields an empty plan rather than an error, because "nothing to do" is a valid
     /// outcome the caller can branch on.
-    pub fn compile(
-        intent: &PublishIntent,
-        storages: &[(StorageId, DeploymentRole)],
-    ) -> Self {
+    pub fn compile(intent: &PublishIntent, storages: &[(StorageId, DeploymentRole)]) -> Self {
         let uploads: Vec<PlannedUpload> = match &intent.targets() {
             TargetSelection::Enumerated(list) => list.clone(),
             TargetSelection::Group { .. } => storages
                 .iter()
                 .flat_map(|(storage_id, role)| {
-                    intent.variant_ids().iter().map(move |variant_id| PlannedUpload {
-                        variant_id: *variant_id,
-                        // The owning asset is resolved by the executor from the variant id; the
-                        // plan carries the first source asset only as a placeholder-free default.
-                        asset_id: intent.source_assets().first().copied().unwrap_or_default(),
-                        storage_id: *storage_id,
-                        role: role.clone(),
-                        remote_path: render_remote_path(intent.path_template(), variant_id),
+                    intent.variant_ids().iter().map(move |variant_id| {
+                        PlannedUpload {
+                            variant_id: *variant_id,
+                            // The owning asset is resolved by the executor from the variant id; the
+                            // plan carries the first source asset only as a placeholder-free default.
+                            asset_id: intent.source_assets().first().copied().unwrap_or_default(),
+                            storage_id: *storage_id,
+                            role: role.clone(),
+                            remote_path: render_remote_path(intent.path_template(), variant_id),
+                        }
                     })
                 })
                 .collect(),
