@@ -58,7 +58,10 @@ fn rollback_plan(
         .filter(|point| !storage_core::is_safe_compensation_path(&point.remote_path))
         .map(storage_core::rollback::skipped_legacy_path_message)
         .collect();
-    (storage_core::rollback::safe_rollback_points(candidates), skipped)
+    (
+        storage_core::rollback::safe_rollback_points(candidates),
+        skipped,
+    )
 }
 
 /// Reload every storage named by the plan, then hand out providers from that snapshot.
@@ -70,7 +73,11 @@ async fn rollback_resolver(
     points: &[storage_core::rollback::RollbackPoint],
 ) -> impl FnMut(Uuid) -> Result<Arc<dyn StorageProvider>, storage_core::StorageError> {
     let mut providers: Vec<(Uuid, Arc<dyn StorageProvider>)> = Vec::new();
-    for storage_id in points.iter().map(|point| point.storage_id).collect::<Vec<_>>() {
+    for storage_id in points
+        .iter()
+        .map(|point| point.storage_id)
+        .collect::<Vec<_>>()
+    {
         // A storage that cannot be reloaded is left out of the snapshot on purpose: the resolver
         // below then reports it as an error, so the point counts as failed instead of vanishing.
         if let Ok(Some(record)) = context.storages.get(storage_id).await {
