@@ -284,7 +284,10 @@ mod tests {
         let (deleted, failures, summary) =
             execute_rollback(&points, move |_id| Ok(std::sync::Arc::clone(&provider))).await;
         assert_eq!(summary.failed_count, 1);
-        assert_eq!(summary.deleted_count, 2, "the pass must continue past the failure");
+        assert_eq!(
+            summary.deleted_count, 2,
+            "the pass must continue past the failure"
+        );
         assert_eq!(failures[0].1, "provider rejected request: boom");
         assert_eq!(calls.lock().unwrap().len(), 3);
         assert_eq!(deleted[0].remote_path, points[0].remote_path);
@@ -297,10 +300,12 @@ mod tests {
         // If a missing backend were skipped rather than counted, the summary would claim every
         // point was handled while an object stayed remote.
         let points = vec![point("a/u0123456789abcdef0123456789abcdef.png")];
+        // Constructed per call rather than moved out of a binding: StorageError does not implement
+        // Clone, and an owned error would be consumed by the resolver's first invocation.
         let (deleted, failures, summary) = execute_rollback(&points, |_id| {
-            Err::<std::sync::Arc<dyn StorageProvider>, StorageError>(
-                StorageError::Authentication("gone".into()),
-            )
+            let absent: Result<std::sync::Arc<dyn StorageProvider>, StorageError> =
+                Err(StorageError::Authentication("gone".to_string()));
+            absent
         })
         .await;
         assert_eq!(summary.failed_count, 1);
