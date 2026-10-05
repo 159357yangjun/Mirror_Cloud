@@ -2664,10 +2664,7 @@ fn combine_rollback_failures(
     mut skipped: Vec<String>,
 ) -> Vec<String> {
     if summary.failed_count > 0 {
-        skipped.insert(
-            0,
-            format!("{} 个远端对象删除失败", summary.failed_count),
-        );
+        skipped.insert(0, format!("{} 个远端对象删除失败", summary.failed_count));
     }
     skipped
 }
