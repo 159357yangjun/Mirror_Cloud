@@ -383,7 +383,8 @@ mod tests {
 
     #[test]
     fn empty_belief_yields_no_findings_regardless_of_observations() {
-        assert!(detect_drift(&[], &[(Uuid::new_v4(), RemoteObservation::Absent)]).is_empty());
+        let findings = detect_drift(&[], &[(Uuid::new_v4(), RemoteObservation::Absent)]);
+        assert!(findings.is_empty());
     }
 
     #[test]
@@ -400,7 +401,11 @@ mod tests {
         ];
         for kind in all {
             let text = event_type_str(kind);
-            assert_eq!(parse_event_type(text).unwrap(), kind, "round trip for {text}");
+            assert_eq!(
+                parse_event_type(text).unwrap(),
+                kind,
+                "round trip for {text}"
+            );
         }
     }
 
@@ -417,7 +422,8 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         for kind in all {
             let text = aggregate_kind_str(kind);
-            assert!(seen.insert(text), "duplicate persisted name for {text}");
+            let fresh = seen.insert(text);
+            assert!(fresh, "duplicate persisted name for {text}");
             assert_eq!(parse_aggregate_kind(text).unwrap(), kind);
         }
     }
