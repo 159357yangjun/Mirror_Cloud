@@ -2493,6 +2493,28 @@ async fn run_workflow_publish_task(
             &deployment_records,
         )
         .await;
+        // Matched by storage id, which is unique within a group (0001_init.sql declares
+        // PRIMARY KEY(group_id, storage_id) on storage_group_members), so this lookup cannot be
+        // ambiguous. A positional zip would have worked today too, but would silently mis-pair a
+        // verdict with the wrong row if the two collections ever diverge - and a mis-paired
+        // verification is worse than a missing one because it looks authoritative.
+        let verified: Vec<persistence_sqlite::journal::VerifiedDeployment> = deployment_records
+            .iter()
+            .filter_map(|record| {
+                let proof = outcomes
+                    .iter()
+                    .find(|outcome| outcome.storage_id == record.deployment.storage_id)
+                    .and_then(|outcome| outcome.verification.as_ref())?;
+                Some(persistence_sqlite::journal::VerifiedDeployment {
+                    deployment_id: record.deployment.id,
+                    method: proof.method.clone(),
+                    passed: proof.passed,
+                    expected: proof.expected.clone(),
+                    observed: proof.observed.clone(),
+                })
+            })
+            .collect();
+        persistence_sqlite::journal::record_verification_events(&state.journal, &verified).await;
         emit_asset_published(
             &app,
             &asset.name,

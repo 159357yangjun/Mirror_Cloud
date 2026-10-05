@@ -326,6 +326,47 @@ pub async fn record_upload_attempts(
     }
 }
 
+/// A verification verdict paired with the row it describes. Declared here as plain data so the
+/// persistence layer keeps zero dependency on the storage abstraction; callers map their adapter's
+/// own outcome type into this one.
+#[derive(Debug, Clone)]
+pub struct VerifiedDeployment {
+    pub deployment_id: Uuid,
+    pub method: String,
+    pub passed: bool,
+    pub expected: Option<String>,
+    pub observed: Option<String>,
+}
+
+/// Record what each adapter actually proved about the object it wrote.
+///
+/// Only paths that verified get an event: a member whose adapter returned `verification: None`
+/// produces nothing here rather than a row claiming a check happened. That asymmetry is the
+/// point - the journal must be able to answer "was this ever proven present?", and an
+/// absence-of-evidence row would read like evidence of absence either way.
+pub async fn record_verification_events(
+    journal: &SqliteEventJournal,
+    verified: &[VerifiedDeployment],
+) {
+    for record in verified {
+        let event = DomainEvent::new(
+            Utc::now(),
+            EventType::VerificationRecorded,
+            AggregateKind::Deployment,
+            record.deployment_id,
+            serde_json::json!({
+                "method": record.method,
+                "passed": record.passed,
+                "expected": record.expected,
+                "observed": record.observed,
+            }),
+        );
+        if let Err(error) = journal.append(&event).await {
+            tracing::warn!(%error, "journal append failed for verification result");
+        }
+    }
+}
+
 /// What the local database believes about one deployment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BelievedDeployment {

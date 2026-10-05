@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use storage_core::{
     ConnectionReport, StorageEntry, StorageError, StorageProvider, UploadRequest, UploadResult,
+    VerificationOutcome,
 };
 
 const API_ROOT: &str = "https://gitee.com/api/v5/";
@@ -455,10 +456,15 @@ impl StorageProvider for GiteeStorage {
             Some(self.raw_public_url(&repository_path)?)
         };
 
+        // expected stays None when the write response carried no SHA: we still confirmed the file
+        // resolves on the target branch, but must not claim we compared against something.
+        let verification =
+            VerificationOutcome::sha_readback(true, response_sha.clone(), Some(verified_sha.clone()));
         Ok(UploadResult {
             remote_path: logical_path,
             public_url,
             etag: Some(verified_sha),
+            verification: Some(verification),
         })
     }
 

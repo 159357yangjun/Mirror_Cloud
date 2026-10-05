@@ -673,6 +673,25 @@ async fn publish_one(
     persistence_sqlite::journal::record_upload_attempts(&context.journal, variant.id, &deployments)
         .await;
 
+    let verified: Vec<persistence_sqlite::journal::VerifiedDeployment> = deployments
+        .iter()
+        .filter_map(|record| {
+            let proof = outcomes
+                .iter()
+                .find(|outcome| outcome.storage_id == record.deployment.storage_id)
+                .and_then(|outcome| outcome.verification.as_ref())?;
+            Some(persistence_sqlite::journal::VerifiedDeployment {
+                deployment_id: record.deployment.id,
+                method: proof.method.clone(),
+                passed: proof.passed,
+                expected: proof.expected.clone(),
+                observed: proof.observed.clone(),
+            })
+        })
+        .collect();
+    // Same storage-id matching as the desktop path: unique per group by schema, so unambiguous.
+    persistence_sqlite::journal::record_verification_events(&context.journal, &verified).await;
+
     let mut warnings = before_process_warnings
         .into_iter()
         .chain(after_process_warnings.into_iter())

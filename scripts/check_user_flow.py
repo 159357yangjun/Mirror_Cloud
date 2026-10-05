@@ -322,6 +322,28 @@ require('EventType::UploadAttemptFailed' in journal_src and 'EventType::UploadAt
         'both attempt event kinds are actually produced somewhere (not declared-only enum arms)')
 require('attemptIndex' not in journal_src,
         'no fabricated attempt counter: retry indices belong to the deployment_attempts table')
+# Verification evidence reaching the journal (publish dispatch step 2). The load-bearing rules are
+# that an unverified path stays silent and that every adapter reports what it really did.
+storage_core_src = text('crates/storage-core/src/lib.rs')
+application_src = text('crates/application/src/lib.rs')
+require('pub verification: Option<VerificationOutcome>' in storage_core_src
+        and '#[serde(default)]' in storage_core_src,
+        'UploadResult carries an optional verdict that defaults to absent rather than failed')
+for _adapter in ('storage-github', 'storage-gitee', 'storage-opendal'):
+    require('verification: Some(verification)' in text(f'crates/{_adapter}/src/lib.rs'),
+            f'{_adapter} reports the verdict its post-write read-back produced')
+require(application_src.count('verification:') >= 4,
+        'PublishOutcome threads the verdict through on success and clears it on both failure paths')
+require('pub async fn record_verification_events' in journal_src
+        and 'record_verification_events(&state.journal' in commands
+        and 'record_verification_events(&context.journal' in cli,
+        'both publish entry points emit VerificationRecorded for verified members')
+require('outcome.verification.as_ref()' in commands and 'outcome.verification.as_ref()' in cli,
+        'both entry points skip members whose adapter reported no verdict, instead of writing a row'
+        ' that would read as evidence of absence')
+require('outcome.storage_id == record.deployment.storage_id' in commands
+        and 'outcome.storage_id == record.deployment.storage_id' in cli,
+        'verdicts are matched by storage id (unique per group by schema), never by list position')
 require('redact_hides_the_token_and_empty_token_passes_text_through' in gitee,
         'the redaction behaviour has a two-sided test (token hidden, empty token passed through verbatim)')
 require('self.credentials.token.trim())' not in github or 'bearer_auth' in github,

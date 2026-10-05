@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use storage_core::{
     ConnectionReport, StorageEntry, StorageError, StorageProvider, UploadRequest, UploadResult,
+    VerificationOutcome,
 };
 
 const API_ROOT: &str = "https://api.github.com/";
@@ -430,10 +431,15 @@ impl StorageProvider for GitHubStorage {
                 download_url.or_else(|| self.raw_public_url(&repository_path).ok())
             };
 
+            // The read-back above is what makes this a success rather than an accepted request;
+            // carry the conclusion forward instead of letting it evaporate into "we returned Ok".
+            let verification =
+                VerificationOutcome::sha_readback(true, Some(sha.clone()), verified_sha);
             return Ok(UploadResult {
                 remote_path: logical_path,
                 public_url,
                 etag: Some(sha),
+                verification: Some(verification),
             });
         }
 

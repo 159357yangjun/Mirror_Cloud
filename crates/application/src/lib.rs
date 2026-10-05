@@ -2,7 +2,9 @@ use std::{collections::HashMap, sync::Arc};
 
 use bytes::Bytes;
 use domain::{DeploymentRole, StorageGroupStrategy, StorageId};
-use storage_core::{StorageEntry, StorageError, StorageProvider, UploadRequest, UploadResult};
+use storage_core::{
+    StorageEntry, StorageError, StorageProvider, UploadRequest, UploadResult, VerificationOutcome,
+};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -50,6 +52,9 @@ pub struct PublishOutcome {
     pub remote_path: String,
     pub public_url: Option<String>,
     pub error: Option<String>,
+    /// Passed straight through from the adapter. `None` means that path verified nothing, which is
+    /// not the same as a failed verification - see `storage_core::VerificationOutcome`.
+    pub verification: Option<VerificationOutcome>,
 }
 
 /// Core publish orchestration shared by every entry point.
@@ -197,6 +202,7 @@ impl PublisherCore {
                     remote_path,
                     public_url: None,
                     error: Some(error),
+                    verification: None,
                 };
             }
         };
@@ -216,6 +222,7 @@ impl PublisherCore {
                 remote_path: upload.remote_path,
                 public_url: upload.public_url,
                 error: None,
+                verification: upload.verification,
             },
             Err(error) => PublishOutcome {
                 storage_id: member.storage_id,
@@ -224,6 +231,8 @@ impl PublisherCore {
                 remote_path,
                 public_url: None,
                 error: Some(error.to_string()),
+                // No verdict without an object to have looked at.
+                verification: None,
             },
         }
     }
@@ -274,6 +283,8 @@ impl CloudMutationCore {
                 remote_path: destination.to_string(),
                 public_url: entry.public_url,
                 etag: None,
+                // Listing proved presence only; no identity or size was compared.
+                verification: None,
             });
         }
 
@@ -331,6 +342,7 @@ mod tests {
             remote_path: "p".into(),
             public_url: url.map(str::to_string),
             error: if ok { None } else { Some("boom".into()) },
+            verification: None,
         }
     }
 

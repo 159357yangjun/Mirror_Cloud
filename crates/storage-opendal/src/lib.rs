@@ -4,6 +4,7 @@ use opendal::{Operator, services};
 use serde::{Deserialize, Serialize};
 use storage_core::{
     ConnectionReport, StorageEntry, StorageError, StorageProvider, UploadRequest, UploadResult,
+    VerificationOutcome,
 };
 use uuid::Uuid;
 
@@ -316,10 +317,13 @@ impl StorageProvider for OpenDalStorage {
             )));
         }
 
+        let verification =
+            VerificationOutcome::stat_bytes(expected_len as u64, verified.content_length());
         Ok(UploadResult {
             remote_path: remote_path.clone(),
             public_url: self.public_url_for(&remote_path),
             etag: meta.etag().map(ToOwned::to_owned),
+            verification: Some(verification),
         })
     }
 
@@ -361,6 +365,10 @@ impl StorageProvider for OpenDalStorage {
             remote_path: to.to_string(),
             public_url: self.public_url_for(to),
             etag: metadata.etag().map(ToOwned::to_owned),
+            // The stat above proves the destination resolves, but nothing was compared against it
+            // (no expected SHA, no expected length), so there is no verdict to report. Claiming
+            // passed: true here would put an unverified path in the same tier as a checked one.
+            verification: None,
         })
     }
 
