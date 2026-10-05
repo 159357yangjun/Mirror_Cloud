@@ -135,6 +135,35 @@ def _names_bare_verified_at(source: str) -> bool:
     return re.search(r"(?<!last_)verified_at", source) is not None
 
 
+def _tier_reports_unknown_without_evidence(source: str) -> bool:
+    """The fall-through arm of derive_confirmation must be Unknown.
+
+    Written as a reader because the surrounding code legitimately mentions several tier names; a
+    substring test for "Unknown" would pass even if the final arm returned Uploaded, which is the
+    exact regression this guards.
+    """
+    marker = "pub fn derive_confirmation"
+    start = source.find(marker)
+    if start == -1:
+        return False
+    body = source[start:]
+    brace = body.find("{")
+    depth = 0
+    end = -1
+    for index in range(brace, len(body)):
+        if body[index] == "{":
+            depth += 1
+        elif body[index] == "}":
+            depth -= 1
+            if depth == 0:
+                end = index
+                break
+    if end == -1:
+        return False
+    tail = body[:end].rstrip()
+    return tail.endswith("ConfirmationTier::Unknown")
+
+
 def slice_between(source: str, start_marker: str, end_marker: str, label: str) -> str:
     """A missing marker has to fail loudly. str.find() returns -1, which otherwise turns the
     slice into "everything up to the last character" and makes checks built on it pass while
@@ -409,6 +438,9 @@ require('use storage_core' not in text('crates/persistence-sqlite/src/journal.rs
 reconcile_src = text('apps/desktop/src-tauri/src/commands/reconcile.rs')
 cadence_src = text('apps/desktop/src-tauri/src/reconcile_cadence.rs')
 timestamps_src = text('crates/domain/src/deployment_timestamps.rs')
+tier_src = text('crates/domain/src/confirmation_tier.rs')
+assets_page = text('apps/desktop/src/pages/AssetsPage.tsx')
+assets_types = text('apps/desktop/src/types.ts')
 migration16 = text('crates/persistence-sqlite/migrations/0016_split_deployment_timestamps.sql')
 down16 = text('crates/persistence-sqlite/migrations/down/0016_split_deployment_timestamps.sql')
 require('pub(crate) mod reconcile;' in commands and 'commands::reconcile::run_reconciliation_sweep,' in lib,
@@ -777,6 +809,49 @@ require('recorded_at' not in commands and 'recorded_at' not in cli
         'no entry point still writes the old single-clock column')
 require(not _names_bare_verified_at(timestamps_src),
         'the clock vocabulary module does not reintroduce the bare verified_at name')
+# --- piclist section eighteen: publish success is a ladder, not a boolean ---------------------
+# "API returned 200 = success" was the whole story: `status = if error.is_none() { Online }`. These
+# gates hold the four rungs apart, and hold each rung to its own evidence, so a future edit cannot
+# quietly collapse the ladder back into the boolean it replaced.
+require('pub enum ConfirmationTier' in tier_src
+        and 'Unknown = 0,' in tier_src
+        and 'Uploaded = 1,' in tier_src
+        and 'RemoteObserved = 2,' in tier_src
+        and 'ContentVerified = 3,' in tier_src
+        and 'PubliclyReachable = 4,' in tier_src,
+        'the confirmation ladder has explicit numbered rungs')
+require('stamps.last_attempted_at.is_some()' in tier_src
+        and 'if uploaded {' in tier_src
+        and 'ConfirmationTier::Uploaded;' in tier_src,
+        'an attempt alone yields Uploaded and no higher')
+require('observed && uploaded' in tier_src
+        and 'ConfirmationTier::RemoteObserved;' in tier_src,
+        'RemoteObserved requires both our upload and a later independent look')
+require('if verified {' in tier_src
+        and 'return ConfirmationTier::ContentVerified;' in tier_src,
+        'a passed content comparison is what reaches ContentVerified')
+require('stamps.last_verified_at.is_some()' in tier_src,
+        'level three reads the verification clock rather than any weaker evidence')
+require(_tier_reports_unknown_without_evidence(tier_src),
+        'absence of every clock reports Unknown rather than defaulting to success')
+require('if public_url_fetched' not in tier_src
+        and 'matches!(self, ConfirmationTier::PubliclyReachable)' in tier_src,
+        'PubliclyReachable stays unimplemented instead of being claimed without a fetch')
+require('fn derive_confirmation(stamps: &DeploymentTimestamps)' in tier_src,
+        'the tier is derived from the section-seventeen clocks and never stored')
+require('pub timestamps: domain::DeploymentTimestamps' in persistence
+        and 'd.deployed_at,d.last_attempted_at,d.last_observed_at,d.last_verified_at' in persistence,
+        'the summary query carries the clocks out so the tier can be computed at read time')
+require('derive_confirmation(&deployment.timestamps).level()' in commands
+        and 'pub confirmation_level: u8' in commands,
+        'the desktop asset view publishes a per-copy confirmation level')
+require('confirmationLevel: number' in assets_types
+        and 'confirmationLabel(deployment)' in assets_page
+        and '已上传' in assets_page and '远端可见' in assets_page and '内容一致' in assets_page,
+        'the ladder is shown to the user in words, not only as a number')
+require('Math.min(CONFIRMATION_LABELS.length - 1' in assets_page,
+        'an unknown level clamps to a known label instead of rendering undefined')
+
 # v1.3.5 task-control, plugin-observability and diagnostics hardening.
 migration13 = text('crates/persistence-sqlite/migrations/0013_plugin_execution_logs.sql')
 task_engine = text('crates/task-engine/src/lib.rs')

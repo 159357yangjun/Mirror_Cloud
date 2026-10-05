@@ -650,6 +650,9 @@ pub struct DeploymentSummaryRecord {
     pub remote_path: String,
     pub public_url: Option<String>,
     pub last_error: Option<String>,
+    /// Evidence clocks, read out of the database so the confirmation tier is derived rather than
+    /// stored. A tier computed here cannot disagree with the row it came from.
+    pub timestamps: domain::DeploymentTimestamps,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -775,7 +778,7 @@ impl AssetRepository {
             let variant_raw: String = row.try_get("variant_id")?;
             let created: String = row.try_get("created_at")?;
             let variant_id = parse_uuid(&variant_raw)?;
-            let dep_rows = sqlx::query("SELECT d.id AS deployment_id,d.storage_id,s.name AS storage_name,s.provider_key,d.role,d.status,d.remote_path,d.public_url,d.last_error FROM deployments d JOIN storages s ON s.id=d.storage_id WHERE d.variant_id=? ORDER BY CASE d.role WHEN 'primary' THEN 0 WHEN 'mirror' THEN 1 ELSE 2 END")
+            let dep_rows = sqlx::query("SELECT d.id AS deployment_id,d.storage_id,s.name AS storage_name,s.provider_key,d.role,d.status,d.remote_path,d.public_url,d.last_error,                         d.deployed_at,d.last_attempted_at,d.last_observed_at,d.last_verified_at                          FROM deployments d JOIN storages s ON s.id=d.storage_id WHERE d.variant_id=?                          ORDER BY CASE d.role WHEN 'primary' THEN 0 WHEN 'mirror' THEN 1 ELSE 2 END")
                 .bind(variant_id.to_string())
                 .fetch_all(&self.pool)
                 .await?;
@@ -794,6 +797,7 @@ impl AssetRepository {
                         remote_path: deployment.try_get("remote_path")?,
                         public_url: deployment.try_get("public_url")?,
                         last_error: deployment.try_get("last_error")?,
+                        timestamps: read_clocks(&deployment)?,
                     })
                 })
                 .collect::<Result<Vec<_>, sqlx::Error>>()?;
@@ -1064,6 +1068,25 @@ impl AssetRepository {
             .await?;
         Ok(())
     }
+}
+
+/// Read the four evidence clocks out of a row, tolerating absent values.
+///
+/// Unparseable timestamps become None rather than an error. Deliberate but not free: a corrupt
+/// value then reads as "less evidence", never as "more", so a bad row degrades toward
+/// Unknown instead of inventing a verification.
+fn read_clocks(row: &SqliteRow) -> Result<domain::DeploymentTimestamps, sqlx::Error> {
+    Ok(domain::DeploymentTimestamps {
+        deployed_at: parse_optional_time(row.try_get("deployed_at")?),
+        last_attempted_at: parse_optional_time(row.try_get("last_attempted_at")?),
+        last_observed_at: parse_optional_time(row.try_get("last_observed_at")?),
+        last_verified_at: parse_optional_time(row.try_get("last_verified_at")?),
+    })
+}
+
+fn parse_optional_time(raw: Option<String>) -> Option<chrono::DateTime<Utc>> {
+    raw.and_then(|value| DateTime::parse_from_rfc3339(&value).ok())
+        .map(|value| value.with_timezone(&Utc))
 }
 
 fn parse_deployment_location(row: SqliteRow) -> Result<DeploymentLocationRecord, sqlx::Error> {

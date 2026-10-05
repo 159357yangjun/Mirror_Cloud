@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub mod attempt_and_evidence;
+pub mod confirmation_tier;
 pub mod deployment_timestamps;
 pub mod event_journal;
 pub mod publish_plan;
@@ -125,9 +126,8 @@ pub struct Deployment {
     pub remote_path: String,
     pub public_url: Option<String>,
     pub status: DeploymentStatus,
-    /// Four clocks, because one column could not answer "was this verified" honestly. Callers go
-    /// `deployed_at` lives in here too: it is one of the four, and keeping it outside would let
-    /// a caller advance three clocks while forgetting the fourth.
+    /// Four clocks, because one column could not answer "was this verified" honestly. Callers
+    /// use [`Deployment::record`], never assignment, so a failure cannot write a success field.
     /// `deployed_at` lives in here too: it is one of the four, and keeping it outside would let a
     /// caller advance three clocks while forgetting the fourth.
     pub timestamps: DeploymentTimestamps,

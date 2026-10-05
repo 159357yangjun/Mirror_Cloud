@@ -270,6 +270,8 @@ export interface AssetView {
     role: DeploymentRole
     ok: boolean
     error?: string | null
+    /** 0 unobserved · 1 uploaded · 2 seen on remote · 3 content verified. `ok` alone is level 1. */
+    confirmationLevel: number
   }>
   pluginOutputs: Array<{
     pluginId: string

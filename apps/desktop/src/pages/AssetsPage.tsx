@@ -32,6 +32,16 @@ const outputFormatLabel: Record<OutputFormat, string> = {
   custom: '自定义格式',
 }
 
+// The ladder in the user's words. Level 1 is what "在线" has always silently meant: the provider
+// accepted the bytes. Anything above that requires having actually looked again, so the label says
+// which claim is on the table instead of letting one green chip cover four different situations.
+const CONFIRMATION_LABELS = ['未核对', '已上传', '远端可见', '内容一致'] as const
+
+function confirmationLabel(deployment: AssetView['deployments'][number]): string {
+  const level = Math.max(0, Math.min(CONFIRMATION_LABELS.length - 1, deployment.confirmationLevel))
+  return CONFIRMATION_LABELS[level]
+}
+
 export function AssetsPage() {
   const openUpload = useAppStore((state) => state.openUpload)
   const setPage = useAppStore((state) => state.setPage)
@@ -218,7 +228,7 @@ export function AssetsPage() {
                     title={deployment.error || `${deployment.providerKey} · ${deployment.role}`}
                     className={`rounded-lg border px-2 py-1 text-[10px] ${deployment.ok ? 'border-[var(--border)] text-[var(--text-muted)]' : 'border-red-100 bg-red-50 text-red-500'}`}
                   >
-                    {deployment.storage} · {deployment.role}
+                    {deployment.storage} · {deployment.role} · {confirmationLabel(deployment)}
                   </span>
                 ))}
               </div>

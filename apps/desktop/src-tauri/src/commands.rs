@@ -274,6 +274,11 @@ pub struct AssetDeploymentView {
     pub role: String,
     pub ok: bool,
     pub error: Option<String>,
+    /// How strongly this copy's success is confirmed (piclist section eighteen), 0-3. `ok` says
+    /// the provider accepted the write; this says how far the claim has been checked since. A copy
+    /// can stay `ok: true` at level 1 until a probe or content check raises it, which is the
+    /// distinction the old boolean could not express.
+    pub confirmation_level: u8,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -3679,12 +3684,17 @@ fn asset_view(record: PublishedAssetRecord) -> AssetView {
         deployments: record
             .deployments
             .into_iter()
-            .map(|deployment| AssetDeploymentView {
-                storage: deployment.storage_name,
-                provider_key: deployment.provider_key,
-                role: deployment.role,
-                ok: deployment.status == "online",
-                error: deployment.last_error,
+            .map(|deployment| {
+                let level =
+                    domain::confirmation_tier::derive_confirmation(&deployment.timestamps).level();
+                AssetDeploymentView {
+                    storage: deployment.storage_name,
+                    provider_key: deployment.provider_key,
+                    role: deployment.role,
+                    ok: deployment.status == "online",
+                    error: deployment.last_error,
+                    confirmation_level: level,
+                }
             })
             .collect(),
         plugin_outputs: record
