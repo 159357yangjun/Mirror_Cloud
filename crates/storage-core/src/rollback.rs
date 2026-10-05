@@ -153,18 +153,18 @@ mod tests {
         "assets/blog/u0123456789abcdef0123456789abcdef.png".to_string()
     }
 
-    fn point(remote_path: String) -> RollbackPoint {
+    fn point(remote_path: &str) -> RollbackPoint {
         RollbackPoint {
             variant_id: Uuid::new_v4(),
             storage_id: Uuid::new_v4(),
-            remote_path,
+            remote_path: remote_path.to_string(),
             label: Some("github-primary".into()),
         }
     }
 
     #[test]
     fn a_unique_path_becomes_a_rollback_point() {
-        let points = safe_rollback_points([point(unique_path())]);
+        let points = safe_rollback_points([point(&unique_path())]);
         assert_eq!(
             points.len(),
             1,
@@ -182,7 +182,7 @@ mod tests {
             "assets/blog/v0123456789abcdef0123456789abcdef.png",
             "assets/blog/u0123456789abcdef0123456789abcdeg.png",
         ] {
-            let points = safe_rollback_points([point(legacy.to_string())]);
+            let points = safe_rollback_points([point(legacy)]);
             assert!(
                 points.is_empty(),
                 "{legacy} is not a this-build-unique path and must not be queued for deletion"
@@ -192,10 +192,10 @@ mod tests {
 
     #[test]
     fn filtering_drops_only_the_unsafe_member() {
-        let safe = point(unique_path());
+        let safe = point(&unique_path());
         let expected_path = safe.remote_path.clone();
         let expected_storage_id = safe.storage_id;
-        let unsafe_point = point("assets/blog/legacy.png".into());
+        let unsafe_point = point("assets/blog/legacy.png");
         let points = safe_rollback_points([unsafe_point, safe]);
         assert_eq!(points.len(), 1);
         assert_eq!(points[0].remote_path, expected_path);
@@ -342,7 +342,7 @@ mod tests {
     fn skipping_a_point_still_produces_an_orphan_report() {
         // A filtered point is not silently forgotten: the caller reports that it left a file
         // behind, otherwise "we chose not to delete" reads to the user as "nothing to clean up".
-        let message = skipped_legacy_path_message(&point("assets/blog/legacy.png".into()));
+        let message = skipped_legacy_path_message(&point("assets/blog/legacy.png"));
         assert!(message.contains("legacy.png"), "{message}");
         assert!(message.contains("github-primary"), "{message}");
     }
