@@ -154,8 +154,7 @@ mod tests {
     fn sha_readback_keeps_an_absent_expectation_absent() {
         // Gitee can resolve the remote file even when the write response carried no SHA. A
         // fabricated expectation there would invent a comparison that never happened.
-        let without_expected =
-            VerificationOutcome::sha_readback(true, None, Some("abc".into()));
+        let without_expected = VerificationOutcome::sha_readback(true, None, Some("abc".into()));
         assert!(without_expected.passed);
         assert_eq!(without_expected.expected, None);
         assert_eq!(without_expected.observed.as_deref(), Some("abc"));
@@ -166,4 +165,3 @@ mod tests {
         assert_eq!(compared.method, "sha_readback");
     }
 }
-
