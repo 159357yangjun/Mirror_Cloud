@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub mod attempt_and_evidence;
+pub mod event_journal;
 pub mod publish_plan;
 
 pub type AssetId = Uuid;

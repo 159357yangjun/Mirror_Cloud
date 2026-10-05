@@ -225,6 +225,20 @@ require(gitee.count('net_err(e, tok)') + gitee.count('prov_err(e, tok)') >= 16,
         f'Gitee routes its transport errors through the redacting helpers (found {gitee.count("net_err(e, tok)") + gitee.count("prov_err(e, tok)")})')
 require('fn response_error(response: Response, context: &str, token: &str)' in gitee,
         'Gitee scrubs server response bodies with the token too')
+# Event journal (piclist #39 piece three): values + trait only, no SQLite yet. The assertions pin
+# the two properties that make it a journal rather than a log table: the journal assigns ordering,
+# and replay is derived rather than reimplemented per backend.
+event_journal = text('crates/domain/src/event_journal.rs')
+require('pub trait EventJournal' in event_journal and 'fn append(&mut self, event: DomainEvent)' in event_journal,
+        'EventJournal exposes an append that owns the event so sequence assignment cannot be bypassed')
+require('sequence: 0,' in event_journal and 'pub fn with_sequence(self, sequence: u64) -> Self' in event_journal,
+        'new events arrive unsequenced and only the journal can stamp a position')
+require('fn replay(&self, from: u64, to: u64) -> Vec<DomainEvent> {' in event_journal,
+        'replay has a default implementation derived from events_since, so a backend cannot get it wrong independently')
+require('caller supplied a sequence' in event_journal and 'sequence != 0' in event_journal,
+        'the mock rejects an injected sequence (guard + message both present) rather than accepting a caller-chosen position')
+require('serde_json.workspace = true' in text('crates/domain/Cargo.toml').split('[dev-dependencies]')[0],
+        'domain depends on serde_json as a normal dependency (payload is a Value), not only for tests')
 require('redact_hides_the_token_and_empty_token_passes_text_through' in gitee,
         'the redaction behaviour has a two-sided test (token hidden, empty token passed through verbatim)')
 require('self.credentials.token.trim())' not in github or 'bearer_auth' in github,
