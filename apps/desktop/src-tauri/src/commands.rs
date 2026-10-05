@@ -2455,7 +2455,7 @@ async fn run_workflow_publish_task(
             .await
         {
             let (points, skipped) = rollback_plan(variant.id, &outcomes);
-            let resolver = rollback_resolver(state, &points).await;
+            let resolver = rollback_resolver(&state, &points).await;
             let summary = crate::rollback::run_rollback(&state.journal, &points, resolver).await;
             let failures = combine_rollback_failures(summary, skipped);
             let mut message = format!("远端上传已完成，但本地记录保存失败：{error}");
