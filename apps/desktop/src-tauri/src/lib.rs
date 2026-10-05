@@ -1,5 +1,6 @@
 pub mod cli;
 mod commands;
+mod rollback;
 
 use std::{
     path::PathBuf,

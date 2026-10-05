@@ -45,6 +45,9 @@ def slice_between(source: str, start_marker: str, end_marker: str, label: str) -
     return source[start:end]
 
 commands_main = text('apps/desktop/src-tauri/src/commands.rs')
+storage_core_rollback = text('crates/storage-core/src/rollback.rs')
+domain_events_src = text('crates/domain/src/event_journal.rs')
+tauri_rollback = text('apps/desktop/src-tauri/src/rollback.rs')
 storage_entries_commands = text('apps/desktop/src-tauri/src/commands/storage_entries.rs')
 plugin_commands = text('apps/desktop/src-tauri/src/commands/plugins.rs')
 commands = commands_main + '\n' + storage_entries_commands + '\n' + plugin_commands
@@ -352,9 +355,56 @@ require(github.count('StorageError::Network(e.to_string())') > 0,
         'KNOWN GAP: GitHub still stringifies raw reqwest errors — safe today only because bearer_auth keeps the token out of the URL; re-check before any change moves the token into a query parameter')
 require('self.operator.stat(&remote_path)' in opendal and 'content_length() != expected_len' in opendal, 'OpenDAL upload verifies remote size after write')
 require('reqwest::Url::parse(value)' in commands and 'url.host_str().is_none()' in commands, 'public base URLs are structurally validated')
-require('rollback_successful_uploads' in commands and '可能存在孤儿文件' in commands, 'desktop compensates remote uploads when local persistence fails')
-require('rollback_successful_uploads' in cli and 'orphan files may remain' in cli, 'Typora compensates remote uploads when local persistence/public URL fails')
-require('is_safe_compensation_path' in commands and 'u{uuid}' in commands, 'compensation delete is limited to explicitly unique new paths')
+require('fn rollback_plan(' in commands and '可能存在孤儿文件' in commands,
+        'desktop compensates remote uploads through a plan when local persistence fails')
+require('fn rollback_plan(' in cli and 'orphan files may remain' in cli,
+        'Typora compensates remote uploads through a plan when local persistence/public URL fails')
+# --- publish dispatch step three: plan-driven rollback -------------------------------------
+# The compensation pass deletes remote objects, so these assertions exist for one reason: a
+# future edit must not be able to widen what gets deleted without turning something red here.
+require('pub fn is_safe_compensation_path' in storage_core_src
+        and 'segment.len() == 33' in storage_core_src
+        and "starts_with('u')" in storage_core_src,
+        'the unique-path predicate lives once in storage-core instead of per entry point')
+require('pub fn safe_rollback_points' in storage_core_rollback
+        and '.filter(|point| is_safe_compensation_path(&point.remote_path))' in storage_core_rollback,
+        'unsafe paths are filtered out of the rollback plan before any delete is attempted')
+require('!storage_core::is_safe_compensation_path(&point.remote_path)' in commands
+        and 'safe_rollback_points(candidates)' in commands
+        and '!storage_core::is_safe_compensation_path(&point.remote_path)' in cli
+        and 'safe_rollback_points(candidates)' in cli,
+        'both entry points build plans through the shared filter and report refused paths')
+require('rollback_successful_uploads' not in commands
+        and 'rollback_successful_uploads' not in cli,
+        'no entry point keeps a private copy of the compensation loop')
+require('pub async fn execute_rollback' in storage_core_rollback
+        and 'deleted.push(point.clone())' in storage_core_rollback
+        and 'failures.push((point.clone(), error.to_string()))' in storage_core_rollback,
+        'rollback is best-effort: a failed delete is recorded and the pass continues')
+require('Err(error) => Err(error),' in storage_core_rollback
+        and 'Ok(provider) => provider.delete(&point.remote_path).await' in storage_core_rollback,
+        'an unresolvable backend counts as a failed point rather than being skipped')
+require('RollbackCompleted,' in domain_events_src and 'RollbackFailed,' in domain_events_src,
+        'the journal distinguishes a completed rollback from a failed one')
+require('"rollback_completed" => EventType::RollbackCompleted' in journal_src
+        and '"rollback_failed" => EventType::RollbackFailed' in journal_src
+        and 'EventType::RollbackCompleted => "rollback_completed"' in journal_src
+        and 'EventType::RollbackFailed => "rollback_failed"' in journal_src,
+        'both rollback event types round-trip through their persisted strings')
+require('EventType::RollbackFailed' in tauri_rollback
+        and 'EventType::RollbackCompleted' in tauri_rollback
+        and '"error": reason' in tauri_rollback,
+        'a rollback failure is journalled with its reason, not just its count')
+require('crate::rollback::run_rollback(&state.journal' in commands
+        and 'crate::rollback::run_rollback(&context.journal' in cli,
+        'both publish entry points journal their compensation pass')
+require('pub fn accounting_is_complete' in storage_core_rollback
+        and 'deleted_count + self.failed_count == self.points_count' in storage_core_rollback,
+        'a rollback summary can prove no point went unaccounted for')
+require('async fn an_unresolvable_storage_counts_as_a_failed_point' in storage_core_rollback
+        and 'async fn a_failed_delete_does_not_stop_the_remaining_points' in storage_core_rollback
+        and 'async fn every_point_produces_exactly_one_delete' in storage_core_rollback,
+        'the rollback loop has tests for counting, best-effort continuation, and resolver failure')
 require('workflows.find((workflow) => workflow.isDefault)' in upload and '?? workflows[0]' not in upload, 'upload UI never falls back to an arbitrary legacy workflow')
 require('async fn persist_new_storage' in commands and commands.count('persist_new_storage(state.inner(), &record).await?;') >= 4, 'storage setup only succeeds after automatic pipeline persistence')
 require('sync_system_default_pipeline(state.inner(), None).await?;' in commands, 'automatic pipeline sync errors are surfaced instead of silently ignored')
@@ -400,7 +450,7 @@ require('get_local_api_info' in integrations and 'regenerate_local_api_token' in
 require('TrayIconBuilder' in integrations and 'setup_tray(app)?' in lib and 'CloseRequested' in lib and 'api.prevent_close()' in lib, 'tray background mode keeps integrations available when the main window closes')
 require('features = ["tray-icon"]' in cargo_desktop and '"net", "io-util"' in cargo_root, 'Tauri tray and Tokio local networking features are enabled')
 require('Local HTTP API' in settings_page and 'copyApiToken' in settings_page and 'regenerateApiToken' in settings_page, 'Settings exposes real Local API status and token controls')
-require('tokio::task::spawn_blocking' in slice_between(commands_main, 'async fn run_workflow_publish_task', 'fn is_safe_compensation_path', 'workflow publish worker') and 'tokio::task::spawn_blocking' in cli[cli.find('async fn publish_one'):], 'CPU-heavy workflow image processing leaves async IO workers')
+require('tokio::task::spawn_blocking' in slice_between(commands_main, 'async fn run_workflow_publish_task', 'fn rollback_plan(', 'workflow publish worker') and 'tokio::task::spawn_blocking' in cli[cli.find('async fn publish_one'):], 'CPU-heavy workflow image processing leaves async IO workers')
 
 failed = [label for ok, label in checks if not ok]
 for ok, label in checks[-10:]:
@@ -463,7 +513,7 @@ print(f'user-flow section [v1.3.3 lifecycle/batch architecture] | checks so far:
 require('BeforeProcess' in plugin_runtime and 'AfterProcess' in plugin_runtime and 'OnPublishFailure' in plugin_runtime, 'plugin runtime exposes pre/post-process and publish-failure hooks')
 require('PluginHook::BeforeProcess' in plugin_commands and 'PluginHook::AfterProcess' in plugin_commands and 'PluginHook::OnPublishFailure' in plugin_commands, 'official webhook manifest advertises the expanded lifecycle')
 require("before_process: '处理前'" in plugins and "after_process: '处理后'" in plugins and "on_publish_failure: '发布失败'" in plugins, 'plugin UI exposes expanded lifecycle controls')
-workflow_publish = slice_between(commands_main, 'async fn run_workflow_publish_task', 'fn is_safe_compensation_path', 'workflow publish body')
+workflow_publish = slice_between(commands_main, 'async fn run_workflow_publish_task', 'fn rollback_plan(', 'workflow publish body')
 require('PluginHook::BeforeProcess' in workflow_publish and 'PluginHook::AfterProcess' in workflow_publish and 'PluginHook::OnPublishFailure' in workflow_publish, 'workflow publish fires expanded lifecycle hooks')
 require('pub struct CloudMutationCore' in application and 'destination already exists' in application and 'provider.move_object' in application, 'application core owns overwrite prevention and native cloud move')
 require('provider.download(source)' in application and '.upload(UploadRequest' in application and 'provider.delete(destination)' in application, 'application core owns safe download-upload-delete fallback with rollback')

@@ -2454,14 +2454,17 @@ async fn run_workflow_publish_task(
             .insert_published_many(&asset, &variant, &deployment_records)
             .await
         {
-            let rollback_failures = rollback_successful_uploads(&state, &outcomes).await;
+            let (points, skipped) = rollback_plan(variant.id, &outcomes);
+            let resolver = rollback_resolver(state, &points).await;
+            let summary = crate::rollback::run_rollback(&state.journal, &points, resolver).await;
+            let failures = combine_rollback_failures(summary, skipped);
             let mut message = format!("远端上传已完成，但本地记录保存失败：{error}");
-            if rollback_failures.is_empty() {
+            if failures.is_empty() {
                 message.push_str("；已回滚本次成功上传的远端文件");
             } else {
                 message.push_str(&format!(
                     "；部分远端回滚失败，可能存在孤儿文件：{}",
-                    rollback_failures.join(" | ")
+                    failures.join(" | ")
                 ));
             }
             return Err(message);
@@ -2578,65 +2581,88 @@ async fn run_workflow_publish_task(
 
 type GroupUploadOutcome = application::PublishOutcome;
 
-fn is_safe_compensation_path(path: &str) -> bool {
-    path.split(|character: char| !character.is_ascii_alphanumeric())
-        .any(|segment| {
-            segment.len() == 33
-                && segment.starts_with('u')
-                && segment[1..]
-                    .chars()
-                    .all(|character| character.is_ascii_hexdigit())
+/// Build the deletable set for a partial publish, reporting what was refused.
+///
+/// The unsafe paths are not dropped silently: each one becomes a message the caller surfaces, so
+/// "we chose not to delete this" never reads as "there was nothing to clean up".
+fn rollback_plan(
+    variant_id: Uuid,
+    outcomes: &[GroupUploadOutcome],
+) -> (Vec<storage_core::rollback::RollbackPoint>, Vec<String>) {
+    let candidates: Vec<storage_core::rollback::RollbackPoint> = outcomes
+        .iter()
+        .filter(|outcome| outcome.error.is_none())
+        .map(|outcome| storage_core::rollback::RollbackPoint {
+            variant_id,
+            storage_id: outcome.storage_id,
+            remote_path: outcome.remote_path.clone(),
+            label: Some(outcome.storage_name.clone()),
         })
+        .collect();
+    // One filter owns the deletable set; this function does not re-implement the predicate, which
+    // is how the two entry points drifted apart before.
+    let skipped: Vec<String> = candidates
+        .iter()
+        .filter(|point| !storage_core::is_safe_compensation_path(&point.remote_path))
+        .map(storage_core::rollback::skipped_legacy_path_message)
+        .collect();
+    (storage_core::rollback::safe_rollback_points(candidates), skipped)
 }
 
-async fn rollback_successful_uploads(
+/// Reload every storage named by the plan, then hand out providers from that snapshot.
+///
+/// ## Why reload at all
+///
+/// A storage edited mid-publish must not be deleted through credentials the user already replaced,
+/// so the in-memory map is not trusted here.
+///
+/// ## Why one await instead of one per point
+///
+/// `execute_rollback` takes a synchronous resolver because storage-core cannot reach the database.
+/// Making each lookup async inside that loop would require persistence in storage-core, which is
+/// the dependency edge this layer exists to avoid. So the awaits happen once, up front, and any
+/// storage missing from the snapshot resolves to an error - counted as a failed point rather than
+/// silently skipped.
+async fn rollback_resolver(
     state: &AppState,
-    outcomes: &[GroupUploadOutcome],
-) -> Vec<String> {
-    let mut failures = Vec::new();
-    for outcome in outcomes.iter().filter(|outcome| outcome.error.is_none()) {
-        if !is_safe_compensation_path(&outcome.remote_path) {
-            failures.push(format!(
-                "{}: 为避免误删旧版固定路径对象，未自动回滚 {}",
-                outcome.storage_name, outcome.remote_path
-            ));
-            continue;
-        }
-        let storage = match state.storages.get(outcome.storage_id).await {
-            Ok(Some(storage)) => storage,
-            Ok(None) => {
-                failures.push(format!(
-                    "{}: storage no longer exists",
-                    outcome.storage_name
-                ));
-                continue;
+    points: &[storage_core::rollback::RollbackPoint],
+) -> impl FnMut(Uuid) -> Result<Arc<dyn StorageProvider>, storage_core::StorageError> {
+    let mut providers: Vec<(Uuid, Arc<dyn StorageProvider>)> = Vec::new();
+    for storage_id in points.iter().map(|point| point.storage_id).collect::<Vec<_>>() {
+        // A storage that cannot be reloaded is left out of the snapshot on purpose: the resolver
+        // below then reports it as an error, so the point counts as failed instead of vanishing.
+        if let Ok(Some(record)) = state.storages.get(storage_id).await {
+            if let Ok(provider) = build_provider(state, &record) {
+                providers.push((storage_id, provider));
             }
-            Err(error) => {
-                failures.push(format!(
-                    "{}: cannot reload storage for rollback: {error}",
-                    outcome.storage_name
-                ));
-                continue;
-            }
-        };
-        let provider = match build_provider(state, &storage) {
-            Ok(provider) => provider,
-            Err(error) => {
-                failures.push(format!(
-                    "{}: cannot rebuild provider for rollback: {error}",
-                    outcome.storage_name
-                ));
-                continue;
-            }
-        };
-        if let Err(error) = provider.delete(&outcome.remote_path).await {
-            failures.push(format!(
-                "{}: rollback delete failed: {error}",
-                outcome.storage_name
-            ));
         }
     }
-    failures
+    move |storage_id| {
+        providers
+            .iter()
+            .find(|(id, _)| *id == storage_id)
+            .map(|(_, provider)| Arc::clone(provider))
+            .ok_or_else(|| {
+                storage_core::StorageError::Provider("storage no longer exists".to_string())
+            })
+    }
+}
+
+/// Merge counted delete failures with paths the plan refused to touch.
+///
+/// Both belong in the user's orphan warning: one is "tried and failed", the other "declined by
+/// design", and dropping either would understate how many objects remain remote.
+fn combine_rollback_failures(
+    summary: storage_core::rollback::RollbackSummary,
+    mut skipped: Vec<String>,
+) -> Vec<String> {
+    if summary.failed_count > 0 {
+        skipped.insert(
+            0,
+            format!("{} 个远端对象删除失败", summary.failed_count),
+        );
+    }
+    skipped
 }
 
 async fn publish_group_bytes(

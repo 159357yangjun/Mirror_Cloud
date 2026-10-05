@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use domain::StorageCapabilities;
 use serde::{Deserialize, Serialize};
+pub mod rollback;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -128,6 +129,27 @@ pub trait StorageProvider: Send + Sync {
     async fn list(&self, _path: &str) -> Result<Vec<StorageEntry>, StorageError> {
         Err(StorageError::Unsupported)
     }
+}
+
+/// Whether a remote path names an object this build created uniquely.
+///
+/// Compensating a partial publish deletes remote objects, and the deletable set is narrower than
+/// "everything we just uploaded": legacy configured paths carry no unique segment and collide with
+/// files that predate this build, so deleting one destroys data the publisher never wrote. The
+/// test is a whitelist - a 33-character segment starting with 'u' then 32 hex digits - so an
+/// unrecognised shape fails toward leaving the object alone.
+///
+/// Both publish entry points used to keep their own copy of this predicate. They now share it, and
+/// the shared filter lives in `rollback::safe_rollback_points`.
+pub fn is_safe_compensation_path(path: &str) -> bool {
+    path.split(|character: char| !character.is_ascii_alphanumeric())
+        .any(|segment| {
+            segment.len() == 33
+                && segment.starts_with('u')
+                && segment[1..]
+                    .chars()
+                    .all(|character| character.is_ascii_hexdigit())
+        })
 }
 
 #[cfg(test)]

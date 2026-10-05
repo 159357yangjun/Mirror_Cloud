@@ -46,6 +46,11 @@ pub enum EventType {
     StorageConfigured,
     /// A credential was stored or rotated. Never carries the secret itself.
     CredentialRotated,
+    /// One rollback point's remote object was deleted successfully.
+    RollbackCompleted,
+    /// One rollback point's delete failed. Best-effort rollback continues past this event, so its
+    /// presence does not mean the whole compensation stopped.
+    RollbackFailed,
 }
 
 impl EventType {

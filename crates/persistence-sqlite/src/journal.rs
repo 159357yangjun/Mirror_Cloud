@@ -47,6 +47,8 @@ fn event_type_str(kind: EventType) -> &'static str {
         EventType::TaskStatusChanged => "task_status_changed",
         EventType::StorageConfigured => "storage_configured",
         EventType::CredentialRotated => "credential_rotated",
+        EventType::RollbackCompleted => "rollback_completed",
+        EventType::RollbackFailed => "rollback_failed",
     }
 }
 
@@ -60,6 +62,8 @@ fn parse_event_type(raw: &str) -> Result<EventType, JournalError> {
         "task_status_changed" => EventType::TaskStatusChanged,
         "storage_configured" => EventType::StorageConfigured,
         "credential_rotated" => EventType::CredentialRotated,
+        "rollback_completed" => EventType::RollbackCompleted,
+        "rollback_failed" => EventType::RollbackFailed,
         other => {
             return Err(JournalError::Storage(format!(
                 "unknown persisted event type {other}"

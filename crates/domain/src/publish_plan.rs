@@ -68,7 +68,9 @@ pub struct PlanStep {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum RollbackPolicy {
-    /// Delete what already succeeded. Matches today's `rollback_successful_uploads`.
+    /// Delete what already succeeded, but only where a delete is lawful: see
+    /// `storage_core::rollback::safe_rollback_points`, which refuses legacy fixed paths so a
+    /// compensation pass cannot destroy objects this build never created.
     #[default]
     RollbackSuccessful,
     /// Leave everything in place and let the user repair. Useful when a duplicate URL is cheaper
