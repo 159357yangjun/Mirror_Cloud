@@ -33,6 +33,9 @@ pub const SWEEP_ROW_BUDGET: i64 = 600;
 pub const DEFAULT_INTERVAL_MINUTES: u32 = 360;
 /// Floor for the interval. Below this the job is closer to a stress tool than a reconciler.
 pub const MIN_INTERVAL_MINUTES: u32 = 30;
+/// Ceiling for the interval. A value this large means "effectively never", and the UI offers it as
+/// an explicit choice rather than letting someone type a number that silently disables the job.
+pub const MAX_INTERVAL_MINUTES: u32 = 7 * 24 * 60;
 
 /// Persisted user intent about background reconciliation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -85,11 +88,9 @@ impl ReconcileConfig {
 }
 
 fn clamp_interval(minutes: u32) -> u32 {
-    if minutes < MIN_INTERVAL_MINUTES {
-        MIN_INTERVAL_MINUTES
-    } else {
-        minutes
-    }
+    // Both bounds are required. Without the upper one, `minutes * 60` in the sleep call overflows
+    // u64-free arithmetic on a hand-edited value and the resulting duration is meaningless.
+    minutes.clamp(MIN_INTERVAL_MINUTES, MAX_INTERVAL_MINUTES)
 }
 
 /// Which page a sweep should fetch.
@@ -192,6 +193,24 @@ mod tests {
             read.interval_minutes, MIN_INTERVAL_MINUTES,
             "a one-minute probe loop would hammer provider rate limits"
         );
+    }
+
+    #[test]
+    fn an_absurd_interval_is_capped_instead_of_overflowing_the_sleep() {
+        // u32::MAX minutes multiplied by 60 wraps, and a wrapped duration is not "never" - it can
+        // arrive almost immediately. The ceiling keeps a hand-edited or hostile value inside the
+        // range the UI itself offers.
+        for huge in [u32::MAX, 100_000_000, MAX_INTERVAL_MINUTES + 1] {
+            let wanted = ReconcileConfig {
+                enabled: true,
+                interval_minutes: huge,
+            };
+            let read = ReconcileConfig::from_value(Some(&wanted.to_stored_value()));
+            assert_eq!(
+                read.interval_minutes, MAX_INTERVAL_MINUTES,
+                "{huge} must clamp to the ceiling, not pass through"
+            );
+        }
     }
 
     #[test]

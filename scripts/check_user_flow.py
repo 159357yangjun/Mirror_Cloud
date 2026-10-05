@@ -82,6 +82,50 @@ def _cadence_wraps_on_short_page(source: str) -> bool:
     return 'Some(_) => None,' in body
 
 
+def _desktop_default_is_inert(source: str) -> bool:
+    """Require the browser-build reconciliation default to say enabled: false.
+
+    Written as a function because the declaration spans one long line whose exact punctuation keeps
+    changing under formatting, and an inline string test then fails for layout reasons rather than
+    meaning. This isolates the declaration and reads only its enabled field.
+    """
+    marker = "const reconciliationDefaults"
+    start = source.find(marker)
+    if start == -1:
+        return False
+    window = source[start:start + 240]
+    end = window.find("}")
+    if end != -1:
+        window = window[:end]
+    return "enabled: false" in window
+
+
+def _ui_interval_floor_matches_backend(frontend_source: str, cadence_source: str) -> bool:
+    """Both sides must declare the same numeric floor.
+
+    The gate that preceded this one checked that each file mentioned a floor, which stayed green when
+    the frontend said 1 minute and the backend said 30 - the exact divergence that makes a UI accept a
+    value the backend silently rewrites. Reading the numbers is the only way to catch that.
+    """
+    def literal(source: str, marker: str) -> int | None:
+        start = source.find(marker)
+        if start == -1:
+            return None
+        tail = source[start + len(marker):]
+        digits = ""
+        for char in tail.lstrip():
+            if char.isdigit():
+                digits += char
+            else:
+                break
+        # Rust writes the ceiling as an expression; only the plain-literal floor is compared here.
+        return int(digits) if digits else None
+
+    frontend_value = literal(frontend_source, "export const MIN_RECONCILE_INTERVAL_MINUTES =")
+    backend_value = literal(cadence_source, "pub const MIN_INTERVAL_MINUTES: u32 =")
+    return frontend_value is not None and frontend_value == backend_value
+
+
 def slice_between(source: str, start_marker: str, end_marker: str, label: str) -> str:
     """A missing marker has to fail loudly. str.find() returns -1, which otherwise turns the
     slice into "everything up to the last character" and makes checks built on it pass while
@@ -634,6 +678,39 @@ for ok, label in checks[-15:]:
 if failed:
     raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
 print(f'user-flow section [v1.3.4 lifecycle/application/task hardening] | checks so far: {len(checks)}')
+
+# --- publish dispatch step five: reconciliation reaches the user ----------------------------
+# Step four shipped a background reconciler that no person can turn on: the commands existed and were
+# registered, but nothing in the frontend referenced them. These gates exist so "backend complete" can
+# never again be reported as "feature available" for this path.
+require('getReconciliationSettings' in desktop and 'setReconciliationSettings' in desktop
+        and "invoke('get_reconciliation_settings')" in desktop
+        and "invoke('set_reconciliation_settings'" in desktop,
+        'the desktop wrapper exposes both reconciliation settings calls to the frontend')
+require('runReconciliationSweep' in desktop
+        and "invoke('run_reconciliation_sweep')" in desktop,
+        'the desktop wrapper exposes the manual sweep call')
+require('reconcileSettings' in settings_page
+        and 'reconcileToggleMutation.mutate(!reconcileSettings?.enabled)' in settings_page,
+        'Settings renders a real background-reconciliation switch rather than static text')
+require('后台对账' in settings_page,
+        'the reconciliation section is labelled in the product language users see')
+require('mutationFn: runReconciliationSweep' in settings_page
+        and 'onClick={() => sweepMutation.mutate()}' in settings_page
+        and '立即扫描' in settings_page,
+        'Settings offers a manual sweep action wired to the command')
+require('setSweepReport(report)' in settings_page
+        and 'sweepReport.examined' in settings_page
+        and 'sweepReport.eventsRecorded' in settings_page,
+        'the sweep result is rendered from the report the backend returns')
+require('sweepReport.missingRemote' in settings_page
+        and 'sweepReport.unrecordedRemote' in settings_page
+        and 'sweepReport.inconclusive' in settings_page,
+        'drift findings are surfaced instead of only a success/failure toast')
+require(_ui_interval_floor_matches_backend(desktop, cadence_src),
+        'the interval control mirrors the backend floor instead of accepting any number')
+require(_desktop_default_is_inert(desktop),
+        "the frontend default matches the backend inert default rather than assuming enabled")
 
 # v1.3.5 task-control, plugin-observability and diagnostics hardening.
 migration13 = text('crates/persistence-sqlite/migrations/0013_plugin_execution_logs.sql')

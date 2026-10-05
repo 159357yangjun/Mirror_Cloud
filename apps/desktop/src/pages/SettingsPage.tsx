@@ -27,6 +27,12 @@ import {
   getGlobalShortcutInfo,
   getWindowsContextMenuInfo,
   getOutputPreferences,
+  getReconciliationSettings,
+  runReconciliationSweep,
+  setReconciliationSettings,
+  MIN_RECONCILE_INTERVAL_MINUTES,
+  type ReconciliationSettings,
+  type SweepReport,
   getTyporaIntegrationInfo,
   installUpdate,
   openAppDataDir,
@@ -47,6 +53,41 @@ export function SettingsPage() {
   const queryClient = useQueryClient()
   const setPage = useAppStore((state) => state.setPage)
   const localApiGuideUrl = getLocalApiGuideUrl()
+  // Reconciliation: the settings row is read once and re-read after each save, so the switch label
+  // reflects what the backend stored rather than what was clicked. The interval keeps a separate
+  // draft because an input that wrote through on every keystroke would persist while typing "3".
+  const { data: reconcileSettings, error: reconcileError } = useQuery({
+    queryKey: ['reconciliation-settings'],
+    queryFn: getReconciliationSettings,
+    refetchOnWindowFocus: false,
+  })
+  const [intervalDraft, setIntervalDraft] = useState<number>(MIN_RECONCILE_INTERVAL_MINUTES)
+  useEffect(() => {
+    if (reconcileSettings) {
+      setIntervalDraft(reconcileSettings.intervalMinutes)
+    }
+  }, [reconcileSettings])
+  function intervalDraftChange(minutes: number) {
+    setIntervalDraft(Number.isFinite(minutes) ? minutes : MIN_RECONCILE_INTERVAL_MINUTES)
+  }
+  const reconcileToggleMutation = useMutation({
+    mutationFn: (enabled: boolean) =>
+      setReconciliationSettings(enabled, reconcileSettings?.intervalMinutes ?? 360),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reconciliation-settings'] }),
+  })
+  const intervalSaveMutation = useMutation({
+    mutationFn: (minutes: number) =>
+      setReconciliationSettings(reconcileSettings?.enabled ?? false, minutes),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reconciliation-settings'] }),
+  })
+  // Manual sweeps are not cached: each run is a fresh observation of the remote, and a stale report
+  // would be indistinguishable from "nothing changed since last time".
+  const [sweepReport, setSweepReport] = useState<SweepReport | null>(null)
+  const sweepMutation = useMutation({
+    mutationFn: runReconciliationSweep,
+    onSuccess: (report) => setSweepReport(report),
+  })
+
   const { data } = useQuery({ queryKey: ['output-preferences'], queryFn: getOutputPreferences })
   const { data: typora, error: typoraError, isFetching: typoraChecking, refetch: refreshTypora } = useQuery({
     queryKey: ['typora-integration'],
@@ -393,6 +434,83 @@ export function SettingsPage() {
         <div className="mt-5"><label className="text-xs font-medium text-slate-600">自定义模板</label><input value={form.customTemplate} onChange={(event) => setForm((current) => ({ ...current, customTemplate: event.target.value }))} placeholder="![{name}]({url})" className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 px-3 font-mono text-xs outline-none focus:border-slate-400" /><div className="mt-1.5 text-[11px] text-slate-400">支持 {'{url}'} 与 {'{name}'}。GitHub 会使用 Raw URL。</div></div>
         {mutation.error && <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{String(mutation.error)}</div>}
         <div className="mt-4 flex justify-end"><button disabled={mutation.isPending} onClick={() => mutation.mutate(form)} className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">保存输出设置</button></div>
+      </section>
+
+      <section className="mt-6 rounded-[24px] border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="text-sm font-semibold">后台对账</div>
+            <div className="mt-1 text-xs leading-5 text-slate-400">
+              定期把本地记录的“已上线”与远端实际存在的对象做比对，只报告差异，不删除、不改状态。默认关闭：开启后才会向各存储发起读取请求。
+            </div>
+          </div>
+          <button
+            disabled={reconcileToggleMutation.isPending}
+            onClick={() => reconcileToggleMutation.mutate(!reconcileSettings?.enabled)}
+            className="h-10 shrink-0 rounded-xl border border-slate-200 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            title={reconcileSettings?.enabled ? '点击关闭后台对账' : '点击开启后台对账'}
+          >
+            {reconcileToggleMutation.isPending ? '保存中…' : reconcileSettings?.enabled ? '已开启' : '已关闭'}
+          </button>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+          <label className="text-xs font-medium text-slate-600" htmlFor="reconcile-interval">扫描间隔（分钟）</label>
+          <input
+            id="reconcile-interval"
+            type="number"
+            min={MIN_RECONCILE_INTERVAL_MINUTES}
+            step={30}
+            value={reconcileSettings?.intervalMinutes ?? 360}
+            disabled={!reconcileSettings?.enabled}
+            onChange={(event) => intervalDraftChange(Number(event.target.value))}
+            className="h-10 w-32 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none disabled:opacity-50"
+          />
+          <span className="text-[11px] text-slate-400">不低于 {MIN_RECONCILE_INTERVAL_MINUTES} 分钟；更小的值会被后端抬到该下限。</span>
+          <button
+            disabled={!reconcileSettings?.enabled || intervalSaveMutation.isPending}
+            onClick={() => intervalSaveMutation.mutate(intervalDraft)}
+            className="ml-auto h-9 rounded-xl bg-slate-950 px-3 text-xs font-medium text-white disabled:opacity-40"
+          >
+            {intervalSaveMutation.isPending ? '保存中…' : '保存间隔'}
+          </button>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            disabled={sweepMutation.isPending}
+            onClick={() => sweepMutation.mutate()}
+            className="h-10 rounded-xl border border-slate-200 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {sweepMutation.isPending ? '扫描中…' : '立即扫描'}
+          </button>
+          <span className="text-[11px] text-slate-400">手动扫描不受开关限制，始终会读取远端。</span>
+        </div>
+
+        {sweepReport && (
+          <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-xs leading-6 text-slate-600">
+            <div>
+              本次核对 <span className="font-mono">{sweepReport.examined}</span> 条部署记录：远端存在{' '}
+              <span className="font-mono">{sweepReport.present}</span> · 远端缺失 <span className="font-mono">{sweepReport.absent}</span> · 无法确认{' '}
+              <span className="font-mono">{sweepReport.inconclusive}</span>
+            </div>
+            <div className="mt-1">
+              写入历史 <span className="font-mono">{sweepReport.eventsRecorded}</span> 条 · 应存在却查不到{' '}
+              <span className="font-mono">{sweepReport.missingRemote}</span> · 未记录却存在{' '}
+              <span className="font-mono">{sweepReport.unrecordedRemote}</span>
+            </div>
+            {sweepReport.truncated && (
+              <div className="mt-1 text-amber-700">本轮受行数上限截断，剩余部分会在下次扫描继续。</div>
+            )}
+            {sweepReport.error && <div className="mt-1 text-red-600">扫描未完成：{sweepReport.error}</div>}
+            {sweepReport.skippedByPolicy && <div className="mt-1 text-slate-500">后台任务当前处于关闭状态，本轮未发送任何请求。</div>}
+          </div>
+        )}
+        {(reconcileToggleMutation.error || intervalSaveMutation.error || sweepMutation.error) && (
+          <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">
+            {String(reconcileToggleMutation.error || intervalSaveMutation.error || sweepMutation.error)}
+          </div>
+        )}
       </section>
 
       <section className="mt-6 rounded-[24px] border border-slate-200 bg-white p-5">

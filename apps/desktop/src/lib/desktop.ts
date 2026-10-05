@@ -416,6 +416,59 @@ export async function setGlobalShortcutEnabled(enabled: boolean): Promise<Global
   return invoke('set_global_shortcut_enabled', { enabled })
 }
 
+/// Interval floor mirrored from the backend (`MIN_INTERVAL_MINUTES`). Duplicated deliberately:
+/// TypeScript cannot read a Rust const, and a UI that accepted 1 minute would be clamped silently on
+/// save, showing the user a number that never took effect. Keeping the number here lets the control
+/// refuse it at the point of entry instead.
+export const MIN_RECONCILE_INTERVAL_MINUTES = 30
+export const MAX_RECONCILE_INTERVAL_MINUTES = 7 * 24 * 60
+
+export interface ReconciliationSettings {
+  enabled: boolean
+  intervalMinutes: number
+}
+
+export interface SweepReport {
+  examined: number
+  present: number
+  absent: number
+  inconclusive: number
+  missingRemote: number
+  unrecordedRemote: number
+  eventsRecorded: number
+  truncated: boolean
+  budgetExhausted: boolean
+  nextCursor: string | null
+  skippedByPolicy: boolean
+  error: string | null
+}
+
+// The inert default is restated in the browser build on purpose: outside Tauri there is no settings
+// row to read, and showing "on" would claim a background job this runtime cannot run.
+export const reconciliationDefaults: ReconciliationSettings = { enabled: false, intervalMinutes: 360 }
+
+export async function getReconciliationSettings(): Promise<ReconciliationSettings> {
+  if (!isTauriRuntime()) {
+    return reconciliationDefaults
+  }
+  return invoke('get_reconciliation_settings')
+}
+
+export async function setReconciliationSettings(
+  enabled: boolean,
+  intervalMinutes: number,
+): Promise<ReconciliationSettings> {
+  // Clamped here as well as in the backend so the value rendered after saving is the value stored.
+  const floor = MIN_RECONCILE_INTERVAL_MINUTES
+  const ceiling = MAX_RECONCILE_INTERVAL_MINUTES
+  const bounded = Math.min(Math.max(intervalMinutes, floor), ceiling)
+  return invoke('set_reconciliation_settings', { enabled, intervalMinutes: bounded })
+}
+
+export async function runReconciliationSweep(): Promise<SweepReport> {
+  return invoke('run_reconciliation_sweep')
+}
+
 export async function getWindowsContextMenuInfo(): Promise<WindowsContextMenuInfo> {
   if (!isTauriRuntime()) {
     return { supported: false, installed: false, label: '使用 Multi-cloud Publisher 上传', commandPreview: '', note: '仅 Windows 桌面应用可用' }
