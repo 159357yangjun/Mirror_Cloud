@@ -304,8 +304,11 @@ mod tests {
     fn evidence_links_to_exactly_one_attempt_by_id() {
         let (deployment_id, variant_id, storage_id) = ids();
         let attempt =
-            DeploymentAttempt::begin(deployment_id, variant_id, storage_id, 0, ts(0), None)
-                .finish(ts(1), AttemptOutcome::Succeeded, None);
+            DeploymentAttempt::begin(deployment_id, variant_id, storage_id, 0, ts(0), None).finish(
+                ts(1),
+                AttemptOutcome::Succeeded,
+                None,
+            );
         let evidence = VerificationEvidence::compared(
             attempt.id,
             ts(1),
