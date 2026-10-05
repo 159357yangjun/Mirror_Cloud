@@ -124,6 +124,28 @@ pub enum JournalError {
     },
 }
 
+impl std::fmt::Display for JournalError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            // The inner message comes from the storage layer and is already credential-scrubbed by
+            // whoever produced it; it is printed verbatim so a log line is diagnosable.
+            JournalError::Storage(message) => {
+                write!(formatter, "event journal storage error: {message}")
+            }
+            JournalError::GapDetected {
+                aggregate_id,
+                expected,
+                found,
+            } => write!(
+                formatter,
+                "journal gap on {aggregate_id}: expected {expected}, found {found}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for JournalError {}
+
 /// Read/write contract for the durable journal. Only `append`, `events_for` and `events_since` are
 /// required; `replay` is derived so an implementation cannot get replay wrong while getting the
 /// primitives right.
@@ -345,6 +367,33 @@ mod tests {
         assert_eq!(value, serde_json::json!("deployment_status_changed"));
         let round_tripped: EventType = serde_json::from_value(value).unwrap();
         assert_eq!(round_tripped, EventType::DeploymentStatusChanged);
+    }
+
+    #[test]
+    fn journal_errors_render_a_diagnosable_message() {
+        // tracing::warn!(%error) in the persistence layer requires Display; without these the
+        // journal's only failure path would be unprintable, which is how #274 broke the build.
+        let storage = JournalError::Storage("UNIQUE constraint failed".into());
+        assert_eq!(
+            storage.to_string(),
+            "event journal storage error: UNIQUE constraint failed"
+        );
+        let aggregate = Uuid::nil();
+        let gap = JournalError::GapDetected {
+            aggregate_id: aggregate,
+            expected: 3,
+            found: 7,
+        };
+        let text = gap.to_string();
+        assert!(text.contains("journal gap"), "got {text}");
+        assert!(text.contains("expected 3"), "got {text}");
+        assert!(text.contains("found 7"), "got {text}");
+    }
+
+    #[test]
+    fn journal_error_satisfies_the_std_error_contract() {
+        let boxed: Box<dyn std::error::Error> = Box::new(JournalError::Storage("x".into()));
+        assert!(boxed.to_string().contains("event journal storage error"));
     }
 
     #[test]

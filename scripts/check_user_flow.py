@@ -278,6 +278,11 @@ require('pub async fn record_publish_events' in journal_src
         and 'fn record_publish_events' not in commands
         and 'fn record_publish_events' not in cli,
         'the publish-event helper is defined exactly once, in persistence-sqlite')
+# JournalError must be printable: the persistence layer logs append failures through tracing,
+# which needs Display. CI #274 failed the build because the type shipped without it.
+require('impl std::fmt::Display for JournalError' in event_journal
+        and 'impl std::error::Error for JournalError' in event_journal,
+        'JournalError implements Display + Error so a journal failure can be logged, not just matched')
 require('redact_hides_the_token_and_empty_token_passes_text_through' in gitee,
         'the redaction behaviour has a two-sided test (token hidden, empty token passed through verbatim)')
 require('self.credentials.token.trim())' not in github or 'bearer_auth' in github,
