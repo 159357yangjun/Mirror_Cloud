@@ -115,8 +115,8 @@ impl VerificationMethod {
         matches!(
             self,
             VerificationMethod::ShaReadback
-            | VerificationMethod::StatBytes
-            | VerificationMethod::UrlReachability
+                | VerificationMethod::StatBytes
+                | VerificationMethod::UrlReachability
         )
     }
 }
@@ -219,11 +219,16 @@ mod tests {
         // The regression this guards: requeue used to do `error = NULL`, erasing why attempt 1
         // failed. Two separate rows make that impossible.
         let (deployment_id, variant_id, storage_id) = ids();
-        let first = DeploymentAttempt::begin(deployment_id, variant_id, storage_id, 0, ts(0), None)
-            .finish(ts(1), AttemptOutcome::Failed, Some("remote sha mismatch".into()));
-        let second =
-            DeploymentAttempt::begin(deployment_id, variant_id, storage_id, 1, ts(2), None)
-                .finish(ts(3), AttemptOutcome::Succeeded, None);
+        let first_open =
+            DeploymentAttempt::begin(deployment_id, variant_id, storage_id, 0, ts(0), None);
+        let first = first_open.finish(
+            ts(1),
+            AttemptOutcome::Failed,
+            Some("remote sha mismatch".into()),
+        );
+        let second_open =
+            DeploymentAttempt::begin(deployment_id, variant_id, storage_id, 1, ts(2), None);
+        let second = second_open.finish(ts(3), AttemptOutcome::Succeeded, None);
         assert_eq!(first.error.as_deref(), Some("remote sha mismatch"));
         assert_eq!(second.error, None);
         assert_eq!(first.outcome, AttemptOutcome::Failed);
