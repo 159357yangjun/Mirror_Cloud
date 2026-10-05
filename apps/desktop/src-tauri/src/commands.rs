@@ -34,6 +34,7 @@ use crate::AppState;
 
 pub(crate) mod integrations;
 pub(crate) mod plugins;
+pub(crate) mod reconcile;
 pub(crate) mod remote_index;
 pub(crate) mod storage_entries;
 pub(crate) mod updater;

@@ -876,6 +876,39 @@ impl AssetRepository {
         rows.into_iter().map(parse_deployment_location).collect()
     }
 
+    /// Deployments believed to be live, newest first, capped by `limit`.
+    ///
+    /// A reconciliation sweep needs "everything the app thinks is online", which no existing query
+    /// provides: deployment_locations is scoped to one asset and repair_context to one variant.
+    /// Without this the scheduler would have to enumerate every asset first, turning a bounded
+    /// scan into an unbounded one.
+    ///
+    /// The limit is required rather than advisory - a large library must not be probed in a single
+    /// pass, both for memory and because each row costs a remote request later on. Callers page by
+    /// advancing `after_deployed_at`.
+    pub async fn online_deployments(
+        &self,
+        limit: i64,
+        after_deployed_at: Option<&str>,
+    ) -> Result<Vec<DeploymentLocationRecord>, sqlx::Error> {
+        let rows = match after_deployed_at {
+            Some(cursor) => sqlx::query(
+                "SELECT d.id AS deployment_id,d.storage_id,d.remote_path,d.public_url,d.status,                 d.last_error FROM deployments d WHERE d.status IN ('online','degraded')                  AND d.deployed_at < ? ORDER BY d.deployed_at DESC LIMIT ?",
+            )
+            .bind(cursor)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?,
+            None => sqlx::query(
+                "SELECT d.id AS deployment_id,d.storage_id,d.remote_path,d.public_url,d.status,                 d.last_error FROM deployments d WHERE d.status IN ('online','degraded')                  ORDER BY d.deployed_at DESC LIMIT ?",
+            )
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?,
+        };
+        rows.into_iter().map(parse_deployment_location).collect()
+    }
+
     pub async fn repair_context(
         &self,
         asset_id: Uuid,

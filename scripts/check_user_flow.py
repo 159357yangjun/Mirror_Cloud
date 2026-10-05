@@ -297,6 +297,17 @@ require('pub fn observation_from_probe(probe: Result<bool, ()>) -> RemoteObserva
         'a failed probe maps to Unknown, never Absent, before drift detection ever sees it')
 require('use storage_core' not in text('crates/persistence-sqlite/src/journal.rs'),
         'the persistence layer does not depend on the storage abstraction for this mapping')
+# Reconciliation sweep wiring: a command that is never registered is indistinguishable from dead
+# code, and one that repairs silently would be worse than no sweep at all.
+reconcile_src = text('apps/desktop/src-tauri/src/commands/reconcile.rs')
+require('pub(crate) mod reconcile;' in commands and 'commands::reconcile::run_reconciliation_sweep,' in lib,
+        'the sweep module is declared and its command registered (not left as unreachable code)')
+require('const SWEEP_BATCH: i64 =' in reconcile_src and 'online_deployments(SWEEP_BATCH, None)' in reconcile_src,
+        'a sweep is bounded per run instead of walking the whole library in one click')
+require('"actionTaken": null' in reconcile_src and 'DriftKind::ProbeInconclusive => continue' in reconcile_src,
+        'the sweep records drift without acting on it, and keeps inconclusive probes out of history')
+require('use persistence_sqlite::journal::{' in reconcile_src and 'observation_from_probe' in reconcile_src,
+        'probe results go through the three-state mapper rather than a raw bool')
 require('redact_hides_the_token_and_empty_token_passes_text_through' in gitee,
         'the redaction behaviour has a two-sided test (token hidden, empty token passed through verbatim)')
 require('self.credentials.token.trim())' not in github or 'bearer_auth' in github,

@@ -116,6 +116,7 @@ pub fn run() {
             commands::queue_batch_rename_storage_entries,
             commands::cancel_task,
             commands::retry_task,
+            commands::reconcile::run_reconciliation_sweep,
             commands::create_storage_group,
             commands::list_storage_groups,
             commands::delete_storage_group,
