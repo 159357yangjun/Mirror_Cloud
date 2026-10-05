@@ -458,8 +458,9 @@ impl StorageProvider for GiteeStorage {
 
         // expected stays None when the write response carried no SHA: we still confirmed the file
         // resolves on the target branch, but must not claim we compared against something.
-        let verification =
-            VerificationOutcome::sha_readback(true, response_sha.clone(), Some(verified_sha.clone()));
+        let expected = response_sha.clone();
+        let observed = Some(verified_sha.clone());
+        let verification = VerificationOutcome::sha_readback(true, expected, observed);
         Ok(UploadResult {
             remote_path: logical_path,
             public_url,

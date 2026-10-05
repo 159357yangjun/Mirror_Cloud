@@ -52,11 +52,7 @@ pub struct VerificationOutcome {
 }
 
 impl VerificationOutcome {
-    pub fn sha_readback(
-        passed: bool,
-        expected: Option<String>,
-        observed: Option<String>,
-    ) -> Self {
+    pub fn sha_readback(passed: bool, expected: Option<String>, observed: Option<String>) -> Self {
         Self {
             passed,
             expected,
@@ -147,7 +143,10 @@ mod tests {
         assert_eq!(matched.method, "stat_bytes");
 
         let mismatched = VerificationOutcome::stat_bytes(1024, 900);
-        assert!(!mismatched.passed, "a size disagreement must never read as verified");
+        assert!(
+            !mismatched.passed,
+            "a size disagreement must never read as verified"
+        );
         assert_eq!(mismatched.observed.as_deref(), Some("900"));
     }
 
