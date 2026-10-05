@@ -259,6 +259,25 @@ require('DriftKind::ProbeInconclusive' in journal_src
         'drift detection distinguishes "we could not look" from "it is gone"')
 require('caller supplied a sequence' in journal_src and 'event.sequence != 0' in journal_src,
         'the SQLite journal also refuses a caller-chosen history position')
+# Journal wiring (step 5 of the plan): both publish entry points must record, and a journal
+# failure must never fail a publish. The pair matters: one call site only would leave Typora
+# uploads producing gaps that read as real history.
+desktop_publish = commands[commands.find('async fn publish_clipboard_image_with_workflow') if 'async fn publish_clipboard_image_with_workflow' in commands else 0:]
+require('persistence_sqlite::journal::record_publish_events(' in commands
+        and 'persistence_sqlite::journal::record_publish_events(' in cli,
+        'both the desktop and Typora publish paths append to the journal')
+require('journal: persistence_sqlite::journal::SqliteEventJournal::new(pool' in lib
+        and 'journal: persistence_sqlite::journal::SqliteEventJournal::new(pool' in cli,
+        'the journal handle is constructed for the desktop AppState and the CLI context alike')
+require('SettingsRepository::new(pool.clone())' in cli,
+        'the CLI pool is cloned before the journal takes it (a moved pool would not compile)')
+require('if let Err(error) = journal.append(&outcome).await' in journal_src
+        and 'tracing::warn!' in journal_src,
+        'a journal write failure degrades to a warning instead of failing a completed upload')
+require('pub async fn record_publish_events' in journal_src
+        and 'fn record_publish_events' not in commands
+        and 'fn record_publish_events' not in cli,
+        'the publish-event helper is defined exactly once, in persistence-sqlite')
 require('redact_hides_the_token_and_empty_token_passes_text_through' in gitee,
         'the redaction behaviour has a two-sided test (token hidden, empty token passed through verbatim)')
 require('self.credentials.token.trim())' not in github or 'bearer_auth' in github,

@@ -9,7 +9,7 @@ use std::{
 use credential_store::CredentialStore;
 use persistence_sqlite::{
     AssetRepository, PluginRepository, SettingsRepository, StorageGroupRepository,
-    StorageRepository, TaskRepository, WorkflowRepository,
+    StorageRepository, TaskRepository, WorkflowRepository, journal::SqliteEventJournal,
 };
 use task_engine::TaskEngine;
 use tauri::Manager;
@@ -23,6 +23,9 @@ pub struct AppState {
     pub groups: StorageGroupRepository,
     pub workflows: WorkflowRepository,
     pub plugins: PluginRepository,
+    /// Durable domain event journal. Separate from `tasks`: the task table answers "what is running
+    /// now", the journal answers "what happened, in order".
+    pub journal: SqliteEventJournal,
     pub tasks: TaskEngine,
     pub credentials: CredentialStore,
     pub upload_semaphore: Arc<tokio::sync::Semaphore>,
@@ -68,7 +71,8 @@ pub fn run() {
                 settings: SettingsRepository::new(pool.clone()),
                 groups: StorageGroupRepository::new(pool.clone()),
                 workflows: WorkflowRepository::new(pool.clone()),
-                plugins: PluginRepository::new(pool),
+                plugins: PluginRepository::new(pool.clone()),
+                journal: persistence_sqlite::journal::SqliteEventJournal::new(pool),
                 tasks: TaskEngine::new(task_repo),
                 credentials,
                 upload_semaphore: Arc::new(tokio::sync::Semaphore::new(4)),

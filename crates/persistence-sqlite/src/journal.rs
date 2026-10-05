@@ -32,6 +32,7 @@
 
 use chrono::{DateTime, Utc};
 use domain::event_journal::{AggregateKind, DomainEvent, EventType, JournalError};
+use domain::DeploymentStatus;
 use serde_json::Value;
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
@@ -222,6 +223,56 @@ fn row_to_event(row: &sqlx::sqlite::SqliteRow) -> Result<DomainEvent, JournalErr
 
 fn map_row_error(error: sqlx::Error) -> JournalError {
     JournalError::Storage(error.to_string())
+}
+
+/// Record the events that follow a successful publish, for both entry points.
+///
+/// Failures are swallowed into a warning rather than propagated: an event log that can fail a
+/// publish is worse than an occasional missing event, because the user would lose an upload they
+/// already paid for. That asymmetry is why this returns nothing instead of a Result.
+///
+/// Shared by desktop (commands.rs) and Typora (cli.rs) on purpose: a journal that records only
+/// one of the two entry points produces gaps that read like real history.
+pub async fn record_publish_events(
+    journal: &SqliteEventJournal,
+    asset_id: Uuid,
+    variant_id: Uuid,
+    deployment_records: &[crate::DeploymentWriteRecord],
+    published_url: Option<&str>,
+) {
+    let now = Utc::now();
+    let outcome = DomainEvent::new(
+        now,
+        EventType::AssetPublished,
+        AggregateKind::Asset,
+        asset_id,
+        serde_json::json!({
+            "variantId": variant_id.to_string(),
+            "publicUrl": published_url,
+            "deployments": deployment_records.len(),
+        }),
+    );
+    if let Err(error) = journal.append(&outcome).await {
+        tracing::warn!(%error, "journal append failed for asset publish");
+    }
+    for record in deployment_records {
+        let online = matches!(record.deployment.status, DeploymentStatus::Online);
+        let event = DomainEvent::new(
+            now,
+            EventType::DeploymentStatusChanged,
+            AggregateKind::Deployment,
+            record.deployment.id,
+            serde_json::json!({
+                "status": if online { "online" } else { "failed" },
+                "storageId": record.deployment.storage_id.to_string(),
+                "remotePath": record.deployment.remote_path,
+                "lastError": record.last_error,
+            }),
+        );
+        if let Err(error) = journal.append(&event).await {
+            tracing::warn!(%error, "journal append failed for deployment status change");
+        }
+    }
 }
 
 /// What the local database believes about one deployment.

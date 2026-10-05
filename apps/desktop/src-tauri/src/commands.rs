@@ -2478,6 +2478,14 @@ async fn run_workflow_publish_task(
                 .failures
                 .push(format!("插件结果保存失败：{error}"));
         }
+        persistence_sqlite::journal::record_publish_events(
+            &state.journal,
+            asset.id,
+            variant.id,
+            &deployment_records,
+            published_url.as_deref(),
+        )
+        .await;
         emit_asset_published(
             &app,
             &asset.name,

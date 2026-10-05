@@ -102,6 +102,10 @@ struct CliContext {
     tasks: TaskEngine,
     plugins: PluginRepository,
     settings: SettingsRepository,
+    /// Typora uploads must land in the same journal as desktop uploads; a half-wired log (one
+    /// entry point recording, the other silently not) is worse than no log, because the gaps look
+    /// like real history.
+    journal: persistence_sqlite::journal::SqliteEventJournal,
     credentials: CredentialStore,
 }
 
@@ -152,7 +156,8 @@ pub async fn upload_with_default_workflow(
         assets: AssetRepository::new(pool.clone()),
         tasks: TaskEngine::new(task_repo),
         plugins: PluginRepository::new(pool.clone()),
-        settings: SettingsRepository::new(pool),
+        settings: SettingsRepository::new(pool.clone()),
+        journal: persistence_sqlite::journal::SqliteEventJournal::new(pool),
         credentials: CredentialStore::new("com.multicloud.publisher"),
     };
 
@@ -655,6 +660,15 @@ async fn publish_one(
         };
         return Err(format!("Cannot record uploaded asset: {error}{suffix}"));
     }
+
+    persistence_sqlite::journal::record_publish_events(
+        &context.journal,
+        asset.id,
+        variant.id,
+        &deployments,
+        Some(public_url.as_str()),
+    )
+    .await;
 
     let mut warnings = before_process_warnings
         .into_iter()
