@@ -18,7 +18,6 @@
 
 use crate::{StorageError, StorageProvider, is_safe_compensation_path};
 use uuid::Uuid;
-use uuid::Uuid;
 
 /// One object that a failed publish may lawfully compensate by deleting.
 ///
