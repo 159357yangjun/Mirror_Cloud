@@ -233,7 +233,10 @@ mod tests {
     #[test]
     fn a_plan_carries_the_cursor_it_was_given() {
         let plan = plan_sweep(Some("2026-02-02T00:00:00Z".into()));
-        assert_eq!(plan.after_deployed_at.as_deref(), Some("2026-02-02T00:00:00Z"));
+        assert_eq!(
+            plan.after_deployed_at.as_deref(),
+            Some("2026-02-02T00:00:00Z")
+        );
     }
 
     #[test]

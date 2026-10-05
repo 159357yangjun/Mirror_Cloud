@@ -165,7 +165,11 @@ async fn build_sweep_providers(
 async fn fetch_sweep_rows(
     state: &AppState,
     cursor: Option<String>,
-) -> CmdResult<(Vec<persistence_sqlite::DeploymentLocationRecord>, Option<String>, bool)> {
+) -> CmdResult<(
+    Vec<persistence_sqlite::DeploymentLocationRecord>,
+    Option<String>,
+    bool,
+)> {
     let mut plan = plan_sweep(cursor);
     let mut rows: Vec<persistence_sqlite::DeploymentLocationRecord> = Vec::new();
     let mut budget_exhausted = false;
