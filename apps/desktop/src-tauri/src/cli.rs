@@ -634,8 +634,11 @@ async fn publish_one(
                 } else {
                     DeploymentStatus::Failed
                 },
-                deployed_at: Some(now),
-                recorded_at: Some(now),
+                timestamps: domain::DeploymentTimestamps {
+                    deployed_at: Some(now),
+                    last_attempted_at: Some(now),
+                    ..Default::default()
+                },
             },
             last_error: outcome.error.clone(),
         })
@@ -711,6 +714,15 @@ async fn publish_one(
         .collect();
     // Same storage-id matching as the desktop path: unique per group by schema, so unambiguous.
     persistence_sqlite::journal::record_verification_events(&context.journal, &verified).await;
+    for proof in &verified {
+        if let Err(error) = context
+            .assets
+            .record_deployment_verification(proof.deployment_id, proof.passed)
+            .await
+        {
+            tracing::warn!(%error, "could not record a verification timestamp");
+        }
+    }
 
     let mut warnings = before_process_warnings
         .into_iter()

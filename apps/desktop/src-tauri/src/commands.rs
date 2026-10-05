@@ -2443,8 +2443,11 @@ async fn run_workflow_publish_task(
                     } else {
                         DeploymentStatus::Failed
                     },
-                    deployed_at: Some(now),
-                    recorded_at: Some(now),
+                    timestamps: domain::DeploymentTimestamps {
+                        deployed_at: Some(now),
+                        last_attempted_at: Some(now),
+                        ..Default::default()
+                    },
                 },
                 last_error: outcome.error.clone(),
             })
@@ -2518,6 +2521,15 @@ async fn run_workflow_publish_task(
             })
             .collect();
         persistence_sqlite::journal::record_verification_events(&state.journal, &verified).await;
+        for proof in &verified {
+            if let Err(error) = state
+                .assets
+                .record_deployment_verification(proof.deployment_id, proof.passed)
+                .await
+            {
+                tracing::warn!(%error, "could not record a verification timestamp");
+            }
+        }
         emit_asset_published(
             &app,
             &asset.name,

@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub mod attempt_and_evidence;
+pub mod deployment_timestamps;
 pub mod event_journal;
 pub mod publish_plan;
 
@@ -124,12 +125,22 @@ pub struct Deployment {
     pub remote_path: String,
     pub public_url: Option<String>,
     pub status: DeploymentStatus,
-    pub deployed_at: Option<DateTime<Utc>>,
-    /// When this row was written locally. This is NOT a verification result: nothing checked the
-    /// remote object to produce it. Real verification lives in its own record with an explicit
-    /// method and outcome (see docs/DEPLOYMENT_ATTEMPT_AND_EVIDENCE.md). The field used to be named
-    /// `verified_at`, which claimed a check that never happened.
-    pub recorded_at: Option<DateTime<Utc>>,
+    /// Four clocks, because one column could not answer "was this verified" honestly. Callers go
+    /// `deployed_at` lives in here too: it is one of the four, and keeping it outside would let
+    /// a caller advance three clocks while forgetting the fourth.
+    /// `deployed_at` lives in here too: it is one of the four, and keeping it outside would let a
+    /// caller advance three clocks while forgetting the fourth.
+    pub timestamps: DeploymentTimestamps,
+}
+
+pub use deployment_timestamps::{DeploymentTimestamps, TimestampCause};
+
+impl Deployment {
+    /// Move exactly the timestamp the given cause legitimately sets, returning the new value.
+    pub fn record(mut self, cause: TimestampCause, at: DateTime<Utc>) -> Self {
+        self.timestamps = self.timestamps.with(cause, at);
+        self
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

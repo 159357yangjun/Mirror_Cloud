@@ -126,6 +126,15 @@ def _ui_interval_floor_matches_backend(frontend_source: str, cadence_source: str
     return frontend_value is not None and frontend_value == backend_value
 
 
+def _names_bare_verified_at(source: str) -> bool:
+    """Whether the text mentions the old column as itself, not as part of last_verified_at.
+
+    A plain substring test can never pass after section seventeen, because the honest new column name
+    ends with the old one. This looks for `verified_at` not preceded by `last_`.
+    """
+    return re.search(r"(?<!last_)verified_at", source) is not None
+
+
 def slice_between(source: str, start_marker: str, end_marker: str, label: str) -> str:
     """A missing marker has to fail loudly. str.find() returns -1, which otherwise turns the
     slice into "everything up to the last character" and makes checks built on it pass while
@@ -399,6 +408,9 @@ require('use storage_core' not in text('crates/persistence-sqlite/src/journal.rs
 # code, and one that repairs silently would be worse than no sweep at all.
 reconcile_src = text('apps/desktop/src-tauri/src/commands/reconcile.rs')
 cadence_src = text('apps/desktop/src-tauri/src/reconcile_cadence.rs')
+timestamps_src = text('crates/domain/src/deployment_timestamps.rs')
+migration16 = text('crates/persistence-sqlite/migrations/0016_split_deployment_timestamps.sql')
+down16 = text('crates/persistence-sqlite/migrations/down/0016_split_deployment_timestamps.sql')
 require('pub(crate) mod reconcile;' in commands and 'commands::reconcile::run_reconciliation_sweep,' in lib,
         'the sweep module is declared and its command registered (not left as unreachable code)')
 require('SWEEP_ROW_BUDGET' in cadence_src and 'rows.len() as i64 >= SWEEP_ROW_BUDGET' in reconcile_src,
@@ -712,6 +724,59 @@ require(_ui_interval_floor_matches_backend(desktop, cadence_src),
 require(_desktop_default_is_inert(desktop),
         "the frontend default matches the backend inert default rather than assuming enabled")
 
+# --- piclist section seventeen: four deployment clocks --------------------------------------
+# One column used to mean "written locally" while being named "verified", so a failed upload could
+# leave its row looking verified. These gates hold the split in place: each cause writes one field, and
+# no failure path reaches a success field.
+require('pub enum TimestampCause' in timestamps_src
+        and 'pub struct DeploymentTimestamps' in timestamps_src,
+        'the four deployment clocks are set through one enumerated cause vocabulary')
+require('pub timestamps: DeploymentTimestamps' in domain
+        and 'pub recorded_at' not in domain
+        and 'pub deployed_at' not in domain,
+        'Deployment carries the clock group instead of a single ambiguous timestamp field')
+require('fn record(mut self, cause: TimestampCause' in domain,
+        'callers advance a deployment clock only through Deployment::record')
+require('TimestampCause::Disproved => self,' in timestamps_src,
+        'a failed content check advances no timestamp at all')
+require('last_verified_at: Some(at),' in timestamps_src
+        and 'TimestampCause::Proved => Self {' in timestamps_src,
+        'only a passed content comparison moves last_verified_at')
+require('UPDATE deployments SET status=?, last_attempted_at=? WHERE id=?' in persistence
+        and 'UPDATE deployments SET status=?, public_url=COALESCE(?, public_url), last_error=?, last_attempted_at=? WHERE id=?' in persistence,
+        'status and result writes touch the attempt clock, never the verification clock')
+require('if !passed {' in persistence
+        and 'A mismatch records nothing here.' in persistence
+        and 'UPDATE deployments SET last_verified_at=? WHERE id=?' in persistence,
+        'verification recording bails before writing when the verdict is a mismatch')
+require('UPDATE deployments SET remote_path=?, public_url=?, last_observed_at=?' in persistence,
+        'remote-index sync records an observation rather than a write time')
+require('UPDATE deployments SET last_observed_at=? WHERE id=?' in persistence
+        and 'RemoteObservation::Present => {' in reconcile_src
+        and 'record_deployment_observation(row.deployment_id)' in reconcile_src,
+        'reconciliation stamps last_observed_at only on a positive probe')
+require('.record_deployment_verification(proof.deployment_id, proof.passed)' in commands
+        and '.record_deployment_verification(proof.deployment_id, proof.passed)' in cli,
+        'both publish paths record verification from the real verdict, not from now')
+require('ALTER TABLE deployments ADD COLUMN last_attempted_at TEXT' in migration16
+        and 'ALTER TABLE deployments ADD COLUMN last_observed_at TEXT' in migration16
+        and 'ALTER TABLE deployments ADD COLUMN last_verified_at TEXT' in migration16,
+        'the migration adds all three new clocks')
+require('UPDATE deployments SET last_attempted_at = recorded_at' in migration16
+        and 'last_verified_at = recorded_at' not in migration16,
+        'backfill routes old writes to the attempt clock and never into verification')
+require('ALTER TABLE deployments DROP COLUMN last_attempted_at' in down16
+        and 'ALTER TABLE deployments DROP COLUMN last_observed_at' in down16
+        and 'ALTER TABLE deployments DROP COLUMN last_verified_at' in down16,
+        'the downgrade removes exactly what the upgrade added')
+require('fn a_failed_deployment_is_never_recorded_as_verified' in timestamps_src
+        and 'fn a_reconciliation_probe_observes_without_verifying' in timestamps_src,
+        'the §15 invariant and the probe/verify distinction are asserted by tests')
+require('recorded_at' not in commands and 'recorded_at' not in cli
+        and 'recorded_at' not in text('apps/desktop/src-tauri/src/commands/remote_index.rs'),
+        'no entry point still writes the old single-clock column')
+require(not _names_bare_verified_at(timestamps_src),
+        'the clock vocabulary module does not reintroduce the bare verified_at name')
 # v1.3.5 task-control, plugin-observability and diagnostics hardening.
 migration13 = text('crates/persistence-sqlite/migrations/0013_plugin_execution_logs.sql')
 task_engine = text('crates/task-engine/src/lib.rs')
@@ -733,13 +798,15 @@ require('CREATE TABLE IF NOT EXISTS plugin_execution_logs' in migration13 and 'd
 migration14 = text('crates/persistence-sqlite/migrations/0014_rename_verified_to_recorded.sql')
 require('ALTER TABLE deployments RENAME COLUMN verified_at TO recorded_at' in migration14,
         'the rename ships as an additive migration so existing databases keep their rows')
-require('recorded_at: Option<DateTime<Utc>>' in domain and 'pub verified_at' not in domain,
-        'the domain Deployment field is recorded_at and the lying name is gone from it')
-require('verified_at' not in persistence and 'recorded_at' in persistence,
+# Superseded by section seventeen: `recorded_at` was itself split into four clocks, so these now
+# assert the current contract while keeping the original guarantee - the lying name stays gone.
+require('pub timestamps: DeploymentTimestamps' in domain and 'pub verified_at' not in domain,
+        'the domain Deployment field is the clock group and the lying name is gone from it')
+require(not _names_bare_verified_at(persistence) and 'last_verified_at' in persistence,
         'no SQL string in the persistence layer still names the old column')
-require('verified_at' not in commands and 'verified_at' not in cli and 'verified_at' not in text(
-    'apps/desktop/src-tauri/src/commands/remote_index.rs'),
-    'all three write sites use recorded_at (they used to assert a verification they did not perform)')
+require(not _names_bare_verified_at(commands) and not _names_bare_verified_at(cli)
+        and not _names_bare_verified_at(text('apps/desktop/src-tauri/src/commands/remote_index.rs')),
+        'all three write sites name an explicit clock instead of asserting a verification they did not perform')
 require('verified_at TEXT' in text('crates/persistence-sqlite/migrations/0001_init.sql'),
         '0001 keeps the original column name on purpose - migrations replay in order on a fresh database, so the rename must live in 0014')
 require('record_execution' in persistence and 'list_execution_logs' in persistence, 'plugin execution audit repository persists and reads logs')

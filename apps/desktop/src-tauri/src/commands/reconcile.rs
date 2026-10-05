@@ -230,7 +230,16 @@ async fn run_sweep_inner(
         };
         let observation = observation_from_probe(outcome);
         match observation {
-            RemoteObservation::Present => present += 1,
+            // Only a positive look is an observation of this object. Absent means we looked and it
+            // was not there, which is what the drift report below records; Unknown means we could
+            // not look, and writing a timestamp for that would date an event that did not happen.
+            RemoteObservation::Present => {
+                present += 1;
+                let noted = state.assets.record_deployment_observation(row.deployment_id).await;
+                if let Err(error) = noted {
+                    tracing::warn!(%error, "could not record an observation timestamp");
+                }
+            }
             RemoteObservation::Absent => absent += 1,
             RemoteObservation::Unknown => inconclusive += 1,
         }

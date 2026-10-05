@@ -33,6 +33,29 @@ try:
     for migration in migrations:
         connection.executescript(migration.read_text(encoding='utf-8'))
     table_count = connection.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchone()[0]
+
+    # The four deployment clocks must exist after the replay, and the split must not have smuggled a
+    # write into the verification column. Asserted against the live schema rather than the migration
+    # text, because an ALTER that fails to apply still leaves the file looking correct.
+    deployment_columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(deployments)").fetchall()
+    }
+    required_clocks = {
+        "deployed_at",
+        "last_attempted_at",
+        "last_observed_at",
+        "last_verified_at",
+    }
+    missing = required_clocks - deployment_columns
+    if missing:
+        errors.append(
+            "deployments is missing timestamp columns after migration replay: "
+            + ", ".join(sorted(missing))
+        )
+    # recorded_at stays as history but must no longer be written by any code path; nothing here
+    # re-points it at a success column.
+    if "verified_at" in deployment_columns:
+        errors.append("deployments.verified_at is back: the misleading name must not return")
 finally:
     try:
         connection.close()

@@ -200,8 +200,13 @@ pub async fn sync_storage_asset_index(
                     remote_path: remote_path.clone(),
                     public_url: entry.public_url.clone(),
                     status: DeploymentStatus::Online,
-                    deployed_at: None,
-                    recorded_at: Some(now),
+                    // Observed in a listing, nothing more: no deployed_at (this build did not
+                    // upload it) and no last_verified_at (a listing proves presence, not content).
+                    // Rows of this kind used to look verified after every sync.
+                    timestamps: domain::DeploymentTimestamps {
+                        last_observed_at: Some(now),
+                        ..Default::default()
+                    },
                 };
 
                 match state

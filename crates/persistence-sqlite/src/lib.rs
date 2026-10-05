@@ -742,17 +742,21 @@ impl AssetRepository {
             .await?;
         for record in deployments {
             let deployment = &record.deployment;
-            sqlx::query("INSERT INTO deployments (id,variant_id,storage_id,role,remote_path,public_url,status,deployed_at,recorded_at,last_error) VALUES (?,?,?,?,?,?,?,?,?,?)")
-                .bind(deployment.id.to_string())
-                .bind(deployment.variant_id.to_string())
-                .bind(deployment.storage_id.to_string())
-                .bind(deployment_role_str(&deployment.role))
-                .bind(&deployment.remote_path)
-                .bind(&deployment.public_url)
-                .bind(deployment_status_str(&deployment.status))
-                .bind(deployment.deployed_at.map(|value| value.to_rfc3339()))
-                .bind(deployment.recorded_at.map(|value| value.to_rfc3339()))
-                .bind(&record.last_error)
+            sqlx::query(
+                "INSERT INTO deployments (id,variant_id,storage_id,role,remote_path,public_url,                         status,deployed_at,last_attempted_at,last_observed_at,                         last_verified_at,last_error)                         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            )
+            .bind(deployment.id.to_string())
+            .bind(deployment.variant_id.to_string())
+            .bind(deployment.storage_id.to_string())
+            .bind(deployment_role_str(&deployment.role))
+            .bind(&deployment.remote_path)
+            .bind(&deployment.public_url)
+            .bind(deployment_status_str(&deployment.status))
+            .bind(deployment.timestamps.deployed_at.map(|value| value.to_rfc3339()))
+            .bind(deployment.timestamps.last_attempted_at.map(|value| value.to_rfc3339()))
+            .bind(deployment.timestamps.last_observed_at.map(|value| value.to_rfc3339()))
+            .bind(deployment.timestamps.last_verified_at.map(|value| value.to_rfc3339()))
+            .bind(&record.last_error)
                 .execute(&mut *tx)
                 .await?;
         }
@@ -967,7 +971,8 @@ impl AssetRepository {
         new_remote_path: &str,
         public_url: Option<String>,
     ) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query("UPDATE deployments SET remote_path=?, public_url=?, recorded_at=? WHERE storage_id=? AND remote_path=? AND status <> 'deleted'")
+        // Re-indexing observed the object at a new path; that is presence, not content proof.
+        let result = sqlx::query("UPDATE deployments SET remote_path=?, public_url=?, last_observed_at=? WHERE storage_id=? AND remote_path=? AND status <> 'deleted'")
             .bind(new_remote_path)
             .bind(public_url)
             .bind(Utc::now().to_rfc3339())
@@ -983,8 +988,50 @@ impl AssetRepository {
         deployment_id: Uuid,
         status: DeploymentStatus,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query("UPDATE deployments SET status=?, recorded_at=? WHERE id=?")
+        // A status change is an attempt, never a proof: this write used to stamp `verified_at` on
+        // failures. Verification advances only where a content comparison actually passed.
+        sqlx::query("UPDATE deployments SET status=?, last_attempted_at=? WHERE id=?")
             .bind(deployment_status_str(&status))
+            .bind(Utc::now().to_rfc3339())
+            .bind(deployment_id.to_string())
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Record that a reconciliation pass looked at this deployment's remote object.
+    ///
+    /// Presence only: a probe answers "is something there", which is weaker than a content check.
+    /// It must not move `last_verified_at`, or a provider serving a placeholder for a deleted key
+    /// would mark the copy verified.
+    pub async fn record_deployment_observation(
+        &self,
+        deployment_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE deployments SET last_observed_at=? WHERE id=?")
+            .bind(Utc::now().to_rfc3339())
+            .bind(deployment_id.to_string())
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Advance `last_verified_at` for a deployment whose content comparison passed.
+    ///
+    /// Kept apart from the status and result updates deliberately: those run on every attempt,
+    /// failures included. Folding it into either would recreate the old defect where a failed
+    /// upload left its row looking verified.
+    pub async fn record_deployment_verification(
+        &self,
+        deployment_id: Uuid,
+        passed: bool,
+    ) -> Result<(), sqlx::Error> {
+        if !passed {
+            // A mismatch records nothing here. The journal keeps the failed check as history; this
+            // column answers only "was the last content check a pass, and when".
+            return Ok(());
+        }
+        sqlx::query("UPDATE deployments SET last_verified_at=? WHERE id=?")
             .bind(Utc::now().to_rfc3339())
             .bind(deployment_id.to_string())
             .execute(&self.pool)
@@ -999,7 +1046,7 @@ impl AssetRepository {
         public_url: Option<String>,
         last_error: Option<String>,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query("UPDATE deployments SET status=?, public_url=COALESCE(?, public_url), last_error=?, recorded_at=? WHERE id=?")
+        sqlx::query("UPDATE deployments SET status=?, public_url=COALESCE(?, public_url), last_error=?, last_attempted_at=? WHERE id=?")
             .bind(deployment_status_str(&status))
             .bind(public_url)
             .bind(last_error)
