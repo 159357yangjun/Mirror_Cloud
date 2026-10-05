@@ -166,7 +166,11 @@ mod tests {
     #[test]
     fn a_unique_path_becomes_a_rollback_point() {
         let points = safe_rollback_points([point(unique_path())]);
-        assert_eq!(points.len(), 1, "a uniquely named upload must be compensable");
+        assert_eq!(
+            points.len(),
+            1,
+            "a uniquely named upload must be compensable"
+        );
     }
 
     #[test]
@@ -216,9 +220,7 @@ mod tests {
         fn capabilities(&self) -> domain::StorageCapabilities {
             domain::StorageCapabilities::default()
         }
-        async fn test_connection(
-            &self,
-        ) -> Result<crate::ConnectionReport, StorageError> {
+        async fn test_connection(&self) -> Result<crate::ConnectionReport, StorageError> {
             Err(StorageError::Unsupported)
         }
         async fn upload(
@@ -237,9 +239,7 @@ mod tests {
         }
     }
 
-    fn fake(
-        fail_on_call: usize,
-    ) -> (FakeProvider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+    fn fake(fail_on_call: usize) -> (FakeProvider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
         let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         (
             FakeProvider {
