@@ -94,7 +94,11 @@ impl RollbackSummary {
 pub async fn execute_rollback(
     points: &[RollbackPoint],
     mut resolve: impl FnMut(Uuid) -> Result<std::sync::Arc<dyn StorageProvider>, StorageError>,
-) -> (Vec<RollbackPoint>, Vec<(RollbackPoint, String)>, RollbackSummary) {
+) -> (
+    Vec<RollbackPoint>,
+    Vec<(RollbackPoint, String)>,
+    RollbackSummary,
+) {
     let mut deleted = Vec::new();
     let mut failures = Vec::new();
 
@@ -135,7 +139,9 @@ impl RollbackPoint {
     /// Human-readable storage name for failure text. Falls back to the id when the caller has no
     /// label, because an orphan report that says only "unknown" is not actionable.
     pub fn storage_label(&self) -> String {
-        self.label.clone().unwrap_or_else(|| self.storage_id.to_string())
+        self.label
+            .clone()
+            .unwrap_or_else(|| self.storage_id.to_string())
     }
 }
 
