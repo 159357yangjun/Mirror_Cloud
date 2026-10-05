@@ -31,8 +31,8 @@
 //! observable rather than silent.
 
 use chrono::{DateTime, Utc};
-use domain::event_journal::{AggregateKind, DomainEvent, EventType, JournalError};
 use domain::DeploymentStatus;
+use domain::event_journal::{AggregateKind, DomainEvent, EventType, JournalError};
 use serde_json::Value;
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
