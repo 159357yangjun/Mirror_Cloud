@@ -47,9 +47,7 @@ pub struct SweepReport {
 }
 
 #[tauri::command]
-pub async fn run_reconciliation_sweep(
-    state: State<'_, AppState>,
-) -> CmdResult<SweepReport> {
+pub async fn run_reconciliation_sweep(state: State<'_, AppState>) -> CmdResult<SweepReport> {
     let storages = state
         .storages
         .list()
