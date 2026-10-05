@@ -95,7 +95,6 @@ pub async fn execute_rollback(
     points: &[RollbackPoint],
     mut resolve: impl FnMut(Uuid) -> Result<std::sync::Arc<dyn StorageProvider>, StorageError>,
 ) -> (Vec<RollbackPoint>, Vec<(RollbackPoint, String)>, RollbackSummary) {
-{
     let mut deleted = Vec::new();
     let mut failures = Vec::new();
 
