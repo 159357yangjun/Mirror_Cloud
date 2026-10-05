@@ -2487,6 +2487,12 @@ async fn run_workflow_publish_task(
             published_url.as_deref(),
         )
         .await;
+        persistence_sqlite::journal::record_upload_attempts(
+            &state.journal,
+            variant.id,
+            &deployment_records,
+        )
+        .await;
         emit_asset_published(
             &app,
             &asset.name,

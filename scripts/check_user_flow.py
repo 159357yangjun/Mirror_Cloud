@@ -308,6 +308,20 @@ require('"actionTaken": null' in reconcile_src and 'DriftKind::ProbeInconclusive
         'the sweep records drift without acting on it, and keeps inconclusive probes out of history')
 require('use persistence_sqlite::journal::{' in reconcile_src and 'observation_from_probe' in reconcile_src,
         'probe results go through the three-state mapper rather than a raw bool')
+# Upload-attempt events (publish dispatch step 1): both entry points must record them, the
+# decision must be a named predicate rather than an inline ternary, and it must not claim to be
+# verification.
+require('pub async fn record_upload_attempts' in journal_src
+        and 'persistence_sqlite::journal::record_upload_attempts(' in commands
+        and 'persistence_sqlite::journal::record_upload_attempts(' in cli,
+        'upload attempts are recorded by the desktop and Typora publish paths alike')
+require('pub fn attempt_event_type(failed: bool) -> EventType' in journal_src
+        and 'let event_type = attempt_event_type(record.last_error.is_some());' in journal_src,
+        'the completed-vs-failed choice is one named predicate used at the write site, not a copy-pasted branch')
+require('EventType::UploadAttemptFailed' in journal_src and 'EventType::UploadAttemptCompleted' in journal_src,
+        'both attempt event kinds are actually produced somewhere (not declared-only enum arms)')
+require('attemptIndex' not in journal_src,
+        'no fabricated attempt counter: retry indices belong to the deployment_attempts table')
 require('redact_hides_the_token_and_empty_token_passes_text_through' in gitee,
         'the redaction behaviour has a two-sided test (token hidden, empty token passed through verbatim)')
 require('self.credentials.token.trim())' not in github or 'bearer_auth' in github,

@@ -275,6 +275,57 @@ pub async fn record_publish_events(
     }
 }
 
+/// Which attempt event a member's outcome maps to. Split out so the decision is testable without
+/// a database: everything left of it is I/O.
+pub fn attempt_event_type(failed: bool) -> EventType {
+    if failed {
+        EventType::UploadAttemptFailed
+    } else {
+        EventType::UploadAttemptCompleted
+    }
+}
+
+/// Record one upload attempt per publish outcome, next to the status events.
+///
+/// Why this sits beside `record_publish_events` rather than at the `publish_group` call site:
+/// every caller builds its Asset/AssetVariant *after* awaiting the uploads, so no aggregate id
+/// exists at the moment the outcomes arrive. Writing attempts there would mean inventing an id
+/// that does not match the row later persisted - worse than late, because the journal would then
+/// point at nothing. Here the ids are real and the same block already holds the outcomes.
+///
+/// No attempt index is recorded: every publish today creates fresh deployment rows, so a counter
+/// would always read 1 and imply retry tracking that does not exist yet. It belongs to the
+/// deployment_attempts table, which nothing writes into so far.
+/// A "completed" attempt still means "the provider accepted the write", not "the remote object was
+/// verified" - that claim needs VerificationRecorded, which cannot exist until backends report
+/// what they checked (see docs/PUBLISH_DISPATCH_ANALYSIS.md section D).
+pub async fn record_upload_attempts(
+    journal: &SqliteEventJournal,
+    variant_id: Uuid,
+    deployment_records: &[crate::DeploymentWriteRecord],
+) {
+    let now = Utc::now();
+    for record in deployment_records {
+        let deployment = &record.deployment;
+        let event_type = attempt_event_type(record.last_error.is_some());
+        let event = DomainEvent::new(
+            now,
+            event_type,
+            AggregateKind::Deployment,
+            deployment.id,
+            serde_json::json!({
+                "variantId": variant_id.to_string(),
+                "storageId": deployment.storage_id.to_string(),
+                "remotePath": deployment.remote_path,
+                "error": record.last_error,
+            }),
+        );
+        if let Err(error) = journal.append(&event).await {
+            tracing::warn!(%error, "journal append failed for upload attempt");
+        }
+    }
+}
+
 /// What the local database believes about one deployment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BelievedDeployment {
@@ -384,6 +435,16 @@ mod tests {
             remote_path: "assets/blog/x.png".into(),
             status_online: online,
         }
+    }
+
+    #[test]
+    fn an_errored_member_is_a_failed_attempt_and_a_clean_one_is_completed() {
+        assert_eq!(
+            attempt_event_type(true),
+            EventType::UploadAttemptFailed,
+            "a member that reported an error must not be recorded as a completed upload"
+        );
+        assert_eq!(attempt_event_type(false), EventType::UploadAttemptCompleted);
     }
 
     #[test]

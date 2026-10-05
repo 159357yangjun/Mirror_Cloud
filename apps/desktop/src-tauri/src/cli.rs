@@ -670,6 +670,9 @@ async fn publish_one(
     )
     .await;
 
+    persistence_sqlite::journal::record_upload_attempts(&context.journal, variant.id, &deployments)
+        .await;
+
     let mut warnings = before_process_warnings
         .into_iter()
         .chain(after_process_warnings.into_iter())
