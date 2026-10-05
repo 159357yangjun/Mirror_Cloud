@@ -283,6 +283,20 @@ require('pub async fn record_publish_events' in journal_src
 require('impl std::fmt::Display for JournalError' in event_journal
         and 'impl std::error::Error for JournalError' in event_journal,
         'JournalError implements Display + Error so a journal failure can be logged, not just matched')
+# Reconciler probe safety (step 2 pre-condition B): the reconciler must not read a failed lookup
+# as absence, and OpenDAL must not fall back to the trait default's directory listing.
+opendal_lib = text('crates/storage-opendal/src/lib.rs')
+require('async fn exists(&self, path: &str) -> Result<bool, StorageError>' in opendal_lib
+        and 'self.operator.stat(path).await' in opendal_lib,
+        'OpenDAL overrides exists with an exact-path stat instead of listing the parent directory')
+require('opendal::ErrorKind::NotFound => Ok(false)' in opendal_lib
+        and 'Err(error) => Err(map_error(error))' in opendal_lib,
+        'only NotFound reads as absent; every other backend failure propagates as an error')
+require('pub fn observation_from_probe(probe: Result<bool, ()>) -> RemoteObservation' in journal_src
+        and 'Err(()) => RemoteObservation::Unknown' in journal_src,
+        'a failed probe maps to Unknown, never Absent, before drift detection ever sees it')
+require('use storage_core' not in text('crates/persistence-sqlite/src/journal.rs'),
+        'the persistence layer does not depend on the storage abstraction for this mapping')
 require('redact_hides_the_token_and_empty_token_passes_text_through' in gitee,
         'the redaction behaviour has a two-sided test (token hidden, empty token passed through verbatim)')
 require('self.credentials.token.trim())' not in github or 'bearer_auth' in github,

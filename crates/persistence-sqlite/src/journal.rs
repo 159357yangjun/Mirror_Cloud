@@ -311,6 +311,25 @@ pub struct Drift {
     pub remote_path: String,
 }
 
+/// Map a completed-or-failed probe onto the three-state observation.
+///
+/// The safety property lives here: a failed lookup must become `Unknown`, never `Absent`. A
+/// backend that rejects credentials, rate-limits, or loses connectivity is answering "I could not
+/// tell you"; reading that as "the file is gone" would let an outage drive a reconciler to delete
+/// or re-upload content that is fine.
+///
+/// Takes a plain outcome rather than a storage error type on purpose: persistence must not depend
+/// on the storage abstraction, so whoever probes translates its error into `Err(())` first.
+/// Backends already keep NotFound separate from every other failure, which makes that translation
+/// lossless here.
+pub fn observation_from_probe(probe: Result<bool, ()>) -> RemoteObservation {
+    match probe {
+        Ok(true) => RemoteObservation::Present,
+        Ok(false) => RemoteObservation::Absent,
+        Err(()) => RemoteObservation::Unknown,
+    }
+}
+
 /// Compare belief against observation for a set of deployments.
 ///
 /// Pure by design: no pool, no async, no side effects. A repair action is *proposed*, never taken
@@ -365,6 +384,28 @@ mod tests {
             remote_path: "assets/blog/x.png".into(),
             status_online: online,
         }
+    }
+
+    #[test]
+    fn a_failed_probe_never_becomes_absent() {
+        // The single most dangerous mis-mapping in this layer: treating "could not look" as
+        // "not there" turns an outage into a deletion decision.
+        assert_eq!(observation_from_probe(Err(())), RemoteObservation::Unknown);
+    }
+
+    #[test]
+    fn only_a_confirmed_negative_probe_reads_as_absent() {
+        assert_eq!(observation_from_probe(Ok(true)), RemoteObservation::Present);
+        assert_eq!(observation_from_probe(Ok(false)), RemoteObservation::Absent);
+        // Absent may drive MissingRemote; a failed lookup may not.
+        let id = Uuid::new_v4();
+        let from_absent = detect_drift(&[believed(id, true)], &[(id, RemoteObservation::Absent)]);
+        assert_eq!(from_absent[0].kind, DriftKind::MissingRemote);
+        let from_failure = detect_drift(
+            &[believed(id, true)],
+            &[(id, observation_from_probe(Err(())))],
+        );
+        assert_eq!(from_failure[0].kind, DriftKind::ProbeInconclusive);
     }
 
     #[test]

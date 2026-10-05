@@ -328,6 +328,28 @@ impl StorageProvider for OpenDalStorage {
         Ok(buffer.to_bytes())
     }
 
+    /// Exact-path lookup instead of the trait default's directory listing.
+    ///
+    /// The default implementation calls `list(parent)` and scans for a name match. Object stores
+    /// do not truncate listings the way repository contents APIs do, but a prefix can still hold
+    /// tens of thousands of keys, so the default is both slow here and - once a listing is capped
+    /// anywhere in the chain - capable of reporting a present object as absent. For a reconciler
+    /// that is the worst possible failure direction: a false "absent" reads as deleted user
+    /// content.
+    ///
+    /// Three outcomes are kept distinct on purpose:
+    ///   Ok(true)  / Ok(false) only come from a completed stat;
+    ///   Err(_)    covers every other failure (auth, network, rate limit), which callers must
+    ///             treat as "unknown", never as absence. NotFound maps to Ok(false); anything
+    ///             else propagates.
+    async fn exists(&self, path: &str) -> Result<bool, StorageError> {
+        match self.operator.stat(path).await {
+            Ok(metadata) => Ok(metadata.is_file()),
+            Err(error) if error.kind() == opendal::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(map_error(error)),
+        }
+    }
+
     async fn delete(&self, path: &str) -> Result<(), StorageError> {
         self.operator.delete(path).await.map_err(map_error)
     }
