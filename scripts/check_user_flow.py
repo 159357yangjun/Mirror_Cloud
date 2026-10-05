@@ -239,6 +239,26 @@ require('caller supplied a sequence' in event_journal and 'sequence != 0' in eve
         'the mock rejects an injected sequence (guard + message both present) rather than accepting a caller-chosen position')
 require('serde_json.workspace = true' in text('crates/domain/Cargo.toml').split('[dev-dependencies]')[0],
         'domain depends on serde_json as a normal dependency (payload is a Value), not only for tests')
+# Reconciliation + durable journal storage (piclist #39 piece four). The two properties worth a
+# gate are: down scripts must not leak into the up replay, and an inconclusive probe must never be
+# reported as a missing remote (that is how a network blip becomes mass deletion).
+journal_src = text('crates/persistence-sqlite/src/journal.rs')
+migration15 = text('crates/persistence-sqlite/migrations/0015_domain_events.sql')
+down15 = text('crates/persistence-sqlite/migrations/down/0015_domain_events.sql')
+require('CREATE UNIQUE INDEX IF NOT EXISTS idx_domain_events_aggregate_sequence' in migration15
+        and 'aggregate_kind, aggregate_id, sequence' in migration15,
+        'per-aggregate sequence uniqueness is enforced by the schema, not just by convention')
+require('CHECK (sequence >= 1)' in migration15,
+        'the reserved "not yet persisted" sequence 0 cannot enter the table')
+require('DROP TABLE IF EXISTS domain_events' in down15,
+        'the new up migration ships with its same-named down counterpart')
+require("glob('*.sql')" in text('scripts/validate.py'),
+        'validate.py replays only top-level *.sql, which is what keeps migrations/down/ out of the up chain')
+require('DriftKind::ProbeInconclusive' in journal_src
+        and 'Some(RemoteObservation::Absent) if deployment.status_online' in journal_src,
+        'drift detection distinguishes "we could not look" from "it is gone"')
+require('caller supplied a sequence' in journal_src and 'event.sequence != 0' in journal_src,
+        'the SQLite journal also refuses a caller-chosen history position')
 require('redact_hides_the_token_and_empty_token_passes_text_through' in gitee,
         'the redaction behaviour has a two-sided test (token hidden, empty token passed through verbatim)')
 require('self.credentials.token.trim())' not in github or 'bearer_auth' in github,

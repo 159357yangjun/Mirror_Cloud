@@ -1,5 +1,7 @@
 use std::path::Path;
 
+pub mod journal;
+
 use chrono::{DateTime, Utc};
 use domain::{
     Asset, AssetVariant, Deployment, DeploymentRole, DeploymentStatus, StorageCategory, Task,
