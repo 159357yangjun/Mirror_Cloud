@@ -323,7 +323,10 @@ mod tests {
             execute_rollback(&[], move |_id| Ok(std::sync::Arc::clone(&provider))).await;
         assert_eq!(summary.points_count, 0);
         assert!(summary.accounting_is_complete());
-        assert!(calls.lock().unwrap().is_empty(), "no points means no deletes");
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "no points means no deletes"
+        );
     }
 
     #[test]
