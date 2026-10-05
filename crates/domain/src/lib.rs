@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+pub mod attempt_and_evidence;
 pub mod publish_plan;
 
 pub type AssetId = Uuid;
@@ -123,7 +124,11 @@ pub struct Deployment {
     pub public_url: Option<String>,
     pub status: DeploymentStatus,
     pub deployed_at: Option<DateTime<Utc>>,
-    pub verified_at: Option<DateTime<Utc>>,
+    /// When this row was written locally. This is NOT a verification result: nothing checked the
+    /// remote object to produce it. Real verification lives in its own record with an explicit
+    /// method and outcome (see docs/DEPLOYMENT_ATTEMPT_AND_EVIDENCE.md). The field used to be named
+    /// `verified_at`, which claimed a check that never happened.
+    pub recorded_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

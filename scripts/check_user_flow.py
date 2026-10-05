@@ -56,6 +56,7 @@ assets = text('apps/desktop/src/pages/AssetsPage.tsx')
 plugins = text('apps/desktop/src/pages/PluginsPage.tsx')
 lib = text('apps/desktop/src-tauri/src/lib.rs')
 persistence = text('crates/persistence-sqlite/src/lib.rs')
+domain = text('crates/domain/src/lib.rs')
 migration8 = text('crates/persistence-sqlite/migrations/0008_asset_plugin_outputs.sql')
 application = text('crates/application/src/lib.rs')
 publish_page = text('apps/desktop/src/pages/PublishPage.tsx')
@@ -380,6 +381,22 @@ require('report_batch_task_progress' in storage_entries_commands and 'mark_runni
 require('pub async fn cancel_task' in storage_entries_commands and 'pub async fn retry_task' in storage_entries_commands and 'commands::cancel_task' in lib and 'commands::retry_task' in lib, 'Task Center control commands are implemented and registered')
 require('cancelTask' in tasks_page and 'retryTask' in tasks_page and 'task.canCancel' in tasks_page and 'task.canRetry' in tasks_page, 'Task Center exposes real cancel and bounded retry controls')
 require('CREATE TABLE IF NOT EXISTS plugin_execution_logs' in migration13 and 'duration_ms' in migration13 and 'plugin_id' in migration13, 'plugin execution audit migration exists')
+# deployments.verified_at claimed a check that never happened (it was written as `Some(now)` next to
+# `status = if error.is_none() { Online }`, with no remote read). It is now recorded_at. These
+# assertions are the regression net: reintroducing the old name anywhere - field, SQL, or by editing
+# 0001 instead of adding a migration - fails here rather than silently re-lending it authority.
+migration14 = text('crates/persistence-sqlite/migrations/0014_rename_verified_to_recorded.sql')
+require('ALTER TABLE deployments RENAME COLUMN verified_at TO recorded_at' in migration14,
+        'the rename ships as an additive migration so existing databases keep their rows')
+require('recorded_at: Option<DateTime<Utc>>' in domain and 'pub verified_at' not in domain,
+        'the domain Deployment field is recorded_at and the lying name is gone from it')
+require('verified_at' not in persistence and 'recorded_at' in persistence,
+        'no SQL string in the persistence layer still names the old column')
+require('verified_at' not in commands and 'verified_at' not in cli and 'verified_at' not in text(
+    'apps/desktop/src-tauri/src/commands/remote_index.rs'),
+    'all three write sites use recorded_at (they used to assert a verification they did not perform)')
+require('verified_at TEXT' in text('crates/persistence-sqlite/migrations/0001_init.sql'),
+        '0001 keeps the original column name on purpose - migrations replay in order on a fresh database, so the rename must live in 0014')
 require('record_execution' in persistence and 'list_execution_logs' in persistence, 'plugin execution audit repository persists and reads logs')
 require(re.search(r'record_execution\(\s*&manifest\.id', commands_main) is not None and re.search(r'record_execution\(\s*&manifest\.id', cli) is not None, 'desktop and Typora/Local API plugin lifecycle executions are audited')
 require(re.search(r'"manual_trigger"\s*,\s*"success"', plugin_commands) is not None and re.search(r'"manual_trigger"\s*,\s*"failed"', plugin_commands) is not None, 'manual plugin runs are audited')

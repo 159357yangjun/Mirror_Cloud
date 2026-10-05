@@ -201,7 +201,7 @@ pub async fn sync_storage_asset_index(
                     public_url: entry.public_url.clone(),
                     status: DeploymentStatus::Online,
                     deployed_at: None,
-                    verified_at: Some(now),
+                    recorded_at: Some(now),
                 };
 
                 match state

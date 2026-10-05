@@ -737,7 +737,7 @@ impl AssetRepository {
             .await?;
         for record in deployments {
             let deployment = &record.deployment;
-            sqlx::query("INSERT INTO deployments (id,variant_id,storage_id,role,remote_path,public_url,status,deployed_at,verified_at,last_error) VALUES (?,?,?,?,?,?,?,?,?,?)")
+            sqlx::query("INSERT INTO deployments (id,variant_id,storage_id,role,remote_path,public_url,status,deployed_at,recorded_at,last_error) VALUES (?,?,?,?,?,?,?,?,?,?)")
                 .bind(deployment.id.to_string())
                 .bind(deployment.variant_id.to_string())
                 .bind(deployment.storage_id.to_string())
@@ -746,7 +746,7 @@ impl AssetRepository {
                 .bind(&deployment.public_url)
                 .bind(deployment_status_str(&deployment.status))
                 .bind(deployment.deployed_at.map(|value| value.to_rfc3339()))
-                .bind(deployment.verified_at.map(|value| value.to_rfc3339()))
+                .bind(deployment.recorded_at.map(|value| value.to_rfc3339()))
                 .bind(&record.last_error)
                 .execute(&mut *tx)
                 .await?;
@@ -929,7 +929,7 @@ impl AssetRepository {
         new_remote_path: &str,
         public_url: Option<String>,
     ) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query("UPDATE deployments SET remote_path=?, public_url=?, verified_at=? WHERE storage_id=? AND remote_path=? AND status <> 'deleted'")
+        let result = sqlx::query("UPDATE deployments SET remote_path=?, public_url=?, recorded_at=? WHERE storage_id=? AND remote_path=? AND status <> 'deleted'")
             .bind(new_remote_path)
             .bind(public_url)
             .bind(Utc::now().to_rfc3339())
@@ -945,7 +945,7 @@ impl AssetRepository {
         deployment_id: Uuid,
         status: DeploymentStatus,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query("UPDATE deployments SET status=?, verified_at=? WHERE id=?")
+        sqlx::query("UPDATE deployments SET status=?, recorded_at=? WHERE id=?")
             .bind(deployment_status_str(&status))
             .bind(Utc::now().to_rfc3339())
             .bind(deployment_id.to_string())
@@ -961,7 +961,7 @@ impl AssetRepository {
         public_url: Option<String>,
         last_error: Option<String>,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query("UPDATE deployments SET status=?, public_url=COALESCE(?, public_url), last_error=?, verified_at=? WHERE id=?")
+        sqlx::query("UPDATE deployments SET status=?, public_url=COALESCE(?, public_url), last_error=?, recorded_at=? WHERE id=?")
             .bind(deployment_status_str(&status))
             .bind(public_url)
             .bind(last_error)

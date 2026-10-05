@@ -2443,7 +2443,7 @@ async fn run_workflow_publish_task(
                         DeploymentStatus::Failed
                     },
                     deployed_at: Some(now),
-                    verified_at: Some(now),
+                    recorded_at: Some(now),
                 },
                 last_error: outcome.error.clone(),
             })
