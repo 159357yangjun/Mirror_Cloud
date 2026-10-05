@@ -146,10 +146,7 @@ impl SqliteEventJournal {
         Ok(event.clone().with_sequence(next_sequence as u64))
     }
 
-    pub async fn events_for(
-        &self,
-        aggregate_id: Uuid,
-    ) -> Result<Vec<DomainEvent>, JournalError> {
+    pub async fn events_for(&self, aggregate_id: Uuid) -> Result<Vec<DomainEvent>, JournalError> {
         let rows = sqlx::query(
             "SELECT event_id, occurred_at, event_type, aggregate_kind, aggregate_id, sequence, \
              payload_json FROM domain_events WHERE aggregate_id = ? ORDER BY sequence",
@@ -187,10 +184,7 @@ impl SqliteEventJournal {
             .collect()
     }
 
-    pub async fn highest_sequence_for(
-        &self,
-        aggregate_id: Uuid,
-    ) -> Result<u64, JournalError> {
+    pub async fn highest_sequence_for(&self, aggregate_id: Uuid) -> Result<u64, JournalError> {
         let value: Option<i64> = sqlx::query_scalar(
             "SELECT MAX(sequence) FROM domain_events WHERE aggregate_id = ?",
         )
