@@ -185,13 +185,12 @@ impl SqliteEventJournal {
     }
 
     pub async fn highest_sequence_for(&self, aggregate_id: Uuid) -> Result<u64, JournalError> {
-        let value: Option<i64> = sqlx::query_scalar(
-            "SELECT MAX(sequence) FROM domain_events WHERE aggregate_id = ?",
-        )
-        .bind(aggregate_id.to_string())
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|error| JournalError::Storage(error.to_string()))?;
+        let value: Option<i64> =
+            sqlx::query_scalar("SELECT MAX(sequence) FROM domain_events WHERE aggregate_id = ?")
+                .bind(aggregate_id.to_string())
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|error| JournalError::Storage(error.to_string()))?;
         Ok(value.unwrap_or(0) as u64)
     }
 }
@@ -371,10 +370,8 @@ mod tests {
             (a, RemoteObservation::Absent),
             (b, RemoteObservation::Present),
         ];
-        let drift = detect_drift(
-            &[believed(a, true), believed(b, false)],
-            &observations,
-        );
+        let beliefs = [believed(a, true), believed(b, false)];
+        let drift = detect_drift(&beliefs, &observations);
         assert_eq!(drift.len(), 2);
         let by_id: std::collections::HashMap<_, _> = drift
             .iter()
