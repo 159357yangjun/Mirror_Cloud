@@ -29,7 +29,7 @@ use persistence_sqlite::journal::{
     BelievedDeployment, DriftKind, RemoteObservation, detect_drift, observation_from_probe,
 };
 use serde::Serialize;
-use tauri::State;
+use tauri::{Manager, State};
 use uuid::Uuid;
 
 const RECONCILE_SETTINGS_KEY: &str = "reconciliation.background";
