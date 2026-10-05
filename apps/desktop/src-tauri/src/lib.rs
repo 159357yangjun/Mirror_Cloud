@@ -1,5 +1,6 @@
 pub mod cli;
 mod commands;
+pub mod reconcile_cadence;
 mod rollback;
 
 use std::{
@@ -90,6 +91,7 @@ pub fn run() {
                 local_api_token,
                 local_api_running,
             );
+            commands::reconcile::start_background_reconciler(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -118,6 +120,8 @@ pub fn run() {
             commands::cancel_task,
             commands::retry_task,
             commands::reconcile::run_reconciliation_sweep,
+            commands::reconcile::get_reconciliation_settings,
+            commands::reconcile::set_reconciliation_settings,
             commands::create_storage_group,
             commands::list_storage_groups,
             commands::delete_storage_group,

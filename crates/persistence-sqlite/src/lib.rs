@@ -634,6 +634,9 @@ pub struct DeploymentLocationRecord {
     pub public_url: Option<String>,
     pub status: String,
     pub last_error: Option<String>,
+    /// Ordering key the reconciliation cursor walks. The query already sorts by it; exposing it
+    /// lets a sweep continue past the page it read instead of re-reading the newest rows.
+    pub deployed_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -893,14 +896,14 @@ impl AssetRepository {
     ) -> Result<Vec<DeploymentLocationRecord>, sqlx::Error> {
         let rows = match after_deployed_at {
             Some(cursor) => sqlx::query(
-                "SELECT d.id AS deployment_id,d.storage_id,d.remote_path,d.public_url,d.status,                 d.last_error FROM deployments d WHERE d.status IN ('online','degraded')                  AND d.deployed_at < ? ORDER BY d.deployed_at DESC LIMIT ?",
+                "SELECT d.id AS deployment_id,d.storage_id,d.remote_path,d.public_url,d.status,                 d.last_error,d.deployed_at FROM deployments d WHERE d.status IN ('online','degraded')                  AND d.deployed_at < ? ORDER BY d.deployed_at DESC LIMIT ?",
             )
             .bind(cursor)
             .bind(limit)
             .fetch_all(&self.pool)
             .await?,
             None => sqlx::query(
-                "SELECT d.id AS deployment_id,d.storage_id,d.remote_path,d.public_url,d.status,                 d.last_error FROM deployments d WHERE d.status IN ('online','degraded')                  ORDER BY d.deployed_at DESC LIMIT ?",
+                "SELECT d.id AS deployment_id,d.storage_id,d.remote_path,d.public_url,d.status,                 d.last_error,d.deployed_at FROM deployments d WHERE d.status IN ('online','degraded')                  ORDER BY d.deployed_at DESC LIMIT ?",
             )
             .bind(limit)
             .fetch_all(&self.pool)
@@ -1026,6 +1029,7 @@ fn parse_deployment_location(row: SqliteRow) -> Result<DeploymentLocationRecord,
         public_url: row.try_get("public_url")?,
         status: row.try_get("status")?,
         last_error: row.try_get("last_error")?,
+        deployed_at: row.try_get("deployed_at")?,
     })
 }
 

@@ -31,6 +31,57 @@ def top_level_imports(source: str) -> list[str]:
     """
     return re.findall(r"^import\b.*?\bfrom '([^']+)'", source, re.MULTILINE)
 
+def _cadence_default_is_disabled(source: str) -> bool:
+    """Read the literal inside `impl Default for ReconcileConfig`, not just any occurrence.
+
+    A plain substring test for "enabled: false," stays satisfied by the unrelated disabled branch in
+    `from_value`, so flipping the actual default to true would pass it. That is a gate that looks like
+    a safety check and is not one, which is worse than having no gate at all.
+    """
+    marker = "impl Default for ReconcileConfig"
+    start = source.find(marker)
+    if start == -1:
+        return False
+    body = source[start:start + 700]
+    end = body.find("}")
+    if end != -1:
+        body = body[:end]
+    return "enabled: false," in body
+
+
+def _cadence_wraps_on_short_page(source: str) -> bool:
+    """Read the body of `advance_cursor` and require a short page to return None.
+
+    A substring test cannot express this: the wrapping arm's distinguishing feature is what it
+    returns for a Some(_) input whose row count is below the page size, and every token in that arm
+    also appears elsewhere in the file. So the function body is isolated and its match arms are
+    checked structurally.
+    """
+    marker = "pub fn advance_cursor("
+    start = source.find(marker)
+    if start == -1:
+        return False
+    rest = source[start:]
+    brace = rest.find("{")
+    # Walk to the matching close brace rather than trusting indentation or a fixed window.
+    depth = 0
+    end = -1
+    for index in range(brace, len(rest)):
+        char = rest[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                end = index
+                break
+    if end == -1:
+        return False
+    body = rest[brace:end + 1]
+    # The wrap must be the arm that matches any Some(_) without the full-page guard.
+    return 'Some(_) => None,' in body
+
+
 def slice_between(source: str, start_marker: str, end_marker: str, label: str) -> str:
     """A missing marker has to fail loudly. str.find() returns -1, which otherwise turns the
     slice into "everything up to the last character" and makes checks built on it pass while
@@ -303,9 +354,10 @@ require('use storage_core' not in text('crates/persistence-sqlite/src/journal.rs
 # Reconciliation sweep wiring: a command that is never registered is indistinguishable from dead
 # code, and one that repairs silently would be worse than no sweep at all.
 reconcile_src = text('apps/desktop/src-tauri/src/commands/reconcile.rs')
+cadence_src = text('apps/desktop/src-tauri/src/reconcile_cadence.rs')
 require('pub(crate) mod reconcile;' in commands and 'commands::reconcile::run_reconciliation_sweep,' in lib,
         'the sweep module is declared and its command registered (not left as unreachable code)')
-require('const SWEEP_BATCH: i64 =' in reconcile_src and 'online_deployments(SWEEP_BATCH, None)' in reconcile_src,
+require('SWEEP_ROW_BUDGET' in cadence_src and 'rows.len() as i64 >= SWEEP_ROW_BUDGET' in reconcile_src,
         'a sweep is bounded per run instead of walking the whole library in one click')
 require('"actionTaken": null' in reconcile_src and 'DriftKind::ProbeInconclusive => continue' in reconcile_src,
         'the sweep records drift without acting on it, and keeps inconclusive probes out of history')
@@ -405,6 +457,53 @@ require('async fn an_unresolvable_storage_counts_as_a_failed_point' in storage_c
         and 'async fn a_failed_delete_does_not_stop_the_remaining_points' in storage_core_rollback
         and 'async fn every_point_produces_exactly_one_delete' in storage_core_rollback,
         'the rollback loop has tests for counting, best-effort continuation, and resolver failure')
+
+# --- publish dispatch step four: scheduled reconciliation -----------------------------------
+# A timer that talks to remote storage is the first code in this app that runs unattended, so these
+# assertions exist to keep "it can run periodically" from silently becoming "it does".
+require('pub fn start_background_reconciler' in reconcile_src
+        and 'commands::reconcile::start_background_reconciler(app.handle())' in lib,
+        'the background reconciler is started once at setup')
+require('if !should_run_on_tick(&config) {' in reconcile_src
+        and 'continue;' in reconcile_src[reconcile_src.index('start_background_reconciler'):],
+        'a tick without permission sends nothing')
+require(_cadence_default_is_disabled(cadence_src),
+        'background reconciliation defaults to disabled rather than enabled')
+require('unwrap_or_default()' in cadence_src
+        and 'None => return Self::default()' in cadence_src,
+        'an unreadable or absent preference degrades to disabled, not to a guessed schedule')
+require('MIN_INTERVAL_MINUTES: u32 = 30' in cadence_src
+        and 'fn clamp_interval(minutes: u32) -> u32' in cadence_src,
+        'the configured interval has a floor so it cannot become a polling flood')
+require('SWEEP_ROW_BUDGET' in cadence_src
+        and 'rows.len() as i64 >= SWEEP_ROW_BUDGET' in reconcile_src,
+        'one sweep is bounded by a row budget regardless of library size')
+require('advance_cursor(rows.len(), seen_cursor)' in reconcile_src
+        and 'cursor = report.next_cursor.clone()' in reconcile_src,
+        'the sweep cursor advances between cycles instead of re-reading the newest page')
+require(_cadence_wraps_on_short_page(cadence_src),
+        'a finished walk wraps to the newest page so later cycles reach older deployments')
+require('d.deployed_at < ? ORDER BY d.deployed_at DESC' in persistence
+        and 'd.last_error,d.deployed_at FROM deployments' in persistence,
+        'the paging query selects and filters on the cursor column it orders by')
+require('pub deployed_at: Option<String>' in persistence
+        and 'deployed_at: row.try_get("deployed_at")?' in persistence,
+        'the location record exposes the cursor column the rotation depends on')
+require('async fn run_sweep_inner(' in reconcile_src
+        and '    state: &AppState,' in reconcile_src
+        and 'Ok(run_sweep_inner(&state, &providers, None).await)' in reconcile_src
+        and 'run_sweep_inner(&state, &providers, cursor.clone()).await' in reconcile_src,
+        'one sweep core serves both the command and the timer, taking AppState not State')
+require('fn idle(skipped_by_policy: bool)' in reconcile_src
+        and 'pub skipped_by_policy: bool' in reconcile_src
+        and 'pub error: Option<String>' in reconcile_src,
+        'an unexamined sweep says why, instead of reporting counts that look like a clean library')
+require('commands::reconcile::get_reconciliation_settings' in lib
+        and 'commands::reconcile::set_reconciliation_settings' in lib,
+        'the background preference is readable and writable through registered commands')
+require('fn a_default_install_never_sends_probes_from_the_timer' in reconcile_src
+        and 'fn reaching_the_end_wraps_instead_of_parking_on_the_newest_rows' in cadence_src,
+        'inertness and cursor wrap are both asserted by tests')
 require('workflows.find((workflow) => workflow.isDefault)' in upload and '?? workflows[0]' not in upload, 'upload UI never falls back to an arbitrary legacy workflow')
 require('async fn persist_new_storage' in commands and commands.count('persist_new_storage(state.inner(), &record).await?;') >= 4, 'storage setup only succeeds after automatic pipeline persistence')
 require('sync_system_default_pipeline(state.inner(), None).await?;' in commands, 'automatic pipeline sync errors are surfaced instead of silently ignored')
@@ -1187,6 +1286,7 @@ failed = [label for ok, label in checks if not ok]
 # Print every failure, then a short tail of passing checks for context. Printing only the last 20
 # checks meant a failing assertion outside that window exited 1 without ever naming itself, which the
 # mutation runner reported as "the oracle stayed silent" for guards that had caught the mutation.
+
 for label in failed:
     print('FAIL ' + label)
 # On a GitHub runner, a failed step's stdout needs a token to read (the logs endpoint answers 403),
