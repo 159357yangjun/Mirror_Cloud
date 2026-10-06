@@ -459,6 +459,9 @@ export type ConfirmationTierName =
 
 export type TierStrengthName = 'strong' | 'weak' | 'unconfirmed'
 
+/** §18B: the four buckets a failed probe is reported with (mirrors domain::ProbeFailureKind). */
+export type ProbeFailureKindName = 'network_timeout' | 'auth_failed' | 'rejected' | 'unavailable'
+
 /** One drift finding with the evidence this build can actually claim about it. */
 export interface DriftEntry {
   deploymentId: string | null
@@ -466,6 +469,8 @@ export interface DriftEntry {
   confirmation: ConfirmationTierName | null
   strength: TierStrengthName | null
   missingEvidence: string | null
+  /** Set on probe-path rows only: why the lookup could not answer (§18B). */
+  probeFailure?: ProbeFailureKindName | null
 }
 
 export interface SweepReport {
@@ -484,6 +489,7 @@ export interface SweepReport {
   // 'scan' = the set comparison used a stored listing; 'probe_only' = no fresh listing existed.
   evidenceSource: 'scan' | 'probe_only' | 'none'
   unrecordedPaths: DriftEntry[]
+  probePaths: DriftEntry[]
   missingPaths: DriftEntry[]
   unknownPaths: DriftEntry[]
   pathsOmitted: number
@@ -532,6 +538,7 @@ export interface SweepHistoryEntry {
   missingRemote: number
   unrecordedRemote: number
   unknownCoverage: number
+  probeFailures?: number
   evidenceSource: string
   error: string | null
 }

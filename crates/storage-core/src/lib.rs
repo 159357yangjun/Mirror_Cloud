@@ -72,6 +72,20 @@ fn classify_provider_message(message: &str) -> domain::StorageErrorKind {
     StorageErrorKind::Rejected
 }
 
+/// What a failed existence probe should be reported as, in the words §18B asks for.
+///
+/// `Ok(false)` is NOT a failure: the object was looked for and not found, which belongs to drift,
+/// not to this taxonomy - so it gets None here and callers must not invent a kind for it. The one
+/// case with no provider error at all (no usable provider) maps to `unavailable`, because "we could
+/// not even try" must stay distinguishable from "we tried and the answer refused to come".
+pub fn probe_kind(outcome: &Result<bool, StorageError>) -> Option<domain::ProbeFailureKind> {
+    use domain::ProbeFailureKind;
+    match outcome {
+        Ok(_) => None,
+        Err(error) => Some(ProbeFailureKind::classify(error.kind(), &error.to_string())),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct UploadRequest {
     pub path: String,
@@ -303,5 +317,34 @@ mod tests {
             assert!(!kind.is_retryable());
             assert!(!kind.is_config_actionable());
         }
+    }
+
+    #[test]
+    fn a_successful_probe_has_no_failure_kind_at_all() {
+        // Ok(false) is an answer ("looked, not there"), not a failure: inventing a kind for it
+        // would put drift findings in the failure column.
+        assert_eq!(probe_kind(&Ok(true)), None);
+        assert_eq!(probe_kind(&Ok(false)), None);
+    }
+
+    #[test]
+    fn probe_kinds_sort_by_what_the_user_should_do_next() {
+        use domain::ProbeFailureKind;
+        assert_eq!(
+            probe_kind(&Err(StorageError::Network("timeout".into()))),
+            Some(ProbeFailureKind::NetworkTimeout)
+        );
+        assert_eq!(
+            probe_kind(&Err(StorageError::Authentication("401".into()))),
+            Some(ProbeFailureKind::AuthFailed)
+        );
+        assert_eq!(
+            probe_kind(&Err(StorageError::Unsupported)),
+            Some(ProbeFailureKind::Unavailable)
+        );
+        assert_eq!(
+            probe_kind(&Err(StorageError::Provider("server said no".into()))),
+            Some(ProbeFailureKind::Rejected)
+        );
     }
 }

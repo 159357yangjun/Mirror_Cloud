@@ -52,6 +52,8 @@ import type { DownloadedUpdateSummary, UpdateCheckResult } from '../lib/desktop'
 import { useAppStore } from '../store/useAppStore'
 import { confirmAction } from '../store/useConfirmStore'
 import { tierDisplay, tierReason } from '../lib/confirmationDisplay'
+import { probeDisplay } from '../lib/probeDisplay'
+import type { ProbeFailureKindName } from '../lib/desktop'
 import type { ConfirmationTierName } from '../lib/desktop'
 import type { OutputFormat, OutputPreferences } from '../types'
 
@@ -67,6 +69,15 @@ function TierChip({ tier }: { tier: ConfirmationTierName | null }) {
   )
 }
 
+function ProbeChip({ kind }: { kind: ProbeFailureKindName | null | undefined }) {
+  const view = probeDisplay(kind)
+  if (!view) return <span className="text-[10px] text-slate-300">未命名</span>
+  return (
+    <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium ${view.chipClass}`}>
+      {view.label}
+    </span>
+  )
+}
 const sweepOutcomeView: Record<SweepHistoryEntry['outcome'], { label: string; chipClass: string }> = {
   clean: { label: '无差异', chipClass: 'bg-emerald-50 text-emerald-700' },
   drift: { label: '有差异', chipClass: 'bg-amber-50 text-amber-700' },
@@ -598,7 +609,7 @@ export function SettingsPage() {
             <div className="mt-2 text-[11px] text-slate-500">
               差异依据：{sweepReport.evidenceSource === 'scan' ? '云端索引快照（24 小时内的完整扫描）' : sweepReport.evidenceSource === 'probe_only' ? '逐个对象探测（没有可用的近期快照）' : '本轮未产生集合比对'}
             </div>
-            {(sweepReport.missingPaths.length > 0 || sweepReport.unrecordedPaths.length > 0 || sweepReport.unknownPaths.length > 0) && (
+            {(sweepReport.missingPaths.length > 0 || sweepReport.unrecordedPaths.length > 0 || sweepReport.unknownPaths.length > 0 || sweepReport.probePaths.length > 0) && (
               <div className="mt-2 space-y-2">
                 {sweepReport.missingPaths.length > 0 && (
                   <div>
@@ -628,7 +639,21 @@ export function SettingsPage() {
                     </ul>
                   </div>
                 )}
-                {sweepReport.unknownPaths.length > 0 && (
+                {sweepReport.probePaths.length > 0 && (
+                  <div>
+                    <div className="font-medium text-sky-700">探测失败（无法确认，不代表缺失）</div>
+                    <ul className="mt-1 max-h-32 overflow-y-auto rounded-xl bg-white px-3 py-2 text-[11px]">
+                      {sweepReport.probePaths.map((entry) => (
+                        <li key={entry.remotePath} className="flex flex-wrap items-baseline gap-2 py-0.5">
+                          <ProbeChip kind={entry.probeFailure} />
+                          <span className="font-mono text-slate-500">{entry.remotePath}</span>
+                          <span className="text-slate-400">{probeDisplay(entry.probeFailure)?.hint ?? "本轮未能核对"}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                            {sweepReport.unknownPaths.length > 0 && (
                   <div>
                     <div className="font-medium text-slate-500">覆盖不足，无法判断</div>
                     <ul className="mt-1 max-h-32 overflow-y-auto rounded-xl bg-white px-3 py-2 text-[11px]">

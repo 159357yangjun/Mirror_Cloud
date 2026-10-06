@@ -7,6 +7,7 @@ pub mod confirmation_tier;
 pub mod deployment_timestamps;
 pub mod drift_set;
 pub mod event_journal;
+pub mod probe_failure_kind;
 pub mod publish_plan;
 pub mod scan_completeness;
 pub mod storage_error_kind;
@@ -141,6 +142,7 @@ pub use deployment_timestamps::{DeploymentTimestamps, TimestampCause};
 /// (storage-core's error classification, application's publish outcome, persistence's stored-kind
 /// column). The module stays public too; this only removes the requirement that every caller spell
 /// the module path.
+pub use probe_failure_kind::ProbeFailureKind;
 pub use storage_error_kind::StorageErrorKind;
 
 impl Deployment {

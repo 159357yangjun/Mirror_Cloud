@@ -415,6 +415,10 @@ pub struct Drift {
     pub deployment_id: Uuid,
     pub kind: DriftKind,
     pub remote_path: String,
+    /// §18B: for a `ProbeInconclusive` finding, WHY the probe could not answer.
+    /// None for every other kind (those are observations, not failures), and also
+    /// None when no observation existed at all - "never probed" has no failure to name.
+    pub probe_kind: Option<domain::ProbeFailureKind>,
 }
 
 /// Map a completed-or-failed probe onto the three-state observation.
@@ -443,35 +447,42 @@ pub fn observation_from_probe(probe: Result<bool, ()>) -> RemoteObservation {
 /// move this codebase gates behind an explicit decision.
 pub fn detect_drift(
     believed: &[BelievedDeployment],
-    observations: &[(Uuid, RemoteObservation)],
+    observations: &[(Uuid, RemoteObservation, Option<domain::ProbeFailureKind>)],
 ) -> Vec<Drift> {
     let mut found = Vec::new();
     for deployment in believed {
-        let observation = observations
+        let looked_up = observations
             .iter()
-            .find(|(id, _)| *id == deployment.deployment_id)
-            .map(|(_, value)| *value);
+            .find(|(id, _, _)| *id == deployment.deployment_id)
+            .map(|(_, value, kind)| (*value, *kind));
+        let observation = looked_up.map(|(value, _)| value);
         match observation {
             // Never probed: treat as inconclusive rather than assuming the remote matches us.
             None => found.push(Drift {
                 deployment_id: deployment.deployment_id,
                 kind: DriftKind::ProbeInconclusive,
                 remote_path: deployment.remote_path.clone(),
+                probe_kind: None,
             }),
             Some(RemoteObservation::Unknown) => found.push(Drift {
                 deployment_id: deployment.deployment_id,
                 kind: DriftKind::ProbeInconclusive,
                 remote_path: deployment.remote_path.clone(),
+                // The caller's translated reason rides along; absence here means "no provider was
+                // even tried", which the report must not render as a network problem.
+                probe_kind: looked_up.and_then(|(_, kind)| kind),
             }),
             Some(RemoteObservation::Absent) if deployment.status_online => found.push(Drift {
                 deployment_id: deployment.deployment_id,
                 kind: DriftKind::MissingRemote,
                 remote_path: deployment.remote_path.clone(),
+                probe_kind: None,
             }),
             Some(RemoteObservation::Present) if !deployment.status_online => found.push(Drift {
                 deployment_id: deployment.deployment_id,
                 kind: DriftKind::UnrecordedRemote,
                 remote_path: deployment.remote_path.clone(),
+                probe_kind: None,
             }),
             Some(_) => {}
         }
@@ -515,11 +526,14 @@ mod tests {
         assert_eq!(observation_from_probe(Ok(false)), RemoteObservation::Absent);
         // Absent may drive MissingRemote; a failed lookup may not.
         let id = Uuid::new_v4();
-        let from_absent = detect_drift(&[believed(id, true)], &[(id, RemoteObservation::Absent)]);
+        let from_absent = detect_drift(
+            &[believed(id, true)],
+            &[(id, RemoteObservation::Absent, None)],
+        );
         assert_eq!(from_absent[0].kind, DriftKind::MissingRemote);
         let from_failure = detect_drift(
             &[believed(id, true)],
-            &[(id, observation_from_probe(Err(())))],
+            &[(id, observation_from_probe(Err(())), None)],
         );
         assert_eq!(from_failure[0].kind, DriftKind::ProbeInconclusive);
     }
@@ -527,10 +541,13 @@ mod tests {
     #[test]
     fn a_matching_probe_produces_no_drift() {
         let id = Uuid::new_v4();
-        let online = detect_drift(&[believed(id, true)], &[(id, RemoteObservation::Present)]);
+        let online = detect_drift(
+            &[believed(id, true)],
+            &[(id, RemoteObservation::Present, None)],
+        );
         assert!(online.is_empty());
         let other = Uuid::new_v4();
-        let observations = [(other, RemoteObservation::Absent)];
+        let observations = [(other, RemoteObservation::Absent, None)];
         let offline = detect_drift(&[believed(other, false)], &observations);
         assert!(offline.is_empty());
     }
@@ -538,7 +555,10 @@ mod tests {
     #[test]
     fn online_but_absent_is_missing_remote() {
         let id = Uuid::new_v4();
-        let drift = detect_drift(&[believed(id, true)], &[(id, RemoteObservation::Absent)]);
+        let drift = detect_drift(
+            &[believed(id, true)],
+            &[(id, RemoteObservation::Absent, None)],
+        );
         assert_eq!(drift.len(), 1);
         assert_eq!(drift[0].kind, DriftKind::MissingRemote);
         assert_eq!(drift[0].deployment_id, id);
@@ -547,7 +567,10 @@ mod tests {
     #[test]
     fn offline_but_present_is_unrecorded_remote() {
         let id = Uuid::new_v4();
-        let drift = detect_drift(&[believed(id, false)], &[(id, RemoteObservation::Present)]);
+        let drift = detect_drift(
+            &[believed(id, false)],
+            &[(id, RemoteObservation::Present, None)],
+        );
         assert_eq!(drift.len(), 1);
         assert_eq!(drift[0].kind, DriftKind::UnrecordedRemote);
     }
@@ -556,12 +579,41 @@ mod tests {
     fn an_inconclusive_probe_is_never_reported_as_missing() {
         // The property that keeps a network blip from becoming mass deletion.
         let id = Uuid::new_v4();
-        let drift = detect_drift(&[believed(id, true)], &[(id, RemoteObservation::Unknown)]);
+        let drift = detect_drift(
+            &[believed(id, true)],
+            &[(id, RemoteObservation::Unknown, None)],
+        );
         assert_eq!(drift.len(), 1);
         assert_eq!(drift[0].kind, DriftKind::ProbeInconclusive);
         assert_ne!(drift[0].kind, DriftKind::MissingRemote);
     }
 
+    #[test]
+    fn an_inconclusive_probe_carries_the_why_and_never_becomes_absent() {
+        // §18B: the kind rides along with the Unknown observation; MissingRemote findings carry
+        // none, because their witness is a confirmed negative answer, not a failed lookup.
+        use domain::ProbeFailureKind;
+        let id = Uuid::new_v4();
+        let drift = detect_drift(
+            &[believed(id, true)],
+            &[(
+                id,
+                RemoteObservation::Unknown,
+                Some(ProbeFailureKind::AuthFailed),
+            )],
+        );
+        assert_eq!(drift[0].kind, DriftKind::ProbeInconclusive);
+        assert_eq!(drift[0].probe_kind, Some(ProbeFailureKind::AuthFailed));
+        let absent = detect_drift(
+            &[believed(id, true)],
+            &[(id, RemoteObservation::Absent, None)],
+        );
+        assert_eq!(absent[0].kind, DriftKind::MissingRemote);
+        assert_eq!(
+            absent[0].probe_kind, None,
+            "a confirmed absence has no failure to name"
+        );
+    }
     #[test]
     fn never_probing_is_also_inconclusive_not_agreement() {
         let id = Uuid::new_v4();
@@ -575,8 +627,8 @@ mod tests {
         let a = Uuid::new_v4();
         let b = Uuid::new_v4();
         let observations = [
-            (a, RemoteObservation::Absent),
-            (b, RemoteObservation::Present),
+            (a, RemoteObservation::Absent, None),
+            (b, RemoteObservation::Present, None),
         ];
         let beliefs = [believed(a, true), believed(b, false)];
         let drift = detect_drift(&beliefs, &observations);
@@ -591,7 +643,7 @@ mod tests {
 
     #[test]
     fn empty_belief_yields_no_findings_regardless_of_observations() {
-        let findings = detect_drift(&[], &[(Uuid::new_v4(), RemoteObservation::Absent)]);
+        let findings = detect_drift(&[], &[(Uuid::new_v4(), RemoteObservation::Absent, None)]);
         assert!(findings.is_empty());
     }
 

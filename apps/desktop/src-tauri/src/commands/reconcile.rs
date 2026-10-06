@@ -84,6 +84,10 @@ pub struct SweepReport {
     pub evidence_source: String,
     /// Remote paths no local row claims, sorted, capped at `PATHS_PER_KIND`.
     pub unrecorded_paths: Vec<DriftEntryView>,
+    /// §18B: probe-path rows that could not be settled, each with its failure kind.
+    /// Separate from `unknown_paths` because the cause is different: those lost coverage as a
+    /// property of the listing; these failed on this one object.
+    pub probe_paths: Vec<DriftEntryView>,
     /// Locally-online paths a complete scan did not show, same cap.
     pub missing_paths: Vec<DriftEntryView>,
     /// Paths whose status we cannot settle because coverage was partial or absent.
@@ -111,6 +115,7 @@ impl SweepReport {
             error: None,
             evidence_source: "none".into(),
             unrecorded_paths: Vec::new(),
+            probe_paths: Vec::new(),
             missing_paths: Vec::new(),
             unknown_paths: Vec::new(),
             paths_omitted: 0,
@@ -272,13 +277,20 @@ async fn run_sweep_inner(
     let mut inconclusive = 0usize;
 
     for row in &rows {
-        let outcome = match providers.get(&row.storage_id) {
+        // §18B keeps the error itself long enough to name its kind; `observation_from_probe` still
+        // gets the lossless Result<bool, ()>, so the safety mapping never sees the new type.
+        let outcome: Result<bool, storage_core::StorageError> = match providers.get(&row.storage_id)
+        {
             // No usable provider (disabled, deleted, or credentials unreadable): we genuinely
             // cannot look, which is Unknown and not Absent.
-            None => Err(()),
-            Some(provider) => provider.exists(&row.remote_path).await.map_err(|_| ()),
+            None => Err(storage_core::StorageError::Unsupported),
+            Some(provider) => provider.exists(&row.remote_path).await,
         };
-        let observation = observation_from_probe(outcome);
+        let failure_kind = storage_core::probe_kind(&outcome);
+        let observation = observation_from_probe(match &outcome {
+            Ok(found) => Ok(*found),
+            Err(_) => Err(()),
+        });
         match observation {
             // Only a positive look is an observation of this object. Absent means we looked and it
             // was not there, which is what the drift report below records; Unknown means we could
@@ -296,7 +308,7 @@ async fn run_sweep_inner(
             RemoteObservation::Absent => absent += 1,
             RemoteObservation::Unknown => inconclusive += 1,
         }
-        observations.push((row.deployment_id, observation));
+        observations.push((row.deployment_id, observation, failure_kind));
     }
 
     let believed: Vec<BelievedDeployment> = rows
@@ -310,6 +322,23 @@ async fn run_sweep_inner(
         .collect();
 
     let drift = detect_drift(&believed, &observations);
+    // §18B: the rows this pass could not settle, with the reason named per row. Built from the
+    // same findings the event loop below walks, so a row cannot appear in one view and not the
+    // other; capped like every other list.
+    let mut probe_findings: Vec<DriftEntryView> = drift
+        .iter()
+        .filter(|finding| finding.kind == DriftKind::ProbeInconclusive)
+        .map(|finding| DriftEntryView {
+            deployment_id: Some(finding.deployment_id.to_string()),
+            remote_path: finding.remote_path.clone(),
+            confirmation: None,
+            strength: None,
+            missing_evidence: None,
+            probe_failure: finding.probe_kind.map(|kind| kind.as_str()),
+        })
+        .collect();
+    probe_findings.sort_by(|left, right| left.remote_path.cmp(&right.remote_path));
+    probe_findings.truncate(PATHS_PER_KIND);
     let now = Utc::now();
     let mut events_recorded = 0usize;
     let mut missing_remote = 0usize;
@@ -341,6 +370,10 @@ async fn run_sweep_inner(
                 // differ in what they may conclude: a probe answers only about its own object, so
                 // it can never produce the scan-only direction at all.
                 "evidenceSource": "probe",
+                // §18B: why this probe could not answer, when the finding below is an
+                // inconclusive one. MissingRemote/UnrecordedRemote carry None here because
+                // their witness is a confirmed answer, not a failed lookup.
+                "probeKind": finding.probe_kind.map(|kind| kind.as_str()),
             }),
         );
         if state.journal.append(&event).await.is_ok() {
@@ -348,7 +381,10 @@ async fn run_sweep_inner(
         }
     }
 
-    let set_outcome = compare_against_snapshots(state, providers).await;
+    let mut set_outcome = compare_against_snapshots(state, providers).await;
+    // The probe path owns its own rows; the set comparison cannot produce them. Assigning here
+    // rather than merging keeps the two sources from overwriting each other.
+    set_outcome.probe_findings = probe_findings;
 
     let report = SweepReport {
         examined: rows.len(),
@@ -365,6 +401,7 @@ async fn run_sweep_inner(
         error: None,
         evidence_source: set_outcome.evidence_source,
         unrecorded_paths: set_outcome.unrecorded_paths,
+        probe_paths: set_outcome.probe_findings,
         missing_paths: set_outcome.missing_paths,
         unknown_paths: set_outcome.unknown_paths,
         paths_omitted: set_outcome.paths_omitted,
@@ -442,6 +479,8 @@ pub struct DriftEntryView {
     pub confirmation: Option<&'static str>,
     pub strength: Option<&'static str>,
     pub missing_evidence: Option<&'static str>,
+    /// §18B: set on probe-path rows only - why the lookup could not answer.
+    pub probe_failure: Option<&'static str>,
 }
 
 /// A persisted sweep outcome as the panel reads it back. Deliberately not `SweepReport`: a stored
@@ -502,6 +541,8 @@ pub const SNAPSHOT_MAX_AGE_HOURS: i64 = 24;
 /// What one set-comparison pass produced, before it becomes part of a report.
 struct SweepOutcome {
     evidence_source: String,
+    /// §18B: the rows whose probe could not answer, with the reason named per row.
+    probe_findings: Vec<DriftEntryView>,
     unrecorded_paths: Vec<DriftEntryView>,
     missing_paths: Vec<DriftEntryView>,
     unknown_paths: Vec<DriftEntryView>,
@@ -631,6 +672,7 @@ async fn compare_against_snapshots(
             confirmation: graded.and_then(|value| value.0),
             strength: graded.and_then(|value| value.1),
             missing_evidence: graded.and_then(|value| value.2),
+            probe_failure: None,
         };
         match finding.kind {
             SetDriftKind::MissingRemote => missing.push(entry),
@@ -652,6 +694,7 @@ async fn compare_against_snapshots(
 
     SweepOutcome {
         evidence_source: if used_scan { "scan" } else { "probe_only" }.to_string(),
+        probe_findings: Vec::new(),
         unrecorded_paths: unrecorded,
         missing_paths: missing,
         unknown_paths: unknown,
@@ -713,6 +756,7 @@ pub(crate) fn sweep_summary(report: &SweepReport, include_findings: bool) -> Val
         summary["unrecordedRemote"] = json!(report.unrecorded_remote);
         summary["unknownCoverage"] = json!(report.unknown_paths.len());
         summary["pathsOmitted"] = json!(report.paths_omitted);
+        summary["probeFailures"] = json!(report.probe_paths.len());
         summary["missingPaths"] = json!(paths(&report.missing_paths));
         summary["unrecordedPaths"] = json!(paths(&report.unrecorded_paths));
         summary["unknownPaths"] = json!(paths(&report.unknown_paths));
@@ -945,6 +989,7 @@ mod tests {
             "missingRemote",
             "unrecordedRemote",
             "unknownCoverage",
+            "probeFailures",
             "evidenceSource",
             "error",
         ] {
@@ -1025,6 +1070,7 @@ mod tests {
             confirmation: None,
             strength: None,
             missing_evidence: None,
+            probe_failure: None,
         }
     }
 }
