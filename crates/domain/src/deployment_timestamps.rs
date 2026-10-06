@@ -112,7 +112,6 @@ mod tests {
             public_url: None,
             status,
             timestamps: stamps,
-            last_error: None,
         }
     }
 
@@ -171,7 +170,7 @@ mod tests {
     fn only_a_passed_content_check_advances_verification() {
         let base = deployment(DeploymentStatus::Online, DeploymentTimestamps::default())
             .record(TimestampCause::FirstSuccess, moment(1));
-        let proved = base.record(TimestampCause::Proved, moment(80));
+        let proved = base.clone().record(TimestampCause::Proved, moment(80));
         assert_eq!(proved.timestamps.last_verified_at, Some(moment(80)));
 
         let disproved = base.record(TimestampCause::Disproved, moment(80));
