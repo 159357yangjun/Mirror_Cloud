@@ -203,9 +203,14 @@ mod tests {
             &RemoteSide::Complete(paths(&["assets/b.png"])),
         );
         assert_eq!(findings.len(), 2, "{findings:?}");
-        let missing: Vec<_> = findings.iter().filter(|f| f.kind == SetDriftKind::MissingRemote).collect();
-        let unrecorded: Vec<_> =
-            findings.iter().filter(|f| f.kind == SetDriftKind::UnrecordedRemote).collect();
+        let missing: Vec<_> = findings
+            .iter()
+            .filter(|f| f.kind == SetDriftKind::MissingRemote)
+            .collect();
+        let unrecorded: Vec<_> = findings
+            .iter()
+            .filter(|f| f.kind == SetDriftKind::UnrecordedRemote)
+            .collect();
         assert_eq!(missing.len(), 1);
         assert_eq!(missing[0].remote_path, "assets/a.png");
         assert_eq!(unrecorded.len(), 1);
