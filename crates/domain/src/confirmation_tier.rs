@@ -308,7 +308,7 @@ mod tests {
             ConfirmationTier::ContentVerified,
             ConfirmationTier::PubliclyReachable,
         ];
-        for tier in levels {
+        for &tier in &levels {
             assert!(
                 !tier.missing_evidence().is_empty(),
                 "{tier:?} must explain itself, not render an empty reason"
@@ -370,7 +370,10 @@ mod tests {
         // fetches public URLs in this application. This assertion is the tripwire for that
         // change.
         let strongest = stamps(Some(at(1)), Some(at(2)), Some(at(3)));
-        assert_ne!(derive_confirmation(&strongest), ConfirmationTier::PubliclyReachable);
+        assert_ne!(
+            derive_confirmation(&strongest),
+            ConfirmationTier::PubliclyReachable
+        );
         assert!(ConfirmationTier::PubliclyReachable.is_unimplemented());
         assert!(!ConfirmationTier::ContentVerified.is_unimplemented());
     }

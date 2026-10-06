@@ -28,7 +28,9 @@ use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
 use domain::confirmation_tier::derive_confirmation;
-use domain::drift_set::{DriftTally, LocalBelief, RemoteSide, SetDrift, SetDriftKind, compare_sets};
+use domain::drift_set::{
+    DriftTally, LocalBelief, RemoteSide, SetDrift, SetDriftKind, compare_sets,
+};
 use domain::event_journal::{AggregateKind, DomainEvent, EventType};
 use domain::scan_completeness::ScanCompleteness;
 use persistence_sqlite::journal::{
@@ -268,7 +270,10 @@ async fn run_sweep_inner(
             // not look, and writing a timestamp for that would date an event that did not happen.
             RemoteObservation::Present => {
                 present += 1;
-                let noted = state.assets.record_deployment_observation(row.deployment_id).await;
+                let noted = state
+                    .assets
+                    .record_deployment_observation(row.deployment_id)
+                    .await;
                 if let Err(error) = noted {
                     tracing::warn!(%error, "could not record an observation timestamp");
                 }
@@ -413,6 +418,7 @@ async fn refresh_stale_indexes(
 /// which clock is missing.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct DriftEntryView {
     pub deployment_id: Option<String>,
     pub remote_path: String,
@@ -555,9 +561,7 @@ async fn compare_against_snapshots(
             )
         });
         let entry = DriftEntryView {
-            deployment_id: finding
-                .deployment_id
-                .map(|id| id.to_string()),
+            deployment_id: finding.deployment_id.map(|id| id.to_string()),
             remote_path: finding.remote_path.clone(),
             confirmation: graded.and_then(|value| value.0),
             strength: graded.and_then(|value| value.1),

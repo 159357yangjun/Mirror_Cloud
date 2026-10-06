@@ -100,10 +100,7 @@ pub fn compare_sets(local: &[LocalBelief], remote: &RemoteSide) -> Vec<SetDrift>
     // Paths any local row claims, whether or not that row thinks the object is live. A failed row
     // still records where the object was meant to be, so it counts as claimed for the purpose of
     // "is this remote path already known to us?".
-    let claimed: HashSet<&str> = local
-        .iter()
-        .map(|belief| belief.remote_path.as_str())
-        .collect();
+    let claimed: HashSet<&str> = local.iter().map(|b| b.remote_path.as_str()).collect();
 
     for belief in local {
         let seen = remote

@@ -372,10 +372,9 @@ async fn finish_and_report(
             tracing::warn!(%error, storage_id = %storage.id, "could not store scan entries");
         }
     } else {
-        tracing::debug!(
-            storage_id = %storage.id,
-            "listing not stored: this sweep did not cover the whole storage"
-        );
+        // Reached when coverage was not Complete: nothing wrong happened, the listing simply must
+        // not become a set anyone can difference against.
+        tracing::debug!(storage_id = %storage.id, "listing not stored");
     }
 
     summary.scans.push(ScanOutcomeView {

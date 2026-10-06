@@ -24,7 +24,7 @@
 //! `&SqlitePool` avoid a struct whose only job is holding a clone of a pool the caller already
 //! has.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use domain::scan_completeness::{ScanCompleteness, ScanStopReason};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
@@ -101,7 +101,7 @@ pub async fn fresh_scan_snapshot(
     pool: &SqlitePool,
     storage_id: Uuid,
     now: DateTime<Utc>,
-    max_age: chrono::Duration,
+    max_age: Duration,
 ) -> Result<Option<ScanSnapshot>, sqlx::Error> {
     let row = sqlx::query(SCAN_SNAPSHOT_QUERY)
     .bind(storage_id.to_string())

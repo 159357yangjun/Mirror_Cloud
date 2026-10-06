@@ -22,7 +22,7 @@
 //! actual library stays at zero for everything else. Rotation is therefore part of the cadence,
 //! not a follow-up: the cursor advances each pass and wraps.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
 /// Rows examined per page within one sweep.
@@ -209,7 +209,7 @@ pub fn scan_due(
     if elapsed.num_seconds() < 0 {
         return false;
     }
-    elapsed >= chrono::Duration::minutes(i64::from(interval_minutes))
+    elapsed >= Duration::minutes(i64::from(interval_minutes))
 }
 
 #[cfg(test)]
@@ -342,9 +342,9 @@ mod tests {
         let now = DateTime::parse_from_rfc3339("2026-01-02T12:00:00Z")
             .expect("fixed instant")
             .with_timezone(&Utc);
-        let just_under = now - chrono::Duration::minutes(24 * 60 - 1);
-        let exactly_at = now - chrono::Duration::minutes(24 * 60);
-        let well_past = now - chrono::Duration::minutes(24 * 60 + 1);
+        let just_under = now - Duration::minutes(24 * 60 - 1);
+        let exactly_at = now - Duration::minutes(24 * 60);
+        let well_past = now - Duration::minutes(24 * 60 + 1);
         assert!(!scan_due(Some(just_under), now, 24 * 60));
         assert!(
             scan_due(Some(exactly_at), now, 24 * 60),
@@ -360,7 +360,7 @@ mod tests {
         let now = DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z")
             .expect("fixed instant")
             .with_timezone(&Utc);
-        let ahead = now + chrono::Duration::hours(6);
+        let ahead = now + Duration::hours(6);
         assert!(!scan_due(Some(ahead), now, 60));
     }
 
