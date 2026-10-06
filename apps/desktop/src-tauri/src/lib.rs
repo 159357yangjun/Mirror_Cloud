@@ -122,6 +122,7 @@ pub fn run() {
             commands::reconcile::run_reconciliation_sweep,
             commands::reconcile::get_reconciliation_settings,
             commands::reconcile::set_reconciliation_settings,
+            commands::reconcile::get_reconciliation_history,
             commands::create_storage_group,
             commands::list_storage_groups,
             commands::delete_storage_group,

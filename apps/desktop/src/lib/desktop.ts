@@ -523,6 +523,34 @@ export async function runReconciliationSweep(): Promise<SweepReport> {
   return invoke('run_reconciliation_sweep')
 }
 
+/** What one recorded sweep says about itself. Scheduled records carry findings; manual ones are a line. */
+export interface SweepHistoryEntry {
+  lastSweepAt: string
+  trigger: 'scheduled' | 'manual' | 'unknown'
+  outcome: 'clean' | 'drift' | 'error' | 'skipped' | 'unknown'
+  examined: number
+  missingRemote: number
+  unrecordedRemote: number
+  unknownCoverage: number
+  evidenceSource: string
+  error: string | null
+}
+
+export interface ReconciliationHistory {
+  last: Record<string, unknown>
+  entries: SweepHistoryEntry[]
+}
+
+/** Read-back of what past sweeps recorded. The browser build has no settings row, so it returns an
+ * empty history rather than inventing one - an empty panel says "nothing recorded", which a
+ * fabricated entry would not. */
+export async function getReconciliationHistory(): Promise<ReconciliationHistory> {
+  if (!isTauriRuntime()) {
+    return { last: {}, entries: [] }
+  }
+  return invoke('get_reconciliation_history')
+}
+
 export async function getWindowsContextMenuInfo(): Promise<WindowsContextMenuInfo> {
   if (!isTauriRuntime()) {
     return { supported: false, installed: false, label: '使用 Multi-cloud Publisher 上传', commandPreview: '', note: '仅 Windows 桌面应用可用' }

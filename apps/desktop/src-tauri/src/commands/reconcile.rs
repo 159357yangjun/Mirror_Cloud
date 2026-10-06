@@ -38,10 +38,20 @@ use persistence_sqlite::journal::{
 };
 use persistence_sqlite::remote_scan::{fresh_scan_snapshot, last_scan_at};
 use serde::Serialize;
+use serde_json::{Value, json};
 use tauri::{Manager, State};
 use uuid::Uuid;
 
 const RECONCILE_SETTINGS_KEY: &str = "reconciliation.background";
+/// Where a finished sweep writes its outcome, and where the panel reads history from. Separate keys
+/// on purpose: `set` replaces a whole JSON value, so a summary written under the preference key
+/// would be erased by the next settings save.
+const SWEEP_LAST_KEY: &str = "reconciliation.lastSweep";
+const SWEEP_HISTORY_KEY: &str = "reconciliation.sweepHistory";
+/// Scheduled sweeps keep their findings for a week; manual ones are one-line records and can go
+/// back further. The window is bounded because this lives in the same row the app rewrites.
+pub const SWEEP_HISTORY_DAYS: i64 = 7;
+pub const SWEEP_HISTORY_MAX_ENTRIES: usize = 50;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -122,7 +132,7 @@ pub async fn run_reconciliation_sweep(state: State<'_, AppState>) -> CmdResult<S
     // currently no UI that invokes this command, so in practice the caller is a developer through
     // the local API.
     let providers = build_sweep_providers(&state).await?;
-    Ok(run_sweep_inner(&state, &providers, None).await)
+    Ok(run_sweep_inner(&state, &providers, None, false).await)
 }
 
 /// Read the stored background-reconciliation preference.
@@ -245,10 +255,15 @@ async fn run_sweep_inner(
     state: &AppState,
     providers: &HashMap<Uuid, std::sync::Arc<dyn StorageProvider>>,
     cursor: Option<String>,
+    persist_summary: bool,
 ) -> SweepReport {
     let (rows, seen_cursor, budget_exhausted) = match fetch_sweep_rows(state, cursor).await {
         Ok(outcome) => outcome,
-        Err(error) => return SweepReport::failed(error),
+        Err(error) => {
+            let failed = SweepReport::failed(error);
+            record_sweep_outcome(state, &failed, false).await;
+            return failed;
+        }
     };
 
     let mut observations = Vec::with_capacity(rows.len());
@@ -335,7 +350,7 @@ async fn run_sweep_inner(
 
     let set_outcome = compare_against_snapshots(state, providers).await;
 
-    SweepReport {
+    let report = SweepReport {
         examined: rows.len(),
         present,
         absent,
@@ -353,7 +368,9 @@ async fn run_sweep_inner(
         missing_paths: set_outcome.missing_paths,
         unknown_paths: set_outcome.unknown_paths,
         paths_omitted: set_outcome.paths_omitted,
-    }
+    };
+    record_sweep_outcome(state, &report, persist_summary).await;
+    report
 }
 
 /// Refresh the remote index for storages whose last full walk has aged out.
@@ -425,6 +442,51 @@ pub struct DriftEntryView {
     pub confirmation: Option<&'static str>,
     pub strength: Option<&'static str>,
     pub missing_evidence: Option<&'static str>,
+}
+
+/// A persisted sweep outcome as the panel reads it back. Deliberately not `SweepReport`: a stored
+/// record must survive being incomplete, and deserialising into the live type would make one
+/// malformed row unreadable history.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SweepHistoryEntry {
+    pub last_sweep_at: String,
+    pub trigger: String,
+    pub outcome: String,
+    pub examined: usize,
+    pub missing_remote: usize,
+    pub unrecorded_remote: usize,
+    pub unknown_coverage: usize,
+    pub evidence_source: String,
+    pub error: Option<String>,
+}
+
+impl SweepHistoryEntry {
+    fn from_value(value: &Value) -> Option<Self> {
+        let record = value.as_object()?;
+        let text = |key: &str| {
+            record
+                .get(key)
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+                .to_string()
+        };
+        let number = |key: &str| record.get(key).and_then(Value::as_u64).unwrap_or(0) as usize;
+        Some(Self {
+            last_sweep_at: text("lastSweepAt"),
+            trigger: text("trigger"),
+            outcome: text("outcome"),
+            examined: number("examined"),
+            missing_remote: number("missingRemote"),
+            unrecorded_remote: number("unrecordedRemote"),
+            unknown_coverage: number("unknownCoverage"),
+            evidence_source: text("evidenceSource"),
+            error: record
+                .get("error")
+                .and_then(Value::as_str)
+                .map(|value| value.to_string()),
+        })
+    }
 }
 
 /// Paths listed per kind in a report, so one sweep cannot hand the UI an unbounded array.
@@ -604,6 +666,156 @@ fn parse_clock(raw: Option<&str>) -> Option<DateTime<Utc>> {
         .map(|value| value.with_timezone(&Utc))
 }
 
+/// What a sweep amounted to, as one word. `error` and `skipped` come first because both produce an
+/// all-zero report that would otherwise be recorded as a clean library.
+fn sweep_outcome(report: &SweepReport) -> &'static str {
+    if report.error.is_some() {
+        "error"
+    } else if report.skipped_by_policy {
+        "skipped"
+    } else if report.missing_remote + report.unrecorded_remote > 0
+        || !report.unknown_paths.is_empty()
+    {
+        "drift"
+    } else {
+        "clean"
+    }
+}
+
+/// The persisted form of a finished sweep.
+///
+/// ## Why scheduled sweeps carry findings and manual ones carry only a line
+///
+/// A scheduled result is the only record of a pass nobody watched, so it keeps the path lists.
+/// Whoever triggered a manual sweep already has the full report on screen; storing its findings too
+/// would let a person's testing overwrite the last automatic outcome they came back to read.
+pub(crate) fn sweep_summary(report: &SweepReport, include_findings: bool) -> Value {
+    let paths = |entries: &[DriftEntryView]| {
+        entries
+            .iter()
+            .take(SUMMARY_PATH_CAP)
+            .map(|entry| entry.remote_path.clone())
+            .collect::<Vec<_>>()
+    };
+    let mut summary = json!({
+        "lastSweepAt": Utc::now().to_rfc3339(),
+        "trigger": if include_findings { "scheduled" } else { "manual" },
+        "outcome": sweep_outcome(report),
+        "examined": report.examined,
+        "evidenceSource": report.evidence_source,
+        "error": report.error,
+    });
+    if include_findings {
+        summary["present"] = json!(report.present);
+        summary["absent"] = json!(report.absent);
+        summary["inconclusive"] = json!(report.inconclusive);
+        summary["missingRemote"] = json!(report.missing_remote);
+        summary["unrecordedRemote"] = json!(report.unrecorded_remote);
+        summary["unknownCoverage"] = json!(report.unknown_paths.len());
+        summary["pathsOmitted"] = json!(report.paths_omitted);
+        summary["missingPaths"] = json!(paths(&report.missing_paths));
+        summary["unrecordedPaths"] = json!(paths(&report.unrecorded_paths));
+        summary["unknownPaths"] = json!(paths(&report.unknown_paths));
+    } else {
+        // Manual rows keep the three drift counts so the history list can still say what happened.
+        summary["missingRemote"] = json!(report.missing_remote);
+        summary["unrecordedRemote"] = json!(report.unrecorded_remote);
+        summary["unknownCoverage"] = json!(report.unknown_paths.len());
+    }
+    summary
+}
+
+/// Newest-first history with the window applied. Exported for tests: the pruning window is the
+/// difference between a bounded row and a settings value that grows for the life of the install.
+pub(crate) fn prune_history(
+    existing: Option<&Value>,
+    new_entry: Value,
+    now: DateTime<Utc>,
+) -> Vec<Value> {
+    let cutoff = now - chrono::Duration::days(SWEEP_HISTORY_DAYS);
+    let usable = |value: &Value| -> Option<DateTime<Utc>> {
+        value
+            .get("lastSweepAt")?
+            .as_str()
+            .and_then(|text| DateTime::parse_from_rfc3339(text).ok())
+            .map(|value| value.with_timezone(&Utc))
+    };
+    let mut kept = vec![new_entry];
+    if let Some(entries) = existing.and_then(Value::as_array) {
+        for entry in entries {
+            let Some(at) = usable(entry) else { continue };
+            if at < cutoff {
+                continue;
+            }
+            kept.push(entry.clone());
+            if kept.len() >= SWEEP_HISTORY_MAX_ENTRIES {
+                break;
+            }
+        }
+    }
+    kept.sort_by(|a, b| {
+        let key = |v: &Value| v.get("lastSweepAt").and_then(Value::as_str).unwrap_or("");
+        key(b).cmp(key(a))
+    });
+    kept
+}
+
+/// Write one sweep's outcome to the settings store. Best-effort by design: a sweep that found the
+/// truth must not report failure because a history row could not be written, and the write is
+/// logged instead.
+async fn record_sweep_outcome(state: &AppState, report: &SweepReport, persist_summary: bool) {
+    let summary = sweep_summary(report, persist_summary);
+    if let Err(error) = state.settings.set(SWEEP_LAST_KEY, &summary).await {
+        tracing::warn!(%error, "could not persist the last reconciliation summary");
+    }
+    let existing = state.settings.get(SWEEP_HISTORY_KEY).await.ok().flatten();
+    let history = prune_history(existing.as_ref(), summary, Utc::now());
+    if let Err(error) = state
+        .settings
+        .set(SWEEP_HISTORY_KEY, &json!({ "entries": history }))
+        .await
+    {
+        tracing::warn!(%error, "could not persist the reconciliation history");
+    }
+}
+
+/// Read back the stored summary and history. Absent or malformed values degrade to empty rather
+/// than zero-filled: an empty panel says "nothing recorded", which a fabricated entry would not.
+#[tauri::command]
+pub async fn get_reconciliation_history(state: State<'_, AppState>) -> CmdResult<Value> {
+    let last = state
+        .settings
+        .get(SWEEP_LAST_KEY)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| json!({}));
+    let entries = parse_sweep_history(
+        state
+            .settings
+            .get(SWEEP_HISTORY_KEY)
+            .await
+            .ok()
+            .flatten()
+            .as_ref(),
+    );
+    Ok(json!({ "last": last, "entries": entries }))
+}
+
+/// Decode stored history rows into display records. Anything that is not an object drops.
+fn parse_sweep_history(value: Option<&Value>) -> Vec<SweepHistoryEntry> {
+    let Some(entries) = value
+        .and_then(|v| v.get("entries"))
+        .and_then(Value::as_array)
+    else {
+        return Vec::new();
+    };
+    entries
+        .iter()
+        .filter_map(SweepHistoryEntry::from_value)
+        .collect()
+}
+
 /// Whether a remote path is in scope for reconciliation.
 ///
 /// Only image objects are compared, because only images are what this application deploys. A
@@ -653,7 +865,7 @@ pub fn start_background_reconciler(app: &tauri::AppHandle) {
                 }
             };
             refresh_stale_indexes(&state, &providers, &config).await;
-            let report = run_sweep_inner(&state, &providers, cursor.clone()).await;
+            let report = run_sweep_inner(&state, &providers, cursor.clone(), true).await;
             cursor = report.next_cursor.clone();
             tracing::info!(
                 examined = report.examined,
@@ -708,5 +920,111 @@ mod tests {
             !failed.skipped_by_policy,
             "a failure is not a policy decision, and conflating them hides outages"
         );
+    }
+
+    #[test]
+    fn a_scheduled_sweep_persists_a_summary_and_an_explicit_one_does_not() {
+        let report = SweepReport {
+            examined: 12,
+            present: 10,
+            absent: 1,
+            missing_remote: 1,
+            unrecorded_remote: 0,
+            unknown_paths: vec![entry("assets/gone.png")],
+            evidence_source: "scan".into(),
+            ..SweepReport::idle(false)
+        };
+        let stored = sweep_summary(&report, false).to_string();
+        for key in [
+            "lastSweepAt",
+            "trigger",
+            "examined",
+            "present",
+            "absent",
+            "inconclusive",
+            "missingRemote",
+            "unrecordedRemote",
+            "unknownCoverage",
+            "evidenceSource",
+            "error",
+        ] {
+            assert!(
+                stored.contains(key),
+                "summary must carry {key}, found {stored}"
+            );
+        }
+        assert!(stored.contains("\"trigger\":\"scheduled\""));
+        assert!(stored.contains("\"unknownCoverage\":1"));
+
+        // Whoever asked gets the full report on screen; the history row records only that a manual
+        // pass happened, so it cannot overwrite the last automatic result someone came back to read.
+        let manual = sweep_summary(&report, true);
+        assert_eq!(manual["trigger"], serde_json::json!("manual"));
+        assert_eq!(manual["examined"], serde_json::json!(0));
+        assert!(manual["missingPaths"].is_null());
+        assert!(manual.get("present").is_none());
+    }
+
+    #[test]
+    fn a_failed_sweep_is_recorded_as_its_own_outcome() {
+        let failed = SweepReport::failed("database is locked".into());
+        let stored = sweep_summary(&failed, false);
+        assert_eq!(stored["outcome"], serde_json::json!("error"));
+        assert_eq!(
+            stored["error"].as_str(),
+            Some("database is locked"),
+            "a recorded failure has to say which failure"
+        );
+
+        let blocked = SweepReport::idle(true);
+        assert_eq!(
+            sweep_summary(&blocked, false)["outcome"],
+            serde_json::json!("skipped")
+        );
+
+        let clean = SweepReport {
+            examined: 5,
+            present: 5,
+            ..SweepReport::idle(false)
+        };
+        assert_eq!(
+            sweep_summary(&clean, false)["outcome"],
+            serde_json::json!("clean")
+        );
+
+        let drifted = SweepReport {
+            examined: 5,
+            missing_remote: 1,
+            ..SweepReport::idle(false)
+        };
+        assert_eq!(
+            sweep_summary(&drifted, false)["outcome"],
+            serde_json::json!("drift"),
+            "a finding must not be recorded as a clean library"
+        );
+    }
+
+    #[test]
+    fn an_unreadable_history_row_degrades_to_nothing_recorded_rather_than_zero() {
+        // A parse failure and an absent row both answer "there is no usable summary", and reading
+        // either as a zero-filled one would show an empty panel that looks like a sweep with nothing
+        // to report.
+        assert!(parse_sweep_history(None).is_empty());
+        assert!(parse_sweep_history(Some(&serde_json::json!("not an object"))).is_empty());
+        let parsed = parse_sweep_history(Some(&serde_json::json!({
+            "entries": [{ "trigger": "scheduled", "outcome": "drift", "examined": 3 }]
+        })));
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].outcome, "drift");
+    }
+
+    fn entry(remote_path: &str) -> DriftEntryView {
+        DriftEntryView {
+            deployment_id: None,
+            remote_path: remote_path.into(),
+            confirmation: None,
+            strength: None,
+            missing_evidence: None,
+        }
     }
 }

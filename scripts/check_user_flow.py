@@ -669,8 +669,8 @@ require('pub deployed_at: Option<String>' in persistence
         'the location record exposes the cursor column the rotation depends on')
 require('async fn run_sweep_inner(' in reconcile_src
         and '    state: &AppState,' in reconcile_src
-        and 'Ok(run_sweep_inner(&state, &providers, None).await)' in reconcile_src
-        and 'run_sweep_inner(&state, &providers, cursor.clone()).await' in reconcile_src,
+        and 'Ok(run_sweep_inner(&state, &providers, None, false).await)' in reconcile_src
+        and 'run_sweep_inner(&state, &providers, cursor.clone(), true).await' in reconcile_src,
         'one sweep core serves both the command and the timer, taking AppState not State')
 require('fn idle(skipped_by_policy: bool)' in reconcile_src
         and 'pub skipped_by_policy: bool' in reconcile_src
@@ -682,6 +682,53 @@ require('commands::reconcile::get_reconciliation_settings' in lib
 require('fn a_default_install_never_sends_probes_from_the_timer' in reconcile_src
         and 'fn reaching_the_end_wraps_instead_of_parking_on_the_newest_rows' in cadence_src,
         'inertness and cursor wrap are both asserted by tests')
+
+# Step 4: reconciliation results persist. A background sweep runs when nobody is watching, so its
+# outcome has to outlive the window - and the write must not be able to corrupt the preference row
+# it shares a table with, or silently overwrite the last automatic result with a manual pass.
+desktop_lib = text('apps/desktop/src/lib/desktop.ts')
+settings_page = text('apps/desktop/src/pages/SettingsPage.tsx')
+require("const SWEEP_LAST_KEY: &str = \"reconciliation.lastSweep\";" in reconcile_src
+        and "const SWEEP_HISTORY_KEY: &str = \"reconciliation.sweepHistory\";" in reconcile_src
+        and 'RECONCILE_SETTINGS_KEY, &stored' in reconcile_src,
+        'sweep records live under their own settings keys, never inside the preference value that set() replaces wholesale')
+require('pub(crate) fn sweep_summary(report: &SweepReport, include_findings: bool) -> Value {' in reconcile_src
+        and '"lastSweepAt": Utc::now().to_rfc3339(),' in reconcile_src,
+        'the summary carries a timestamp of its own and an explicit findings switch')
+require('if report.error.is_some() {' in reconcile_src
+        and '"skipped"' in reconcile_src and '"drift"' in reconcile_src and '"clean"' in reconcile_src,
+        'outcome classification exists and names error/skipped/drift/clean')
+flat_reconcile = ' '.join(reconcile_src.split())
+require('if report.error.is_some() { "error" } else if report.skipped_by_policy { "skipped" } else if report.missing_remote + report.unrecorded_remote > 0 ||' in flat_reconcile,
+        'error and skipped outrank clean before any count is consulted')
+require('run_sweep_inner(&state, &providers, None, false).await' in reconcile_src
+        and 'run_sweep_inner(&state, &providers, cursor.clone(), true).await' in reconcile_src,
+        'the manual command persists a line while the scheduled path persists findings')
+require('record_sweep_outcome(state, &failed, false).await;' in reconcile_src
+        and 'record_sweep_outcome(state, &report, persist_summary).await;' in reconcile_src,
+        'both sweep exits record, and only the scheduled exit can carry findings')
+require('pub const SWEEP_HISTORY_DAYS: i64 = 7;' in reconcile_src
+        and 'pub const SWEEP_HISTORY_MAX_ENTRIES: usize = 50;' in reconcile_src
+        and 'kept.len() >= SWEEP_HISTORY_MAX_ENTRIES' in reconcile_src
+        and 'at < cutoff' in reconcile_src,
+        'history is bounded by both a time window and a size cap')
+require('.filter_map(SweepHistoryEntry::from_value)' in reconcile_src
+        and '.get("entries")' in reconcile_src
+        and 'and_then(Value::as_array)' in reconcile_src,
+        'unreadable history degrades to empty instead of inventing entries')
+require('commands::reconcile::get_reconciliation_history,' in lib
+        and "invoke('get_reconciliation_history')" in desktop_lib,
+        'the read-back command is registered and the frontend wrapper invokes it')
+require('queryClient.invalidateQueries({ queryKey: [\'reconciliation-history\'] })' in settings_page
+        and 'reconcileHistory!.entries.map((entry: SweepHistoryEntry)' in settings_page,
+        'the panel reads persisted history and refreshes it after a manual sweep')
+require('尚无记录' in settings_page
+        and "'Invalid Date'" not in settings_page and 'Number.isNaN(parsed.getTime())' in settings_page,
+        'an empty history says nothing was recorded, and an unparseable stamp shows itself rather than a fabricated date')
+require('fn a_scheduled_sweep_persists_a_summary_and_an_explicit_one_does_not' in reconcile_src
+        and 'fn a_failed_sweep_is_recorded_as_its_own_outcome' in reconcile_src
+        and 'fn an_unreadable_history_row_degrades_to_nothing_recorded_rather_than_zero' in reconcile_src,
+        'summary shape, outcome classes, and degraded reads all have Rust tests')
 require('workflows.find((workflow) => workflow.isDefault)' in upload and '?? workflows[0]' not in upload, 'upload UI never falls back to an arbitrary legacy workflow')
 require('async fn persist_new_storage' in commands and commands.count('persist_new_storage(state.inner(), &record).await?;') >= 4, 'storage setup only succeeds after automatic pipeline persistence')
 require('sync_system_default_pipeline(state.inner(), None).await?;' in commands, 'automatic pipeline sync errors are surfaced instead of silently ignored')

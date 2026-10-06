@@ -28,12 +28,14 @@ import {
   getWindowsContextMenuInfo,
   getOutputPreferences,
   getReconciliationSettings,
+  getReconciliationHistory,
   runReconciliationSweep,
   setReconciliationSettings,
   DEFAULT_SCAN_INTERVAL_MINUTES,
   MIN_SCAN_INTERVAL_MINUTES,
   MIN_RECONCILE_INTERVAL_MINUTES,
   type ReconciliationSettings,
+  type SweepHistoryEntry,
   type SweepReport,
   getTyporaIntegrationInfo,
   installUpdate,
@@ -63,6 +65,26 @@ function TierChip({ tier }: { tier: ConfirmationTierName | null }) {
       {view.label}
     </span>
   )
+}
+
+const sweepOutcomeView: Record<SweepHistoryEntry['outcome'], { label: string; chipClass: string }> = {
+  clean: { label: '无差异', chipClass: 'bg-emerald-50 text-emerald-700' },
+  drift: { label: '有差异', chipClass: 'bg-amber-50 text-amber-700' },
+  error: { label: '未完成', chipClass: 'bg-red-50 text-red-600' },
+  skipped: { label: '未发送请求', chipClass: 'bg-slate-100 text-slate-500' },
+  unknown: { label: '未知', chipClass: 'bg-slate-100 text-slate-500' },
+}
+
+function SweepOutcomeChip({ outcome }: { outcome: SweepHistoryEntry['outcome'] }) {
+  const view = sweepOutcomeView[outcome] ?? sweepOutcomeView.unknown
+  return <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium ${view.chipClass}`}>{view.label}</span>
+}
+
+// An unparseable timestamp renders as itself rather than "Invalid Date": a stored record we cannot
+// read should look broken, not like a sweep at the epoch.
+function sweepTimeLabel(raw: string): string {
+  const parsed = new Date(raw)
+  return Number.isNaN(parsed.getTime()) ? raw : parsed.toLocaleString()
 }
 
 export function SettingsPage() {
@@ -123,7 +145,16 @@ export function SettingsPage() {
   const [sweepReport, setSweepReport] = useState<SweepReport | null>(null)
   const sweepMutation = useMutation({
     mutationFn: runReconciliationSweep,
-    onSuccess: (report) => setSweepReport(report),
+    onSuccess: (report) => {
+      setSweepReport(report)
+      queryClient.invalidateQueries({ queryKey: ['reconciliation-history'] })
+    },
+  })
+  // Persisted outcomes: what the background job recorded while nobody was watching, plus one line
+  // per manual pass. Invalidated after a manual sweep so its record lands in the list.
+  const { data: reconcileHistory } = useQuery({
+    queryKey: ['reconciliation-history'],
+    queryFn: getReconciliationHistory,
   })
 
   const { data } = useQuery({ queryKey: ['output-preferences'], queryFn: getOutputPreferences })
@@ -623,6 +654,29 @@ export function SettingsPage() {
             {String(reconcileToggleMutation.error || intervalSaveMutation.error || sweepMutation.error)}
           </div>
         )}
+        <div className="mt-4 rounded-2xl border border-slate-100 px-4 py-3">
+          <div className="text-xs font-medium text-slate-600">对账记录</div>
+          <div className="mt-1 text-[11px] leading-5 text-slate-400">
+            后台扫描会把完整结果留在这里（保留 7 天）；手动扫描只留一行，不会覆盖你回来时看到的最近一次后台结果。
+          </div>
+          {(reconcileHistory?.entries.length ?? 0) === 0 ? (
+            <div className="mt-2 text-[11px] text-slate-400">尚无记录：还没有完成过一次后台或手动扫描。</div>
+          ) : (
+            <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto text-[11px]">
+              {reconcileHistory!.entries.map((entry: SweepHistoryEntry) => (
+                <li key={entry.lastSweepAt} className="flex flex-wrap items-baseline gap-2">
+                  <span className="font-mono text-slate-500">{sweepTimeLabel(entry.lastSweepAt)}</span>
+                  <span className="text-slate-400">{entry.trigger === 'scheduled' ? '后台' : entry.trigger === 'manual' ? '手动' : '未知来源'}</span>
+                  <SweepOutcomeChip outcome={entry.outcome} />
+                  <span className="text-slate-400">
+                    核对 {entry.examined} · 缺失 {entry.missingRemote} · 未记录 {entry.unrecordedRemote} · 无法判断 {entry.unknownCoverage}
+                  </span>
+                  {entry.error && <span className="text-red-600">{entry.error}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </section>
 
       <section className="mt-6 rounded-[24px] border border-slate-200 bg-white p-5">
