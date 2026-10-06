@@ -2100,6 +2100,16 @@ G0 dev 全绿 → G1 P0-4 信任边界（Rust 自持 PendingUpdate{version, cano
 **沉淀规则（用户批准，写入本仓协作纪律）**：CI 红 ⇒ **先读一手诊断（annotation/compiler error/artifact），只有证据不足才允许假设；禁止沿同一假设连续多轮盲改**。顺序固定：读证据 → 锁第一错误 → 最小修复 → 复验。本次事故的正解路径本来只要两步：#194 起红已不在 fmt，早一天装 annotation 通道就早一天结案。
 **副产品（保留，非本轮验收项）**：ci.yml 的两条失败自证通道从此常驻——rustfmt 有 patch artifact，cargo check 有 log artifact + 公开 annotation（取首个 `^error` 起 9 行，GBK 无关、annotations API 无认证可读）。
 
+### 24. Step 3（§18B）：探测失败种类四桶分类 + M35–M37（2026-10-06）
+
+**做了什么**：对账探测失败现在按四类报告——`network_timeout`（没收到答复：连接/超时/上游5xx，含 rate-limit/conflict）、`auth_failed`（401/403/凭证）、`rejected`（有名目但远程改不了的拒绝）、`unavailable`（根本没试：存储禁用/凭据读不出/OpenDAL 未覆写的 exists 报 Unsupported）。分类硬编码在 `domain::ProbeFailureKind`（用户点名"映射表硬编码即可"）；`storage_core::probe_kind(&Result<bool,StorageError>) -> Option<kind>` 只在 Err 上运行，**`observation_from_probe` 的签名一个字没动**（仍吃 `Result<bool,()>`，Unknown≠Absent 的安全映射不被新类型污染——这是本轮唯一会让自动修复删错东西的失效方向，判据把它钉死）。`detect_drift` 在 ProbeInconclusive 上带 kind、其余为 None；事件 payload 加 `probeKind`；SweepReport 加 `probePaths`（每行带 kind），step-4 摘要加 `probeFailures` 计数；前端 `probeDisplay.ts` 四类各给标签/提示/颜色，**未知未来种类降级到 rejected（"看原始错误"永远正确），成功探测渲染 null**。
+
+**验证**：门 581→594（+13 同笔）；Rust 单测 +6（domain 4：round-trip/auth-network/未知拒绝不猜网络/unsupported→unavailable；storage-core 2：Ok 无 kind/四类排序）+ journal 1（inconclusive 带 kind、MissingRemote 不带）；`verify_probe_display.mjs` 6 例两面进聚合（第 25 stage）与指纹表（第 21 行）；`tsc -b --force` rc=0；`cargo fmt --all --check` rc=0。**变异 M35/M36/M37 三条咬中，全套 36/36 reproduced**（浏览器 oracle 需 dev server，跑完即停、端口复净 0）。
+
+**探针通道升级（顺带的结构修正）**：userflow-src 通道原来靠 checker 里重述 needle——那等于 checker 自己引用自己。现在 needle 由 harness 经 `MUTATED_NEEDLE` 传入，checker 只认这份外部 needle；`whole` 回退仅在 MUTATED_SOURCE==checker 自身文件时启用（此时 checker 的引文恰是被摘对象，自引用不可能满足）。M35 首轮红得含糊（红了但报的是 step-4 三条兄弟断言）暴露了这点：journal.rs 里没有 step-4 的 needle ⇒ 三条 [mutation probe] 一起红是误伤，收窄后 M35 只红自己那条。
+
+**如实缺口**：① Rust 测试本机依旧跑不了（link 死，见 §23），六条新单测由 CI 作证；② 四类中 `rejected` 的 401/403 文本嗅探沿用 classify_provider_message 同款启发式，注释已声明其边界；③ 真机上四类分布从未被观测过（这台机没有装 v1.4.7 的对账历史），UI 只有静态断言证人。
+
 ### 23. Step 4：对账结果持久化（settings 双键）+ M32–M34（2026-10-06，CI #323 全绿后）
 
 **做了什么**：后台扫描的结果现在写进设置库，面板能回看。两条独立 key（`reconciliation.lastSweep` / `reconciliation.sweepHistory`），不塞进 `reconciliation.background`——`set()` 整值替换，摘要住首选项键里会被下一次保存间隔时抹掉。历史窗口 7 天 + 上限 50 行（两个都有 const，`SWEEP_HISTORY_DAYS`/`SWEEP_HISTORY_MAX_ENTRIES`）。**调度路径落完整摘要（含三类 drift 路径各截 20 条），手动路径只落一行**：手动结果已经在屏幕上，把它也存进 lastSweep 会覆盖用户回来时想看的最近一次后台结果。读取侧 `SweepHistoryEntry::from_value` 逐字段容错，坏行丢弃而不是让整段历史读不出来；空历史显示"尚无记录"，不伪造零填充。
