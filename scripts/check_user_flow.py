@@ -1106,6 +1106,21 @@ require('derive_confirmation(timestamps)' in graded,
         'the panel reuses the one derivation function instead of a second ranking')
 require('finding.deployment_id.and_then(|id| clocks.get(&id))' in reconcile_rs_s2,
         'an entry with no local row grades to nothing rather than defaulting to Unknown')
+# Asserted as data flow, not as a line: an earlier version stayed green when the loop filling `clocks`
+# was emptied, because the insert statement was still present somewhere in the file text.
+collect = _slice_between(reconcile_rs_s2, 'for row in &belief_rows', 'findings.extend',
+                         'clock collection')
+require('clocks.insert(' in collect and 'row.last_attempted_at' in collect
+        and 'row.last_observed_at' in collect and 'row.last_verified_at' in collect,
+        'the clock map is filled from the belief rows themselves, all three columns')
+require('let local: Vec<LocalBelief> = belief_rows' in reconcile_rs_s2,
+        'beliefs are built from the same rows the clocks come from')
+# The two assertions above read a slice of the file, so an emptied feed still satisfies them if the
+# statements survive elsewhere. Pin the shape of the loop header itself: it must iterate the query
+# result, not a stand-in collection declared empty.
+require(_slice_between(reconcile_rs_s2, 'let belief_rows', ';', 'belief binding').strip().rstrip(';')
+        .removeprefix('let belief_rows').strip().startswith('= beliefs'),
+        'the clock and belief inputs are the query result itself, never a stand-in collection')
 belief_sql2 = _slice_between(text('crates/persistence-sqlite/src/lib.rs'),
                              'const BELIEF_QUERY: &str =', ';', 'belief sql')
 for clock in ('last_attempted_at', 'last_observed_at', 'last_verified_at'):
