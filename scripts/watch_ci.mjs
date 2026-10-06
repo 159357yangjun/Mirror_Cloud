@@ -32,7 +32,9 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const OWNER = '159357yangjun'
-const REPO = 'image-hosting-platform'
+// The CURRENT slug. GitHub 301-redirects the pre-rename path today, but a watcher that
+// outlives the redirect silently reports "run disappeared"; api.github.com starts answering 404.
+const REPO = 'Mirror_Cloud'
 const DEFAULTS = { polls: 20, interval: 75 }
 
 function argvOpt(name, fallback) {
