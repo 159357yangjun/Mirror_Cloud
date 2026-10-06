@@ -763,6 +763,44 @@ require('fn a_scheduled_sweep_persists_a_summary_and_an_explicit_one_does_not' i
         and 'fn a_failed_sweep_is_recorded_as_its_own_outcome' in reconcile_src
         and 'fn an_unreadable_history_row_degrades_to_nothing_recorded_rather_than_zero' in reconcile_src,
         'summary shape, outcome classes, and degraded reads all have Rust tests')
+# §18B (step 3): the probe failure taxonomy. Hardcoded by decision; the load-bearing properties are
+# that it never touches the Unknown-vs-Absent safety mapping, that the kind rides to the report on
+# exactly the inconclusive findings, and that no row can render without a word attached.
+probe_kind_rs = text('crates/domain/src/probe_failure_kind.rs')
+storage_core_rs = text('crates/storage-core/src/lib.rs')
+journal_rs2 = text('crates/persistence-sqlite/src/journal.rs')
+require('pub enum ProbeFailureKind {' in probe_kind_rs
+        and '"network_timeout"' in probe_kind_rs and '"auth_failed"' in probe_kind_rs
+        and '"rejected"' in probe_kind_rs and '"unavailable"' in probe_kind_rs,
+        'the four §18B kinds exist with stable snake_case names')
+require('Ok(_) => None,' in storage_core_rs
+        and 'ProbeFailureKind::classify(error.kind(), &error.to_string())' in storage_core_rs,
+        'a successful probe has no failure kind, and classify runs only on errors')
+require('observation_from_probe(probe: Result<bool, ()>) -> RemoteObservation' in journal_rs2
+        and 'domain::StorageError' not in journal_rs2,
+        'the safety mapping still takes Result<bool,()> - persistence does not see the storage error type')
+require('pub probe_kind: Option<domain::ProbeFailureKind>,' in journal_rs2
+        and 'probe_kind: looked_up.and_then(|(_, kind)| kind),' in journal_rs2,
+        'inconclusive findings carry their kind through detect_drift')
+require('probe_kind: None,' in journal_rs2,
+        'confirmed answers (missing/unrecorded) name no failure')
+require('let failure_kind = storage_core::probe_kind(&outcome);' in reconcile_src
+        and 'observations.push((row.deployment_id, observation, failure_kind));' in reconcile_src,
+        'the sweep loop derives the kind before lossy translation, then pushes both')
+require('"probeKind": finding.probe_kind.map(|kind| kind.as_str()),' in reconcile_src,
+        'the journal event payload records the kind')
+require('.filter(|finding| finding.kind == DriftKind::ProbeInconclusive)' in reconcile_src
+        and 'probe_paths: set_outcome.probe_findings,' in reconcile_src,
+        'only inconclusive probes reach the report path list')
+probe_display_ts = text('apps/desktop/src/lib/probeDisplay.ts')
+require('export function probeDisplay(kind: ProbeFailureKindName | null | undefined): ProbeDisplay | null {' in probe_display_ts
+        and 'PROBE_VIEWS[kind] ?? PROBE_VIEWS.rejected' in probe_display_ts,
+        'the frontend map covers all four kinds and degrades unknown ones to rejected, never silence')
+require('<ProbeChip kind={entry.probeFailure} />' in settings_page
+        and 'sweepReport.probePaths.length > 0' in settings_page,
+        'the panel renders the probe-failure list with per-row chips')
+require("name: 'probe_display'" in text('scripts/verify_all.mjs'),
+        'verify:all runs the probe display verifier as a stage')
 require('workflows.find((workflow) => workflow.isDefault)' in upload and '?? workflows[0]' not in upload, 'upload UI never falls back to an arbitrary legacy workflow')
 require('async fn persist_new_storage' in commands and commands.count('persist_new_storage(state.inner(), &record).await?;') >= 4, 'storage setup only succeeds after automatic pipeline persistence')
 require('sync_system_default_pipeline(state.inner(), None).await?;' in commands, 'automatic pipeline sync errors are surfaced instead of silently ignored')
