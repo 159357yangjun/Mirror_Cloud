@@ -2100,6 +2100,16 @@ G0 dev 全绿 → G1 P0-4 信任边界（Rust 自持 PendingUpdate{version, cano
 **沉淀规则（用户批准，写入本仓协作纪律）**：CI 红 ⇒ **先读一手诊断（annotation/compiler error/artifact），只有证据不足才允许假设；禁止沿同一假设连续多轮盲改**。顺序固定：读证据 → 锁第一错误 → 最小修复 → 复验。本次事故的正解路径本来只要两步：#194 起红已不在 fmt，早一天装 annotation 通道就早一天结案。
 **副产品（保留，非本轮验收项）**：ci.yml 的两条失败自证通道从此常驻——rustfmt 有 patch artifact，cargo check 有 log artifact + 公开 annotation（取首个 `^error` 起 9 行，GBK 无关、annotations API 无认证可读）。
 
+### 26. v1.4.8 出包闭环：不可变 tag 首用 + 三方哈希对账（2026-10-06）
+
+**链**：CI #327 success(`bbc9e2a`) → bump `5469905`（五处声明+cargo 重生成 lock 13 成员，metadata 独立枚举第二证人）→ CI #328 success → 用户确认 → **新建附注 tag v1.4.8**（对象 `ca0844d` → commit `5469905`；这是不可变规矩下第一次建 tag，没有移任何旧引用）→ Release Bundle **#35 completed/success**（updated 11:55:02Z）→ Release `Mirror Cloud v1.4.8`（id 404652713，四资产）。
+
+**setup.exe 三方对账 3/3**：本地 Node crypto 独立重算 = SHA256SUMS.txt = GitHub asset digest = `a5f1af14…617a78e`（8,479,335 B）；比较器带捏造值负例（`'0'.repeat(64)` 正确判拒）。msi 12,652,544 B / source.zip 6,771,007 B。对照 v1.4.7：exe +15,109 B（step 3/4 的字节进包了）。
+
+**轮询量具又教一课（如实）**：仓里 watch_ci.mjs 匿名配额耗尽后按设计自盲；我临时写的带 token 轮询脚本第一版把 `%TEMP%p.json` 写进 Python heredoc——`` 被字符串转义吃掉成退格符，六轮 READ_FAIL 全瞎但 http=200（状态行没数据、旗子照样绿）。修法=路径走环境变量传给 `python -c`。**教训同族：注入模板里的单反斜杠会被转义吃掉⇒只会印 0/报假的死旗子**。
+
+**未验证项（不粉饰）**：① 这台机装的是 v1.4.5，v1.4.8 包从未在本机真装真跑过——安装冒烟与"应用内检查更新看到 1.4.8"仍是他侧人工项（更新器读 releases/latest，现在指向 v1.4.8，semver 1.4.5<1.4.8 会提示）；② updater.rs 的 UPDATE_REPO 仍写旧 slug（靠 GitHub 301 重定向大概可用，未实测）——一行常量+门复跑，属行为变更等他点名；③ step 3/4 的真机分布观测依旧没有。
+
 ### 25. CI #325 红点结案：本地 cargo check 是半瞎量具（2026-10-06）
 
 **事实链**：step 3+4 推上 tip `20546ab` 后 CI #325 死在 step[17] Rust check。annotation 一手原话两条：① **E0425 `SUMMARY_PATH_CAP` not found in this scope**（reconcile.rs:739）——我在 §23 里写了这个 const，后来一次编辑把它删了、调用点还留着；② **lifetime may not live long enough**（:801）——`sort_by` 闭包里再套一个返回 `&str` 的闭包，推断不过 HRTB，改成嵌套 `fn key(...)` 即解。修复笔未动行为面（cap 数值仍 = PATHS_PER_KIND）。
