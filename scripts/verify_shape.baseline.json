@@ -1,15 +1,15 @@
 {
   "_meta": {
-    "takenAt": "2026-10-06T10:41:57",
-    "head": "237cc685ed1b37d3faf4d870fe77692921745ba6",
-    "reason": "step 4 hardening: userflow-src probe channel + M32-M34 anchors (+15L/+1215B)"
+    "takenAt": "2026-10-06T10:53:32",
+    "head": "a302b6fe49957c6207208bd87a126cb693256cb3",
+    "reason": "step 3: M35-M37 + needle-via-env (+32L/+1820B)"
   },
   "files": [
     {
       "file": "scripts/verify_all.mjs",
       "exists": true,
-      "lines": 365,
-      "bytes": 27222,
+      "lines": 367,
+      "bytes": 27454,
       "families": {
         "failures.push": 0,
         "emitGate": 0,
@@ -50,8 +50,8 @@
     {
       "file": "scripts/verify_guard_mutations.mjs",
       "exists": true,
-      "lines": 418,
-      "bytes": 33099,
+      "lines": 450,
+      "bytes": 34919,
       "families": {
         "failures.push": 1,
         "emitGate": 0,
@@ -90,6 +90,20 @@
       }
     },
     {
+      "file": "scripts/verify_probe_display.mjs",
+      "exists": true,
+      "lines": 74,
+      "bytes": 2893,
+      "families": {
+        "failures.push": 1,
+        "emitGate": 0,
+        "harness-fault exit": 0,
+        "gate line": 0,
+        "positive control": 0,
+        "throw": 0
+      }
+    },
+    {
       "file": "scripts/verify_shape.mjs",
       "exists": true,
       "lines": 314,
@@ -105,11 +119,11 @@
     }
   ],
   "totals": {
-    "files": 7,
-    "lines": 5828,
-    "bytes": 444670,
+    "files": 8,
+    "lines": 5936,
+    "bytes": 449615,
     "families": {
-      "failures.push": 32,
+      "failures.push": 33,
       "emitGate": 16,
       "harness-fault exit": 47,
       "gate line": 11,
