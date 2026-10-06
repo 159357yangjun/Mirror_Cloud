@@ -243,6 +243,7 @@ mod tests {
         let wanted = ReconcileConfig {
             enabled: true,
             interval_minutes: 60,
+            scan_interval_minutes: DEFAULT_SCAN_INTERVAL_MINUTES,
         };
         let stored = wanted.to_stored_value();
         let read = ReconcileConfig::from_value(Some(&stored));
@@ -255,6 +256,7 @@ mod tests {
         let wanted = ReconcileConfig {
             enabled: true,
             interval_minutes: 1,
+            scan_interval_minutes: DEFAULT_SCAN_INTERVAL_MINUTES,
         };
         let read = ReconcileConfig::from_value(Some(&wanted.to_stored_value()));
         assert_eq!(
@@ -272,6 +274,7 @@ mod tests {
             let wanted = ReconcileConfig {
                 enabled: true,
                 interval_minutes: huge,
+                scan_interval_minutes: DEFAULT_SCAN_INTERVAL_MINUTES,
             };
             let read = ReconcileConfig::from_value(Some(&wanted.to_stored_value()));
             assert_eq!(
@@ -400,6 +403,7 @@ mod tests {
         let on = ReconcileConfig {
             enabled: true,
             interval_minutes: DEFAULT_INTERVAL_MINUTES,
+            scan_interval_minutes: DEFAULT_SCAN_INTERVAL_MINUTES,
         };
         assert!(!should_run_on_tick(&off));
         assert!(should_run_on_tick(&on));
