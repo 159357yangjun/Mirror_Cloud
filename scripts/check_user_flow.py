@@ -23,6 +23,22 @@ def require(ok: bool, label: str):
     checks.append((ok, label))
 
 
+def _slice_between(source: str, start_marker: str, end_marker: str, label: str) -> str:
+    """A slice of `source` between two markers, or a loud empty string.
+
+    Returns '' when either marker is missing so the caller's assertion fails by name instead of
+    silently examining nothing. The existing `slice_between` raises SystemExit, which would abort
+    the run before any label prints - wrong trade-off for a reader whose absence should read as a
+    red gate, not as a crashed checker.
+    """
+    start = source.find(start_marker)
+    if start == -1:
+        return ''
+    rest = source[start:]
+    end = rest.find(end_marker, len(start_marker))
+    return rest if end == -1 else rest[:end]
+
+
 def _rust_block(source: str, marker: str) -> str:
     """From `marker` to the brace that closes it.
 
@@ -887,7 +903,7 @@ require('pub mod remote_scan;' in text('crates/persistence-sqlite/src/lib.rs'),
 require('self.completeness.supports_absence_conclusion()' in remote_scan_rs,
         'the record exposes the absence rule by delegating to the domain predicate')
 require('== ScanCompleteness::Complete' not in remote_scan_rs,
-        'the persistence layer never re-implements "complete means trustworthy" - it calls through')
+        'the persistence layer never re-implements "complete means trustworthy"')
 
 remote_index = text('apps/desktop/src-tauri/src/commands/remote_index.rs')
 view_body = _rust_block(remote_index, 'pub struct RemoteIndexSyncView {')
@@ -904,8 +920,19 @@ limit_body = _rust_block(remote_index, 'fn listing_hit_page_limit(')
 require('count == ceiling' in limit_body and 'count >= ceiling' not in limit_body,
         'provider truncation is detected by equality with the stated ceiling, so an adapter whose '
         'constant is wrong surfaces as a different bug instead of being absorbed here')
-require('observation.record_read_failure();' in remote_index,
-        'a failed directory read reaches the accumulator, not only the message list')
+# Three exits record an unreadable storage: provider build fails, the provider cannot list at
+# all, and a directory read errors mid-walk. A whole-file substring test is satisfied by any one
+# of them - measured: deleting the first site left this gate green, so as written it did not exist.
+build_arm = _slice_between(remote_index, 'let provider = match build_provider', '};', 'build arm')
+listing_guard = _slice_between(remote_index, 'if !provider.capabilities().list {',
+                               'let page_limit', 'listing guard')
+read_loop = _slice_between(remote_index, 'let entries = match provider.list(&directory).await {',
+                           'directories_listed', 'read loop')
+for label, arm in [('the provider-build failure exit', build_arm),
+                   ('the unsupported-listing exit', listing_guard),
+                   ('the mid-walk read failure', read_loop)]:
+    require('observation.record_read_failure();' in arm,
+            f'{label} records the failure on the accumulator, not only in the message list')
 require('error_count: observation.read_failure_count(),' in remote_index,
         'the persisted error count is derived from the accumulator rather than a parallel tally')
 require('observation.directory_budget_exhausted();' in remote_index
