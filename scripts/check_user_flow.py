@@ -814,6 +814,21 @@ require('<ProbeChip kind={entry.probeFailure} />' in settings_page
         'the panel renders the probe-failure list with per-row chips')
 require("name: 'probe_display'" in text('scripts/verify_all.mjs'),
         'verify:all runs the probe display verifier as a stage')
+# Post-rename slug hygiene: anything that talks to GitHub by repo path must carry the CURRENT
+# name (the 301 is not a contract), and the sidebar badge must derive from the same declaration
+# the release gates check - a hardcoded 'v1.4 Preview' survived two real releases.
+watch_ci_src = text('scripts/watch_ci.mjs')
+require("const REPO = 'Mirror_Cloud'" in watch_ci_src
+        and "const OWNER = '159357yangjun'" in watch_ci_src,
+        'watch_ci polls the current repo slug, not the pre-rename path it only survives via 301')
+vite_cfg = text('apps/desktop/vite.config.ts')
+app_shell = text('apps/desktop/src/components/AppShell.tsx')
+require('__APP_VERSION__: JSON.stringify(pkg.version)' in vite_cfg
+        and "import pkg from './package.json' with { type: 'json' }" in vite_cfg,
+        'the version badge has one source: package.json, which check_release_version already pins')
+require('v{__APP_VERSION__} · Mirror Cloud' in app_shell
+        and 'v1.4 Preview' not in app_shell,
+        'the sidebar badge renders the injected version and no stale literal survives')
 require('workflows.find((workflow) => workflow.isDefault)' in upload and '?? workflows[0]' not in upload, 'upload UI never falls back to an arbitrary legacy workflow')
 require('async fn persist_new_storage' in commands and commands.count('persist_new_storage(state.inner(), &record).await?;') >= 4, 'storage setup only succeeds after automatic pipeline persistence')
 require('sync_system_default_pipeline(state.inner(), None).await?;' in commands, 'automatic pipeline sync errors are surfaced instead of silently ignored')
