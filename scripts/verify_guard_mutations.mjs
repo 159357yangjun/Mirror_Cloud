@@ -214,6 +214,31 @@ const mutations = [
     from: 'let report = run_sweep_inner(&state, &providers, cursor.clone(), true).await;',
     to: 'let report = run_sweep_inner(&state, &providers, cursor.clone(), false).await;',
   },
+  {
+    // §18B M35: the taxonomy must be reachable through the lossy translation, not around it.
+    // Rewriting Ok(true) as Ok(false) makes a present object read as absent - the exact direction
+    // that would drive a reconciler toward deleting content that is fine.
+    id: 'M35', file: 'crates/persistence-sqlite/src/journal.rs', oracle: 'userflow-src',
+    expect: 'the safety mapping still takes Result<bool,()> - persistence does not see the storage error type',
+    from: 'Ok(true) => RemoteObservation::Present,',
+    to: 'Ok(true) => RemoteObservation::Absent,',
+  },
+  {
+    // §18B M36: dropping the kind on inconclusive findings leaves the report unable to say WHY,
+    // which is the whole feature; the observation itself stays correct, so only this gate catches it.
+    id: 'M36', file: 'crates/persistence-sqlite/src/journal.rs', oracle: 'userflow-src',
+    expect: 'inconclusive findings carry their kind through detect_drift',
+    from: 'probe_kind: looked_up.and_then(|(_, kind)| kind),',
+    to: 'probe_kind: None,',
+  },
+  {
+    // §18B M37: a silent fallback in the display map. An unknown future kind rendering nothing
+    // is the failure mode the degrade-to-rejected rule exists to prevent.
+    id: 'M37', file: 'apps/desktop/src/lib/probeDisplay.ts', oracle: 'userflow-src',
+    expect: 'the frontend map covers all four kinds and degrades unknown ones to rejected, never silence',
+    from: 'return PROBE_VIEWS[kind] ?? PROBE_VIEWS.rejected',
+    to: 'return PROBE_VIEWS[kind] ?? null',
+  },
 ]
 
 const selected = only ? mutations.filter((m) => only.has(m.id)) : mutations
@@ -263,7 +288,7 @@ if (!python) {
   process.exit(3)
 }
 
-const runOracle = (oracle, file) => {
+const runOracle = (oracle, file, needle) => {
   // The layout oracle drives a real browser, so it is pinned to one tier and one route: the
   // unbreakable-filename fixture inside the confirm card. That keeps a mutation that needs a
   // browser at roughly the cost of one page load instead of the full 21-combination sweep.
@@ -298,7 +323,14 @@ const runOracle = (oracle, file) => {
     const r3 = spawnSync(python.exe, [...python.pre, 'scripts/check_user_flow.py'], {
       cwd: REPO,
       encoding: 'utf8',
-      env: { ...process.env, MIRROR_CLOUD_MUTATION_PROBE: 'sweep-persistence', MUTATED_SOURCE: file ?? '' },
+      env: {
+        ...process.env,
+        MIRROR_CLOUD_MUTATION_PROBE: 'sweep-persistence',
+        MUTATED_SOURCE: file ?? '',
+        // The checker re-reads THIS needle from the mutated file. It arrives via env rather than
+        // being restated in the checker so a mutation cannot be satisfied by the checker quoting it.
+        MUTATED_NEEDLE: needle ?? '',
+      },
       timeout: 420_000,
     })
     return { status: r3.status, spawnError: r3.error ? String(r3.error).slice(0, 120) : null, output: `${r3.stdout || ''}${r3.stderr || ''}`, marker: 'USERFLOW_CHECKS' }
@@ -363,12 +395,12 @@ for (const m of selected) {
     // The baseline has to be taken BEFORE the mutation is written. It was not, first time: both runs
     // saw the same disarmed file, so the guard-removal case compared the mutant against itself and
     // reported "pristine run exited 0" about a file that was never pristine.
-    const before = m.removesGuard ? runOracle(m.oracle, m.file) : null
+    const before = m.removesGuard ? runOracle(m.oracle, m.file, m.from) : null
     writeFileSync(path, mutated)
     // For a guard-removal mutation the baseline run is the other half of the proof: if the guard does
     // not alarm on the pristine file either, then "the mutated run went quiet" proves nothing about
     // the line that was deleted.
-    const run = runOracle(m.oracle, m.file)
+    const run = runOracle(m.oracle, m.file, m.from)
     const oracleRan = run.output.includes(run.marker)
     const baselineRan = before ? before.output.includes(before.marker) : true
     const baselineAlarmed = before ? (baselineRan && before.status !== 0 && before.output.includes(m.expect)) : true

@@ -697,23 +697,36 @@ require("const SWEEP_LAST_KEY: &str = \"reconciliation.lastSweep\";" in reconcil
 # mutation removes it from reconcile.rs. Under the harness tripwire every step-4 needle re-reads the
 # mutated file; without it these assertions are inert (and the fingerprints prove nothing either way).
 _probe_source = None
+_probe_needle = ''
 if os.environ.get('MIRROR_CLOUD_MUTATION_PROBE') == 'sweep-persistence':
     _probe_rel = os.environ.get('MUTATED_SOURCE', '')
+    _probe_needle = os.environ.get('MUTATED_NEEDLE', '')
     if (ROOT / _probe_rel).exists():
         _probe_source = (ROOT / _probe_rel).read_text(encoding='utf-8-sig')
 
 def _needle(whole, label):
     # Inert without the tripwire; under it, the assertion measures the mutated file itself.
+    # With a harness-supplied needle, THAT string is what must still be findable in the file:
+    # the mutation deletes or rewrites exactly it, so removal turns this red. The `whole` form
+    # (no needle passed) only fires when MUTATED_SOURCE names this very file - the checker
+    # quoting its own needle can then never satisfy it, because the quote is what got removed.
     if _probe_source is None:
         return
-    require(whole in _probe_source, f'{label} [mutation probe]')
+    if _probe_needle:
+        require(_probe_needle in _probe_source, f'{label} [mutation probe]')
+    elif _probe_rel == 'scripts/check_user_flow.py':
+        require(whole in _probe_source, f'{label} [mutation probe]')
 
 
 def _flat_needle(whole, start_marker, end_marker, label):
     if _probe_source is None:
         return
     body = ' '.join(_slice_between(_probe_source, start_marker, end_marker, label).split())
-    require(whole in body, f'{label} [mutation probe]')
+    if _probe_needle:
+        needle_flat = ' '.join(_probe_needle.split())
+        require(needle_flat in body or _probe_needle in body, f'{label} [mutation probe]')
+    elif _probe_rel == 'scripts/check_user_flow.py':
+        require(' '.join(whole.split()) in body, f'{label} [mutation probe]')
 
 require('pub(crate) fn sweep_summary(report: &SweepReport, include_findings: bool) -> Value {' in reconcile_src
         and '"lastSweepAt": Utc:' + ':now().to_rfc3339(),' in reconcile_src,
