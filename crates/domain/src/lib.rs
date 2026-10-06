@@ -137,6 +137,11 @@ pub struct Deployment {
 }
 
 pub use deployment_timestamps::{DeploymentTimestamps, TimestampCause};
+/// Re-exported at the root because three downstream crates name it as `domain::StorageErrorKind`
+/// (storage-core's error classification, application's publish outcome, persistence's stored-kind
+/// column). The module stays public too; this only removes the requirement that every caller spell
+/// the module path.
+pub use storage_error_kind::StorageErrorKind;
 
 impl Deployment {
     /// Move exactly the timestamp the given cause legitimately sets, returning the new value.
