@@ -2,7 +2,7 @@ use std::collections::{HashSet, VecDeque};
 
 use super::*;
 use domain::scan_completeness::{ScanCompleteness, ScanObservation};
-use persistence_sqlite::remote_scan::RemoteScanRecord;
+use persistence_sqlite::remote_scan::{RemoteScanRecord, insert_scan, insert_scan_entries};
 
 const MAX_REMOTE_FILES_PER_STORAGE: usize = 2_000;
 const MAX_REMOTE_DIRECTORIES_PER_STORAGE: usize = 1_000;
@@ -114,6 +114,9 @@ pub async fn sync_storage_asset_index(
         // Every exit from this iteration - including the `continue` paths below - has to land a
         // row, so the counters start outside the branches rather than inside the walk.
         let mut observation = ScanObservation::new();
+        // Every file the walk saw. Capped at what the sweep actually browsed: storing more than we
+        // looked at would hand reconciliation a listing wider than the scan that qualified it.
+        let mut listed_paths: Vec<String> = Vec::new();
 
         let provider = match build_provider(&state, &storage) {
             Ok(provider) => provider,
@@ -126,6 +129,7 @@ pub async fn sync_storage_asset_index(
                     &storage,
                     started_at,
                     &observation,
+                    &listed_paths,
                 )
                 .await;
                 continue;
@@ -145,6 +149,7 @@ pub async fn sync_storage_asset_index(
                 &storage,
                 started_at,
                 &observation,
+                &listed_paths,
             )
             .await;
             continue;
@@ -214,6 +219,7 @@ pub async fn sync_storage_asset_index(
                 if !seen_files.insert(remote_path.clone()) {
                     continue;
                 }
+                listed_paths.push(remote_path.clone());
 
                 storage_files_scanned += 1;
                 summary.files_scanned += 1;
@@ -320,6 +326,7 @@ pub async fn sync_storage_asset_index(
             &storage,
             started_at,
             &observation,
+            &listed_paths,
         )
         .await;
     }
@@ -338,13 +345,16 @@ async fn finish_and_report(
     storage: &StorageRecord,
     started_at: DateTime<Utc>,
     observation: &ScanObservation,
+    listed_paths: &[String],
 ) {
     let completeness = observation.completeness();
     let stop_reason = observation.stop_reason();
     let finished_at = Utc::now();
     let truncated_dirs = observation.truncated_dirs() as i64;
 
+    let record_id = Uuid::new_v4();
     let record = RemoteScanRecord {
+        id: record_id,
         storage_id: storage.id,
         started_at,
         finished_at,
@@ -358,6 +368,11 @@ async fn finish_and_report(
     let pool = state.journal.pool();
     if let Err(error) = insert_scan(pool, &record).await {
         tracing::warn!(%error, storage_id = %storage.id, "could not record a remote scan");
+    } else if let Err(error) = insert_scan_entries(pool, record_id, listed_paths).await {
+        // The scan row exists but its listing does not. Reconciliation reads that as no snapshot
+        // and falls back to probing, which is the safe direction: it costs requests rather than
+        // drawing conclusions from an absent set.
+        tracing::warn!(%error, storage_id = %storage.id, "could not store scan entries");
     }
 
     summary.scans.push(ScanOutcomeView {

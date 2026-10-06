@@ -504,6 +504,40 @@ export function SettingsPage() {
             )}
             {sweepReport.error && <div className="mt-1 text-red-600">扫描未完成：{sweepReport.error}</div>}
             {sweepReport.skippedByPolicy && <div className="mt-1 text-slate-500">后台任务当前处于关闭状态，本轮未发送任何请求。</div>}
+            <div className="mt-2 text-[11px] text-slate-500">
+              差异依据：{sweepReport.evidenceSource === 'scan' ? '云端索引快照（24 小时内的完整扫描）' : sweepReport.evidenceSource === 'probe_only' ? '逐个对象探测（没有可用的近期快照）' : '本轮未产生集合比对'}
+            </div>
+            {(sweepReport.missingPaths.length > 0 || sweepReport.unrecordedPaths.length > 0 || sweepReport.unknownPaths.length > 0) && (
+              <div className="mt-2 space-y-2">
+                {sweepReport.missingPaths.length > 0 && (
+                  <div>
+                    <div className="font-medium text-red-600">应存在但快照里没有</div>
+                    <ul className="mt-1 max-h-24 overflow-y-auto rounded-xl bg-white px-3 py-2 font-mono text-[11px] text-slate-500">
+                      {sweepReport.missingPaths.map((path) => <li key={path}>{path}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {sweepReport.unrecordedPaths.length > 0 && (
+                  <div>
+                    <div className="font-medium text-amber-700">云端有但本地没记录</div>
+                    <ul className="mt-1 max-h-24 overflow-y-auto rounded-xl bg-white px-3 py-2 font-mono text-[11px] text-slate-500">
+                      {sweepReport.unrecordedPaths.map((path) => <li key={path}>{path}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {sweepReport.unknownPaths.length > 0 && (
+                  <div>
+                    <div className="font-medium text-slate-500">覆盖不足，无法判断</div>
+                    <ul className="mt-1 max-h-24 overflow-y-auto rounded-xl bg-white px-3 py-2 font-mono text-[11px] text-slate-400">
+                      {sweepReport.unknownPaths.map((path) => <li key={path}>{path}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {sweepReport.pathsOmitted > 0 && (
+                  <div className="text-[11px] text-slate-400">另有 {sweepReport.pathsOmitted} 条未列出（每类最多显示 20 条）。</div>
+                )}
+              </div>
+            )}
           </div>
         )}
         {(reconcileToggleMutation.error || intervalSaveMutation.error || sweepMutation.error) && (

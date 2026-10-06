@@ -14,6 +14,9 @@
 //! It writes events and returns counts. It does not delete, re-upload, or flip a deployment
 //! status. `DriftKind::MissingRemote` is a *report*; acting on it stays a human decision, which is
 //! the whole reason the probe path separates Unknown from Absent (see journal.rs).
+//!
+//! The set comparison added in §21 inherits that boundary unchanged: it can name a remote path no
+//! local row claims, which is new information, and still takes no action on it.
 
 // `super::*` brings in AppState, build_provider and CmdResult, matching the sibling command
 // modules; it sorts before the crate-external paths under rustfmt's group_imports rules.
@@ -21,13 +24,16 @@ use super::*;
 use crate::reconcile_cadence::{
     PAGE_LIMIT, SWEEP_ROW_BUDGET, advance_cursor, plan_sweep, should_run_on_tick,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use chrono::Utc;
+use domain::drift_set::{DriftTally, LocalBelief, RemoteSide, SetDrift, SetDriftKind, compare_sets};
 use domain::event_journal::{AggregateKind, DomainEvent, EventType};
+use domain::scan_completeness::ScanCompleteness;
 use persistence_sqlite::journal::{
     BelievedDeployment, DriftKind, RemoteObservation, detect_drift, observation_from_probe,
 };
+use persistence_sqlite::remote_scan::fresh_scan_snapshot;
 use serde::Serialize;
 use tauri::{Manager, State};
 use uuid::Uuid;
@@ -57,6 +63,21 @@ pub struct SweepReport {
     /// Set when the sweep could not read its own rows. Without it, a database error and an empty
     /// library produce identical reports.
     pub error: Option<String>,
+    /// Which evidence produced this report's drift numbers.
+    ///
+    /// `scan` means the findings came from comparing against a stored listing; `probe` means each
+    /// object was looked up individually. The two differ in cost by orders of magnitude and in
+    /// what they can conclude, so a count without its source is not auditable.
+    pub evidence_source: String,
+    /// Remote paths no local row claims, sorted, capped at `PATHS_PER_KIND`.
+    pub unrecorded_paths: Vec<String>,
+    /// Locally-online paths a complete scan did not show, same cap.
+    pub missing_paths: Vec<String>,
+    /// Paths whose status we cannot settle because coverage was partial or absent.
+    pub unknown_paths: Vec<String>,
+    /// How many findings were dropped by the cap, per kind, so a truncated list never reads as an
+    /// exhaustive one.
+    pub paths_omitted: usize,
 }
 
 impl SweepReport {
@@ -75,6 +96,11 @@ impl SweepReport {
             next_cursor: None,
             skipped_by_policy,
             error: None,
+            evidence_source: "none".into(),
+            unrecorded_paths: Vec::new(),
+            missing_paths: Vec::new(),
+            unknown_paths: Vec::new(),
+            paths_omitted: 0,
         }
     }
 
@@ -284,12 +310,18 @@ async fn run_sweep_inner(
                 },
                 "remotePath": finding.remote_path,
                 "actionTaken": null,
+                // Every finding here came from an individual lookup. Recorded because the sources
+                // differ in what they may conclude: a probe answers only about its own object, so
+                // it can never produce the scan-only direction at all.
+                "evidenceSource": "probe",
             }),
         );
         if state.journal.append(&event).await.is_ok() {
             events_recorded += 1;
         }
     }
+
+    let set_outcome = compare_against_snapshots(state, providers).await;
 
     SweepReport {
         examined: rows.len(),
@@ -304,7 +336,158 @@ async fn run_sweep_inner(
         next_cursor: advance_cursor(rows.len(), seen_cursor),
         skipped_by_policy: false,
         error: None,
+        evidence_source: set_outcome.evidence_source,
+        unrecorded_paths: set_outcome.unrecorded_paths,
+        missing_paths: set_outcome.missing_paths,
+        unknown_paths: set_outcome.unknown_paths,
+        paths_omitted: set_outcome.paths_omitted,
     }
+}
+
+/// Paths listed per kind in a report, so one sweep cannot hand the UI an unbounded array.
+const PATHS_PER_KIND: usize = 20;
+
+/// How long a stored listing stays usable as reconciliation evidence.
+///
+/// A snapshot older than this is not wrong about what it saw, it is just no longer about *now*:
+/// objects get uploaded and deleted by other clients too. Falling back to per-object probes costs
+/// requests but answers the current question, which is the right trade for a stale window.
+pub const SNAPSHOT_MAX_AGE_HOURS: i64 = 24;
+
+/// What one set-comparison pass produced, before it becomes part of a report.
+struct SweepOutcome {
+    evidence_source: String,
+    unrecorded_paths: Vec<String>,
+    missing_paths: Vec<String>,
+    unknown_paths: Vec<String>,
+    paths_omitted: usize,
+}
+
+/// Compare every reachable storage's beliefs against its freshest stored listing.
+///
+/// ## Why this runs beside the probe loop instead of replacing it
+///
+/// The probe answers "is this one object there" for rows we already know about, and nothing else -
+/// it structurally cannot discover a remote path no local row claims. The set comparison answers
+/// exactly that second question, but only where a fresh listing exists. Running both means a sweep
+/// with no usable snapshot still reports what it checked, rather than reporting nothing and
+/// looking like agreement.
+///
+/// ## Cost
+///
+/// Zero remote requests: one indexed query per storage plus one belief query. That asymmetry is
+/// why keeping listings (migration 0019) is worth their disk space.
+async fn compare_against_snapshots(
+    state: &AppState,
+    providers: &HashMap<Uuid, std::sync::Arc<dyn StorageProvider>>,
+) -> SweepOutcome {
+    let pool = state.journal.pool();
+    let max_age = chrono::Duration::hours(SNAPSHOT_MAX_AGE_HOURS);
+    let now = Utc::now();
+
+    let mut used_scan = false;
+    let mut findings: Vec<SetDrift> = Vec::new();
+
+    for storage_id in providers.keys() {
+        let snapshot = match fresh_scan_snapshot(pool, *storage_id, now, max_age).await {
+            Ok(Some(snapshot)) => snapshot,
+            // No snapshot, expired, or unreadable: this storage contributes nothing here, and the
+            // probe loop above has already covered its rows.
+            _ => continue,
+        };
+        let beliefs = match state.assets.all_deployment_beliefs(*storage_id).await {
+            Ok(beliefs) => beliefs,
+            // Could not read our own rows for this storage. Skipping is honest: comparing against
+            // an unknown belief set would invent findings in both directions.
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    storage_id = %storage_id,
+                    "reconciliation skipped a storage"
+                );
+                continue;
+            }
+        };
+
+        // Both sides go through the same filter. Comparing beliefs that include originals against
+        // a listing that also includes thumbnails would report every variant as drift in both
+        // directions at once, so the rule has to be shared rather than written twice.
+        let paths: HashSet<String> = snapshot.paths.into_iter().filter(is_image_path).collect();
+        let remote = match snapshot.completeness {
+            ScanCompleteness::Complete => RemoteSide::Complete(paths),
+            ScanCompleteness::Partial => RemoteSide::Partial(paths),
+            // An unknown-coverage listing keeps its paths but loses the right to any conclusion,
+            // including the witnessed-presence direction: we do not know whether the walk got that
+            // far before failing.
+            ScanCompleteness::Unknown => RemoteSide::Untrusted,
+        };
+        used_scan = true;
+
+        let local: Vec<LocalBelief> = beliefs
+            .into_iter()
+            .filter(|row| is_image_path(&row.remote_path))
+            .map(|row| LocalBelief {
+                deployment_id: row.deployment_id,
+                remote_path: row.remote_path,
+                status_online: row.status == "online",
+            })
+            .collect();
+
+        findings.extend(compare_sets(&local, &remote));
+    }
+
+    let tally = DriftTally::from_findings(&findings);
+    // Not decoration: a fourth SetDriftKind added without a bucket below would otherwise vanish
+    // from every report while the counts still looked plausible.
+    assert!(
+        tally.accounting_is_complete_for(&findings),
+        "the tally must account for every finding"
+    );
+
+    let mut missing: Vec<String> = Vec::new();
+    let mut unrecorded: Vec<String> = Vec::new();
+    let mut unknown: Vec<String> = Vec::new();
+    for finding in &findings {
+        match finding.kind {
+            SetDriftKind::MissingRemote => missing.push(finding.remote_path),
+            SetDriftKind::UnrecordedRemote => unrecorded.push(finding.remote_path),
+            SetDriftKind::UnknownCoverage => unknown.push(finding.remote_path),
+        }
+    }
+
+    let omitted = [missing.len(), unrecorded.len(), unknown.len()]
+        .iter()
+        .map(|count| count.saturating_sub(PATHS_PER_KIND))
+        .sum();
+
+    for list in [&mut missing, &mut unrecorded, &mut unknown] {
+        list.sort();
+        list.dedup();
+        list.truncate(PATHS_PER_KIND);
+    }
+
+    SweepOutcome {
+        evidence_source: if used_scan { "scan" } else { "probe_only" }.to_string(),
+        unrecorded_paths: unrecorded,
+        missing_paths: missing,
+        unknown_paths: unknown,
+        paths_omitted: omitted,
+    }
+}
+
+/// Whether a remote path is in scope for reconciliation.
+///
+/// Only image objects are compared, because only images are what this application deploys. A
+/// `remote_index` import records non-image entries as skipped, so a belief row can never name one;
+/// leaving them on the remote side would report every PDF on a bucket as unrecorded.
+fn is_image_path(path: &str) -> bool {
+    let Some((_, extension)) = path.rsplit_once('.') else {
+        return false;
+    };
+    matches!(
+        extension.to_ascii_lowercase().as_str(),
+        "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "avif" | "svg" | "ico"
+    )
 }
 
 /// Start the background reconciler. Called once from setup; returns immediately.

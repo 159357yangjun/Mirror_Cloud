@@ -458,6 +458,12 @@ export interface SweepReport {
   nextCursor: string | null
   skippedByPolicy: boolean
   error: string | null
+  // 'scan' = the set comparison used a stored listing; 'probe_only' = no fresh listing existed.
+  evidenceSource: 'scan' | 'probe_only' | 'none'
+  unrecordedPaths: string[]
+  missingPaths: string[]
+  unknownPaths: string[]
+  pathsOmitted: number
 }
 
 // The inert default is restated in the browser build on purpose: outside Tauri there is no settings

@@ -960,6 +960,108 @@ require("completeness: 'complete' | 'partial' | 'unknown'" in desktop_ts,
         'the frontend type carries the three levels instead of inferring them from error strings')
 require('scans: RemoteScanOutcome[]' in desktop_ts,
         'the per-storage verdict is part of the contract the UI consumes')
+# --- §21: reconciliation reads a scan as a set, not as a count ---------------------------------
+#
+# The probe path can only answer "is this object there" about objects we already named. Two things
+# it structurally cannot do: discover a remote path no local row claims, and conclude absence from
+# a listing that was cut short. These gates hold the rules that make those two directions legal.
+
+drift_set_rs = text('crates/domain/src/drift_set.rs')
+compare_body = _rust_block(drift_set_rs, 'pub fn compare_sets(')
+observed_body = _rust_block(drift_set_rs, 'pub fn observed(&self)')
+absent_body = _rust_block(drift_set_rs, 'pub fn supports_absence_conclusion(&self)')
+
+require(compare_body != '', 'compare_sets still exists to read')
+require('RemoteSide::Complete(_) => SetDriftKind::MissingRemote' in compare_body,
+        'only the Complete shape may conclude absence')
+require('RemoteSide::Partial(_) | RemoteSide::Untrusted => SetDriftKind::UnknownCoverage'
+        in compare_body,
+        'partial and untrusted both downgrade an absence claim to UnknownCoverage')
+require('RemoteSide::Partial(_) => SetDriftKind::MissingRemote' not in compare_body,
+        'a partial sweep must never reach MissingRemote')
+require('RemoteSide::Untrusted => None' in observed_body,
+        'an untrusted side exposes no set at all, so absence cannot be iterated out of it')
+require('matches!(self, RemoteSide::Complete(_))' in absent_body,
+        'the absence predicate accepts exactly one shape')
+
+migration19 = text('crates/persistence-sqlite/migrations/0019_remote_scan_entries.sql')
+require('REFERENCES remote_scans(id) ON DELETE CASCADE' in migration19,
+        'entries cannot outlive the coverage verdict that qualifies them')
+require('PRIMARY KEY (scan_id, remote_path)' in migration19,
+        'one path per scan is stored once, so a re-walked directory cannot duplicate findings')
+down19 = text('crates/persistence-sqlite/migrations/down/0019_remote_scan_entries.sql')
+require('DROP TABLE IF EXISTS remote_scan_entries' in down19
+        and 'idx_remote_scan_entries_path' in down19,
+        'migration 0019 reverses both its table and its index')
+
+remote_scan_rs2 = text('crates/persistence-sqlite/src/remote_scan.rs')
+insert_entries = _rust_block(remote_scan_rs2, 'pub async fn insert_scan_entries(')
+snapshot_fn = _rust_block(remote_scan_rs2, 'pub async fn fresh_scan_snapshot(')
+require(insert_entries != '' and snapshot_fn != '',
+        'the snapshot write and read paths both still exist')
+require('INSERT OR IGNORE INTO remote_scan_entries' in insert_entries,
+        'a duplicated path is skipped rather than aborting the batch mid-listing')
+require('return Ok(None)' in snapshot_fn and 'age > max_age' in snapshot_fn,
+        'a stale snapshot is refused rather than served as current evidence')
+require('age < chrono::Duration::zero()' in snapshot_fn,
+        'a clock-skewed future timestamp does not keep a snapshot fresh forever')
+require('rows.is_empty()' in snapshot_fn,
+        'a scan with no stored entries yields no snapshot; an empty set is never a valid answer')
+
+lib_rs_p = text('crates/persistence-sqlite/src/lib.rs')
+beliefs_fn = _rust_block(lib_rs_p, 'pub async fn all_deployment_beliefs(')
+require(beliefs_fn != '', 'all_deployment_beliefs still exists')
+# The SQL lives in BELIEF_QUERY above the function, so scoping to the body would read nothing.
+# The const is sliced by name and the assertion runs against THAT: other queries in this file
+# legitimately filter to online/degraded, and a whole-file test stayed green on that mutation.
+belief_sql = _slice_between(lib_rs_p, 'const BELIEF_QUERY: &str =', ';', 'BELIEF_QUERY')
+require(belief_sql.count('SELECT') == 1,
+        'BELIEF_QUERY bounded to one statement (a runaway slice examines the rest of the file)')
+require("d.status <> 'deleted'" in belief_sql,
+        'the belief query excludes tombstones only, not failed rows')
+require("'online','degraded'" not in belief_sql,
+        'the belief query does not re-narrow to online rows - that filter is what made the '
+        'unrecorded direction unreachable')
+
+reconcile_rs = text('apps/desktop/src-tauri/src/commands/reconcile.rs')
+compare_fn = _rust_block(reconcile_rs, 'async fn compare_against_snapshots(')
+probe_loop = reconcile_rs[reconcile_rs.find('async fn run_sweep_inner('):
+                          reconcile_rs.find('const PATHS_PER_KIND')]
+require(compare_fn != '' and probe_loop != '',
+        'both reconciliation halves are present to be read')
+require('ScanCompleteness::Partial => RemoteSide::Partial(paths)' in compare_fn
+        and 'ScanCompleteness::Unknown => RemoteSide::Untrusted' in compare_fn,
+        'the stored completeness level decides which RemoteSide the sweep compares against')
+require('accounting_is_complete_for(&findings)' in compare_fn,
+        'the tally identity runs on every sweep, so a new kind cannot silently vanish')
+require('filter(is_image_path)' in compare_fn and 'filter(|row| is_image_path' in compare_fn,
+        'both sides pass through the same in-scope predicate')
+require('"evidenceSource": "probe"' in probe_loop,
+        'probe-path events name their source instead of leaving it implied')
+require('SNAPSHOT_MAX_AGE_HOURS: i64 = 24' in reconcile_rs,
+        'the freshness window is a named constant, not a number buried in a call')
+
+index_rs2 = text('apps/desktop/src-tauri/src/commands/remote_index.rs')
+finish2 = _rust_block(index_rs2, 'async fn finish_and_report(')
+require('insert_scan_entries(pool, record_id, listed_paths).await' in finish2,
+        'the sweep that produced a scan also stores its listing')
+require('listed_paths.push(remote_path.clone())' in index_rs2,
+        'the listing is collected during the walk rather than reconstructed afterwards')
+
+desktop_ts2 = text('apps/desktop/src/lib/desktop.ts')
+settings_tsx = text('apps/desktop/src/pages/SettingsPage.tsx')
+require("evidenceSource: 'scan' | 'probe_only' | 'none'" in desktop_ts2,
+        'the frontend type carries the evidence source as a closed set')
+require('missingPaths' in desktop_ts2 and 'unrecordedPaths' in desktop_ts2
+        and 'unknownPaths' in desktop_ts2,
+        'all three drift kinds cross the IPC boundary')
+require('云端有但本地没记录' in settings_tsx and '应存在但快照里没有' in settings_tsx
+        and '覆盖不足，无法判断' in settings_tsx,
+        'the settings page renders each kind under a distinct heading')
+require('pathsOmitted' in settings_tsx,
+        'a capped path list says how much it left out')
+
+
 failed = [label for ok, label in checks if not ok]
 section_tail = checks[-15:]
 for ok, label in section_tail:

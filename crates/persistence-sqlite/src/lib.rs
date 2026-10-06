@@ -932,6 +932,27 @@ impl AssetRepository {
         rows.into_iter().map(parse_deployment_location).collect()
     }
 
+    /// Every non-deleted deployment row for one storage, whatever its status.
+    ///
+    /// Reconciliation's second direction needs this and could not have it: the sweep used to read
+    /// `online_deployments`, which filters to online/degraded, so a failed row was never fed to a
+    /// comparison that has a branch for "the object is there but our row says it is not". That
+    /// branch existed and was unreachable. Widening the row source is what makes it fire;
+    /// `status_online` carries the distinction instead of the WHERE clause.
+    ///
+    /// `deleted` stays excluded on purpose. A tombstone is not a belief about the remote, and
+    /// including it would report every deliberately removed object as drift forever.
+    pub async fn all_deployment_beliefs(
+        &self,
+        storage_id: Uuid,
+    ) -> Result<Vec<DeploymentLocationRecord>, sqlx::Error> {
+        let rows = sqlx::query(BELIEF_QUERY)
+            .bind(storage_id.to_string())
+            .fetch_all(&self.pool)
+            .await?;
+        rows.into_iter().map(parse_deployment_location).collect()
+    }
+
     pub async fn repair_context(
         &self,
         asset_id: Uuid,
@@ -1113,6 +1134,10 @@ fn parse_optional_time(raw: Option<String>) -> Option<chrono::DateTime<Utc>> {
     raw.and_then(|value| DateTime::parse_from_rfc3339(&value).ok())
         .map(|value| value.with_timezone(&Utc))
 }
+
+const BELIEF_QUERY: &str = "SELECT d.id AS deployment_id,d.storage_id,d.remote_path,d.public_url,"
+    + "d.status,d.last_error,d.deployed_at FROM deployments d "
+    + "WHERE d.storage_id = ? AND d.status <> 'deleted' ORDER BY d.remote_path";
 
 fn parse_deployment_location(row: SqliteRow) -> Result<DeploymentLocationRecord, sqlx::Error> {
     let deployment_id: String = row.try_get("deployment_id")?;

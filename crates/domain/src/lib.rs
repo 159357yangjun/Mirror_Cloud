@@ -5,6 +5,7 @@ use uuid::Uuid;
 pub mod attempt_and_evidence;
 pub mod confirmation_tier;
 pub mod deployment_timestamps;
+pub mod drift_set;
 pub mod event_journal;
 pub mod publish_plan;
 pub mod scan_completeness;
