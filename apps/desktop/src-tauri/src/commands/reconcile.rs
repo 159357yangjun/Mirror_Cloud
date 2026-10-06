@@ -418,7 +418,6 @@ async fn refresh_stale_indexes(
 /// which clock is missing.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
 pub struct DriftEntryView {
     pub deployment_id: Option<String>,
     pub remote_path: String,
