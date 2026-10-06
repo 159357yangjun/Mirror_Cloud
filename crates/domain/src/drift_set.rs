@@ -192,14 +192,24 @@ mod tests {
     }
 
     #[test]
-    fn a_complete_sweep_that_omits_an_online_row_is_missing_remote() {
+    fn a_complete_sweep_reports_both_directions_of_disagreement() {
+        // The comparison is genuinely two-way (that is §21's whole point): a.png is believed online
+        // but absent from a complete listing -> MissingRemote; b.png is on the remote with no local
+        // row -> UnrecordedRemote. The original version of this test asserted len()==1 and only the
+        // missing direction, which was wrong and stayed hidden because these tests never compiled
+        // until CI #321 built them.
         let findings = compare_sets(
             &[belief("assets/a.png", true)],
             &RemoteSide::Complete(paths(&["assets/b.png"])),
         );
-        assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].kind, SetDriftKind::MissingRemote);
-        assert_eq!(findings[0].remote_path, "assets/a.png");
+        assert_eq!(findings.len(), 2, "{findings:?}");
+        let missing: Vec<_> = findings.iter().filter(|f| f.kind == SetDriftKind::MissingRemote).collect();
+        let unrecorded: Vec<_> =
+            findings.iter().filter(|f| f.kind == SetDriftKind::UnrecordedRemote).collect();
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].remote_path, "assets/a.png");
+        assert_eq!(unrecorded.len(), 1);
+        assert_eq!(unrecorded[0].remote_path, "assets/b.png");
     }
 
     #[test]
