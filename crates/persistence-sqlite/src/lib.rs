@@ -1,6 +1,7 @@
 use std::path::Path;
 
 pub mod journal;
+pub mod remote_scan;
 
 use chrono::{DateTime, Utc};
 use domain::{

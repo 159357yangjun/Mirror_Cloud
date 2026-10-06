@@ -7,6 +7,7 @@ pub mod confirmation_tier;
 pub mod deployment_timestamps;
 pub mod event_journal;
 pub mod publish_plan;
+pub mod scan_completeness;
 pub mod storage_error_kind;
 
 pub type AssetId = Uuid;

@@ -275,6 +275,15 @@ impl StorageProvider for GiteeStorage {
         "gitee"
     }
 
+    /// Left at the trait default (None = "trust a short listing as complete"), on purpose.
+    ///
+    /// Gitee's Contents-compatible endpoint mirrors GitHub's, which would put its ceiling at
+    /// 1000 too - but that is an inference from a compatible API, not a limit this adapter has
+    /// observed. Claiming `Some(1000)` here would set an unverified number in front of a scanner
+    /// that uses it to decide whether a directory is fully known, and a wrong ceiling is worse
+    /// than none: at 900 entries it would report Partial for a listing that was actually
+    /// complete.
+
     fn capabilities(&self) -> StorageCapabilities {
         StorageCapabilities {
             upload: true,

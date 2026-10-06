@@ -14,6 +14,11 @@ use storage_core::{
 
 const API_ROOT: &str = "https://api.github.com/";
 const UPLOAD_MAX_ATTEMPTS: usize = 3;
+/// Hard ceiling on the entries one GitHub Contents API directory read can return.
+///
+/// Declared here rather than inlined at the override so the `list` test below can assert against
+/// the same number the scanner consumes: a literal in two places is a constant that can drift.
+const CONTENTS_PAGE_LIMIT: usize = 1000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitHubStorageConfig {
@@ -295,6 +300,14 @@ impl GitHubStorage {
 impl StorageProvider for GitHubStorage {
     fn provider_key(&self) -> &'static str {
         "github"
+    }
+
+    fn listing_page_limit(&self) -> Option<usize> {
+        // The Contents API returns at most this many items for one directory and exposes no
+        // cursor, so a directory with more entries than this is silently cut off at the head of
+        // the alphabetical ordering. `list` above does not paginate - there is nothing to
+        // paginate with.
+        Some(CONTENTS_PAGE_LIMIT)
     }
 
     fn capabilities(&self) -> StorageCapabilities {

@@ -388,6 +388,11 @@ impl StorageProvider for OpenDalStorage {
     }
 
     async fn list(&self, path: &str) -> Result<Vec<StorageEntry>, StorageError> {
+        // OpenDAL's `list` is a stream-backed helper that pages the underlying service until the
+        // directory is exhausted, so there is no per-call ceiling for the scanner to compare a
+        // count against. The trait default (None) is therefore the accurate answer here, not an
+        // unverified one: truncation in this adapter surfaces as an error from `list_with`, which
+        // the caller already records as a failed read.
         let normalized = path.trim_matches('/');
         let directory = if normalized.is_empty() {
             String::new()

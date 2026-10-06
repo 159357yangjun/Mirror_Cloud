@@ -31,6 +31,22 @@ import type {
 } from '../types'
 
 
+export interface RemoteScanOutcome {
+  storageId: string
+  storageName: string
+  completeness: 'complete' | 'partial' | 'unknown'
+  stopReason:
+    | 'exhausted'
+    | 'file_limit'
+    | 'directory_limit'
+    | 'provider_error'
+    | 'api_truncation'
+  directoriesListed: number
+  entriesSeen: number
+  truncatedDirs: number
+  errorCount: number
+}
+
 export interface RemoteIndexSyncResult {
   storagesScanned: number
   filesScanned: number
@@ -38,6 +54,7 @@ export interface RemoteIndexSyncResult {
   skippedExisting: number
   skippedNonImages: number
   errors: string[]
+  scans: RemoteScanOutcome[]
 }
 
 const docsBaseUrl = (import.meta.env.VITE_DOCS_BASE_URL || '').trim().replace(/\/+$/, '')

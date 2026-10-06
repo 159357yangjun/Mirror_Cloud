@@ -182,6 +182,21 @@ pub trait StorageProvider: Send + Sync {
     async fn list(&self, _path: &str) -> Result<Vec<StorageEntry>, StorageError> {
         Err(StorageError::Unsupported)
     }
+    /// The largest number of entries one `list(path)` call can return before the provider starts
+    /// leaving things out, or None when the provider paginates internally and returns everything.
+    ///
+    /// A constant rather than a post-call query on purpose. A `list_truncated(&self, path)` method
+    /// would have to remember what the last call returned, which needs mutable shared state on a
+    /// provider that is `Clone + Send + Sync` and listed concurrently - two directories walked at
+    /// once would then read each other's flag. Reporting the ceiling lets the caller judge from
+    /// the count it already holds, with no state anywhere.
+    ///
+    /// Leaving this None is not neutral: it tells the scanner "trust a short listing as
+    /// complete", so an adapter with a known hard cap that does not override it is asserting a
+    /// coverage it never observed.
+    fn listing_page_limit(&self) -> Option<usize> {
+        None
+    }
 }
 
 /// Whether a remote path names an object this build created uniquely.

@@ -22,6 +22,30 @@ def text(rel: str) -> str:
 def require(ok: bool, label: str):
     checks.append((ok, label))
 
+
+def _rust_block(source: str, marker: str) -> str:
+    """From `marker` to the brace that closes it.
+
+    Scoped for the same reason every other reader here is: an unscoped substring test passes when
+    the token appears anywhere - including in a comment explaining why it must not appear.
+    """
+    start = source.find(marker)
+    if start == -1:
+        return ''
+    rest = source[start:]
+    brace = rest.find('{')
+    if brace == -1:
+        return ''
+    depth = 0
+    for index in range(brace, len(rest)):
+        if rest[index] == '{':
+            depth += 1
+        elif rest[index] == '}':
+            depth -= 1
+            if depth == 0:
+                return rest[:index + 1]
+    return rest
+
 def top_level_imports(source: str) -> list[str]:
     """Only real import statements.
 
@@ -269,11 +293,16 @@ require('setPluginEnabled' in plugins, 'plugin UI controls real backend switch')
 require('AI_CREDENTIAL_KEY' in commands and re.search(r'credentials\s*\.\s*set_json\(\s*AI_CREDENTIAL_KEY', commands) is not None, 'AI API key uses credential store')
 require('obj.remove("apiKey")' in commands, 'AI API key removed before settings persistence')
 
-failed = [label for ok, label in checks if not ok]
-for ok, label in checks:
+section_one = list(checks)
+failed = [label for ok, label in section_one if not ok]
+for ok, label in section_one:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
-    raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
+    # Named, not just counted: this exit used to print the total across the whole file while showing
+    # only section one's labels, so a red run could be observed with zero FAIL lines on screen.
+    for label in failed:
+        print('FAIL(base) ' + label)
+    raise SystemExit(f'User-flow contract FAILED: {len(failed)} of {len(section_one)} base check(s)')
 print(f'user-flow section [base] | checks so far: {len(checks)}')
 
 # v1.2.3 reliability hardening.
@@ -337,10 +366,16 @@ require('permissions: plugin.permissions.filter' in plugins and 'revokeSensitive
 require(re.search(r'execute_for_hook\(\s*&manifest,\s*&granted_permissions', cli) is not None, 'Typora plugin runtime uses persisted user grants')
 
 failed = [label for ok, label in checks if not ok]
-for ok, label in checks[-18:]:
+section_tail = checks[-18:]
+for ok, label in section_tail:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
-    raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
+    # Every failure this section owns prints by name. The window above shows only the last 18
+    # labels, so a red assertion outside it used to exit non-zero while printing nothing but OK -
+    # observed directly: "FAILED: 1 check(s)" with zero FAIL lines on screen.
+    for label in failed:
+        print('FAIL(section) ' + label)
+    raise SystemExit(f'User-flow contract FAILED: {len(failed)} of {len(checks)} accumulated check(s)')
 print(f'user-flow section [reliability hardening] | checks so far: {len(checks)}')
 
 # v1.2.5 consistency and integrity hardening.
@@ -637,10 +672,16 @@ require('sync_system_default_pipeline(state.inner(), None).await?;' in commands,
 require('connection-test-u' in opendal and '.write(&probe_path' in opendal and '.stat(&probe_path)' in opendal and '.delete(&probe_path)' in opendal, 'OpenDAL connection test verifies write/stat/delete permissions')
 
 failed = [label for ok, label in checks if not ok]
-for ok, label in checks[-20:]:
+section_tail = checks[-20:]
+for ok, label in section_tail:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
-    raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
+    # Every failure this section owns prints by name. The window above shows only the last 20
+    # labels, so a red assertion outside it used to exit non-zero while printing nothing but OK -
+    # observed directly: "FAILED: 1 check(s)" with zero FAIL lines on screen.
+    for label in failed:
+        print('FAIL(section) ' + label)
+    raise SystemExit(f'User-flow contract FAILED: {len(failed)} of {len(checks)} accumulated check(s)')
 print(f'user-flow section [integrity hardening] | checks so far: {len(checks)}')
 
 # v1.3.0 core/UI/cloud-manager architecture.
@@ -655,10 +696,16 @@ require("deleteStorageEntry" in desktop and "downloadStorageEntry" in desktop an
 require("deleteStorageEntry" in gallery and "downloadStorageEntry" in gallery and "confirmAction" in gallery, 'Gallery exposes confirmed delete and download actions')
 
 failed = [label for ok, label in checks if not ok]
-for ok, label in checks[-9:]:
+section_tail = checks[-9:]
+for ok, label in section_tail:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
-    raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
+    # Every failure this section owns prints by name. The window above shows only the last 9
+    # labels, so a red assertion outside it used to exit non-zero while printing nothing but OK -
+    # observed directly: "FAILED: 1 check(s)" with zero FAIL lines on screen.
+    for label in failed:
+        print('FAIL(section) ' + label)
+    raise SystemExit(f'User-flow contract FAILED: {len(failed)} of {len(checks)} accumulated check(s)')
 print(f'user-flow section [v1.3 architecture] | checks so far: {len(checks)}')
 
 # v1.3.1 integration/performance architecture.
@@ -679,10 +726,16 @@ require('Local HTTP API' in settings_page and 'copyApiToken' in settings_page an
 require('tokio::task::spawn_blocking' in slice_between(commands_main, 'async fn run_workflow_publish_task', 'fn rollback_plan(', 'workflow publish worker') and 'tokio::task::spawn_blocking' in cli[cli.find('async fn publish_one'):], 'CPU-heavy workflow image processing leaves async IO workers')
 
 failed = [label for ok, label in checks if not ok]
-for ok, label in checks[-10:]:
+section_tail = checks[-10:]
+for ok, label in section_tail:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
-    raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
+    # Every failure this section owns prints by name. The window above shows only the last 10
+    # labels, so a red assertion outside it used to exit non-zero while printing nothing but OK -
+    # observed directly: "FAILED: 1 check(s)" with zero FAIL lines on screen.
+    for label in failed:
+        print('FAIL(section) ' + label)
+    raise SystemExit(f'User-flow contract FAILED: {len(failed)} of {len(checks)} accumulated check(s)')
 print(f'user-flow section [v1.3.1 integrations] | checks so far: {len(checks)}')
 
 # v1.3.2 zero-context integrations and cloud-manager mutation layer.
@@ -706,10 +759,16 @@ require('batch_delete_storage_entries_impl' in storage_entries_commands and '一
 require('queueBatchDeleteStorageEntries' in gallery and 'moveStorageEntry' in gallery and 'createStorageDirectory' in gallery and 'selectedPaths' in gallery and '新建云端目录' in gallery, 'Cloud Manager exposes create, rename/move, selection and queued batch delete UI')
 
 failed = [label for ok, label in checks if not ok]
-for ok, label in checks[-14:]:
+section_tail = checks[-14:]
+for ok, label in section_tail:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
-    raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
+    # Every failure this section owns prints by name. The window above shows only the last 14
+    # labels, so a red assertion outside it used to exit non-zero while printing nothing but OK -
+    # observed directly: "FAILED: 1 check(s)" with zero FAIL lines on screen.
+    for label in failed:
+        print('FAIL(section) ' + label)
+    raise SystemExit(f'User-flow contract FAILED: {len(failed)} of {len(checks)} accumulated check(s)')
 print(f'user-flow section [v1.3.2 zero-context/cloud-manager] | checks so far: {len(checks)}')
 
 
@@ -728,10 +787,16 @@ require('queueBatchMoveStorageEntries' in gallery and 'queueBatchRenameStorageEn
 require('pub(crate) mod storage_entries;' in commands_main and 'pub(crate) mod plugins;' in commands_main and len(commands_main) < 140000, 'large Tauri command module is split into dedicated storage/plugin modules')
 
 failed = [label for ok, label in checks if not ok]
-for ok, label in checks[-11:]:
+section_tail = checks[-11:]
+for ok, label in section_tail:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
-    raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
+    # Every failure this section owns prints by name. The window above shows only the last 11
+    # labels, so a red assertion outside it used to exit non-zero while printing nothing but OK -
+    # observed directly: "FAILED: 1 check(s)" with zero FAIL lines on screen.
+    for label in failed:
+        print('FAIL(section) ' + label)
+    raise SystemExit(f'User-flow contract FAILED: {len(failed)} of {len(checks)} accumulated check(s)')
 print(f'user-flow section [v1.3.3 lifecycle/batch architecture] | checks so far: {len(checks)}')
 
 
@@ -756,11 +821,130 @@ migration12 = text('crates/persistence-sqlite/migrations/0012_official_webhook_l
 require('official.webhook' in migration12 and 'before_process' in migration12 and 'on_publish_failure' in migration12, 'existing official webhook installs migrate to expanded lifecycle manifest')
 
 failed = [label for ok, label in checks if not ok]
-for ok, label in checks[-15:]:
+section_tail = checks[-15:]
+for ok, label in section_tail:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
-    raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
+    # Every failure this section owns prints by name. The window above shows only the last 15
+    # labels, so a red assertion outside it used to exit non-zero while printing nothing but OK -
+    # observed directly: "FAILED: 1 check(s)" with zero FAIL lines on screen.
+    for label in failed:
+        print('FAIL(section) ' + label)
+    raise SystemExit(f'User-flow contract FAILED: {len(failed)} of {len(checks)} accumulated check(s)')
 print(f'user-flow section [v1.3.4 lifecycle/application/task hardening] | checks so far: {len(checks)}')
+
+# --- §19/§20: remote index completeness -------------------------------------------------------
+#
+# A sweep used to report counts only, so "the remote has 41 files", "we could not read the remote"
+# and "we stopped at our own 2000-file budget" all produced the same shape. These gates hold the two
+# things that make the difference visible: a per-storage verdict reaching the UI, and a decode
+# direction that always reads as LESS confidence than what was stored.
+#
+# Placed before the section boundary below rather than at end-of-file, because every earlier
+# section ends in `raise SystemExit` on failure: an appended block would not execute on a red run,
+# which is exactly when its labels are needed.
+
+scan_domain = text('crates/domain/src/scan_completeness.rs')
+completeness_parse = _rust_block(scan_domain, 'impl ScanCompleteness {')
+stop_reason_parse = _rust_block(scan_domain, 'impl ScanStopReason {')
+observation_body = _rust_block(scan_domain, 'impl ScanObservation {')
+
+require(completeness_parse != '', 'ScanCompleteness still has an impl block to read')
+require('pub fn parse(raw: &str) -> Self' in completeness_parse,
+        'ScanCompleteness has a parse path for stored values')
+require('_ => ScanCompleteness::Unknown' in completeness_parse,
+        'an unrecognised completeness spelling decodes as Unknown, never as Complete')
+require('_ => ScanCompleteness::Complete' not in completeness_parse,
+        'no wildcard arm may default upward to Complete')
+require('_ => ScanStopReason::Exhausted' not in stop_reason_parse,
+        'a damaged stop_reason must not decode as "we finished normally"')
+
+for level, trigger in [
+    ('Partial', 'file_budget_exhausted'),
+    ('Partial', 'directory_budget_exhausted'),
+    ('Unknown', 'record_read_failure'),
+    ('Unknown', 'record_api_truncation'),
+]:
+    require(f'ScanCompleteness::{level}' in observation_body and trigger in observation_body,
+            f'the accumulator can reach {level} via {trigger}')
+require('self.read_failed || self.api_truncated_dirs > 0' in observation_body,
+        'unknown is checked before partial: an unchosen blind spot outranks a budget we chose')
+
+migration18 = text('crates/persistence-sqlite/migrations/0018_remote_scans.sql')
+require("CHECK (completeness IN ('complete', 'partial', 'unknown'))" in migration18,
+        'remote_scans.completeness is constrained to the three levels in the schema itself')
+require("CHECK (stop_reason IN ('exhausted', 'file_limit', 'directory_limit'," in migration18
+        and "'provider_error', 'api_truncation'))" in migration18,
+        'remote_scans.stop_reason is constrained to the five spellings the domain writes')
+down18 = text('crates/persistence-sqlite/migrations/down/0018_remote_scans.sql')
+require('DROP TABLE IF EXISTS remote_scans' in down18
+        and 'idx_remote_scans_storage_started' in down18,
+        'migration 0018 reverses both its table and its index')
+
+remote_scan_rs = text('crates/persistence-sqlite/src/remote_scan.rs')
+require('pub mod remote_scan;' in text('crates/persistence-sqlite/src/lib.rs'),
+        'the scan-record module is reachable from the crate root')
+require('self.completeness.supports_absence_conclusion()' in remote_scan_rs,
+        'the record exposes the absence rule by delegating to the domain predicate')
+require('== ScanCompleteness::Complete' not in remote_scan_rs,
+        'the persistence layer never re-implements "complete means trustworthy" - it calls through')
+
+remote_index = text('apps/desktop/src-tauri/src/commands/remote_index.rs')
+view_body = _rust_block(remote_index, 'pub struct RemoteIndexSyncView {')
+require('pub scans: Vec<ScanOutcomeView>' in view_body,
+        'the sync command returns a per-storage verdict, not only counters')
+finish_body = _rust_block(remote_index, 'async fn finish_and_report(')
+require('insert_scan(pool, &record).await' in finish_body,
+        'every sweep writes its row through the shared exit path')
+require('state.journal.pool()' in finish_body,
+        'the write reaches SQLite through the pool the app already owns')
+require('error_count: observation.read_failure_count(),' in finish_body,
+        'the persisted error count is derived from the accumulator rather than a parallel tally')
+limit_body = _rust_block(remote_index, 'fn listing_hit_page_limit(')
+require('count == ceiling' in limit_body and 'count >= ceiling' not in limit_body,
+        'provider truncation is detected by equality with the stated ceiling, so an adapter whose '
+        'constant is wrong surfaces as a different bug instead of being absorbed here')
+require('observation.record_read_failure();' in remote_index,
+        'a failed directory read reaches the accumulator, not only the message list')
+require('error_count: observation.read_failure_count(),' in remote_index,
+        'the persisted error count is derived from the accumulator rather than a parallel tally')
+require('observation.directory_budget_exhausted();' in remote_index
+        and 'observation.file_budget_exhausted();' in remote_index,
+        'both of our own budgets are recorded on the accumulator rather than only announced')
+
+github_rs = text('crates/storage-github/src/lib.rs')
+gitee_rs = text('crates/storage-gitee/src/lib.rs')
+core_rs = text('crates/storage-core/src/lib.rs')
+require('const CONTENTS_PAGE_LIMIT: usize = 1000;' in github_rs
+        and 'Some(CONTENTS_PAGE_LIMIT)' in github_rs,
+        'GitHub publishes its page ceiling from one constant used at both sites')
+require('fn listing_page_limit(&self) -> Option<usize>' in core_rs,
+        'the trait exposes the ceiling as a value, not as mutable post-call state')
+require('async fn list_truncated' not in core_rs,
+        'no stateful truncation query returned: providers are Clone + Send + Sync and listed '
+        'concurrently, so a remembered flag would be read across directories')
+gitee_impl = _rust_block(gitee_rs, 'impl StorageProvider for GiteeStorage {')
+require('fn listing_page_limit' not in gitee_impl,
+        'Gitee overrides nothing: claiming a ceiling it has not observed would misreport coverage, '
+        'so the trait default is the honest answer')
+
+desktop_ts = text('apps/desktop/src/lib/desktop.ts')
+require("completeness: 'complete' | 'partial' | 'unknown'" in desktop_ts,
+        'the frontend type carries the three levels instead of inferring them from error strings')
+require('scans: RemoteScanOutcome[]' in desktop_ts,
+        'the per-storage verdict is part of the contract the UI consumes')
+failed = [label for ok, label in checks if not ok]
+section_tail = checks[-15:]
+for ok, label in section_tail:
+    print(('OK   ' if ok else 'FAIL ') + label)
+if failed:
+    # Every failure this section owns prints by name. The window above shows only the last 15
+    # labels, so a red assertion outside it used to exit non-zero while printing nothing but OK -
+    # observed directly: "FAILED: 1 check(s)" with zero FAIL lines on screen.
+    for label in failed:
+        print('FAIL(section) ' + label)
+    raise SystemExit(f'User-flow contract FAILED: {len(failed)} of {len(checks)} accumulated check(s)')
+print(f'user-flow section [piclist 19-20 remote scan completeness] | checks so far: {len(checks)}')
 
 # --- publish dispatch step five: reconciliation reaches the user ----------------------------
 # Step four shipped a background reconciler that no person can turn on: the commands existed and were

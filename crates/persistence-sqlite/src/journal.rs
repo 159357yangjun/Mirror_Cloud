@@ -111,6 +111,16 @@ impl SqliteEventJournal {
         Self { pool }
     }
 
+    /// The pool this journal writes through.
+    ///
+    /// Exposed for the remote scan records (see `remote_scan`), which are not events and therefore
+    /// do not belong on this type. Going through the journal rather than adding a second pool
+    /// field to `AppState` keeps one owner for the connection: two fields holding clones of the
+    /// same pool invite someone to later "fix" a divergence that cannot exist.
+    pub fn pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+
     /// Persist one event, returning it with the sequence the database assigned.
     ///
     /// An event carrying a non-zero sequence is refused: history position belongs to the journal.
