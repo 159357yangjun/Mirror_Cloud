@@ -6,7 +6,11 @@ use sha2::{Digest, Sha256};
 
 use super::CmdResult;
 
-const UPDATE_REPO: &str = "159357yangjun/image-hosting-platform";
+/// The repository updates come from, by its *current* slug. GitHub 301-redirects the pre-rename
+/// path, but a redirect only survives until someone renames again - and an updater that follows it
+/// into emptiness fails silently on every user's machine. `project_state.py --verify` pins this
+/// value to the live API `full_name`; a mismatch goes red at gate time rather than at update time.
+const UPDATE_REPO: &str = "159357yangjun/Mirror_Cloud";
 const SETUP_ASSET_SUFFIX: &str = "-windows-x64-setup.exe";
 const SUMS_ASSET_NAME: &str = "SHA256SUMS.txt";
 const MAX_SETUP_BYTES: u64 = 64 * 1024 * 1024;

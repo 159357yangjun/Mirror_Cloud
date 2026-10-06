@@ -186,10 +186,22 @@ def verify(facts: dict) -> list[str]:
             )
         elif pinned_version:
             problems.append(".ai/STATE.md repeats a version number; drop it and read the generated state")
-        # No repository-name assertion here on purpose: the only local witness is `git remote`, which
-        # still carries the pre-rename path (pushes work via GitHub's redirect), so it would blame a
-        # correct file. The canonical name is checked where an independent witness exists - README
-        # clone URL against the GitHub API, above.
+    # The updater must ask GitHub by its CURRENT slug. Origin and even the README can lag a rename
+    # while pushes keep working through the 301; this constant has no such safety net - when the
+    # redirect dies, every installed machine silently stops being able to update. The API
+    # full_name is the only witness that cannot itself be stale.
+    updater_rs = (ROOT / "apps/desktop/src-tauri/src/commands/updater.rs").read_text(encoding="utf-8-sig")
+    pinned_repo = re.search(r'const UPDATE_REPO: &str = "([^"]+)"', updater_rs)
+    if pinned_repo is None:
+        problems.append("updater.rs no longer declares UPDATE_REPO where the gate can see it")
+    else:
+        canonical = canonical_repo_name()
+        if canonical is None:
+            print("SKIP UPDATE_REPO check (GitHub API unreachable; no local witness substitutes)")
+        elif pinned_repo.group(1) != canonical:
+            problems.append(
+                f"updater.rs UPDATE_REPO is {pinned_repo.group(1)} but GitHub reports {canonical}"
+            )
 
     if GENERATED.exists():
         committed = json.loads(GENERATED.read_text(encoding="utf-8"))
