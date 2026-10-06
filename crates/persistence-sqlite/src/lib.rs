@@ -812,9 +812,7 @@ impl AssetRepository {
                         remote_path: deployment.try_get("remote_path")?,
                         public_url: deployment.try_get("public_url")?,
                         last_error: deployment.try_get("last_error")?,
-                        error_kind: parse_stored_error_kind(
-                            deployment.try_get("last_error_kind")?,
-                        ),
+                        error_kind: parse_stored_error_kind(deployment.try_get("last_error_kind")?),
                         timestamps: read_clocks(&deployment)?,
                     })
                 })

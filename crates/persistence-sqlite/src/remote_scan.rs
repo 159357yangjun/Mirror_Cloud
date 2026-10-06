@@ -104,9 +104,9 @@ pub async fn fresh_scan_snapshot(
     max_age: Duration,
 ) -> Result<Option<ScanSnapshot>, sqlx::Error> {
     let row = sqlx::query(SCAN_SNAPSHOT_QUERY)
-    .bind(storage_id.to_string())
-    .fetch_optional(pool)
-    .await?;
+        .bind(storage_id.to_string())
+        .fetch_optional(pool)
+        .await?;
 
     let Some(row) = row else { return Ok(None) };
     let scan_id: String = row.try_get("id")?;

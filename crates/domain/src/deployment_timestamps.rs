@@ -142,8 +142,7 @@ mod tests {
         assert_eq!(fresh.timestamps.deployed_at, Some(moment(10)));
         assert_eq!(fresh.timestamps.last_attempted_at, Some(moment(10)));
         assert_eq!(
-            fresh.timestamps.last_verified_at,
-            None,
+            fresh.timestamps.last_verified_at, None,
             "an accepted upload is not yet a content proof"
         );
     }
@@ -178,8 +177,7 @@ mod tests {
         let disproved = base.record(TimestampCause::Disproved, moment(80));
         assert_eq!(disproved.timestamps.last_verified_at, None);
         assert_eq!(
-            disproved.timestamps.last_attempted_at,
-            base.timestamps.last_attempted_at,
+            disproved.timestamps.last_attempted_at, base.timestamps.last_attempted_at,
             "a failed check must not touch any success timestamp"
         );
     }

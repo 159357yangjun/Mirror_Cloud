@@ -277,7 +277,10 @@ mod tests {
             &[belief("assets/a.png", true)],
             &RemoteSide::Complete(paths(&["assets/a.png"])),
         );
-        assert!(findings.is_empty(), "agreement must be silent: {findings:?}");
+        assert!(
+            findings.is_empty(),
+            "agreement must be silent: {findings:?}"
+        );
     }
 
     #[test]
@@ -288,7 +291,11 @@ mod tests {
             &RemoteSide::Complete(paths(&[])),
         );
         assert_eq!(findings.len(), 2);
-        assert!(findings.iter().all(|f| f.kind == SetDriftKind::MissingRemote));
+        assert!(
+            findings
+                .iter()
+                .all(|f| f.kind == SetDriftKind::MissingRemote)
+        );
     }
 
     #[test]

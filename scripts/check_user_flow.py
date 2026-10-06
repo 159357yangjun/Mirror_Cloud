@@ -1166,8 +1166,8 @@ absent_body = _rust_block(drift_set_rs, 'pub fn supports_absence_conclusion(&sel
 require(compare_body != '', 'compare_sets still exists to read')
 require('RemoteSide::Complete(_) => SetDriftKind::MissingRemote' in compare_body,
         'only the Complete shape may conclude absence')
-require('RemoteSide::Partial(_) | RemoteSide::Untrusted => SetDriftKind::UnknownCoverage'
-        in compare_body,
+require('RemoteSide::Partial(_) | RemoteSide::Untrusted =>' in compare_body
+        and 'SetDriftKind::UnknownCoverage' in compare_body,
         'partial and untrusted both downgrade an absence claim to UnknownCoverage')
 require('RemoteSide::Partial(_) => SetDriftKind::MissingRemote' not in compare_body,
         'a partial sweep must never reach MissingRemote')

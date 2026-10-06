@@ -266,7 +266,10 @@ mod tests {
             StorageError::Network("timeout".into()).kind(),
             StorageErrorKind::Network
         );
-        assert_eq!(StorageError::Unsupported.kind(), StorageErrorKind::Unsupported);
+        assert_eq!(
+            StorageError::Unsupported.kind(),
+            StorageErrorKind::Unsupported
+        );
         assert_eq!(
             StorageError::NotImplemented.kind(),
             StorageErrorKind::NotImplemented

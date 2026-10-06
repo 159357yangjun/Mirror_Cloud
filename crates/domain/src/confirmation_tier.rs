@@ -342,10 +342,7 @@ mod tests {
         // The frontend switches on these strings, so a rename is an IPC break and must be chosen.
         assert_eq!(ConfirmationTier::Unknown.as_str(), "unknown");
         assert_eq!(ConfirmationTier::Uploaded.as_str(), "uploaded");
-        assert_eq!(
-            ConfirmationTier::RemoteObserved.as_str(),
-            "remote_observed"
-        );
+        assert_eq!(ConfirmationTier::RemoteObserved.as_str(), "remote_observed");
         assert_eq!(
             ConfirmationTier::ContentVerified.as_str(),
             "content_verified"

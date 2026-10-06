@@ -96,9 +96,7 @@ impl StorageErrorKind {
     pub fn is_retryable(self) -> bool {
         matches!(
             self,
-            StorageErrorKind::Network
-                | StorageErrorKind::RateLimited
-                | StorageErrorKind::Conflict
+            StorageErrorKind::Network | StorageErrorKind::RateLimited | StorageErrorKind::Conflict
         )
     }
 

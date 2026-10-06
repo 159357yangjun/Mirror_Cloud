@@ -198,7 +198,9 @@ impl GitHubStorage {
             // GitHub answers throttling with 403 plus a rate-limit sentence instead of 429,
             // so the status alone cannot separate "slow down" from "you lack scope". Filing that
             // as a permission problem sends someone to edit settings that are already correct.
-            StorageError::Network(format!("GitHub 限流，稍后会自动重试。GitHub 返回：{message}"))
+            StorageError::Network(format!(
+                "GitHub 限流，稍后会自动重试。GitHub 返回：{message}"
+            ))
         } else if status == StatusCode::FORBIDDEN {
             StorageError::Authentication(format!(
                 "GitHub 已识别 Token，但拒绝当前操作。请检查仓库授权、Contents: Read and write 权限以及组织 SSO/策略。GitHub 返回：{message}"
