@@ -30,6 +30,8 @@ import {
   getReconciliationSettings,
   runReconciliationSweep,
   setReconciliationSettings,
+  DEFAULT_SCAN_INTERVAL_MINUTES,
+  MIN_SCAN_INTERVAL_MINUTES,
   MIN_RECONCILE_INTERVAL_MINUTES,
   type ReconciliationSettings,
   type SweepReport,
@@ -62,9 +64,11 @@ export function SettingsPage() {
     refetchOnWindowFocus: false,
   })
   const [intervalDraft, setIntervalDraft] = useState<number>(MIN_RECONCILE_INTERVAL_MINUTES)
+  const [scanDraft, setScanDraft] = useState<number>(DEFAULT_SCAN_INTERVAL_MINUTES)
   useEffect(() => {
     if (reconcileSettings) {
       setIntervalDraft(reconcileSettings.intervalMinutes)
+      setScanDraft(reconcileSettings.scanIntervalMinutes)
     }
   }, [reconcileSettings])
   function intervalDraftChange(minutes: number) {
@@ -72,12 +76,32 @@ export function SettingsPage() {
   }
   const reconcileToggleMutation = useMutation({
     mutationFn: (enabled: boolean) =>
-      setReconciliationSettings(enabled, reconcileSettings?.intervalMinutes ?? 360),
+      setReconciliationSettings(
+        enabled,
+        reconcileSettings?.intervalMinutes ?? 360,
+        reconcileSettings?.scanIntervalMinutes ?? DEFAULT_SCAN_INTERVAL_MINUTES,
+      ),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reconciliation-settings'] }),
   })
   const intervalSaveMutation = useMutation({
     mutationFn: (minutes: number) =>
-      setReconciliationSettings(reconcileSettings?.enabled ?? false, minutes),
+      setReconciliationSettings(
+        reconcileSettings?.enabled ?? false,
+        minutes,
+        reconcileSettings?.scanIntervalMinutes ?? DEFAULT_SCAN_INTERVAL_MINUTES,
+      ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reconciliation-settings'] }),
+  })
+  // The scan cadence is saved on its own because it bounds a different cost: the probe interval caps
+  // requests per row page, while one scan walks every directory of every enabled storage. A user who
+  // raises one should not silently change the other.
+  const scanIntervalSaveMutation = useMutation({
+    mutationFn: (hours: number) =>
+      setReconciliationSettings(
+        reconcileSettings?.enabled ?? false,
+        reconcileSettings?.intervalMinutes ?? 360,
+        Math.round(hours * 60),
+      ),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reconciliation-settings'] }),
   })
   // Manual sweeps are not cached: each run is a fresh observation of the remote, and a stale report
@@ -473,6 +497,28 @@ export function SettingsPage() {
             className="ml-auto h-9 rounded-xl bg-slate-950 px-3 text-xs font-medium text-white disabled:opacity-40"
           >
             {intervalSaveMutation.isPending ? '保存中…' : '保存间隔'}
+          </button>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+          <label className="text-xs font-medium text-slate-600" htmlFor="reconcile-scan-interval">云端索引刷新间隔（小时）</label>
+          <input
+            id="reconcile-scan-interval"
+            type="number"
+            min={Math.ceil(MIN_SCAN_INTERVAL_MINUTES / 60)}
+            step={6}
+            value={Math.round((reconcileSettings?.scanIntervalMinutes ?? DEFAULT_SCAN_INTERVAL_MINUTES) / 60)}
+            disabled={!reconcileSettings?.enabled}
+            onChange={(event) => setScanDraft(Number(event.target.value) * 60)}
+            className="h-10 w-32 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none disabled:opacity-50"
+          />
+          <span className="text-[11px] text-slate-400">不低于 {Math.ceil(MIN_SCAN_INTERVAL_MINUTES / 60)} 小时。首次安装不会自动扫描，第一份快照由你点“同步云端索引”或“手动扫描”产生。</span>
+          <button
+            disabled={!reconcileSettings?.enabled || scanIntervalSaveMutation.isPending}
+            onClick={() => scanIntervalSaveMutation.mutate(scanDraft)}
+            className="ml-auto h-9 rounded-xl bg-slate-950 px-3 text-xs font-medium text-white disabled:opacity-40"
+          >
+            {scanIntervalSaveMutation.isPending ? '保存中…' : '保存刷新间隔'}
           </button>
         </div>
 

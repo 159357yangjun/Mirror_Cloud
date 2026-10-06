@@ -22,7 +22,7 @@
 // modules; it sorts before the crate-external paths under rustfmt's group_imports rules.
 use super::*;
 use crate::reconcile_cadence::{
-    PAGE_LIMIT, SWEEP_ROW_BUDGET, advance_cursor, plan_sweep, should_run_on_tick,
+    PAGE_LIMIT, SWEEP_ROW_BUDGET, advance_cursor, plan_sweep, scan_due, should_run_on_tick,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -33,7 +33,7 @@ use domain::scan_completeness::ScanCompleteness;
 use persistence_sqlite::journal::{
     BelievedDeployment, DriftKind, RemoteObservation, detect_drift, observation_from_probe,
 };
-use persistence_sqlite::remote_scan::fresh_scan_snapshot;
+use persistence_sqlite::remote_scan::{fresh_scan_snapshot, last_scan_at};
 use serde::Serialize;
 use tauri::{Manager, State};
 use uuid::Uuid;
@@ -137,12 +137,18 @@ pub async fn set_reconciliation_settings(
     state: State<'_, AppState>,
     enabled: bool,
     interval_minutes: u32,
+    scan_interval_minutes: Option<u32>,
 ) -> CmdResult<crate::reconcile_cadence::ReconcileConfig> {
-    let stored = crate::reconcile_cadence::ReconcileConfig {
+    // Optional so an older caller (or a browser build that never sends the field) keeps working
+    // and takes the documented default. Required would be a breaking IPC change for a setting
+    // that is not load-bearing for correctness.
+    let wanted = crate::reconcile_cadence::ReconcileConfig {
         enabled,
         interval_minutes,
-    }
-    .to_stored_value();
+        scan_interval_minutes: scan_interval_minutes
+            .unwrap_or(crate::reconcile_cadence::DEFAULT_SCAN_INTERVAL_MINUTES),
+    };
+    let stored = wanted.to_stored_value();
     state
         .settings
         .set(RECONCILE_SETTINGS_KEY, &stored)
@@ -344,6 +350,64 @@ async fn run_sweep_inner(
     }
 }
 
+/// Refresh the remote index for storages whose last full walk has aged out.
+///
+/// ## Why this runs before the probe pass rather than after
+///
+/// The probe pass reads stored snapshots to decide whether it can compare sets at all. Refreshing
+/// afterwards would mean every scheduled tick compares against yesterday's listing and only then
+/// notices a newer one exists - a permanent one-interval lag that looks like working correctly.
+///
+/// ## Why each storage is asked separately
+///
+/// `scan_due` reads that storage's own newest `remote_scans` row. A single global timestamp would
+/// make one unreachable account suppress the refresh of every other one, and the failure mode
+/// would be invisible: the job would log that it scanned, and it would have.
+async fn refresh_stale_indexes(
+    state: &AppState,
+    providers: &HashMap<Uuid, std::sync::Arc<dyn StorageProvider>>,
+    config: &crate::reconcile_cadence::ReconcileConfig,
+) {
+    let pool = state.journal.pool();
+    let now = Utc::now();
+    for (storage_id, provider) in providers {
+        let last = match last_scan_at(pool, *storage_id).await {
+            Ok(last) => last,
+            // Cannot read our own history. Skipping is the safe answer: treating an unreadable
+            // timestamp as "due" would crawl the whole storage on every database hiccup, and
+            // treating it as "not due" would stop scanning forever. Neither is honest, so we do
+            // nothing and let the next tick try again.
+            Err(error) => {
+                tracing::warn!(%error, %storage_id, "could not read the last scan time");
+                continue;
+            }
+        };
+        if !scan_due(last, now, config.scan_interval_minutes) {
+            continue;
+        }
+        let Some(storage) = state.storages.get(*storage_id).await.ok().flatten() else {
+            continue;
+        };
+        let mut summary = RemoteIndexSyncView {
+            storages_scanned: 1,
+            files_scanned: 0,
+            imported: 0,
+            skipped_existing: 0,
+            skipped_non_images: 0,
+            errors: Vec::new(),
+            scans: Vec::new(),
+        };
+        sync_one_storage(state, &storage, provider, &mut summary).await;
+        tracing::info!(
+            %storage_id,
+            files = summary.files_scanned,
+            imported = summary.imported,
+            completeness = summary.scans.first().map(|scan| scan.completeness).unwrap_or("none"),
+            "background index refresh finished"
+        );
+    }
+}
+
 /// Paths listed per kind in a report, so one sweep cannot hand the UI an unbounded array.
 const PATHS_PER_KIND: usize = 20;
 
@@ -523,6 +587,7 @@ pub fn start_background_reconciler(app: &tauri::AppHandle) {
                     continue;
                 }
             };
+            refresh_stale_indexes(&state, &providers, &config).await;
             let report = run_sweep_inner(&state, &providers, cursor.clone()).await;
             cursor = report.next_cursor.clone();
             tracing::info!(

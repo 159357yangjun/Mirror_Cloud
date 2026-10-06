@@ -22,6 +22,7 @@
 //! actual library stays at zero for everything else. Rotation is therefore part of the cadence,
 //! not a follow-up: the cursor advances each pass and wraps.
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// Rows examined per page within one sweep.
@@ -36,6 +37,14 @@ pub const MIN_INTERVAL_MINUTES: u32 = 30;
 /// Ceiling for the interval. A value this large means "effectively never", and the UI offers it as
 /// an explicit choice rather than letting someone type a number that silently disables the job.
 pub const MAX_INTERVAL_MINUTES: u32 = 7 * 24 * 60;
+/// Default gap between background index scans, which is what keeps reconciliation's set comparison
+/// supplied. Chosen to match the snapshot freshness window: scanning more often than the window
+/// would let reconciliation compare against a listing it is about to replace anyway, and scanning
+/// less often means every sweep finds its snapshot already stale and falls back to probing.
+pub const DEFAULT_SCAN_INTERVAL_MINUTES: u32 = 24 * 60;
+/// Floor for the scan interval. Below this the job is a crawler, not a reconciler: one scan walks
+/// every directory of every enabled storage, so the cheapest setting still costs real requests.
+pub const MIN_SCAN_INTERVAL_MINUTES: u32 = 60;
 
 /// Persisted user intent about background reconciliation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,6 +52,16 @@ pub const MAX_INTERVAL_MINUTES: u32 = 7 * 24 * 60;
 pub struct ReconcileConfig {
     pub enabled: bool,
     pub interval_minutes: u32,
+    /// How often the background task refreshes the remote index, independently of how often it
+    /// probes rows. Separate because they cost different things: a probe pass is bounded by the
+    /// row budget, a scan pass walks every directory.
+    ///
+    /// `serde(default)` is load-bearing, not decoration: existing installs hold a stored object
+    /// without this key, and without it `from_value` returns the whole-default (disabled) config
+    /// for them - silently turning off a job the user switched on. The floor value keeps that
+    /// default equal to what a fresh install gets.
+    #[serde(default = "default_scan_interval")]
+    pub scan_interval_minutes: u32,
 }
 
 impl Default for ReconcileConfig {
@@ -52,6 +71,7 @@ impl Default for ReconcileConfig {
         Self {
             enabled: false,
             interval_minutes: DEFAULT_INTERVAL_MINUTES,
+            scan_interval_minutes: DEFAULT_SCAN_INTERVAL_MINUTES,
         }
     }
 }
@@ -66,15 +86,21 @@ impl ReconcileConfig {
             Some(raw) => serde_json::from_value(raw.clone()).unwrap_or_default(),
             None => return Self::default(),
         };
+        // `scanIntervalMinutes` is read with serde's default so a preference written before this
+        // field existed still parses. Rejecting it outright would disable background
+        // reconciliation for every existing install on upgrade, which is the opposite of a
+        // backwards-compatible addition.
         if !parsed.enabled {
             return Self {
                 enabled: false,
                 interval_minutes: clamp_interval(parsed.interval_minutes),
+                scan_interval_minutes: clamp_scan_interval(parsed.scan_interval_minutes),
             };
         }
         Self {
             enabled: true,
             interval_minutes: clamp_interval(parsed.interval_minutes),
+            scan_interval_minutes: clamp_scan_interval(parsed.scan_interval_minutes),
         }
     }
 
@@ -83,8 +109,19 @@ impl ReconcileConfig {
         serde_json::json!({
             "enabled": self.enabled,
             "intervalMinutes": clamp_interval(self.interval_minutes),
+            "scanIntervalMinutes": clamp_scan_interval(self.scan_interval_minutes),
         })
     }
+}
+
+fn default_scan_interval() -> u32 {
+    DEFAULT_SCAN_INTERVAL_MINUTES
+}
+
+fn clamp_scan_interval(minutes: u32) -> u32 {
+    // Zero and huge values both land on the floor or ceiling rather than passing through: the
+    // caller multiplies this by 60 into a sleep duration.
+    minutes.clamp(MIN_SCAN_INTERVAL_MINUTES, MAX_INTERVAL_MINUTES)
 }
 
 fn clamp_interval(minutes: u32) -> u32 {
@@ -142,6 +179,37 @@ pub fn advance_cursor(
 /// thing as a sweep being allowed to hit the network.
 pub fn should_run_on_tick(config: &ReconcileConfig) -> bool {
     config.enabled
+}
+
+/// Whether this tick should refresh the remote index.
+///
+/// ## Why "no timestamp" is not "due now"
+///
+/// A fresh install has never scanned, so `last_scan_at` is None. Returning true there would make
+/// the first scheduled tick walk every directory of every enabled storage on a machine whose owner
+/// not asked for anything beyond installing the app - and background reconciliation is opt-in, but
+/// the scan budget is per storage and unbounded across storages. So absence means "not yet": the
+/// first snapshot comes from a person clicking sync or running a sweep, which is also what makes
+/// the decision observable rather than inferred from traffic in a log.
+///
+/// ## Why a future-dated timestamp means not due
+///
+/// Same reason as the snapshot freshness check: without it, a clock that ran ahead once would keep
+/// the job asleep forever, because every subsequent comparison would still read "in the future".
+/// Treating negative elapsed as "not due" costs one missed cycle; the alternative costs them all.
+pub fn scan_due(
+    last_scan_at: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
+    interval_minutes: u32,
+) -> bool {
+    let Some(last) = last_scan_at else {
+        return false;
+    };
+    let elapsed = now.signed_duration_since(last);
+    if elapsed.num_seconds() < 0 {
+        return false;
+    }
+    elapsed >= chrono::Duration::minutes(i64::from(interval_minutes))
 }
 
 #[cfg(test)]
@@ -255,6 +323,74 @@ mod tests {
         assert_eq!(
             plan.after_deployed_at.as_deref(),
             Some("2026-02-02T00:00:00Z")
+        );
+    }
+
+    #[test]
+    fn a_fresh_install_is_not_scan_due() {
+        // The §21 requirement that first installs stay silent: no stored timestamp means the
+        // background task must not walk every directory of every storage.
+        let now = Utc::now();
+        assert!(
+            !scan_due(None, now, DEFAULT_SCAN_INTERVAL_MINUTES),
+            "absence of a scan timestamp is 'not yet', never 'due'"
+        );
+    }
+
+    #[test]
+    fn a_recent_scan_is_not_due_and_an_old_one_is() {
+        let now = DateTime::parse_from_rfc3339("2026-01-02T12:00:00Z")
+            .expect("fixed instant")
+            .with_timezone(&Utc);
+        let just_under = now - chrono::Duration::minutes(24 * 60 - 1);
+        let exactly_at = now - chrono::Duration::minutes(24 * 60);
+        let well_past = now - chrono::Duration::minutes(24 * 60 + 1);
+        assert!(!scan_due(Some(just_under), now, 24 * 60));
+        assert!(
+            scan_due(Some(exactly_at), now, 24 * 60),
+            "the boundary is inclusive: waiting one full interval is due"
+        );
+        assert!(scan_due(Some(well_past), now, 24 * 60));
+    }
+
+    #[test]
+    fn a_clock_in_the_future_does_not_put_the_job_to_sleep_forever() {
+        // Without the negative-elapsed guard this returns true forever after one clock jump ahead,
+        // because every later tick still compares against a future timestamp.
+        let now = DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z")
+            .expect("fixed instant")
+            .with_timezone(&Utc);
+        let ahead = now + chrono::Duration::hours(6);
+        assert!(!scan_due(Some(ahead), now, 60));
+    }
+
+    #[test]
+    fn the_scan_interval_survives_a_round_trip_and_clamps() {
+        let wanted = ReconcileConfig {
+            enabled: true,
+            interval_minutes: 60,
+            scan_interval_minutes: 5,
+        };
+        let stored = wanted.to_stored_value();
+        let read_back = ReconcileConfig::from_value(Some(&stored));
+        assert_eq!(
+            read_back.scan_interval_minutes, MIN_SCAN_INTERVAL_MINUTES,
+            "a five-minute scan cadence is a crawler, and the floor must reject it"
+        );
+        assert_eq!(read_back.interval_minutes, 60);
+    }
+
+    #[test]
+    fn an_old_stored_preference_without_the_new_key_keeps_the_user_enabled() {
+        // The upgrade path for a user who already turned background reconciliation on. Losing
+        // their opt-in to a missing key would be a silent behaviour change in their settings.
+        let legacy = serde_json::json!({ "enabled": true, "intervalMinutes": 120 });
+        let config = ReconcileConfig::from_value(Some(&legacy));
+        assert!(config.enabled, "a pre-existing enable must survive");
+        assert_eq!(config.interval_minutes, 120);
+        assert_eq!(
+            config.scan_interval_minutes, DEFAULT_SCAN_INTERVAL_MINUTES,
+            "the missing key takes the documented default, not zero"
         );
     }
 

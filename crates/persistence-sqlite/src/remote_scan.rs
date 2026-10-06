@@ -155,6 +155,33 @@ pub struct ScanSnapshot {
     pub paths: Vec<String>,
 }
 
+/// When this storage was last walked, from the scan history itself.
+///
+/// Read from `remote_scans` rather than a settings row so there is one source for "when did we
+/// look". A second timestamp written by the scheduler could disagree with the row the snapshot
+/// carries, and that disagreement is precisely what decides whether background traffic happens.
+///
+/// Returns None when no scan has ever been recorded, which the caller reads as "not yet due" - see
+/// `scan_due` in reconcile_cadence for why absence is not a licence to crawl.
+pub async fn last_scan_at(
+    pool: &SqlitePool,
+    storage_id: Uuid,
+) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
+    let raw: Option<String> = sqlx::query_scalar(LAST_SCAN_QUERY)
+        .bind(storage_id.to_string())
+        .fetch_optional(pool)
+        .await?;
+    match raw {
+        Some(text) => DateTime::parse_from_rfc3339(&text)
+            .map(|value| Some(value.with_timezone(&Utc)))
+            .map_err(|error| sqlx::Error::Decode(error.to_string().into())),
+        None => Ok(None),
+    }
+}
+
+const LAST_SCAN_QUERY: &str = "SELECT started_at FROM remote_scans WHERE storage_id = ? "
+    + "ORDER BY started_at DESC LIMIT 1";
+
 pub async fn insert_scan(pool: &SqlitePool, record: &RemoteScanRecord) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO remote_scans (id, storage_id, started_at, finished_at, directories_listed, \

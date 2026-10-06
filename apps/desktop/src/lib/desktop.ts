@@ -439,10 +439,15 @@ export async function setGlobalShortcutEnabled(enabled: boolean): Promise<Global
 /// refuse it at the point of entry instead.
 export const MIN_RECONCILE_INTERVAL_MINUTES = 30
 export const MAX_RECONCILE_INTERVAL_MINUTES = 7 * 24 * 60
+// Mirrored from `MIN_SCAN_INTERVAL_MINUTES` / the 24h default for the same reason as above: a scan
+// cadence the UI accepted and the backend silently raised would show a number that never took effect.
+export const MIN_SCAN_INTERVAL_MINUTES = 60
+export const DEFAULT_SCAN_INTERVAL_MINUTES = 24 * 60
 
 export interface ReconciliationSettings {
   enabled: boolean
   intervalMinutes: number
+  scanIntervalMinutes: number
 }
 
 export interface SweepReport {
@@ -468,7 +473,7 @@ export interface SweepReport {
 
 // The inert default is restated in the browser build on purpose: outside Tauri there is no settings
 // row to read, and showing "on" would claim a background job this runtime cannot run.
-export const reconciliationDefaults: ReconciliationSettings = { enabled: false, intervalMinutes: 360 }
+export const reconciliationDefaults: ReconciliationSettings = { enabled: false, intervalMinutes: 360, scanIntervalMinutes: DEFAULT_SCAN_INTERVAL_MINUTES }
 
 export async function getReconciliationSettings(): Promise<ReconciliationSettings> {
   if (!isTauriRuntime()) {
@@ -480,12 +485,20 @@ export async function getReconciliationSettings(): Promise<ReconciliationSetting
 export async function setReconciliationSettings(
   enabled: boolean,
   intervalMinutes: number,
+  scanIntervalMinutes: number,
 ): Promise<ReconciliationSettings> {
   // Clamped here as well as in the backend so the value rendered after saving is the value stored.
-  const floor = MIN_RECONCILE_INTERVAL_MINUTES
-  const ceiling = MAX_RECONCILE_INTERVAL_MINUTES
-  const bounded = Math.min(Math.max(intervalMinutes, floor), ceiling)
-  return invoke('set_reconciliation_settings', { enabled, intervalMinutes: bounded })
+  const bounded = clamp(intervalMinutes, MIN_RECONCILE_INTERVAL_MINUTES, MAX_RECONCILE_INTERVAL_MINUTES)
+  const boundedScan = clamp(scanIntervalMinutes, MIN_SCAN_INTERVAL_MINUTES, MAX_RECONCILE_INTERVAL_MINUTES)
+  return invoke('set_reconciliation_settings', {
+    enabled,
+    intervalMinutes: bounded,
+    scanIntervalMinutes: boundedScan,
+  })
+}
+
+function clamp(value: number, floor: number, ceiling: number): number {
+  return Math.min(Math.max(value, floor), ceiling)
 }
 
 export async function runReconciliationSweep(): Promise<SweepReport> {

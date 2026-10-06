@@ -110,28 +110,10 @@ pub async fn sync_storage_asset_index(
 
     for storage in storages {
         summary.storages_scanned += 1;
-        let started_at = Utc::now();
-        // Every exit from this iteration - including the `continue` paths below - has to land a
-        // row, so the counters start outside the branches rather than inside the walk.
-        let mut observation = ScanObservation::new();
-        // Every file the walk saw. Capped at what the sweep actually browsed: storing more than we
-        // looked at would hand reconciliation a listing wider than the scan that qualified it.
-        let mut listed_paths: Vec<String> = Vec::new();
-
         let provider = match build_provider(&state, &storage) {
             Ok(provider) => provider,
             Err(error) => {
                 summary.errors.push(format!("{}：{error}", storage.name));
-                observation.record_read_failure();
-                finish_and_report(
-                    &state,
-                    &mut summary,
-                    &storage,
-                    started_at,
-                    &observation,
-                    &listed_paths,
-                )
-                .await;
                 continue;
             }
         };
@@ -140,198 +122,210 @@ pub async fn sync_storage_asset_index(
                 "{}：当前 Provider 不支持列出远端文件",
                 storage.name
             ));
-            // No listing was possible at all, which is an unobservable storage rather than a
-            // partially walked one.
-            observation.record_read_failure();
-            finish_and_report(
-                &state,
-                &mut summary,
-                &storage,
-                started_at,
-                &observation,
-                &listed_paths,
-            )
-            .await;
             continue;
         }
-
-        let page_limit = provider.listing_page_limit();
-        let mut pending_dirs = VecDeque::from([String::new()]);
-        let mut seen_dirs = HashSet::new();
-        let mut seen_files = HashSet::new();
-        let mut storage_files_scanned = 0usize;
-        let mut hit_file_limit = false;
-
-        while let Some(directory) = pending_dirs.pop_front() {
-            if !seen_dirs.insert(directory.clone()) {
-                continue;
-            }
-            if seen_dirs.len() > MAX_REMOTE_DIRECTORIES_PER_STORAGE {
-                summary.errors.push(format!(
-                    "{}：目录数量超过 {}，本次同步已停止继续深入",
-                    storage.name, MAX_REMOTE_DIRECTORIES_PER_STORAGE
-                ));
-                observation.directory_budget_exhausted();
-                break;
-            }
-
-            let entries = match provider.list(&directory).await {
-                Ok(entries) => entries,
-                Err(error) => {
-                    let display_path = if directory.is_empty() {
-                        "/".to_string()
-                    } else {
-                        format!("/{directory}")
-                    };
-                    summary.errors.push(format!(
-                        "{} {}：读取失败：{error}",
-                        storage.name, display_path
-                    ));
-                    observation.record_read_failure();
-                    continue;
-                }
-            };
-
-            observation.record_directory_listed();
-            observation.record_entries_seen(entries.len() as i64);
-            if listing_hit_page_limit(entries.len(), page_limit) {
-                observation.record_api_truncation();
-                // Only reachable when `page_limit` is Some: the predicate is false for None, so
-                // the unwrap below can never print a ceiling of zero.
-                summary.errors.push(format!(
-                    "{}：单次列目录达到上限 {}，该目录可能还有未返回的条目",
-                    storage.name,
-                    page_limit.unwrap_or_default()
-                ));
-            }
-
-            for entry in entries {
-                let remote_path = normalize_index_path(&entry.path);
-                if remote_path.is_empty() {
-                    continue;
-                }
-                if entry.is_dir {
-                    if !seen_dirs.contains(&remote_path) {
-                        pending_dirs.push_back(remote_path);
-                    }
-                    continue;
-                }
-                if !seen_files.insert(remote_path.clone()) {
-                    continue;
-                }
-                listed_paths.push(remote_path.clone());
-
-                storage_files_scanned += 1;
-                summary.files_scanned += 1;
-                if storage_files_scanned > MAX_REMOTE_FILES_PER_STORAGE {
-                    summary.errors.push(format!(
-                        "{}：文件数量超过 {}，为避免首次同步过载，本次已停止；可整理目录后再次同步",
-                        storage.name, MAX_REMOTE_FILES_PER_STORAGE
-                    ));
-                    observation.file_budget_exhausted();
-                    hit_file_limit = true;
-                    break;
-                }
-
-                let Some(mime_type) = remote_image_mime(&remote_path) else {
-                    summary.skipped_non_images += 1;
-                    continue;
-                };
-
-                match state
-                    .assets
-                    .deployment_ids_for_remote(storage.id, &remote_path)
-                    .await
-                {
-                    Ok(existing) if !existing.is_empty() => {
-                        summary.skipped_existing += 1;
-                        continue;
-                    }
-                    Ok(_) => {}
-                    // A lookup failure is about our own database, not about what the remote
-                    // contains, so it is reported but does not downgrade completeness: nothing was
-                    // left unobserved on the provider side.
-                    Err(error) => {
-                        summary.errors.push(format!(
-                            "{} /{}：查询已有索引失败：{error}",
-                            storage.name, remote_path
-                        ));
-                        continue;
-                    }
-                }
-
-                let now = Utc::now();
-                let asset = Asset {
-                    id: Uuid::new_v4(),
-                    name: entry.name.clone(),
-                    kind: AssetKind::Image,
-                    created_at: now,
-                    updated_at: now,
-                };
-                let synthetic_hash = format!(
-                    "remote-index:{}",
-                    hex::encode(Sha256::digest(
-                        format!("{}:{remote_path}", storage.id).as_bytes()
-                    ))
-                );
-                let variant = AssetVariant {
-                    id: Uuid::new_v4(),
-                    asset_id: asset.id,
-                    label: "remote_index".into(),
-                    mime_type: mime_type.into(),
-                    size_bytes: entry.size_bytes.unwrap_or(0),
-                    width: None,
-                    height: None,
-                    content_hash: synthetic_hash,
-                    created_at: now,
-                };
-                let deployment = Deployment {
-                    id: Uuid::new_v4(),
-                    variant_id: variant.id,
-                    storage_id: storage.id,
-                    role: DeploymentRole::Primary,
-                    remote_path: remote_path.clone(),
-                    public_url: entry.public_url.clone(),
-                    status: DeploymentStatus::Online,
-                    // Observed in a listing, nothing more: no deployed_at (this build did not
-                    // upload it) and no last_verified_at (a listing proves presence, not content).
-                    // Rows of this kind used to look verified after every sync.
-                    timestamps: domain::DeploymentTimestamps {
-                        last_observed_at: Some(now),
-                        ..Default::default()
-                    },
-                };
-
-                match state
-                    .assets
-                    .insert_published(&asset, &variant, &deployment)
-                    .await
-                {
-                    Ok(()) => summary.imported += 1,
-                    Err(error) => summary.errors.push(format!(
-                        "{} /{}：写入资源索引失败：{error}",
-                        storage.name, remote_path
-                    )),
-                }
-            }
-
-            if hit_file_limit {
-                break;
-            }
-        }
-
-        finish_and_report(
-            &state,
-            &mut summary,
-            &storage,
-            started_at,
-            &observation,
-            &listed_paths,
-        )
-        .await;
+        sync_one_storage(&state, &storage, &provider, &mut summary).await;
     }
 
     Ok(summary)
+}
+
+/// Walk one storage's remote listing and import what is new locally.
+///
+/// Split out of the command so the background scheduler can run the same walk with a provider it
+/// already resolved. The command keeps the parts that only make sense for an explicit request:
+/// resolving storages, building providers, reporting a capability refusal, and returning errors to
+/// the caller. This function reports into `summary` and never fails: by the time we are
+/// walking, a partial import is better than no import, and every problem is already in `errors`.
+pub(crate) async fn sync_one_storage(
+    state: &AppState,
+    storage: &StorageRecord,
+    provider: &std::sync::Arc<dyn StorageProvider>,
+    summary: &mut RemoteIndexSyncView,
+) {
+    let started_at = Utc::now();
+    // Every exit from this iteration - including the `continue` paths below - has to land a
+    // row, so the counters start outside the branches rather than inside the walk.
+    let mut observation = ScanObservation::new();
+    // Every file the walk saw. Capped at what the sweep actually browsed: storing more than we
+    // looked at would hand reconciliation a listing wider than the scan that qualified it.
+    let mut listed_paths: Vec<String> = Vec::new();
+
+
+    let page_limit = provider.listing_page_limit();
+    let mut pending_dirs = VecDeque::from([String::new()]);
+    let mut seen_dirs = HashSet::new();
+    let mut seen_files = HashSet::new();
+    let mut storage_files_scanned = 0usize;
+    let mut hit_file_limit = false;
+
+    while let Some(directory) = pending_dirs.pop_front() {
+        if !seen_dirs.insert(directory.clone()) {
+            continue;
+        }
+        if seen_dirs.len() > MAX_REMOTE_DIRECTORIES_PER_STORAGE {
+            summary.errors.push(format!(
+                "{}：目录数量超过 {}，本次同步已停止继续深入",
+                storage.name, MAX_REMOTE_DIRECTORIES_PER_STORAGE
+            ));
+            observation.directory_budget_exhausted();
+            break;
+        }
+
+        let entries = match provider.list(&directory).await {
+            Ok(entries) => entries,
+            Err(error) => {
+                let display_path = if directory.is_empty() {
+                    "/".to_string()
+                } else {
+                    format!("/{directory}")
+                };
+                summary.errors.push(format!(
+                    "{} {}：读取失败：{error}",
+                    storage.name, display_path
+                ));
+                observation.record_read_failure();
+                continue;
+            }
+        };
+
+        observation.record_directory_listed();
+        observation.record_entries_seen(entries.len() as i64);
+        if listing_hit_page_limit(entries.len(), page_limit) {
+            observation.record_api_truncation();
+            // Only reachable when `page_limit` is Some: the predicate is false for None, so
+            // the unwrap below can never print a ceiling of zero.
+            summary.errors.push(format!(
+                "{}：单次列目录达到上限 {}，该目录可能还有未返回的条目",
+                storage.name,
+                page_limit.unwrap_or_default()
+            ));
+        }
+
+        for entry in entries {
+            let remote_path = normalize_index_path(&entry.path);
+            if remote_path.is_empty() {
+                continue;
+            }
+            if entry.is_dir {
+                if !seen_dirs.contains(&remote_path) {
+                    pending_dirs.push_back(remote_path);
+                }
+                continue;
+            }
+            if !seen_files.insert(remote_path.clone()) {
+                continue;
+            }
+            listed_paths.push(remote_path.clone());
+
+            storage_files_scanned += 1;
+            summary.files_scanned += 1;
+            if storage_files_scanned > MAX_REMOTE_FILES_PER_STORAGE {
+                summary.errors.push(format!(
+                    "{}：文件数量超过 {}，为避免首次同步过载，本次已停止；可整理目录后再次同步",
+                    storage.name, MAX_REMOTE_FILES_PER_STORAGE
+                ));
+                observation.file_budget_exhausted();
+                hit_file_limit = true;
+                break;
+            }
+
+            let Some(mime_type) = remote_image_mime(&remote_path) else {
+                summary.skipped_non_images += 1;
+                continue;
+            };
+
+            match state
+                .assets
+                .deployment_ids_for_remote(storage.id, &remote_path)
+                .await
+            {
+                Ok(existing) if !existing.is_empty() => {
+                    summary.skipped_existing += 1;
+                    continue;
+                }
+                Ok(_) => {}
+                // A lookup failure is about our own database, not about what the remote
+                // contains, so it is reported but does not downgrade completeness: nothing was
+                // left unobserved on the provider side.
+                Err(error) => {
+                    summary.errors.push(format!(
+                        "{} /{}：查询已有索引失败：{error}",
+                        storage.name, remote_path
+                    ));
+                    continue;
+                }
+            }
+
+            let now = Utc::now();
+            let asset = Asset {
+                id: Uuid::new_v4(),
+                name: entry.name.clone(),
+                kind: AssetKind::Image,
+                created_at: now,
+                updated_at: now,
+            };
+            let synthetic_hash = format!(
+                "remote-index:{}",
+                hex::encode(Sha256::digest(
+                    format!("{}:{remote_path}", storage.id).as_bytes()
+                ))
+            );
+            let variant = AssetVariant {
+                id: Uuid::new_v4(),
+                asset_id: asset.id,
+                label: "remote_index".into(),
+                mime_type: mime_type.into(),
+                size_bytes: entry.size_bytes.unwrap_or(0),
+                width: None,
+                height: None,
+                content_hash: synthetic_hash,
+                created_at: now,
+            };
+            let deployment = Deployment {
+                id: Uuid::new_v4(),
+                variant_id: variant.id,
+                storage_id: storage.id,
+                role: DeploymentRole::Primary,
+                remote_path: remote_path.clone(),
+                public_url: entry.public_url.clone(),
+                status: DeploymentStatus::Online,
+                // Observed in a listing, nothing more: no deployed_at (this build did not
+                // upload it) and no last_verified_at (a listing proves presence, not content).
+                // Rows of this kind used to look verified after every sync.
+                timestamps: domain::DeploymentTimestamps {
+                    last_observed_at: Some(now),
+                    ..Default::default()
+                },
+            };
+
+            match state
+                .assets
+                .insert_published(&asset, &variant, &deployment)
+                .await
+            {
+                Ok(()) => summary.imported += 1,
+                Err(error) => summary.errors.push(format!(
+                    "{} /{}：写入资源索引失败：{error}",
+                    storage.name, remote_path
+                )),
+            }
+        }
+
+        if hit_file_limit {
+            break;
+        }
+    }
+
+    finish_and_report(
+        state,
+        summary,
+        storage,
+        started_at,
+        &observation,
+        &listed_paths,
+    )
+    .await;
 }
 
 /// Closes one storage's sweep: writes the row and pushes the view the caller returns.
@@ -366,13 +360,22 @@ async fn finish_and_report(
         error_count: observation.read_failure_count(),
     };
     let pool = state.journal.pool();
+    // A listing that hit our own file budget is not a set reconciliation may difference: the paths
+    // we did collect are real, but storing them would let a later sweep conclude "this path is not
+    // remote" from a list we know is short. So only a complete walk's entries reach the database;
+    // partial ones stay in this response and the next comparison falls back to probing.
+    let store_listing = completeness == ScanCompleteness::Complete;
     if let Err(error) = insert_scan(pool, &record).await {
         tracing::warn!(%error, storage_id = %storage.id, "could not record a remote scan");
-    } else if let Err(error) = insert_scan_entries(pool, record_id, listed_paths).await {
-        // The scan row exists but its listing does not. Reconciliation reads that as no snapshot
-        // and falls back to probing, which is the safe direction: it costs requests rather than
-        // drawing conclusions from an absent set.
-        tracing::warn!(%error, storage_id = %storage.id, "could not store scan entries");
+    } else if store_listing {
+        if let Err(error) = insert_scan_entries(pool, record_id, listed_paths).await {
+            tracing::warn!(%error, storage_id = %storage.id, "could not store scan entries");
+        }
+    } else {
+        tracing::debug!(
+            storage_id = %storage.id,
+            "listing not stored: this sweep did not cover the whole storage"
+        );
     }
 
     summary.scans.push(ScanOutcomeView {

@@ -920,21 +920,129 @@ limit_body = _rust_block(remote_index, 'fn listing_hit_page_limit(')
 require('count == ceiling' in limit_body and 'count >= ceiling' not in limit_body,
         'provider truncation is detected by equality with the stated ceiling, so an adapter whose '
         'constant is wrong surfaces as a different bug instead of being absorbed here')
-# Three exits record an unreadable storage: provider build fails, the provider cannot list at
-# all, and a directory read errors mid-walk. A whole-file substring test is satisfied by any one
-# of them - measured: deleting the first site left this gate green, so as written it did not exist.
-build_arm = _slice_between(remote_index, 'let provider = match build_provider', '};', 'build arm')
-listing_guard = _slice_between(remote_index, 'if !provider.capabilities().list {',
-                               'let page_limit', 'listing guard')
+# One path makes a storage unobservable inside the walk - a directory read that errors - and it must
+# reach the accumulator rather than only the message list. A whole-file substring test is satisfied
+# by any occurrence, which is how the earlier version of this gate passed while naming nothing:
+# measured by deleting one of what were then three sites and seeing the run stay green.
 read_loop = _slice_between(remote_index, 'let entries = match provider.list(&directory).await {',
-                           'directories_listed', 'read loop')
-for label, arm in [('the provider-build failure exit', build_arm),
-                   ('the unsupported-listing exit', listing_guard),
-                   ('the mid-walk read failure', read_loop)]:
-    require('observation.record_read_failure();' in arm,
-            f'{label} records the failure on the accumulator, not only in the message list')
+                           'record_directory_listed', 'read loop')
+require(read_loop != '', 'the mid-walk read path was located to be read')
+require('observation.record_read_failure();' in read_loop,
+        'a failed directory read reaches the accumulator, not only the message list')
+listing_guard = _slice_between(remote_index, 'if !provider.capabilities().list {',
+                               'sync_one_storage', 'listing guard')
+require('finish_and_report' not in listing_guard,
+        'a storage that cannot list is refused before a scan row is written: recording it would '
+        'claim we observed a remote we never opened')
 require('error_count: observation.read_failure_count(),' in remote_index,
         'the persisted error count is derived from the accumulator rather than a parallel tally')
+# --- step one: the index refresh becomes a scheduled behaviour ---------------------------------
+#
+# §21's set comparison only has data if something writes snapshots on a schedule. These gates hold
+# the four decisions that make that safe: who is asked, when, what gets stored, and what happens on
+# a first install.
+
+cadence_rs = text('apps/desktop/src-tauri/src/reconcile_cadence.rs')
+scan_due_body = _rust_block(cadence_rs, 'pub fn scan_due(')
+clamp_scan = _rust_block(cadence_rs, 'fn clamp_scan_interval(')
+from_value_body = _rust_block(cadence_rs, 'pub fn from_value(')
+
+require(scan_due_body != '', 'scan_due still exists to read')
+no_history_arm = _slice_between(scan_due_body, 'let Some(last) = last_scan_at else', '};',
+                                'no-history arm')
+flat = ' '.join(no_history_arm.split())
+require(flat.startswith('let Some(last) = last_scan_at else {'),
+        f'the no-history arm was located (got: {flat[:60]!r})')
+require('return false;' in flat and 'return true;' not in flat,
+        'a fresh install with no scan history is not due: absence does not license a crawl')
+require('elapsed.num_seconds() < 0' in scan_due_body,
+        'a future-dated timestamp cannot keep the job asleep forever')
+require('DEFAULT_SCAN_INTERVAL_MINUTES: u32 = 24 * 60' in cadence_rs,
+        'the default scan interval is the agreed 24 hours')
+require('MIN_SCAN_INTERVAL_MINUTES: u32 = 60' in cadence_rs,
+        'there is a floor under the scan interval')
+require('minutes.clamp(MIN_SCAN_INTERVAL_MINUTES, MAX_INTERVAL_MINUTES)' in clamp_scan,
+        'the scan interval clamps at both ends rather than trusting input')
+require('#[serde(default = "default_scan_interval")]' in cadence_rs,
+        'a preference written before this field existed still parses; without it an enabled user '
+        'would come back disabled after an upgrade')
+require('scan_interval_minutes: clamp_scan_interval(parsed.scan_interval_minutes)'
+        in from_value_body,
+        'both read paths normalise the new field, not just the writer')
+# The old three-field call shape must be gone everywhere: a caller that still passes two arguments
+# would be a compile error CI catches, but only if nothing keeps the legacy signature alive.
+# The three mutations each spread their call over several lines, so a per-line substring test
+# reported the opening line of every valid call as an offender. Read a small window instead.
+source_lines = settings_page.splitlines()
+call_bodies = []
+for index, line in enumerate(source_lines):
+    if 'setReconciliationSettings(' not in line:
+        continue
+    body = []
+    for follow in source_lines[index:index + 6]:
+        body.append(follow)
+        if follow.rstrip().endswith('),'):
+            break
+    call_bodies.append(' '.join(body))
+# The test is arity, not naming: a call may supply the cadence by name or as a computed value (the
+# scan control converts the drafted hours back to minutes), so looking for a particular identifier
+# would flag a correct call. Three comma-separated arguments means all three settings were passed.
+def _argument_count(text: str) -> int:
+    """Commas sitting directly inside the call's own parentheses.
+
+    The closing `)` is counted as still open until consumed, because a trailing comma before it is
+    what separates the last two arguments; decrementing first would undercount every call by one and
+    a two-argument call would look like a one-argument call.
+    """
+    depth = 0
+    commas = 0
+    for char in text:
+        if char in '([{':
+            depth += 1
+        elif char == ',' and depth in (1, 2):
+            commas += 1
+        elif char in ')]}':
+            depth -= 1
+    return commas
+
+legacy_calls = [body for body in call_bodies
+                if _argument_count(body[body.index('setReconciliationSettings('):]) < 3]
+require(not legacy_calls,
+        f'every setReconciliationSettings call passes the scan cadence (offenders: {legacy_calls})')
+
+reconcile_rs2 = text('apps/desktop/src-tauri/src/commands/reconcile.rs')
+refresh_body = _rust_block(reconcile_rs2, 'async fn refresh_stale_indexes(')
+require(refresh_body != '', 'the index refresh function exists')
+require('if !scan_due(last, now, config.scan_interval_minutes)' in refresh_body,
+        'the per-storage decision uses its own interval, not a global flag')
+require('last_scan_at(pool, *storage_id).await' in refresh_body,
+        'freshness comes from the scan history itself rather than a second timestamp that could '
+        'disagree with the snapshot it qualifies')
+require('sync_one_storage(state, &storage, provider, &mut summary).await' in refresh_body,
+        'the scheduled path runs the same walk the manual button runs')
+loop_body = _slice_between(reconcile_rs2, 'if !should_run_on_tick(&config)', 'run_sweep_inner',
+                           'tick order')
+require('refresh_stale_indexes(&state, &providers, &config).await;' in loop_body,
+        'the refresh runs before the probe pass, so a tick uses the current listing')
+
+index_rs3 = text('apps/desktop/src-tauri/src/commands/remote_index.rs')
+finish3 = _rust_block(index_rs3, 'async fn finish_and_report(')
+require('let store_listing = completeness == ScanCompleteness::Complete;' in finish3,
+        'only a complete walk stores its listing: a partial set would let a later sweep conclude '
+        'absence from a list known to be short')
+require('} else if store_listing {' in finish3,
+        'the store decision gates the write rather than running after it')
+helper_sig = _slice_between(index_rs3, 'pub(crate) async fn sync_one_storage(', ') {',
+                            'helper signature')
+require('sync_one_storage(state, &storage, provider, &mut summary).await' in refresh_body,
+        'the scheduled path runs the same walk the manual button runs')
+require('summary: &mut RemoteIndexSyncView' in helper_sig,
+        'the walk is callable by the scheduler with a provider it already built')
+cmd_body = _slice_between(index_rs3, 'pub async fn sync_storage_asset_index(',
+                          'Ok(summary)', 'command body')
+require('!provider.capabilities().list' in cmd_body and 'finish_and_report' not in cmd_body,
+        'a storage that cannot list is refused in the command, before any scan row exists')
+
 require('observation.directory_budget_exhausted();' in remote_index
         and 'observation.file_budget_exhausted();' in remote_index,
         'both of our own budgets are recorded on the accumulator rather than only announced')
@@ -1055,6 +1163,35 @@ require("evidenceSource: 'scan' | 'probe_only' | 'none'" in desktop_ts2,
 require('missingPaths' in desktop_ts2 and 'unrecordedPaths' in desktop_ts2
         and 'unknownPaths' in desktop_ts2,
         'all three drift kinds cross the IPC boundary')
+# --- step one (cont.): the scan cadence is a user setting, not a constant -----------------------
+settings_page = text('apps/desktop/src/pages/SettingsPage.tsx')
+require('scanIntervalMinutes: number' in desktop_ts2,
+        'the settings type carries the scan cadence across IPC')
+require('MIN_SCAN_INTERVAL_MINUTES = 60' in desktop_ts2
+        and 'DEFAULT_SCAN_INTERVAL_MINUTES = 24 * 60' in desktop_ts2,
+        'the UI mirrors both the floor and the default so it can refuse a value the backend would '
+        'silently raise')
+require('scan_interval_minutes: Option<u32>' in reconcile_rs,
+        'the setter takes the new field as optional: an older caller keeps working and takes the '
+        'default rather than failing to bind')
+require('scanIntervalSaveMutation' in settings_page
+        and 'scanIntervalSaveMutation.mutate(scanDraft)' in settings_page,
+        'the scan cadence saves on its own control, not folded into the probe interval save')
+# Asserted on the labels, not just the handlers: an earlier version of this gate stayed green when
+# both buttons were relabelled 保存间隔, because it only checked that a second mutation existed. Two
+# controls with the same caption are indistinguishable to whoever reads the page.
+require(settings_page.count("保存刷新间隔") == 1
+        and settings_page.count("'保存间隔'") == 1,
+        'the two interval controls carry distinct captions')
+require('htmlFor="reconcile-scan-interval"' in settings_page
+        and 'id="reconcile-scan-interval"' in settings_page,
+        'the scan interval input has a label bound to it by id')
+require('首次安装不会自动扫描' in settings_page,
+        'the page states the no-first-scan rule where the switch is, rather than leaving it to a log')
+
+index_gate_rs = text('apps/desktop/src-tauri/src/commands/remote_index.rs')
+require('let store_listing = completeness == ScanCompleteness::Complete;' in index_gate_rs,
+        'storing is gated on coverage at the write site')
 require('云端有但本地没记录' in settings_tsx and '应存在但快照里没有' in settings_tsx
         and '覆盖不足，无法判断' in settings_tsx,
         'the settings page renders each kind under a distinct heading')
