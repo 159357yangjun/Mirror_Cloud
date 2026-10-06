@@ -1226,7 +1226,10 @@ require('ScanCompleteness::Partial => RemoteSide::Partial(paths)' in compare_fn
         'the stored completeness level decides which RemoteSide the sweep compares against')
 require('accounting_is_complete_for(&findings)' in compare_fn,
         'the tally identity runs on every sweep, so a new kind cannot silently vanish')
-require('filter(is_image_path)' in compare_fn and 'filter(|row| is_image_path' in compare_fn,
+# Match the CALL not the spelling: a bare `filter(f)` becomes `filter(|x| f(x))` when the iterator
+# yields owned values (CI #314 caught exactly that type mismatch), and the gate must survive the fix.
+require('filter(|path| is_image_path(path))' in compare_fn
+        and '.filter(|row| is_image_path(&row.remote_path))' in compare_fn,
         'both sides pass through the same in-scope predicate')
 require('"evidenceSource": "probe"' in probe_loop,
         'probe-path events name their source instead of leaving it implied')
