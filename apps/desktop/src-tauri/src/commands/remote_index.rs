@@ -1,5 +1,7 @@
 use std::collections::{HashSet, VecDeque};
 
+use chrono::DateTime;
+
 use super::*;
 use domain::scan_completeness::{ScanCompleteness, ScanObservation};
 use persistence_sqlite::remote_scan::{RemoteScanRecord, insert_scan, insert_scan_entries};

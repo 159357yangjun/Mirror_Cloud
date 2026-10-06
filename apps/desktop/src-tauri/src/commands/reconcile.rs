@@ -498,7 +498,11 @@ async fn compare_against_snapshots(
         // Both sides go through the same filter. Comparing beliefs that include originals against
         // a listing that also includes thumbnails would report every variant as drift in both
         // directions at once, so the rule has to be shared rather than written twice.
-        let paths: HashSet<String> = snapshot.paths.into_iter().filter(is_image_path).collect();
+        let paths: HashSet<String> = snapshot
+            .paths
+            .into_iter()
+            .filter(|path| is_image_path(path))
+            .collect();
         let remote = match snapshot.completeness {
             ScanCompleteness::Complete => RemoteSide::Complete(paths),
             ScanCompleteness::Partial => RemoteSide::Partial(paths),
