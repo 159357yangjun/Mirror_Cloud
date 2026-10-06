@@ -353,7 +353,11 @@ mod tests {
             remote_path: "p".into(),
             public_url: url.map(str::to_string),
             error: if ok { None } else { Some("boom".into()) },
-            error_kind: if ok { None } else { Some(domain::StorageErrorKind::Rejected) },
+            error_kind: if ok {
+                None
+            } else {
+                Some(domain::StorageErrorKind::Rejected)
+            },
             verification: None,
         }
     }

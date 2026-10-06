@@ -151,7 +151,6 @@ pub(crate) async fn sync_one_storage(
     // looked at would hand reconciliation a listing wider than the scan that qualified it.
     let mut listed_paths: Vec<String> = Vec::new();
 
-
     let page_limit = provider.listing_page_limit();
     let mut pending_dirs = VecDeque::from([String::new()]);
     let mut seen_dirs = HashSet::new();
