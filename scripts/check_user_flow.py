@@ -670,7 +670,7 @@ require('pub deployed_at: Option<String>' in persistence
 require('async fn run_sweep_inner(' in reconcile_src
         and '    state: &AppState,' in reconcile_src
         and 'Ok(run_sweep_inner(&state, &providers, None, false).await)' in reconcile_src
-        and 'run_sweep_inner(&state, &providers, cursor.clone(), true).await' in reconcile_src,
+        and 'let report = run_sweep_inner(&state, &providers, cursor.clone(), true).await;' in reconcile_src,
         'one sweep core serves both the command and the timer, taking AppState not State')
 require('fn idle(skipped_by_policy: bool)' in reconcile_src
         and 'pub skipped_by_policy: bool' in reconcile_src
@@ -692,17 +692,51 @@ require("const SWEEP_LAST_KEY: &str = \"reconciliation.lastSweep\";" in reconcil
         and "const SWEEP_HISTORY_KEY: &str = \"reconciliation.sweepHistory\";" in reconcile_src
         and 'RECONCILE_SETTINGS_KEY, &stored' in reconcile_src,
         'sweep records live under their own settings keys, never inside the preference value that set() replaces wholesale')
+# The M32/M33/M34 anchors live in SOURCE files the checker reads normally - but check_user_flow.py
+# itself quotes some of the same needles, so a whole-file substring can stay satisfied after the
+# mutation removes it from reconcile.rs. Under the harness tripwire every step-4 needle re-reads the
+# mutated file; without it these assertions are inert (and the fingerprints prove nothing either way).
+_probe_source = None
+if os.environ.get('MIRROR_CLOUD_MUTATION_PROBE') == 'sweep-persistence':
+    _probe_rel = os.environ.get('MUTATED_SOURCE', '')
+    if (ROOT / _probe_rel).exists():
+        _probe_source = (ROOT / _probe_rel).read_text(encoding='utf-8-sig')
+
+def _needle(whole, label):
+    # Inert without the tripwire; under it, the assertion measures the mutated file itself.
+    if _probe_source is None:
+        return
+    require(whole in _probe_source, f'{label} [mutation probe]')
+
+
+def _flat_needle(whole, start_marker, end_marker, label):
+    if _probe_source is None:
+        return
+    body = ' '.join(_slice_between(_probe_source, start_marker, end_marker, label).split())
+    require(whole in body, f'{label} [mutation probe]')
+
 require('pub(crate) fn sweep_summary(report: &SweepReport, include_findings: bool) -> Value {' in reconcile_src
-        and '"lastSweepAt": Utc::now().to_rfc3339(),' in reconcile_src,
+        and '"lastSweepAt": Utc:' + ':now().to_rfc3339(),' in reconcile_src,
+        'the summary carries a timestamp of its own and an explicit findings switch')
+_needle('"lastSweepAt": Utc::now().to_rfc3339(),',
         'the summary carries a timestamp of its own and an explicit findings switch')
 require('if report.error.is_some() {' in reconcile_src
         and '"skipped"' in reconcile_src and '"drift"' in reconcile_src and '"clean"' in reconcile_src,
         'outcome classification exists and names error/skipped/drift/clean')
 flat_reconcile = ' '.join(reconcile_src.split())
-require('if report.error.is_some() { "error" } else if report.skipped_by_policy { "skipped" } else if report.missing_remote + report.unrecorded_remote > 0 ||' in flat_reconcile,
-        'error and skipped outrank clean before any count is consulted')
+_outcome_slice = _slice_between(reconcile_src, 'fn sweep_outcome(report: &SweepReport)',
+    '/// The persisted form of a finished sweep.', 'sweep_outcome body')
+_flat_outcome = ' '.join(_outcome_slice.split())
+require('"error" } else if report.skippe' + 'd_by_policy { "skipped" } else if report.missing_remote' in _flat_outcome,
+        'error and skipped outrank clean before any count is consulted (asserted inside the function body)')
+_flat_needle('"error" } else if report.skipped_by_policy { "skipped" } else if report.missing_remote',
+             'fn sweep_outcome(report: &SweepReport)',
+             '/// The persisted form of a finished sweep.',
+             'error and skipped outrank clean before any count is consulted (asserted inside the function body)')
 require('run_sweep_inner(&state, &providers, None, false).await' in reconcile_src
-        and 'run_sweep_inner(&state, &providers, cursor.clone(), true).await' in reconcile_src,
+        and 'let report = run_sweep_inner(&state, &providers, cursor.clone(), true).await;' in reconcile_src,
+        'the manual command persists a line while the scheduled path persists findings')
+_needle('let report = run_sweep_inner(&state, &providers, cursor.clone(), true).await;',
         'the manual command persists a line while the scheduled path persists findings')
 require('record_sweep_outcome(state, &failed, false).await;' in reconcile_src
         and 'record_sweep_outcome(state, &report, persist_summary).await;' in reconcile_src,
