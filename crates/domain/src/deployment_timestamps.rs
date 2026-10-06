@@ -173,10 +173,14 @@ mod tests {
         let proved = base.clone().record(TimestampCause::Proved, moment(80));
         assert_eq!(proved.timestamps.last_verified_at, Some(moment(80)));
 
+        // Capture the clock before consuming `base`: Deployment is not Copy and .record() moves it,
+        // while its timestamps are Copy, so the comparison reads a snapshot rather than a borrow of
+        // the value that was just moved.
+        let attempted_before = base.timestamps.last_attempted_at;
         let disproved = base.record(TimestampCause::Disproved, moment(80));
         assert_eq!(disproved.timestamps.last_verified_at, None);
         assert_eq!(
-            disproved.timestamps.last_attempted_at, base.timestamps.last_attempted_at,
+            disproved.timestamps.last_attempted_at, attempted_before,
             "a failed check must not touch any success timestamp"
         );
     }
