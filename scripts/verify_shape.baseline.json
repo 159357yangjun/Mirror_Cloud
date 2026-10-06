@@ -1,17 +1,31 @@
 {
   "_meta": {
-    "takenAt": "2026-10-02T12:12:47",
-    "head": "512bcfd9aab4c423f8de4503732cdb9a0caa0f0e",
-    "reason": "thirty-eighth signing: M31 became version-agnostic (reads workspace version from Cargo.toml at run time, corrupts current-minus-one) across two commits - the hardcoded 1.4.5 anchor died honestly when v1.4.6 bumped (+6 lines/+451 bytes on verify_guard_mutations.mjs). Drift rows named only this file and the totals."
+    "takenAt": "2026-10-06T10:32:19",
+    "head": "37835efdd0633fe2c569649995b521e7966e408c",
+    "reason": "step 4: M32-M34 sweep-persistence mutations plus the userflow oracle alias (+31L/+1969B)"
   },
   "files": [
     {
       "file": "scripts/verify_all.mjs",
       "exists": true,
-      "lines": 361,
-      "bytes": 26714,
+      "lines": 365,
+      "bytes": 27222,
       "families": {
         "failures.push": 0,
+        "emitGate": 0,
+        "harness-fault exit": 0,
+        "gate line": 0,
+        "positive control": 0,
+        "throw": 0
+      }
+    },
+    {
+      "file": "scripts/verify_confirmation_display.mjs",
+      "exists": true,
+      "lines": 126,
+      "bytes": 5053,
+      "families": {
+        "failures.push": 1,
         "emitGate": 0,
         "harness-fault exit": 0,
         "gate line": 0,
@@ -36,8 +50,8 @@
     {
       "file": "scripts/verify_guard_mutations.mjs",
       "exists": true,
-      "lines": 372,
-      "bytes": 29915,
+      "lines": 403,
+      "bytes": 31884,
       "families": {
         "failures.push": 1,
         "emitGate": 0,
@@ -91,11 +105,11 @@
     }
   ],
   "totals": {
-    "files": 6,
-    "lines": 5652,
-    "bytes": 435925,
+    "files": 7,
+    "lines": 5813,
+    "bytes": 443455,
     "families": {
-      "failures.push": 31,
+      "failures.push": 32,
       "emitGate": 16,
       "harness-fault exit": 47,
       "gate line": 11,

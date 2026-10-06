@@ -185,6 +185,33 @@ const mutations = [
     id: 'M31', file: 'Cargo.lock', oracle: 'release-version-stale', expect: 'Cargo.lock workspace members are out of sync',
     corrupt: 'stale-member',
   },
+  {
+    // Step 4 M32: the summary's own timestamp. A record that only says "a sweep happened" cannot be
+    // ordered, pruned by window, or trusted as recent - and the panel keys rows off this field.
+    id: 'M32', file: 'apps/desktop/src-tauri/src/commands/reconcile.rs', oracle: 'userflow',
+    expect: 'the summary carries a timestamp of its own and an explicit findings switch',
+    from: '"lastSweepAt": Utc::now().to_rfc3339(),',
+    to: '',
+  },
+  {
+    // Step 4 M33: outcome precedence. If `skipped` is not consulted before the counts, a policy-declined
+    // cycle reports all-zero numbers and reads as a clean library - the exact conflation the report
+    // type was built to prevent.
+    id: 'M33', file: 'apps/desktop/src-tauri/src/commands/reconcile.rs', oracle: 'userflow',
+    expect: 'error and skipped outrank clean before any count is consulted',
+    from: '} else if report.skipped_by_policy {\n        "skipped"\n    }',
+    to: '',
+  },
+  {
+    // Step 4 M34: the scheduled/manual split. Deleting the `true` argument makes the background path
+    // persist a line with no findings - the whole purpose of the feature gone, while the code still
+    // compiles and every other gate stays green. The anchor is unique to the loop call site; the
+    // command path passes the literal `false`, so this cannot neuter the wrong one.
+    id: 'M34', file: 'apps/desktop/src-tauri/src/commands/reconcile.rs', oracle: 'userflow',
+    expect: 'the manual command persists a line while the scheduled path persists findings',
+    from: 'cursor.clone(), true).await;',
+    to: 'cursor.clone()).await;',
+  },
 ]
 
 const selected = only ? mutations.filter((m) => only.has(m.id)) : mutations
@@ -255,6 +282,10 @@ const runOracle = (oracle) => {
     // disarmed predicate is caught without needing the app to misbehave first.
     'confirm-gate': [process.execPath, [`${REPO}/${HARNESS}`, 'confirm', '--port', port(10000)]],
     'release-version': [python.exe, [...python.pre, 'scripts/check_release_version.py', '--poison-lock-check']],
+    // Step 4's sweep-persistence gates live in check_user_flow.py. The default oracle command is
+    // that checker with no mode argument, so no CMD entry is needed; the alias names what the
+    // mutation is about, and a missing key still falls through to the same run.
+    userflow: [python.exe, [...python.pre, 'scripts/check_user_flow.py']],
   }
   const cmd = CMD[oracle] || [python.exe, [...python.pre, 'scripts/check_user_flow.py']]
   if (oracle === 'release-version-stale') {
