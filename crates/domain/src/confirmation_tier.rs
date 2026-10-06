@@ -346,7 +346,10 @@ mod tests {
             ConfirmationTier::RemoteObserved.as_str(),
             "remote_observed"
         );
-        assert_eq!(ConfirmationTier::ContentVerified.as_str(), "content_verified");
+        assert_eq!(
+            ConfirmationTier::ContentVerified.as_str(),
+            "content_verified"
+        );
         assert_eq!(
             ConfirmationTier::PubliclyReachable.as_str(),
             "publicly_reachable"
