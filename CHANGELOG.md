@@ -2099,6 +2099,14 @@ G0 dev 全绿 → G1 P0-4 信任边界（Rust 自持 PendingUpdate{version, cano
 **沉淀规则（用户批准，写入本仓协作纪律）**：CI 红 ⇒ **先读一手诊断（annotation/compiler error/artifact），只有证据不足才允许假设；禁止沿同一假设连续多轮盲改**。顺序固定：读证据 → 锁第一错误 → 最小修复 → 复验。本次事故的正解路径本来只要两步：#194 起红已不在 fmt，早一天装 annotation 通道就早一天结案。
 **副产品（保留，非本轮验收项）**：ci.yml 的两条失败自证通道从此常驻——rustfmt 有 patch artifact，cargo check 有 log artifact + 公开 annotation（取首个 `^error` 起 9 行，GBK 无关、annotations API 无认证可读）。
 
+### 23. Step 4：对账结果持久化（settings 双键）+ M32–M34（2026-10-06，CI #323 全绿后）
+
+**做了什么**：后台扫描的结果现在写进设置库，面板能回看。两条独立 key（`reconciliation.lastSweep` / `reconciliation.sweepHistory`），不塞进 `reconciliation.background`——`set()` 整值替换，摘要住首选项键里会被下一次保存间隔时抹掉。历史窗口 7 天 + 上限 50 行（两个都有 const，`SWEEP_HISTORY_DAYS`/`SWEEP_HISTORY_MAX_ENTRIES`）。**调度路径落完整摘要（含三类 drift 路径各截 20 条），手动路径只落一行**：手动结果已经在屏幕上，把它也存进 lastSweep 会覆盖用户回来时想看的最近一次后台结果。读取侧 `SweepHistoryEntry::from_value` 逐字段容错，坏行丢弃而不是让整段历史读不出来；空历史显示"尚无记录"，不伪造零填充。
+
+**验证**：门 569→581（+12 条同笔）；变异 M32（摘 `lastSweepAt`）/M33（摘 outcome 的 skipped 前置分支）/M34（把调度面的 `true` 实参删掉）三条全部咬中并点名（`node scripts/verify_guard_mutations.mjs M32 M33 M34` = 3/3，树复净）；Rust 单测 +3（摘要形状两面/outcome 四类/坏历史降级）；`tsc -b --force` rc=0；`cargo fmt --all --check` rc=0。**本机 cargo test 跑不了**：MSYS 的 `link`（manpage 链接器）遮蔽 MSVC link.exe，且这台机没有 MSVC/Windows SDK——已试 `-C linker=rust-lld`，缺 `ws2_32.lib`/`dbghelp.lib` 依旧链不动。⇒ **Rust 测试编译由 CI `cargo test --workspace --locked` 作证，本机只核过 fmt 与语法面**。shape 第 39 次签字（harness +31L/+1969B，带 reason）、指纹表两行随笔重签。
+
+**过程账（如实）**：① 一度把 `.ai/STATE.generated.json` 里的旧读数（head=dd3ea6b、"working_tree_dirty": true、repository 旧 slug）当成"另一个会话正在同一棵树写入"的证据，追到 reflog/merge-base 才结案：那是 **10-04 12:20 的陈旧生成物**（dd3ea6b 是 HEAD 的祖先、仓库里没有第二棵 worktree、`.git/HEAD` mtime 早于我的提交），当前没有任何并行写者——但 `--write` 从未刷新它本身是真缺陷，`project_state.py --verify` 是否覆盖 generated JSON 挂账待查。② 新加的两条门禁锚点第一次就红在 rustfmt 重排后的字节上（`state\n.settings\n.set(` 塔形拆行），改用稳定片段后绿；教训沿用：**锚点挑不会被格式化机器搬动的子串**。③ M34 初版 anchor 挂在注释性赋值行上，重写为调度调用面的唯一实参片段（`cursor.clone(), true).await;`），确保变异抽的是真判据不是巧合文本。
+
 ## 1.4.5 - Legible Read-Failure Panels and Measured Contrast Floors
 
 自 `v1.4.4` 起 115 笔提交（09-29 43 / 09-30 54 / 10-01 18）。改到 `apps/desktop/src` 的只有 8 笔；
