@@ -52,6 +52,9 @@ const SWEEP_HISTORY_KEY: &str = "reconciliation.sweepHistory";
 /// back further. The window is bounded because this lives in the same row the app rewrites.
 pub const SWEEP_HISTORY_DAYS: i64 = 7;
 pub const SWEEP_HISTORY_MAX_ENTRIES: usize = 50;
+/// Cap on the path lists carried inside a persisted summary - deliberately equal to what the live
+/// report itself caps at (`PATHS_PER_KIND`), so a stored record is never richer than the screen was.
+const SUMMARY_PATH_CAP: usize = PATHS_PER_KIND;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -798,7 +801,9 @@ pub(crate) fn prune_history(
         }
     }
     kept.sort_by(|a, b| {
-        let key = |v: &Value| v.get("lastSweepAt").and_then(Value::as_str).unwrap_or("");
+        fn key(v: &Value) -> &str {
+            v.get("lastSweepAt").and_then(Value::as_str).unwrap_or("")
+        }
         key(b).cmp(key(a))
     });
     kept

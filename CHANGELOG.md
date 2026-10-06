@@ -2100,6 +2100,12 @@ G0 dev 全绿 → G1 P0-4 信任边界（Rust 自持 PendingUpdate{version, cano
 **沉淀规则（用户批准，写入本仓协作纪律）**：CI 红 ⇒ **先读一手诊断（annotation/compiler error/artifact），只有证据不足才允许假设；禁止沿同一假设连续多轮盲改**。顺序固定：读证据 → 锁第一错误 → 最小修复 → 复验。本次事故的正解路径本来只要两步：#194 起红已不在 fmt，早一天装 annotation 通道就早一天结案。
 **副产品（保留，非本轮验收项）**：ci.yml 的两条失败自证通道从此常驻——rustfmt 有 patch artifact，cargo check 有 log artifact + 公开 annotation（取首个 `^error` 起 9 行，GBK 无关、annotations API 无认证可读）。
 
+### 25. CI #325 红点结案：本地 cargo check 是半瞎量具（2026-10-06）
+
+**事实链**：step 3+4 推上 tip `20546ab` 后 CI #325 死在 step[17] Rust check。annotation 一手原话两条：① **E0425 `SUMMARY_PATH_CAP` not found in this scope**（reconcile.rs:739）——我在 §23 里写了这个 const，后来一次编辑把它删了、调用点还留着；② **lifetime may not live long enough**（:801）——`sort_by` 闭包里再套一个返回 `&str` 的闭包，推断不过 HRTB，改成嵌套 `fn key(...)` 即解。修复笔未动行为面（cap 数值仍 = PATHS_PER_KIND）。
+
+**真正的发现（比这两条错误更值钱）**：修复前我用 `cargo check --workspace --all-targets` 复跑，grep `error[E0` 计数 = **0**——而同一份代码 CI 报了两条 E0。**本机 cargo check 从未到达过我们的 crate**：它死在依赖 build script 链接阶段（link.exe 缺失），rustc 根本没轮到编译 workspace 成员。⇒ 之前几轮我报的"编译器错误计数 0（含 test 面）"是**无效读数**，撤回；它只能证明"依赖图没变化"，不能证明任何 crate 语法干净。test 面/编译面的唯一证人仍是 CI。判据修正：**本机 grep error[E0 之前必须先确认 rustc 真的跑过我们的 crate（看有没有 `Checking image-hosting-platform-*` 行）**，否则那个 0 是量具瞎。
+
 ### 24. Step 3（§18B）：探测失败种类四桶分类 + M35–M37（2026-10-06）
 
 **做了什么**：对账探测失败现在按四类报告——`network_timeout`（没收到答复：连接/超时/上游5xx，含 rate-limit/conflict）、`auth_failed`（401/403/凭证）、`rejected`（有名目但远程改不了的拒绝）、`unavailable`（根本没试：存储禁用/凭据读不出/OpenDAL 未覆写的 exists 报 Unsupported）。分类硬编码在 `domain::ProbeFailureKind`（用户点名"映射表硬编码即可"）；`storage_core::probe_kind(&Result<bool,StorageError>) -> Option<kind>` 只在 Err 上运行，**`observation_from_probe` 的签名一个字没动**（仍吃 `Result<bool,()>`，Unknown≠Absent 的安全映射不被新类型污染——这是本轮唯一会让自动修复删错东西的失效方向，判据把它钉死）。`detect_drift` 在 ProbeInconclusive 上带 kind、其余为 None；事件 payload 加 `probeKind`；SweepReport 加 `probePaths`（每行带 kind），step-4 摘要加 `probeFailures` 计数；前端 `probeDisplay.ts` 四类各给标签/提示/颜色，**未知未来种类降级到 rejected（"看原始错误"永远正确），成功探测渲染 null**。
