@@ -1169,9 +1169,9 @@ fn parse_deployment_location(row: SqliteRow) -> Result<DeploymentLocationRecord,
         status: row.try_get("status")?,
         last_error: row.try_get("last_error")?,
         deployed_at: row.try_get("deployed_at")?,
-        last_attempted_at: optional_column(row, "last_attempted_at"),
-        last_observed_at: optional_column(row, "last_observed_at"),
-        last_verified_at: optional_column(row, "last_verified_at"),
+        last_attempted_at: optional_column(&row, "last_attempted_at"),
+        last_observed_at: optional_column(&row, "last_observed_at"),
+        last_verified_at: optional_column(&row, "last_verified_at"),
     })
 }
 
