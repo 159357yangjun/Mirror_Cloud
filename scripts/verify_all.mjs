@@ -91,6 +91,9 @@ const stages = [
   // on red in a script nobody runs. It is fixed instead - one :root declaration, no rendered pixel
   // changed - and the check is now part of the exit code.
   { name: 'token_policy', run: 'node', args: ['scripts/theme_token_census.mjs', '--verify'], count: /TOKEN_POLICY families=(\d+) breaches=(\d+)/ },
+  // The confirmation ladder's colour rule (piclist §18A). Runs with no browser because the rule is a
+  // pure function over level values; mounting SettingsPage to check it would measure the harness.
+  { name: 'confirmation_display', run: 'node', args: ['scripts/verify_confirmation_display.mjs'], count: /CONFIRMATION_DISPLAY total=(\d+) failed=(\d+)/ },
   { name: 'gate-unit', run: 'node', args: [NODE_MODE, 'gate-unit'], gateJson: true, count: /gate unit check: (\d+\/\d+ correct)/ },
   { name: 'gate', run: 'node', args: [NODE_MODE, 'gate'], needsServer: true, gateJson: true, count: /"sawMinimizedReject": (true|false)/ },
   { name: 'ab', run: 'node', args: [NODE_MODE, 'ab'], needsServer: true, gateJson: true, count: /"deltaOverflowX": (\d+)/ },

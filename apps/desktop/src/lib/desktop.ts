@@ -450,6 +450,24 @@ export interface ReconciliationSettings {
   scanIntervalMinutes: number
 }
 
+export type ConfirmationTierName =
+  | 'unknown'
+  | 'uploaded'
+  | 'remote_observed'
+  | 'content_verified'
+  | 'publicly_reachable'
+
+export type TierStrengthName = 'strong' | 'weak' | 'unconfirmed'
+
+/** One drift finding with the evidence this build can actually claim about it. */
+export interface DriftEntry {
+  deploymentId: string | null
+  remotePath: string
+  confirmation: ConfirmationTierName | null
+  strength: TierStrengthName | null
+  missingEvidence: string | null
+}
+
 export interface SweepReport {
   examined: number
   present: number
@@ -465,9 +483,9 @@ export interface SweepReport {
   error: string | null
   // 'scan' = the set comparison used a stored listing; 'probe_only' = no fresh listing existed.
   evidenceSource: 'scan' | 'probe_only' | 'none'
-  unrecordedPaths: string[]
-  missingPaths: string[]
-  unknownPaths: string[]
+  unrecordedPaths: DriftEntry[]
+  missingPaths: DriftEntry[]
+  unknownPaths: DriftEntry[]
   pathsOmitted: number
 }
 

@@ -49,7 +49,74 @@ pub enum ConfirmationTier {
     PubliclyReachable = 4,
 }
 
+/// How much a reader should trust a copy at this level, for the colour a UI shows.
+///
+/// Three buckets over five levels because that is what the distinction buys: `Uploaded` and
+/// `RemoteObserved` both mean "we have not looked at the bytes", so painting them differently
+/// would imply the difference is about trust when it is about kind. Unconfirmed is its own
+/// bucket rather than weak, because absence of evidence must not read as evidence of a problem.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TierStrength {
+    /// Content was compared and matched.
+    Strong,
+    /// A write was accepted or the object was seen remote, but nothing compared content.
+    Weak,
+    /// Nothing is known either way.
+    Unconfirmed,
+}
+
+impl TierStrength {
+    /// Stable spelling for IPC.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TierStrength::Strong => "strong",
+            TierStrength::Weak => "weak",
+            TierStrength::Unconfirmed => "unconfirmed",
+        }
+    }
+}
+
 impl ConfirmationTier {
+    /// The trust bucket for display.
+    pub fn strength(self) -> TierStrength {
+        match self {
+            ConfirmationTier::ContentVerified | ConfirmationTier::PubliclyReachable => {
+                TierStrength::Strong
+            }
+            ConfirmationTier::Uploaded | ConfirmationTier::RemoteObserved => TierStrength::Weak,
+            ConfirmationTier::Unknown => TierStrength::Unconfirmed,
+        }
+    }
+
+    /// Stable spelling for IPC, so the frontend never switches on a numeric level.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ConfirmationTier::Unknown => "unknown",
+            ConfirmationTier::Uploaded => "uploaded",
+            ConfirmationTier::RemoteObserved => "remote_observed",
+            ConfirmationTier::ContentVerified => "content_verified",
+            ConfirmationTier::PubliclyReachable => "publicly_reachable",
+        }
+    }
+
+    /// Which clock is missing at this level, phrased as what would raise it.
+    ///
+    /// Written against the ladder's rules rather than the derived value: `RemoteObserved` needs
+    /// both an attempt and an observation, and reporting only the absent one would hide that an
+    /// upload timestamp is also missing. That case is reachable - the remote-index import creates
+    /// rows with an observation and no attempt - and telling such a row only "no verification yet"
+    /// would send a reader to look for a verification feature instead of understanding that this
+    /// build never uploaded the object.
+    pub fn missing_evidence(self) -> &'static str {
+        match self {
+            ConfirmationTier::Unknown => "没有任何记录：既没上传过，也没在远端看到过",
+            ConfirmationTier::Uploaded => "缺独立复核：还没有一次事后查询确认对象仍在远端",
+            ConfirmationTier::RemoteObserved => "缺内容比对：还没把字节和预期对过",
+            ConfirmationTier::ContentVerified => "已是本应用能给出的最强结论",
+            ConfirmationTier::PubliclyReachable => "本应用不会抓取公开 URL，这一级没有生产者",
+        }
+    }
+
     /// Whether reaching this tier requires evidence the application cannot currently produce.
     pub fn is_unimplemented(self) -> bool {
         matches!(self, ConfirmationTier::PubliclyReachable)
@@ -206,6 +273,94 @@ mod tests {
         );
         for pair in tiers.windows(2) {
             assert!(pair[1] >= pair[0], "{pair:?} is not monotone");
+        }
+    }
+
+    #[test]
+    fn strength_buckets_group_by_trust_not_by_kind() {
+        // Two-sided per bucket: a mapping putting Uploaded in Strong would still show a green chip
+        // for the majority of rows and nobody would notice from the passing tests alone.
+        assert_eq!(
+            ConfirmationTier::ContentVerified.strength(),
+            TierStrength::Strong
+        );
+        assert_eq!(
+            ConfirmationTier::PubliclyReachable.strength(),
+            TierStrength::Strong,
+            "the unimplemented level must not read as weaker than verification"
+        );
+        for tier in [ConfirmationTier::Uploaded, ConfirmationTier::RemoteObserved] {
+            assert_eq!(tier.strength(), TierStrength::Weak, "{tier:?}");
+        }
+        assert_eq!(
+            ConfirmationTier::Unknown.strength(),
+            TierStrength::Unconfirmed,
+            "unobserved is not the same claim as observed-and-weak"
+        );
+    }
+
+    #[test]
+    fn every_level_names_what_evidence_it_still_lacks() {
+        let levels = [
+            ConfirmationTier::Unknown,
+            ConfirmationTier::Uploaded,
+            ConfirmationTier::RemoteObserved,
+            ConfirmationTier::ContentVerified,
+            ConfirmationTier::PubliclyReachable,
+        ];
+        for tier in levels {
+            assert!(
+                !tier.missing_evidence().is_empty(),
+                "{tier:?} must explain itself, not render an empty reason"
+            );
+            assert!(
+                !levels
+                    .iter()
+                    .filter(|other| other.missing_evidence() == tier.missing_evidence())
+                    .any(|other| *other != tier),
+                "two levels sharing one reason text would make the column unreadable at {tier:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn strength_spellings_are_stable_and_distinct() {
+        // The UI picks its colour from these three strings, so a rename changes which rows look
+        // trustworthy without failing any other check.
+        assert_eq!(TierStrength::Strong.as_str(), "strong");
+        assert_eq!(TierStrength::Weak.as_str(), "weak");
+        assert_eq!(TierStrength::Unconfirmed.as_str(), "unconfirmed");
+        assert_ne!(TierStrength::Strong.as_str(), TierStrength::Weak.as_str());
+        assert_ne!(
+            TierStrength::Weak.as_str(),
+            TierStrength::Unconfirmed.as_str()
+        );
+    }
+
+    #[test]
+    fn tier_spellings_are_stable_and_distinct() {
+        // The frontend switches on these strings, so a rename is an IPC break and must be chosen.
+        assert_eq!(ConfirmationTier::Unknown.as_str(), "unknown");
+        assert_eq!(ConfirmationTier::Uploaded.as_str(), "uploaded");
+        assert_eq!(ConfirmationTier::RemoteObserved.as_str(), "remote_observed");
+        assert_eq!(ConfirmationTier::ContentVerified.as_str(), "content_verified");
+        assert_eq!(
+            ConfirmationTier::PubliclyReachable.as_str(),
+            "publicly_reachable"
+        );
+        let all = [
+            ConfirmationTier::Unknown,
+            ConfirmationTier::Uploaded,
+            ConfirmationTier::RemoteObserved,
+            ConfirmationTier::ContentVerified,
+            ConfirmationTier::PubliclyReachable,
+        ];
+        for left in all {
+            for right in all {
+                if left != right {
+                    assert_ne!(left.as_str(), right.as_str());
+                }
+            }
         }
     }
 

@@ -49,7 +49,21 @@ import {
 import type { DownloadedUpdateSummary, UpdateCheckResult } from '../lib/desktop'
 import { useAppStore } from '../store/useAppStore'
 import { confirmAction } from '../store/useConfirmStore'
+import { tierDisplay, tierReason } from '../lib/confirmationDisplay'
+import type { ConfirmationTierName } from '../lib/desktop'
 import type { OutputFormat, OutputPreferences } from '../types'
+
+// The colour comes from `tierDisplay`, never inline here: the same ladder is shown on the asset rows
+// and a divergence between the two would mean one of them is lying about how much to trust a copy.
+function TierChip({ tier }: { tier: ConfirmationTierName | null }) {
+  const view = tierDisplay(tier)
+  if (!view) return <span className="text-[10px] text-slate-300">无本地记录</span>
+  return (
+    <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium ${view.chipClass}`}>
+      {view.label}
+    </span>
+  )
+}
 
 export function SettingsPage() {
   const queryClient = useQueryClient()
@@ -558,24 +572,42 @@ export function SettingsPage() {
                 {sweepReport.missingPaths.length > 0 && (
                   <div>
                     <div className="font-medium text-red-600">应存在但快照里没有</div>
-                    <ul className="mt-1 max-h-24 overflow-y-auto rounded-xl bg-white px-3 py-2 font-mono text-[11px] text-slate-500">
-                      {sweepReport.missingPaths.map((path) => <li key={path}>{path}</li>)}
+                    <ul className="mt-1 max-h-32 overflow-y-auto rounded-xl bg-white px-3 py-2 text-[11px]">
+                      {sweepReport.missingPaths.map((entry) => (
+                        <li key={entry.remotePath} className="flex flex-wrap items-baseline gap-2 py-0.5">
+                          <TierChip tier={entry.confirmation} />
+                          <span className="font-mono text-slate-500">{entry.remotePath}</span>
+                          <span className="text-slate-400">{tierReason(entry)}</span>
+                        </li>
+                      ))}
                     </ul>
                   </div>
                 )}
                 {sweepReport.unrecordedPaths.length > 0 && (
                   <div>
                     <div className="font-medium text-amber-700">云端有但本地没记录</div>
-                    <ul className="mt-1 max-h-24 overflow-y-auto rounded-xl bg-white px-3 py-2 font-mono text-[11px] text-slate-500">
-                      {sweepReport.unrecordedPaths.map((path) => <li key={path}>{path}</li>)}
+                    <ul className="mt-1 max-h-32 overflow-y-auto rounded-xl bg-white px-3 py-2 text-[11px]">
+                      {sweepReport.unrecordedPaths.map((entry) => (
+                        <li key={entry.remotePath} className="flex flex-wrap items-baseline gap-2 py-0.5">
+                          <TierChip tier={entry.confirmation} />
+                          <span className="font-mono text-slate-500">{entry.remotePath}</span>
+                          <span className="text-slate-400">{tierReason(entry)}</span>
+                        </li>
+                      ))}
                     </ul>
                   </div>
                 )}
                 {sweepReport.unknownPaths.length > 0 && (
                   <div>
                     <div className="font-medium text-slate-500">覆盖不足，无法判断</div>
-                    <ul className="mt-1 max-h-24 overflow-y-auto rounded-xl bg-white px-3 py-2 font-mono text-[11px] text-slate-400">
-                      {sweepReport.unknownPaths.map((path) => <li key={path}>{path}</li>)}
+                    <ul className="mt-1 max-h-32 overflow-y-auto rounded-xl bg-white px-3 py-2 text-[11px]">
+                      {sweepReport.unknownPaths.map((entry) => (
+                        <li key={entry.remotePath} className="flex flex-wrap items-baseline gap-2 py-0.5">
+                          <TierChip tier={entry.confirmation} />
+                          <span className="font-mono text-slate-400">{entry.remotePath}</span>
+                          <span className="text-slate-400">{tierReason(entry)}</span>
+                        </li>
+                      ))}
                     </ul>
                   </div>
                 )}

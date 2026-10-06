@@ -642,6 +642,12 @@ pub struct DeploymentLocationRecord {
     /// Ordering key the reconciliation cursor walks. The query already sorts by it; exposing it
     /// lets a sweep continue past the page it read instead of re-reading the newest rows.
     pub deployed_at: Option<String>,
+    /// The three evidence clocks behind `derive_confirmation`. Read with `try_get` so a query that
+    /// does not select them yields None rather than a row-decode error: three call sites share
+    /// this parser and only the reconciliation one needs them.
+    pub last_attempted_at: Option<String>,
+    pub last_observed_at: Option<String>,
+    pub last_verified_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1136,8 +1142,21 @@ fn parse_optional_time(raw: Option<String>) -> Option<chrono::DateTime<Utc>> {
 }
 
 const BELIEF_QUERY: &str = "SELECT d.id AS deployment_id,d.storage_id,d.remote_path,d.public_url,"
-    + "d.status,d.last_error,d.deployed_at FROM deployments d "
+    + "d.status,d.last_error,d.deployed_at,d.last_attempted_at,d.last_observed_at,"
+    + "d.last_verified_at FROM deployments d "
     + "WHERE d.storage_id = ? AND d.status <> 'deleted' ORDER BY d.remote_path";
+
+/// Read a text column that some queries in this file do not select.
+///
+/// `try_get` on a missing column is an error, and treating it as one would make
+/// `deployment_locations` fail for a field it never asked for. Absent means "no evidence", which
+/// is exactly what None says, so the fallback is honest rather than convenient.
+fn optional_column(row: &SqliteRow, name: &str) -> Option<String> {
+    match row.try_get::<Option<String>, _>(name) {
+        Ok(value) => value,
+        Err(_) => None,
+    }
+}
 
 fn parse_deployment_location(row: SqliteRow) -> Result<DeploymentLocationRecord, sqlx::Error> {
     let deployment_id: String = row.try_get("deployment_id")?;
@@ -1150,6 +1169,9 @@ fn parse_deployment_location(row: SqliteRow) -> Result<DeploymentLocationRecord,
         status: row.try_get("status")?,
         last_error: row.try_get("last_error")?,
         deployed_at: row.try_get("deployed_at")?,
+        last_attempted_at: optional_column(row, "last_attempted_at"),
+        last_observed_at: optional_column(row, "last_observed_at"),
+        last_verified_at: optional_column(row, "last_verified_at"),
     })
 }
 

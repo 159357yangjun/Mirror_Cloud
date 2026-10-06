@@ -26,7 +26,8 @@ use crate::reconcile_cadence::{
 };
 use std::collections::{HashMap, HashSet};
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
+use domain::confirmation_tier::derive_confirmation;
 use domain::drift_set::{DriftTally, LocalBelief, RemoteSide, SetDrift, SetDriftKind, compare_sets};
 use domain::event_journal::{AggregateKind, DomainEvent, EventType};
 use domain::scan_completeness::ScanCompleteness;
@@ -70,11 +71,11 @@ pub struct SweepReport {
     /// what they can conclude, so a count without its source is not auditable.
     pub evidence_source: String,
     /// Remote paths no local row claims, sorted, capped at `PATHS_PER_KIND`.
-    pub unrecorded_paths: Vec<String>,
+    pub unrecorded_paths: Vec<DriftEntryView>,
     /// Locally-online paths a complete scan did not show, same cap.
-    pub missing_paths: Vec<String>,
+    pub missing_paths: Vec<DriftEntryView>,
     /// Paths whose status we cannot settle because coverage was partial or absent.
-    pub unknown_paths: Vec<String>,
+    pub unknown_paths: Vec<DriftEntryView>,
     /// How many findings were dropped by the cap, per kind, so a truncated list never reads as an
     /// exhaustive one.
     pub paths_omitted: usize,
@@ -408,6 +409,19 @@ async fn refresh_stale_indexes(
     }
 }
 
+/// One drift finding as the panel shows it: the path, the level this build can actually claim, and
+/// which clock is missing.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DriftEntryView {
+    pub deployment_id: Option<String>,
+    pub remote_path: String,
+    /// None when there is no local row at all - the remote-only direction has nothing to grade.
+    pub confirmation: Option<&'static str>,
+    pub strength: Option<&'static str>,
+    pub missing_evidence: Option<&'static str>,
+}
+
 /// Paths listed per kind in a report, so one sweep cannot hand the UI an unbounded array.
 const PATHS_PER_KIND: usize = 20;
 
@@ -421,9 +435,9 @@ pub const SNAPSHOT_MAX_AGE_HOURS: i64 = 24;
 /// What one set-comparison pass produced, before it becomes part of a report.
 struct SweepOutcome {
     evidence_source: String,
-    unrecorded_paths: Vec<String>,
-    missing_paths: Vec<String>,
-    unknown_paths: Vec<String>,
+    unrecorded_paths: Vec<DriftEntryView>,
+    missing_paths: Vec<DriftEntryView>,
+    unknown_paths: Vec<DriftEntryView>,
     paths_omitted: usize,
 }
 
@@ -451,6 +465,9 @@ async fn compare_against_snapshots(
 
     let mut used_scan = false;
     let mut findings: Vec<SetDrift> = Vec::new();
+    // Evidence clocks by deployment, kept out of `LocalBelief`: the comparison must not grow a
+    // dependency on timestamps it does not use, and only this report grades them.
+    let mut clocks: HashMap<Uuid, domain::DeploymentTimestamps> = HashMap::new();
 
     for storage_id in providers.keys() {
         let snapshot = match fresh_scan_snapshot(pool, *storage_id, now, max_age).await {
@@ -487,16 +504,28 @@ async fn compare_against_snapshots(
         };
         used_scan = true;
 
-        let local: Vec<LocalBelief> = beliefs
-            .into_iter()
+        let belief_rows = beliefs;
+        let local: Vec<LocalBelief> = belief_rows
+            .iter()
             .filter(|row| is_image_path(&row.remote_path))
             .map(|row| LocalBelief {
                 deployment_id: row.deployment_id,
-                remote_path: row.remote_path,
+                remote_path: row.remote_path.clone(),
                 status_online: row.status == "online",
             })
             .collect();
 
+        for row in &belief_rows {
+            clocks.insert(
+                row.deployment_id,
+                domain::DeploymentTimestamps {
+                    deployed_at: parse_clock(row.deployed_at.as_deref()),
+                    last_attempted_at: parse_clock(row.last_attempted_at.as_deref()),
+                    last_observed_at: parse_clock(row.last_observed_at.as_deref()),
+                    last_verified_at: parse_clock(row.last_verified_at.as_deref()),
+                },
+            );
+        }
         findings.extend(compare_sets(&local, &remote));
     }
 
@@ -508,14 +537,36 @@ async fn compare_against_snapshots(
         "the tally must account for every finding"
     );
 
-    let mut missing: Vec<String> = Vec::new();
-    let mut unrecorded: Vec<String> = Vec::new();
-    let mut unknown: Vec<String> = Vec::new();
+    // The tier is attached here rather than in `compare_sets` because the comparison is about what
+    // the remote holds and this report is about what *we* can claim. A row absent from a complete
+    // listing still has an upload timestamp, and hiding that would make the strongest evidence in
+    // the database invisible exactly when someone is deciding whether to re-upload.
+    let mut missing: Vec<DriftEntryView> = Vec::new();
+    let mut unrecorded: Vec<DriftEntryView> = Vec::new();
+    let mut unknown: Vec<DriftEntryView> = Vec::new();
     for finding in &findings {
+        let evidence = finding.deployment_id.and_then(|id| clocks.get(&id));
+        let graded = evidence.map(|timestamps| {
+            let tier = derive_confirmation(timestamps);
+            (
+                Some(tier.as_str()),
+                Some(tier.strength().as_str()),
+                Some(tier.missing_evidence()),
+            )
+        });
+        let entry = DriftEntryView {
+            deployment_id: finding
+                .deployment_id
+                .map(|id| id.to_string()),
+            remote_path: finding.remote_path.clone(),
+            confirmation: graded.and_then(|value| value.0),
+            strength: graded.and_then(|value| value.1),
+            missing_evidence: graded.and_then(|value| value.2),
+        };
         match finding.kind {
-            SetDriftKind::MissingRemote => missing.push(finding.remote_path),
-            SetDriftKind::UnrecordedRemote => unrecorded.push(finding.remote_path),
-            SetDriftKind::UnknownCoverage => unknown.push(finding.remote_path),
+            SetDriftKind::MissingRemote => missing.push(entry),
+            SetDriftKind::UnrecordedRemote => unrecorded.push(entry),
+            SetDriftKind::UnknownCoverage => unknown.push(entry),
         }
     }
 
@@ -525,8 +576,8 @@ async fn compare_against_snapshots(
         .sum();
 
     for list in [&mut missing, &mut unrecorded, &mut unknown] {
-        list.sort();
-        list.dedup();
+        list.sort_by(|left, right| left.remote_path.cmp(&right.remote_path));
+        list.dedup_by(|left, right| left.remote_path == right.remote_path);
         list.truncate(PATHS_PER_KIND);
     }
 
@@ -537,6 +588,13 @@ async fn compare_against_snapshots(
         unknown_paths: unknown,
         paths_omitted: omitted,
     }
+}
+
+/// Read one stored clock column. An unparseable value becomes None - absence of readable evidence,
+/// never a guessed instant.
+fn parse_clock(raw: Option<&str>) -> Option<DateTime<Utc>> {
+    raw.and_then(|text| DateTime::parse_from_rfc3339(text).ok())
+        .map(|value| value.with_timezone(&Utc))
 }
 
 /// Whether a remote path is in scope for reconciliation.

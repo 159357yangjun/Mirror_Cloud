@@ -1068,6 +1068,75 @@ require("completeness: 'complete' | 'partial' | 'unknown'" in desktop_ts,
         'the frontend type carries the three levels instead of inferring them from error strings')
 require('scans: RemoteScanOutcome[]' in desktop_ts,
         'the per-storage verdict is part of the contract the UI consumes')
+# --- step two: the confirmation ladder is visible where drift is reported ----------------------
+#
+# The §18A ladder derived a level nobody could see outside the asset list. These gates hold the three
+# things that make it readable rather than merely computed: one colour per bucket, a stated reason
+# for the level, and no invented grade for an object with no local row.
+
+reconcile_rs_s2 = text('apps/desktop/src-tauri/src/commands/reconcile.rs')
+tier_rs = text('crates/domain/src/confirmation_tier.rs')
+strength_impl = _rust_block(tier_rs, 'impl TierStrength {')
+tier_impl = _rust_block(tier_rs, 'impl ConfirmationTier {')
+require('pub fn strength(self) -> TierStrength' in tier_impl,
+        'the ladder exposes a trust bucket, not only a numeric level')
+require("pub fn missing_evidence(self) -> &'static str" in tier_impl,
+        'every level can name what evidence it still lacks')
+require(strength_impl.count('=> "') == 3,
+        'all three buckets have a stable IPC spelling (a fourth would mean a new colour)')
+require('ConfirmationTier::Uploaded | ConfirmationTier::RemoteObserved => TierStrength::Weak'
+        in tier_impl,
+        'uploaded and observed share a bucket: neither has compared bytes')
+require('ConfirmationTier::Unknown => TierStrength::Unconfirmed' in tier_impl,
+        'unobserved is its own bucket, never weak - weak already means "we looked"')
+for test_name in ('strength_buckets_group_by_trust_not_by_kind',
+                  'every_level_names_what_evidence_it_still_lacks',
+                  'strength_spellings_are_stable_and_distinct',
+                  'tier_spellings_are_stable_and_distinct'):
+    require(f'fn {test_name}()' in tier_rs,
+            f'the §18A rule behind {test_name} has a unit test naming it')
+
+drift_view = _rust_block(reconcile_rs_s2, 'pub struct DriftEntryView {')
+require("pub confirmation: Option<&'static str>" in drift_view,
+        'a drift entry carries the level as a value, not a number the UI must decode')
+require("pub missing_evidence: Option<&'static str>" in drift_view,
+        'and the reason it sits at that level')
+graded = _slice_between(reconcile_rs_s2, 'let graded = evidence.map', '});', 'grading block')
+require('derive_confirmation(timestamps)' in graded,
+        'the panel reuses the one derivation function instead of a second ranking')
+require('finding.deployment_id.and_then(|id| clocks.get(&id))' in reconcile_rs_s2,
+        'an entry with no local row grades to nothing rather than defaulting to Unknown')
+belief_sql2 = _slice_between(text('crates/persistence-sqlite/src/lib.rs'),
+                             'const BELIEF_QUERY: &str =', ';', 'belief sql')
+for clock in ('last_attempted_at', 'last_observed_at', 'last_verified_at'):
+    require(clock in belief_sql2, f'the belief query selects {clock} so the tier is derivable')
+
+display_ts = text('apps/desktop/src/lib/confirmationDisplay.ts')
+require('bg-emerald' in display_ts and 'bg-amber' in display_ts and 'bg-slate-100' in display_ts,
+        'the three buckets map to three distinct existing utility classes')
+require("unknown: 'unconfirmed'" in display_ts
+        and "content_verified: 'strong'" in display_ts
+        and "remote_observed: 'weak'" in display_ts,
+        'the frontend mapping agrees with the Rust classification')
+require('if (!tier) return null' in display_ts,
+        'no level renders no chip; a default would invent a confirmation state')
+settings_page2 = text('apps/desktop/src/pages/SettingsPage.tsx')
+require(settings_page2.count('<TierChip tier={entry.confirmation} />') == 3,
+        'all three drift lists show the column, not just the alarming one')
+require("from '../lib/confirmationDisplay'" in settings_page2,
+        'the page takes colours from the shared module rather than restating them inline')
+require('无本地记录' in settings_page2,
+        'a remote-only path says there is no local row instead of showing an empty cell')
+verifier = text('scripts/verify_confirmation_display.mjs')
+require('CONFIRMATION_DISPLAY total=' in verifier and 'process.exit(1)' in verifier,
+        'the display rules run as a gate that reports and fails, not a script that only prints')
+# The gate above reads the file from disk; this asserts it is actually wired into the aggregate, so
+# a verifier nobody runs cannot count as coverage.
+aggregate_s2 = text('scripts/verify_all.mjs')
+require("'scripts/verify_confirmation_display.mjs'" in aggregate_s2
+        and 'confirmation_display' in aggregate_s2,
+        'the display verifier is a declared stage of verify:all, not just a runnable script')
+
 # --- §21: reconciliation reads a scan as a set, not as a count ---------------------------------
 #
 # The probe path can only answer "is this object there" about objects we already named. Two things
