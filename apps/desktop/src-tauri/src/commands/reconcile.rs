@@ -983,7 +983,8 @@ mod tests {
             evidence_source: "scan".into(),
             ..SweepReport::idle(false)
         };
-        let stored = sweep_summary(&report, false).to_string();
+        // The scheduled shape: every count the report holds lands in the record.
+        let stored = sweep_summary(&report, true).to_string();
         for key in [
             "lastSweepAt",
             "trigger",
@@ -1008,11 +1009,23 @@ mod tests {
 
         // Whoever asked gets the full report on screen; the history row records only that a manual
         // pass happened, so it cannot overwrite the last automatic result someone came back to read.
-        let manual = sweep_summary(&report, true);
+        let manual = sweep_summary(&report, false);
         assert_eq!(manual["trigger"], serde_json::json!("manual"));
-        assert_eq!(manual["examined"], serde_json::json!(0));
-        assert!(manual["missingPaths"].is_null());
-        assert!(manual.get("present").is_none());
+        assert_eq!(manual["examined"], serde_json::json!(12));
+        assert_eq!(manual["missingRemote"], serde_json::json!(1));
+        assert_eq!(manual["unknownCoverage"], serde_json::json!(1));
+        for absent_key in [
+            "present",
+            "absent",
+            "inconclusive",
+            "missingPaths",
+            "pathsOmitted",
+        ] {
+            assert!(
+                manual.get(absent_key).is_none(),
+                "a manual line must not carry findings ({absent_key})",
+            );
+        }
     }
 
     #[test]
