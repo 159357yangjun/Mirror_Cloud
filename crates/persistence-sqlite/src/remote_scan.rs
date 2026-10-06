@@ -89,8 +89,10 @@ pub async fn insert_scan_entries(
     Ok(stored)
 }
 
-const SCAN_SNAPSHOT_QUERY: &str = "SELECT id, started_at, finished_at, completeness "
-    + "FROM remote_scans WHERE storage_id = ? ORDER BY started_at DESC LIMIT 1";
+const SCAN_SNAPSHOT_QUERY: &str = concat!(
+    "SELECT id, started_at, finished_at, completeness ",
+    "FROM remote_scans WHERE storage_id = ? ORDER BY started_at DESC LIMIT 1"
+);
 
 /// The freshest usable listing for a storage, if one exists inside `max_age`.
 ///
@@ -179,8 +181,10 @@ pub async fn last_scan_at(
     }
 }
 
-const LAST_SCAN_QUERY: &str = "SELECT started_at FROM remote_scans WHERE storage_id = ? "
-    + "ORDER BY started_at DESC LIMIT 1";
+const LAST_SCAN_QUERY: &str = concat!(
+    "SELECT started_at FROM remote_scans WHERE storage_id = ? ",
+    "ORDER BY started_at DESC LIMIT 1"
+);
 
 pub async fn insert_scan(pool: &SqlitePool, record: &RemoteScanRecord) -> Result<(), sqlx::Error> {
     sqlx::query(

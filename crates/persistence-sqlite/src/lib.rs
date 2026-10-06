@@ -1139,10 +1139,12 @@ fn parse_optional_time(raw: Option<String>) -> Option<chrono::DateTime<Utc>> {
         .map(|value| value.with_timezone(&Utc))
 }
 
-const BELIEF_QUERY: &str = "SELECT d.id AS deployment_id,d.storage_id,d.remote_path,d.public_url,"
-    + "d.status,d.last_error,d.deployed_at,d.last_attempted_at,d.last_observed_at,"
-    + "d.last_verified_at FROM deployments d "
-    + "WHERE d.storage_id = ? AND d.status <> 'deleted' ORDER BY d.remote_path";
+const BELIEF_QUERY: &str = concat!(
+    "SELECT d.id AS deployment_id,d.storage_id,d.remote_path,d.public_url,",
+    "d.status,d.last_error,d.deployed_at,d.last_attempted_at,d.last_observed_at,",
+    "d.last_verified_at FROM deployments d ",
+    "WHERE d.storage_id = ? AND d.status <> 'deleted' ORDER BY d.remote_path"
+);
 
 /// Read a text column that some queries in this file do not select.
 ///
