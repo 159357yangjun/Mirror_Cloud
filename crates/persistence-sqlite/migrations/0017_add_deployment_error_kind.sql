@@ -1,0 +1,26 @@
+-- Record why a deployment failed, as a value rather than as prose.
+--
+-- `last_error` has always held a human-readable sentence, and those sentences are good. The problem
+-- is that nothing downstream can branch on a sentence without pattern matching text, so "replace your
+-- token" and "the network flinched" were indistinguishable to any consumer that needed to decide
+-- whether to retry or to tell someone to edit their settings. The funnel was
+-- `application::PublisherCore::upload_member`, which called `.to_string()` on a `StorageError` and
+-- threw away the variant that had just been computed from an HTTP status code.
+--
+-- This adds the missing structure alongside the message, not instead of it: `last_error_kind` holds
+-- one of eight snake_case names (see domain::storage_error_kind) and `last_error` keeps carrying the
+-- explanation.
+--
+-- No backfill. Old rows stay NULL, meaning "we never recorded why". Deriving a kind by regexing the
+-- stored prose would invent evidence the original write did not capture - the exact failure mode
+-- section seventeen exists to prevent, where a field claims a check nobody performed.
+--
+-- No CHECK constraint either. `event_type` set the precedent in 0015: constraining an enum in SQL
+-- means every future kind needs its own migration, while the Rust parser already degrades unknown
+-- input to `rejected`. A CHECK would add rigidity without adding a guarantee anything reads.
+--
+-- DOWN: migrations/down/0017_add_deployment_error_kind.sql drops the column.
+-- DATA-LOSS-WARNING: a downgrade discards every recorded kind; `last_error` survives, so the
+-- explanations remain readable even though they can no longer be branched on.
+
+ALTER TABLE deployments ADD COLUMN last_error_kind TEXT;

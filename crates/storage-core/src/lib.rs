@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use bytes::Bytes;
-use domain::StorageCapabilities;
+use domain::{StorageCapabilities, StorageErrorKind};
 use serde::{Deserialize, Serialize};
 pub mod rollback;
 use thiserror::Error;
@@ -17,6 +17,59 @@ pub enum StorageError {
     Unsupported,
     #[error("operation has not been implemented yet")]
     NotImplemented,
+    /// The addressed object does not exist. Kept apart from `Provider` so a missing repository is
+    /// not sorted into the same bucket as an arbitrary upstream 5xx.
+    #[error("target object was not found: {0}")]
+    MissingObject(String),
+    /// A concurrent write invalidated ours. Transient: retrying can succeed with no config change.
+    #[error("write conflicted with a concurrent change: {0}")]
+    Conflict(String),
+}
+
+impl StorageError {
+    /// The failure's category, named by what the user should do next.
+    ///
+    /// Three of the five variants map straight through. `Provider` does not: it is what every
+    /// adapter falls back to, so it holds both "the repository does not exist" (fix your settings)
+    /// and "you are sending too fast" (wait). Splitting those here reads status text the adapter
+    /// already embedded in the message, which is a heuristic and says so below. The real
+    /// fix lives at the adapters, where the status code is still an integer; this mapping exists
+    /// so that a mis-classified provider error degrades to `rejected`, not to a wrong guess.
+    pub fn kind(&self) -> domain::StorageErrorKind {
+        use domain::StorageErrorKind;
+        match self {
+            StorageError::Authentication(_) => StorageErrorKind::Authentication,
+            StorageError::Network(_) => StorageErrorKind::Network,
+            StorageError::Unsupported => StorageErrorKind::Unsupported,
+            StorageError::NotImplemented => StorageErrorKind::NotImplemented,
+            StorageError::MissingObject(_) => StorageErrorKind::NotFound,
+            StorageError::Conflict(_) => StorageErrorKind::Conflict,
+            StorageError::Provider(message) => classify_provider_message(message),
+        }
+    }
+}
+
+/// Best-effort sort of the catch-all variant from the status text an adapter included.
+///
+/// Deliberately narrow: it only recognises forms this repository's own adapters produce, and every
+/// unrecognised string lands on `rejected`. A false `not_found` would tell someone to edit config
+/// that is fine; a false `rejected` tells them to read the message, which is always correct.
+fn classify_provider_message(message: &str) -> domain::StorageErrorKind {
+    use domain::StorageErrorKind;
+    let folded = message.to_ascii_lowercase();
+    let throttled = folded.contains("429")
+        || folded.contains("rate limit")
+        || folded.contains("too many requests");
+    if throttled {
+        return StorageErrorKind::RateLimited;
+    }
+    if folded.contains("409") || folded.contains("conflict") {
+        return StorageErrorKind::Conflict;
+    }
+    if folded.contains("404") || folded.contains("not found") {
+        return StorageErrorKind::NotFound;
+    }
+    StorageErrorKind::Rejected
 }
 
 #[derive(Debug, Clone)]
@@ -185,5 +238,52 @@ mod tests {
             VerificationOutcome::sha_readback(false, Some("abc".into()), Some("def".into()));
         assert!(!compared.passed);
         assert_eq!(compared.method, "sha_readback");
+    }
+
+    #[test]
+    fn three_variants_map_straight_through_to_their_kind() {
+        use domain::StorageErrorKind;
+        assert_eq!(
+            StorageError::Authentication("bad token".into()).kind(),
+            StorageErrorKind::Authentication
+        );
+        assert_eq!(
+            StorageError::Network("timeout".into()).kind(),
+            StorageErrorKind::Network
+        );
+        assert_eq!(StorageError::Unsupported.kind(), StorageErrorKind::Unsupported);
+        assert_eq!(
+            StorageError::NotImplemented.kind(),
+            StorageErrorKind::NotImplemented
+        );
+    }
+
+    #[test]
+    fn the_catch_all_variant_splits_on_status_text_it_was_given() {
+        use domain::StorageErrorKind;
+        assert_eq!(
+            StorageError::Provider("upload (404 Not Found): nope".into()).kind(),
+            StorageErrorKind::NotFound
+        );
+        assert_eq!(
+            StorageError::Provider("branch moved (409 Conflict)".into()).kind(),
+            StorageErrorKind::Conflict
+        );
+        assert_eq!(
+            StorageError::Provider("(429 Too Many Requests)".into()).kind(),
+            StorageErrorKind::RateLimited
+        );
+    }
+
+    #[test]
+    fn an_unrecognised_provider_rejection_stays_rejected_and_guards_nothing() {
+        use domain::StorageErrorKind;
+        // Silence about the category is safe; a wrong category is not.
+        for message in ["quota exceeded", "", "weird upstream 500 detail"] {
+            let kind = StorageError::Provider(message.into()).kind();
+            assert_eq!(kind, StorageErrorKind::Rejected, "{message:?}");
+            assert!(!kind.is_retryable());
+            assert!(!kind.is_config_actionable());
+        }
     }
 }

@@ -272,6 +272,8 @@ export interface AssetView {
     error?: string | null
     /** 0 unobserved · 1 uploaded · 2 seen on remote · 3 content verified. `ok` alone is level 1. */
     confirmationLevel: number
+    /** Why it failed, as a category; null when no reason was recorded. See domain::StorageErrorKind. */
+    errorKind?: string | null
   }>
   pluginOutputs: Array<{
     pluginId: string

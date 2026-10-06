@@ -279,6 +279,9 @@ pub struct AssetDeploymentView {
     /// can stay `ok: true` at level 1 until a probe or content check raises it, which is the
     /// distinction the old boolean could not express.
     pub confirmation_level: u8,
+    /// Category of `error`, when one was recorded. Lets the UI explain what to do without reading
+    /// the message back out of a sentence.
+    pub error_kind: Option<domain::StorageErrorKind>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -2455,6 +2458,7 @@ async fn run_workflow_publish_task(
                     },
                 },
                 last_error: outcome.error.clone(),
+                error_kind: outcome.error_kind,
             })
             .collect::<Vec<_>>();
         if let Err(error) = state
@@ -2823,6 +2827,10 @@ async fn run_repair_task(app: AppHandle, state: AppState, asset_id: Uuid, task_i
                         DeploymentStatus::Degraded,
                         None,
                         Some(message),
+                        // The bytes came back different. That is neither a transport failure nor a
+                        // refusal by the provider, so it lands on Rejected rather than borrowing a
+                        // kind that would imply retrying or reconfiguring.
+                        Some(domain::StorageErrorKind::Rejected),
                     )
                     .await;
             }
@@ -2857,6 +2865,10 @@ async fn run_repair_task(app: AppHandle, state: AppState, asset_id: Uuid, task_i
                             DeploymentStatus::Failed,
                             None,
                             Some(error.clone()),
+                            // No StorageError was produced here - the local storage record is
+                            // gone - but NotFound is still honest: nothing works until the
+                            // target is configured again.
+                            Some(domain::StorageErrorKind::NotFound),
                         )
                         .await
                         .map_err(|db_error| db_error.to_string())?;
@@ -2874,6 +2886,9 @@ async fn run_repair_task(app: AppHandle, state: AppState, asset_id: Uuid, task_i
                             DeploymentStatus::Failed,
                             None,
                             Some(error.clone()),
+                            // build_provider only fails for a missing or unusable credential
+                            // reference, which the user can act on. Asserted by a gate below.
+                            Some(domain::StorageErrorKind::Authentication),
                         )
                         .await
                         .map_err(|db_error| db_error.to_string())?;
@@ -2897,6 +2912,7 @@ async fn run_repair_task(app: AppHandle, state: AppState, asset_id: Uuid, task_i
                             DeploymentStatus::Online,
                             upload.public_url,
                             None,
+                            None,
                         )
                         .await
                         .map_err(|error| error.to_string())?;
@@ -2910,6 +2926,7 @@ async fn run_repair_task(app: AppHandle, state: AppState, asset_id: Uuid, task_i
                             DeploymentStatus::Failed,
                             None,
                             Some(message.clone()),
+                            Some(error.kind()),
                         )
                         .await
                         .map_err(|db_error| db_error.to_string())?;
@@ -3694,6 +3711,7 @@ fn asset_view(record: PublishedAssetRecord) -> AssetView {
                     ok: deployment.status == "online",
                     error: deployment.last_error,
                     confirmation_level: level,
+                    error_kind: deployment.error_kind,
                 }
             })
             .collect(),

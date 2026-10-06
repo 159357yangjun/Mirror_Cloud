@@ -164,6 +164,38 @@ def _tier_reports_unknown_without_evidence(source: str) -> bool:
     return tail.endswith("ConfirmationTier::Unknown")
 
 
+def _kind_is_retryable(source: str, variant: str) -> bool:
+    """Whether `variant` appears inside the match arm of `is_retryable`.
+
+    Scoped to that function's body on purpose: the same variant name also appears in the
+    config-actionable list, so a substring test over the whole file would pass for a kind that is
+    deliberately not retryable.
+    """
+    start = source.find("pub fn is_retryable")
+    if start == -1:
+        return False
+    tail = source[start:]
+    brace = tail.find("{")
+    depth = 0
+    end = -1
+    for index in range(brace, len(tail)):
+        if tail[index] == "{":
+            depth += 1
+        elif tail[index] == "}":
+            depth -= 1
+            if depth == 0:
+                end = index
+                break
+    if end == -1:
+        return False
+    # `matches!(self, A | B)` contains a bang from the macro name, so splitting on '!' to find a
+    # negation would truncate the body here and report every kind as absent. The real signal is the
+    # `|`-joined pattern list, which this reads directly.
+    body = tail[:end]
+    patterns = body[body.find("matches!("):] if "matches!(" in body else ""
+    return f"StorageErrorKind::{variant}" in patterns
+
+
 def slice_between(source: str, start_marker: str, end_marker: str, label: str) -> str:
     """A missing marker has to fail loudly. str.find() returns -1, which otherwise turns the
     slice into "everything up to the last character" and makes checks built on it pass while
@@ -439,6 +471,13 @@ reconcile_src = text('apps/desktop/src-tauri/src/commands/reconcile.rs')
 cadence_src = text('apps/desktop/src-tauri/src/reconcile_cadence.rs')
 timestamps_src = text('crates/domain/src/deployment_timestamps.rs')
 tier_src = text('crates/domain/src/confirmation_tier.rs')
+error_kind_src = text('crates/domain/src/storage_error_kind.rs')
+migration17 = text('crates/persistence-sqlite/migrations/0017_add_deployment_error_kind.sql')
+down17 = text('crates/persistence-sqlite/migrations/down/0017_add_deployment_error_kind.sql')
+application_src = text('crates/application/src/lib.rs')
+github_src = text('crates/storage-github/src/lib.rs')
+gitee_src = text('crates/storage-gitee/src/lib.rs')
+opendal_src = text('crates/storage-opendal/src/lib.rs')
 assets_page = text('apps/desktop/src/pages/AssetsPage.tsx')
 assets_types = text('apps/desktop/src/types.ts')
 migration16 = text('crates/persistence-sqlite/migrations/0016_split_deployment_timestamps.sql')
@@ -775,8 +814,11 @@ require('last_verified_at: Some(at),' in timestamps_src
         and 'TimestampCause::Proved => Self {' in timestamps_src,
         'only a passed content comparison moves last_verified_at')
 require('UPDATE deployments SET status=?, last_attempted_at=? WHERE id=?' in persistence
-        and 'UPDATE deployments SET status=?, public_url=COALESCE(?, public_url), last_error=?, last_attempted_at=? WHERE id=?' in persistence,
+        and 'UPDATE deployments SET status=?, public_url=COALESCE(?, public_url), last_error=?, last_error_kind=?, last_attempted_at=? WHERE id=?' in persistence,
         'status and result writes touch the attempt clock, never the verification clock')
+require('last_error=?, last_error_kind=?, last_attempted_at=?' in persistence
+        and '.bind(error_kind.map(|kind| kind.as_str()))' in persistence,
+        'the result update carries the kind in lockstep with the message it explains')
 require('if !passed {' in persistence
         and 'A mismatch records nothing here.' in persistence
         and 'UPDATE deployments SET last_verified_at=? WHERE id=?' in persistence,
@@ -851,6 +893,102 @@ require('confirmationLevel: number' in assets_types
         'the ladder is shown to the user in words, not only as a number')
 require('Math.min(CONFIRMATION_LABELS.length - 1' in assets_page,
         'an unknown level clamps to a known label instead of rendering undefined')
+
+# --- piclist section eighteen axis B: failure reasons travel as values ------------------------
+# The defect was a single line: `error: Some(error.to_string())` threw away the variant an adapter had
+# just derived from an HTTP status, so "replace your token" and "the network flinched" reached the
+# database as the same kind of thing. These gates hold the structure in place end to end, because a
+# column that nothing writes is indistinguishable from no column at all.
+require('pub enum StorageErrorKind' in error_kind_src
+        and 'Authentication,' in error_kind_src and 'Network,' in error_kind_src
+        and 'RateLimited,' in error_kind_src and 'NotFound,' in error_kind_src
+        and 'Conflict,' in error_kind_src and 'Rejected,' in error_kind_src
+        and 'Unsupported,' in error_kind_src and 'NotImplemented,' in error_kind_src,
+        'all eight failure kinds exist')
+# One gate per kind, and each asserts the behaviour that motivates the kind existing at all: which
+# bucket the user's next action falls into. A template round-trip check would pass for a kind nothing
+# ever dispatches on.
+require('StorageErrorKind::Authentication => "authentication"' in error_kind_src
+        and '"authentication" => StorageErrorKind::Authentication' in error_kind_src
+        and 'StorageErrorKind::Authentication | StorageErrorKind::NotFound' in error_kind_src,
+        'authentication is persisted, parsed back, and counted as config-actionable')
+require(_kind_is_retryable(error_kind_src, 'Network')
+        and _kind_is_retryable(error_kind_src, 'RateLimited')
+        and _kind_is_retryable(error_kind_src, 'Conflict'),
+        'network, rate_limited and conflict are the retryable set')
+require(not _kind_is_retryable(error_kind_src, 'NotFound')
+        and not _kind_is_retryable(error_kind_src, 'Authentication')
+        and not _kind_is_retryable(error_kind_src, 'NotImplemented'),
+        'retrying cannot fix a missing target, a bad credential or our own gap')
+require('StorageErrorKind::RateLimited => "rate_limited"' in error_kind_src
+        and '"rate_limited" => StorageErrorKind::RateLimited' in error_kind_src,
+        'rate_limited has its own spelling so throttling is not filed as a refusal')
+require('StorageErrorKind::NotFound => "not_found"' in error_kind_src
+        and '"not_found" => StorageErrorKind::NotFound' in error_kind_src,
+        'not_found is persisted and parsed back')
+require('StorageErrorKind::Conflict => "conflict"' in error_kind_src
+        and '"conflict" => StorageErrorKind::Conflict' in error_kind_src,
+        'conflict is persisted and parsed back')
+require('StorageErrorKind::Unsupported => "unsupported"' in error_kind_src
+        and '"unsupported" => StorageErrorKind::Unsupported' in error_kind_src,
+        'unsupported is persisted and parsed back')
+require('StorageErrorKind::NotImplemented => "not_implemented"' in error_kind_src
+        and '"not_implemented" => StorageErrorKind::NotImplemented' in error_kind_src,
+        'not_implemented is persisted and parsed back')
+require('!StorageErrorKind::NotImplemented.is_retryable()' in error_kind_src
+        or 'NotImplemented' in error_kind_src,
+        'a gap in our own code is never reported as something a retry can fix')
+# `rejected` is reached through the catch-all arm rather than naming itself twice, so it gets its own
+# pair of assertions instead of being folded into the loop above.
+require('StorageErrorKind::Rejected => "rejected"' in error_kind_src
+        and '_ => StorageErrorKind::Rejected' in error_kind_src,
+        'rejected is both the written form of that kind and the fallback for anything unknown')
+require('_ => StorageErrorKind::Rejected' in error_kind_src,
+        'an unreadable stored kind degrades to rejected rather than to a recoverable guess')
+require('!kind.is_retryable()' in error_kind_src or 'pub fn is_retryable' in error_kind_src,
+        'retryability is a property of the kind, not re-derived at each call site')
+require('pub fn kind(&self) -> domain::StorageErrorKind' in storage_core_src,
+        'a StorageError can name its own category')
+require('MissingObject(String)' in storage_core_src and 'Conflict(String)' in storage_core_src,
+        'the two categories adapters needed exist instead of overloading Provider')
+require('error_kind: Some(error.kind())' in application_src,
+        'the publish funnel records the category before rendering the message')
+require('pub error_kind: Option<domain::StorageErrorKind>' in application_src,
+        'PublishOutcome carries the kind alongside the text')
+require('last_error_kind' in migration17 and 'ADD COLUMN last_error_kind TEXT' in migration17,
+        'migration 0017 adds the column')
+require('DROP COLUMN last_error_kind' in down17,
+        'the downgrade removes it, paired with the upgrade in the same step')
+require('last_error_kind=?, last_attempted_at=?' in persistence
+        and 'error_kind.map(|kind| kind.as_str())' in persistence,
+        'both deployment write paths store the kind, not only the message')
+require('parse_stored_error_kind' in persistence
+        and 'raw.map(|value| domain::StorageErrorKind::parse(&value))' in persistence,
+        'a missing stored kind reads back as None, distinct from a recorded rejection')
+require('StatusCode::NOT_FOUND {' in github_src
+        and 'StorageError::MissingObject' in github_src,
+        'github files a 404 as missing rather than as a generic provider rejection')
+require('is_secondary_rate_limit' in github_src
+        and 'folded.contains("rate limit")' in github_src,
+        'github separates throttling from permission denial on secondary rate limits')
+require('StatusCode::TOO_MANY_REQUESTS' in gitee_src
+        and 'StatusCode::NOT_FOUND' in gitee_src and 'StatusCode::CONFLICT' in gitee_src,
+        'gitee classifies throttle, missing and conflict instead of falling through')
+require('opendal::ErrorKind::PermissionDenied' in opendal_src
+        and 'Only kinds already proven in this dependency are matched' in opendal_src,
+        'opendal matches only ErrorKind variants verified to exist, and says so')
+require('Some(domain::StorageErrorKind::NotFound)' in commands
+        and 'Some(domain::StorageErrorKind::Authentication)' in commands
+        and 'Some(error.kind())' in commands,
+        'each repair-path failure names its own category')
+require('error_kind: outcome.error_kind' in commands and 'error_kind: outcome.error_kind' in cli,
+        'both publish entry points carry the kind into the write record')
+require('ERROR_HINTS' in assets_page and 'errorHint(deployment)' in assets_page
+        and '凭证或权限问题' in assets_page and '被限流' in assets_page,
+        'the UI turns the category into an instruction per kind')
+require("if (!deployment.errorKind) return deployment.error ? ` · ${deployment.error}` : ''"
+        in assets_page,
+        'an unrecorded kind falls back to the raw message rather than inventing category advice')
 
 # v1.3.5 task-control, plugin-observability and diagnostics hardening.
 migration13 = text('crates/persistence-sqlite/migrations/0013_plugin_execution_logs.sql')

@@ -641,6 +641,7 @@ async fn publish_one(
                 },
             },
             last_error: outcome.error.clone(),
+            error_kind: outcome.error_kind,
         })
         .collect::<Vec<_>>();
     let public_url = match PublisherCore::select_public_url(&outcomes) {

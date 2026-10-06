@@ -204,6 +204,15 @@ impl GiteeStorage {
         let message = redact(&message, token);
         if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
             StorageError::Authentication(format!("{context}: {message}"))
+        } else if status == StatusCode::TOO_MANY_REQUESTS {
+            // Split out of the catch-all so a throttle is not reported as a permanent rejection.
+            // Gitee returns this far less often than GitHub returns its 403 variant, hence no
+            // wording sniffing here: without a distinct code there is nothing honest to match on.
+            StorageError::Network(format!("{context} ({status}): {message}"))
+        } else if status == StatusCode::NOT_FOUND {
+            StorageError::MissingObject(format!("{context} ({status}): {message}"))
+        } else if status == StatusCode::CONFLICT {
+            StorageError::Conflict(format!("{context} ({status}): {message}"))
         } else {
             StorageError::Provider(format!("{context} ({status}): {message}"))
         }

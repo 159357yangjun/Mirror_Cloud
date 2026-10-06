@@ -187,21 +187,30 @@ impl GitHubStorage {
             StorageError::Authentication(
                 "GitHub Token 无效、已过期或已撤销。请使用 Personal Access Token（推荐 Fine-grained），并为目标仓库授予 Contents: Read and write。".into(),
             )
+        } else if status == StatusCode::TOO_MANY_REQUESTS
+            || is_secondary_rate_limit(status, &message)
+        {
+            // GitHub answers throttling with 403 plus a rate-limit sentence instead of 429,
+            // so the status alone cannot separate "slow down" from "you lack scope". Filing that
+            // as a permission problem sends someone to edit settings that are already correct.
+            StorageError::Network(format!("GitHub 限流，稍后会自动重试。GitHub 返回：{message}"))
         } else if status == StatusCode::FORBIDDEN {
             StorageError::Authentication(format!(
                 "GitHub 已识别 Token，但拒绝当前操作。请检查仓库授权、Contents: Read and write 权限以及组织 SSO/策略。GitHub 返回：{message}"
             ))
-        } else if status == StatusCode::NOT_FOUND && context.contains("repository check") {
-            StorageError::Provider(
-                "找不到 GitHub 仓库。请检查 Owner / 仓库名，或确认 Fine-grained Token 已授权这个仓库。".into(),
-            )
-        } else if status == StatusCode::NOT_FOUND && context.contains("branch check") {
-            StorageError::Provider(
+        } else if status == StatusCode::NOT_FOUND {
+            // One branch for every 404 now that the kind travels separately. The message still
+            // names what was missing; sorting no longer depends on the caller's context string.
+            let detail = if context.contains("branch check") {
                 "找不到指定 GitHub 分支。请检查分支名（例如 main），并确认 Token 可以访问该仓库。"
-                    .into(),
-            )
+            } else if context.contains("repository check") {
+                "找不到 GitHub 仓库。请检查 Owner / 仓库名，或确认 Fine-grained Token 已授权这个仓库。"
+            } else {
+                "GitHub 上找不到该对象。请检查路径与分支是否存在。"
+            };
+            StorageError::MissingObject(format!("{detail}（{context}）"))
         } else if status == StatusCode::CONFLICT && context.contains("upload") {
-            StorageError::Provider(format!(
+            StorageError::Conflict(format!(
                 "GitHub 分支在上传期间被其他提交更新，连续重试后仍发生 409 Conflict。请稍后重试；如果正在批量上传，应用会继续避免把一次瞬时并发冲突当成永久失败。GitHub 返回：{message}"
             ))
         } else {
@@ -646,4 +655,16 @@ mod tests {
             "https://raw.githubusercontent.com/159357yangjun/PicList/main/04_%E7%AE%97%E6%B3%95%E5%B1%82_%E7%AE%97%E6%B3%95%E5%AF%B9%E6%AF%94.png"
         );
     }
+}
+
+/// Whether a 403 is really GitHub's secondary rate limit instead of a permission denial.
+///
+/// Matched on wording because GitHub uses no distinct status code here. Deliberately narrow: an
+/// unrecognised 403 stays `Authentication`, which is both the likelier cause and the safer advice.
+fn is_secondary_rate_limit(status: StatusCode, message: &str) -> bool {
+    let folded = message.to_ascii_lowercase();
+    status == StatusCode::FORBIDDEN
+        && (folded.contains("rate limit")
+            || folded.contains("secondary rate limit")
+            || folded.contains("abuse detection"))
 }

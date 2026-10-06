@@ -624,6 +624,10 @@ impl StorageGroupRepository {
 pub struct DeploymentWriteRecord {
     pub deployment: Deployment,
     pub last_error: Option<String>,
+    /// Structured failure category, stored beside the message so a reader can branch on it without
+    /// matching prose. `None` means "not recorded", which includes rows predating this column - it
+    /// does not mean "no error".
+    pub error_kind: Option<domain::StorageErrorKind>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -650,7 +654,9 @@ pub struct DeploymentSummaryRecord {
     pub remote_path: String,
     pub public_url: Option<String>,
     pub last_error: Option<String>,
-    /// Evidence clocks, read out of the database so the confirmation tier is derived rather than
+    /// Structured reason for `last_error`, or None when nothing recorded one.
+    pub error_kind: Option<domain::StorageErrorKind>,
+    /// Evidence clocks, read out the database so the confirmation tier is derived rather than
     /// stored. A tier computed here cannot disagree with the row it came from.
     pub timestamps: domain::DeploymentTimestamps,
 }
@@ -711,6 +717,7 @@ impl AssetRepository {
             &[DeploymentWriteRecord {
                 deployment: deployment.clone(),
                 last_error: None,
+                error_kind: None,
             }],
         )
         .await
@@ -746,7 +753,7 @@ impl AssetRepository {
         for record in deployments {
             let deployment = &record.deployment;
             sqlx::query(
-                "INSERT INTO deployments (id,variant_id,storage_id,role,remote_path,public_url,                         status,deployed_at,last_attempted_at,last_observed_at,                         last_verified_at,last_error)                         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO deployments (id,variant_id,storage_id,role,remote_path,public_url,status,deployed_at,last_attempted_at,last_observed_at,last_verified_at,last_error,last_error_kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             )
             .bind(deployment.id.to_string())
             .bind(deployment.variant_id.to_string())
@@ -760,6 +767,7 @@ impl AssetRepository {
             .bind(deployment.timestamps.last_observed_at.map(|value| value.to_rfc3339()))
             .bind(deployment.timestamps.last_verified_at.map(|value| value.to_rfc3339()))
             .bind(&record.last_error)
+            .bind(record.error_kind.map(|kind| kind.as_str()))
                 .execute(&mut *tx)
                 .await?;
         }
@@ -778,7 +786,7 @@ impl AssetRepository {
             let variant_raw: String = row.try_get("variant_id")?;
             let created: String = row.try_get("created_at")?;
             let variant_id = parse_uuid(&variant_raw)?;
-            let dep_rows = sqlx::query("SELECT d.id AS deployment_id,d.storage_id,s.name AS storage_name,s.provider_key,d.role,d.status,d.remote_path,d.public_url,d.last_error,                         d.deployed_at,d.last_attempted_at,d.last_observed_at,d.last_verified_at                          FROM deployments d JOIN storages s ON s.id=d.storage_id WHERE d.variant_id=?                          ORDER BY CASE d.role WHEN 'primary' THEN 0 WHEN 'mirror' THEN 1 ELSE 2 END")
+            let dep_rows = sqlx::query("SELECT d.id AS deployment_id,d.storage_id,s.name AS storage_name,s.provider_key,d.role,d.status,d.remote_path,d.public_url,d.last_error,d.last_error_kind,                         d.deployed_at,d.last_attempted_at,d.last_observed_at,d.last_verified_at                          FROM deployments d JOIN storages s ON s.id=d.storage_id WHERE d.variant_id=?                          ORDER BY CASE d.role WHEN 'primary' THEN 0 WHEN 'mirror' THEN 1 ELSE 2 END")
                 .bind(variant_id.to_string())
                 .fetch_all(&self.pool)
                 .await?;
@@ -797,6 +805,9 @@ impl AssetRepository {
                         remote_path: deployment.try_get("remote_path")?,
                         public_url: deployment.try_get("public_url")?,
                         last_error: deployment.try_get("last_error")?,
+                        error_kind: parse_stored_error_kind(
+                            deployment.try_get("last_error_kind")?,
+                        ),
                         timestamps: read_clocks(&deployment)?,
                     })
                 })
@@ -1049,11 +1060,16 @@ impl AssetRepository {
         status: DeploymentStatus,
         public_url: Option<String>,
         last_error: Option<String>,
+        error_kind: Option<domain::StorageErrorKind>,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query("UPDATE deployments SET status=?, public_url=COALESCE(?, public_url), last_error=?, last_attempted_at=? WHERE id=?")
+        // The kind is written unconditionally rather than COALESCE'd: carrying an old failure's
+        // category forward under a new message would mislabel the row, which is the mistake this
+        // column exists to stop.
+        sqlx::query("UPDATE deployments SET status=?, public_url=COALESCE(?, public_url), last_error=?, last_error_kind=?, last_attempted_at=? WHERE id=?")
             .bind(deployment_status_str(&status))
             .bind(public_url)
             .bind(last_error)
+            .bind(error_kind.map(|kind| kind.as_str()))
             .bind(Utc::now().to_rfc3339())
             .bind(deployment_id.to_string())
             .execute(&self.pool)
@@ -1068,6 +1084,14 @@ impl AssetRepository {
             .await?;
         Ok(())
     }
+}
+
+/// Read a persisted kind, mapping absent or unrecognised to None.
+///
+/// `parse` alone folds an unknown spelling into `Rejected`, right for a value written
+/// deliberately but wrong for NULL: no row means "never recorded", not "recorded as refused".
+fn parse_stored_error_kind(raw: Option<String>) -> Option<domain::StorageErrorKind> {
+    raw.map(|value| domain::StorageErrorKind::parse(&value))
 }
 
 /// Read the four evidence clocks out of a row, tolerating absent values.

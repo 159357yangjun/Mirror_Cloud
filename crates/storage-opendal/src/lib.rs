@@ -222,6 +222,10 @@ fn normalized_root(root: &str) -> String {
 
 fn map_error(error: opendal::Error) -> StorageError {
     let message = error.to_string();
+    // Only kinds already proven in this dependency are matched. ErrorKind has no local source to
+    // consult here and there is no compiler, so guessing at variant names would be an unverifiable
+    // edit that only CI could falsify. Unrecognised kinds fall through to Provider, whose own
+    // classifier sorts by status text - weaker, but covered by storage-core tests.
     match error.kind() {
         opendal::ErrorKind::PermissionDenied => StorageError::Authentication(message),
         opendal::ErrorKind::Unsupported => StorageError::Unsupported,

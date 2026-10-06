@@ -52,6 +52,11 @@ pub struct PublishOutcome {
     pub remote_path: String,
     pub public_url: Option<String>,
     pub error: Option<String>,
+    /// Why the upload failed, as a value rather than only as prose. `None` next to `Some(error)`
+    /// means the failure never reached a `StorageError`: the provider could not be built, so the
+    /// message is a pre-made string with no status to classify. That stays unknown rather than
+    /// guessed, because "cannot construct client" and "server refused" need different fixes.
+    pub error_kind: Option<domain::StorageErrorKind>,
     /// Passed straight through from the adapter. `None` means that path verified nothing, which is
     /// not the same as a failed verification - see `storage_core::VerificationOutcome`.
     pub verification: Option<VerificationOutcome>,
@@ -202,6 +207,8 @@ impl PublisherCore {
                     remote_path,
                     public_url: None,
                     error: Some(error),
+                    // No StorageError exists to classify; see the field doc.
+                    error_kind: None,
                     verification: None,
                 };
             }
@@ -222,6 +229,7 @@ impl PublisherCore {
                 remote_path: upload.remote_path,
                 public_url: upload.public_url,
                 error: None,
+                error_kind: None,
                 verification: upload.verification,
             },
             Err(error) => PublishOutcome {
@@ -230,6 +238,9 @@ impl PublisherCore {
                 role: member.role,
                 remote_path,
                 public_url: None,
+                // kind() is read before the error is rendered, so the variant survives into the
+                // outcome instead of dissolving into its own message.
+                error_kind: Some(error.kind()),
                 error: Some(error.to_string()),
                 // No verdict without an object to have looked at.
                 verification: None,
@@ -342,6 +353,7 @@ mod tests {
             remote_path: "p".into(),
             public_url: url.map(str::to_string),
             error: if ok { None } else { Some("boom".into()) },
+            error_kind: if ok { None } else { Some(domain::StorageErrorKind::Rejected) },
             verification: None,
         }
     }
