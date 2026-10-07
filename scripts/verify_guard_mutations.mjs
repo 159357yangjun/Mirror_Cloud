@@ -238,6 +238,30 @@ const mutations = [
     expect: 'the frontend map covers all four kinds and degrades unknown ones to rejected, never silence',
     from: 'return PROBE_VIEWS[kind] ?? PROBE_VIEWS.rejected',
     to: 'return PROBE_VIEWS[kind] ?? null',
+  },  {
+    // Plan C M38: drop the cache short-circuit and every launch becomes a GitHub request -
+    // the exact opposite of why the cache exists. Everything still works; nobody notices for
+    // weeks, and then rate limits start answering the user's startup.
+    id: 'M38', file: 'apps/desktop/src/components/AppShell.tsx', oracle: 'userflow-src',
+    expect: 'startup reads the cache first and only spends a request when it expired',
+    from: 'if (cached.fresh) {',
+    to: 'if (false) {',
+  },
+  {
+    // Plan C M39: the clock bug this guard exists for. Without the negative-age check, a
+    // record dated ahead of our clock ages negative forever - "fresh" permanently, no re-check.
+    id: 'M39', file: 'apps/desktop/src-tauri/src/commands/updater.rs', oracle: 'userflow-src',
+    expect: 'freshness is a pure function and a future-dated record re-checks instead of sticking',
+    from: '!age.negative() && age < Duration::hours(UPDATE_CACHE_MAX_AGE_HOURS)',
+    to: 'age < Duration::hours(UPDATE_CACHE_MAX_AGE_HOURS)',
+  },
+  {
+    // Plan C M40: light the dot unconditionally. A badge claiming a newer release that was
+    // never observed is the fabricated-data failure mode wearing a UI costume.
+    id: 'M40', file: 'apps/desktop/src/components/AppShell.tsx', oracle: 'userflow-src',
+    expect: 'the sidebar dot is driven only by an observed updateAvailable result',
+    from: 'setUpdateAvailableVersion(cached.result.latestVersion)',
+    to: 'setUpdateAvailableVersion(cached.result.latestVersion ?? \"0.0.0\")',
   },
 ]
 
