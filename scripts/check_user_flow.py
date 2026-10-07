@@ -697,7 +697,29 @@ require("const SWEEP_LAST_KEY: &str = \"reconciliation.lastSweep\";" in reconcil
 # mutation removes it from reconcile.rs. Under the harness tripwire every step-4 needle re-reads the
 # mutated file; without it these assertions are inert (and the fingerprints prove nothing either way).
 _probe_source = None
+_probe_file = os.environ.get('MUTATED_SOURCE', '')
 _probe_needle = ''
+
+# Label -> the file whose mutation that label proves. An unregistered label never fires against a
+# harness needle: firing M35's needle at AppShell's cache short-circuit is how one mutant was
+# reported guilty of three siblings' properties (§26 teardown).
+_NEEDLE_OWNERS = {
+    'the summary carries a timestamp of its own and an explicit findings switch': 'apps/desktop/src-tauri/src/commands/reconcile.rs',
+    'error and skipped outrank clean before any count is consulted (asserted inside the function body)': 'apps/desktop/src-tauri/src/commands/reconcile.rs',
+    'the manual command persists a line while the scheduled path persists findings': 'apps/desktop/src-tauri/src/commands/reconcile.rs',
+    'the safety mapping still takes Result<bool,()> - persistence does not see the storage error type': 'crates/persistence-sqlite/src/journal.rs',
+    'inconclusive findings carry their kind through detect_drift': 'crates/persistence-sqlite/src/journal.rs',
+    'the frontend map covers all four kinds and degrades unknown ones to rejected, never silence': 'apps/desktop/src/lib/probeDisplay.ts',
+    'startup reads the cache first and only spends a request when it expired': 'apps/desktop/src/components/AppShell.tsx',
+    'freshness is a pure function and a future-dated record re-checks instead of sticking': 'apps/desktop/src-tauri/src/commands/updater.rs',
+    'the sidebar dot is driven only by an observed updateAvailable result': 'apps/desktop/src/components/AppShell.tsx',
+}
+
+
+def _needle_owner(label):
+    return _NEEDLE_OWNERS.get(label, '<unregistered>')
+
+
 if os.environ.get('MIRROR_CLOUD_MUTATION_PROBE') == 'sweep-persistence':
     _probe_rel = os.environ.get('MUTATED_SOURCE', '')
     _probe_needle = os.environ.get('MUTATED_NEEDLE', '')
@@ -706,27 +728,23 @@ if os.environ.get('MIRROR_CLOUD_MUTATION_PROBE') == 'sweep-persistence':
 
 def _needle(whole, label):
     # Inert without the tripwire; under it, the assertion measures the mutated file itself.
-    # With a harness-supplied needle, THAT string is what must still be findable in the file:
-    # the mutation deletes or rewrites exactly it, so removal turns this red. The `whole` form
-    # (no needle passed) only fires when MUTATED_SOURCE names this very file - the checker
-    # quoting its own needle can then never satisfy it, because the quote is what got removed.
     if _probe_source is None:
         return
-    if _probe_needle:
-        require(_probe_needle in _probe_source, f'{label} [mutation probe]')
-    elif _probe_rel == 'scripts/check_user_flow.py':
+    if _probe_file == 'scripts/check_user_flow.py':
         require(whole in _probe_source, f'{label} [mutation probe]')
+    elif _probe_needle and _probe_file == _needle_owner(label):
+        require(_probe_needle in _probe_source, f'{label} [mutation probe]')
 
 
 def _flat_needle(whole, start_marker, end_marker, label):
     if _probe_source is None:
         return
     body = ' '.join(_slice_between(_probe_source, start_marker, end_marker, label).split())
-    if _probe_needle:
+    if _probe_file == 'scripts/check_user_flow.py':
+        require(' '.join(whole.split()) in body, f'{label} [mutation probe]')
+    elif _probe_needle and _probe_file == _needle_owner(label):
         needle_flat = ' '.join(_probe_needle.split())
         require(needle_flat in body or _probe_needle in body, f'{label} [mutation probe]')
-    elif _probe_rel == 'scripts/check_user_flow.py':
-        require(' '.join(whole.split()) in body, f'{label} [mutation probe]')
 
 require('pub(crate) fn sweep_summary(report: &SweepReport, include_findings: bool) -> Value {' in reconcile_src
         and '"lastSweepAt": Utc:' + ':now().to_rfc3339(),' in reconcile_src,
