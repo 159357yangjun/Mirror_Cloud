@@ -22,6 +22,46 @@ def text(rel: str) -> str:
 def require(ok: bool, label: str):
     checks.append((ok, label))
 
+
+def _slice_between(source: str, start_marker: str, end_marker: str, label: str) -> str:
+    """A slice of `source` between two markers, or a loud empty string.
+
+    Returns '' when either marker is missing so the caller's assertion fails by name instead of
+    silently examining nothing. The existing `slice_between` raises SystemExit, which would abort
+    the run before any label prints - wrong trade-off for a reader whose absence should read as a
+    red gate, not as a crashed checker.
+    """
+    start = source.find(start_marker)
+    if start == -1:
+        return ''
+    rest = source[start:]
+    end = rest.find(end_marker, len(start_marker))
+    return rest if end == -1 else rest[:end]
+
+
+def _rust_block(source: str, marker: str) -> str:
+    """From `marker` to the brace that closes it.
+
+    Scoped for the same reason every other reader here is: an unscoped substring test passes when
+    the token appears anywhere - including in a comment explaining why it must not appear.
+    """
+    start = source.find(marker)
+    if start == -1:
+        return ''
+    rest = source[start:]
+    brace = rest.find('{')
+    if brace == -1:
+        return ''
+    depth = 0
+    for index in range(brace, len(rest)):
+        if rest[index] == '{':
+            depth += 1
+        elif rest[index] == '}':
+            depth -= 1
+            if depth == 0:
+                return rest[:index + 1]
+    return rest
+
 def top_level_imports(source: str) -> list[str]:
     """Only real import statements.
 
@@ -30,6 +70,171 @@ def top_level_imports(source: str) -> list[str]:
     that package - the scan was poisoned by its own test data.
     """
     return re.findall(r"^import\b.*?\bfrom '([^']+)'", source, re.MULTILINE)
+
+def _cadence_default_is_disabled(source: str) -> bool:
+    """Read the literal inside `impl Default for ReconcileConfig`, not just any occurrence.
+
+    A plain substring test for "enabled: false," stays satisfied by the unrelated disabled branch in
+    `from_value`, so flipping the actual default to true would pass it. That is a gate that looks like
+    a safety check and is not one, which is worse than having no gate at all.
+    """
+    marker = "impl Default for ReconcileConfig"
+    start = source.find(marker)
+    if start == -1:
+        return False
+    body = source[start:start + 700]
+    end = body.find("}")
+    if end != -1:
+        body = body[:end]
+    return "enabled: false," in body
+
+
+def _cadence_wraps_on_short_page(source: str) -> bool:
+    """Read the body of `advance_cursor` and require a short page to return None.
+
+    A substring test cannot express this: the wrapping arm's distinguishing feature is what it
+    returns for a Some(_) input whose row count is below the page size, and every token in that arm
+    also appears elsewhere in the file. So the function body is isolated and its match arms are
+    checked structurally.
+    """
+    marker = "pub fn advance_cursor("
+    start = source.find(marker)
+    if start == -1:
+        return False
+    rest = source[start:]
+    brace = rest.find("{")
+    # Walk to the matching close brace rather than trusting indentation or a fixed window.
+    depth = 0
+    end = -1
+    for index in range(brace, len(rest)):
+        char = rest[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                end = index
+                break
+    if end == -1:
+        return False
+    body = rest[brace:end + 1]
+    # The wrap must be the arm that matches any Some(_) without the full-page guard.
+    return 'Some(_) => None,' in body
+
+
+def _desktop_default_is_inert(source: str) -> bool:
+    """Require the browser-build reconciliation default to say enabled: false.
+
+    Written as a function because the declaration spans one long line whose exact punctuation keeps
+    changing under formatting, and an inline string test then fails for layout reasons rather than
+    meaning. This isolates the declaration and reads only its enabled field.
+    """
+    marker = "const reconciliationDefaults"
+    start = source.find(marker)
+    if start == -1:
+        return False
+    window = source[start:start + 240]
+    end = window.find("}")
+    if end != -1:
+        window = window[:end]
+    return "enabled: false" in window
+
+
+def _ui_interval_floor_matches_backend(frontend_source: str, cadence_source: str) -> bool:
+    """Both sides must declare the same numeric floor.
+
+    The gate that preceded this one checked that each file mentioned a floor, which stayed green when
+    the frontend said 1 minute and the backend said 30 - the exact divergence that makes a UI accept a
+    value the backend silently rewrites. Reading the numbers is the only way to catch that.
+    """
+    def literal(source: str, marker: str) -> int | None:
+        start = source.find(marker)
+        if start == -1:
+            return None
+        tail = source[start + len(marker):]
+        digits = ""
+        for char in tail.lstrip():
+            if char.isdigit():
+                digits += char
+            else:
+                break
+        # Rust writes the ceiling as an expression; only the plain-literal floor is compared here.
+        return int(digits) if digits else None
+
+    frontend_value = literal(frontend_source, "export const MIN_RECONCILE_INTERVAL_MINUTES =")
+    backend_value = literal(cadence_source, "pub const MIN_INTERVAL_MINUTES: u32 =")
+    return frontend_value is not None and frontend_value == backend_value
+
+
+def _names_bare_verified_at(source: str) -> bool:
+    """Whether the text mentions the old column as itself, not as part of last_verified_at.
+
+    A plain substring test can never pass after section seventeen, because the honest new column name
+    ends with the old one. This looks for `verified_at` not preceded by `last_`.
+    """
+    return re.search(r"(?<!last_)verified_at", source) is not None
+
+
+def _tier_reports_unknown_without_evidence(source: str) -> bool:
+    """The fall-through arm of derive_confirmation must be Unknown.
+
+    Written as a reader because the surrounding code legitimately mentions several tier names; a
+    substring test for "Unknown" would pass even if the final arm returned Uploaded, which is the
+    exact regression this guards.
+    """
+    marker = "pub fn derive_confirmation"
+    start = source.find(marker)
+    if start == -1:
+        return False
+    body = source[start:]
+    brace = body.find("{")
+    depth = 0
+    end = -1
+    for index in range(brace, len(body)):
+        if body[index] == "{":
+            depth += 1
+        elif body[index] == "}":
+            depth -= 1
+            if depth == 0:
+                end = index
+                break
+    if end == -1:
+        return False
+    tail = body[:end].rstrip()
+    return tail.endswith("ConfirmationTier::Unknown")
+
+
+def _kind_is_retryable(source: str, variant: str) -> bool:
+    """Whether `variant` appears inside the match arm of `is_retryable`.
+
+    Scoped to that function's body on purpose: the same variant name also appears in the
+    config-actionable list, so a substring test over the whole file would pass for a kind that is
+    deliberately not retryable.
+    """
+    start = source.find("pub fn is_retryable")
+    if start == -1:
+        return False
+    tail = source[start:]
+    brace = tail.find("{")
+    depth = 0
+    end = -1
+    for index in range(brace, len(tail)):
+        if tail[index] == "{":
+            depth += 1
+        elif tail[index] == "}":
+            depth -= 1
+            if depth == 0:
+                end = index
+                break
+    if end == -1:
+        return False
+    # `matches!(self, A | B)` contains a bang from the macro name, so splitting on '!' to find a
+    # negation would truncate the body here and report every kind as absent. The real signal is the
+    # `|`-joined pattern list, which this reads directly.
+    body = tail[:end]
+    patterns = body[body.find("matches!("):] if "matches!(" in body else ""
+    return f"StorageErrorKind::{variant}" in patterns
+
 
 def slice_between(source: str, start_marker: str, end_marker: str, label: str) -> str:
     """A missing marker has to fail loudly. str.find() returns -1, which otherwise turns the
@@ -45,6 +250,9 @@ def slice_between(source: str, start_marker: str, end_marker: str, label: str) -
     return source[start:end]
 
 commands_main = text('apps/desktop/src-tauri/src/commands.rs')
+storage_core_rollback = text('crates/storage-core/src/rollback.rs')
+domain_events_src = text('crates/domain/src/event_journal.rs')
+tauri_rollback = text('apps/desktop/src-tauri/src/rollback.rs')
 storage_entries_commands = text('apps/desktop/src-tauri/src/commands/storage_entries.rs')
 plugin_commands = text('apps/desktop/src-tauri/src/commands/plugins.rs')
 commands = commands_main + '\n' + storage_entries_commands + '\n' + plugin_commands
@@ -56,6 +264,7 @@ assets = text('apps/desktop/src/pages/AssetsPage.tsx')
 plugins = text('apps/desktop/src/pages/PluginsPage.tsx')
 lib = text('apps/desktop/src-tauri/src/lib.rs')
 persistence = text('crates/persistence-sqlite/src/lib.rs')
+domain = text('crates/domain/src/lib.rs')
 migration8 = text('crates/persistence-sqlite/migrations/0008_asset_plugin_outputs.sql')
 application = text('crates/application/src/lib.rs')
 publish_page = text('apps/desktop/src/pages/PublishPage.tsx')
@@ -100,11 +309,16 @@ require('setPluginEnabled' in plugins, 'plugin UI controls real backend switch')
 require('AI_CREDENTIAL_KEY' in commands and re.search(r'credentials\s*\.\s*set_json\(\s*AI_CREDENTIAL_KEY', commands) is not None, 'AI API key uses credential store')
 require('obj.remove("apiKey")' in commands, 'AI API key removed before settings persistence')
 
-failed = [label for ok, label in checks if not ok]
-for ok, label in checks:
+section_one = list(checks)
+failed = [label for ok, label in section_one if not ok]
+for ok, label in section_one:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
-    raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
+    # Named, not just counted: this exit used to print the total across the whole file while showing
+    # only section one's labels, so a red run could be observed with zero FAIL lines on screen.
+    for label in failed:
+        print('FAIL(base) ' + label)
+    raise SystemExit(f'User-flow contract FAILED: {len(failed)} of {len(section_one)} base check(s)')
 print(f'user-flow section [base] | checks so far: {len(checks)}')
 
 # v1.2.3 reliability hardening.
@@ -168,10 +382,16 @@ require('permissions: plugin.permissions.filter' in plugins and 'revokeSensitive
 require(re.search(r'execute_for_hook\(\s*&manifest,\s*&granted_permissions', cli) is not None, 'Typora plugin runtime uses persisted user grants')
 
 failed = [label for ok, label in checks if not ok]
-for ok, label in checks[-18:]:
+section_tail = checks[-18:]
+for ok, label in section_tail:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
-    raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
+    # Every failure this section owns prints by name. The window above shows only the last 18
+    # labels, so a red assertion outside it used to exit non-zero while printing nothing but OK -
+    # observed directly: "FAILED: 1 check(s)" with zero FAIL lines on screen.
+    for label in failed:
+        print('FAIL(section) ' + label)
+    raise SystemExit(f'User-flow contract FAILED: {len(failed)} of {len(checks)} accumulated check(s)')
 print(f'user-flow section [reliability hardening] | checks so far: {len(checks)}')
 
 # v1.2.5 consistency and integrity hardening.
@@ -224,6 +444,145 @@ require(gitee.count('net_err(e, tok)') + gitee.count('prov_err(e, tok)') >= 16,
         f'Gitee routes its transport errors through the redacting helpers (found {gitee.count("net_err(e, tok)") + gitee.count("prov_err(e, tok)")})')
 require('fn response_error(response: Response, context: &str, token: &str)' in gitee,
         'Gitee scrubs server response bodies with the token too')
+# Event journal (piclist #39 piece three): values + trait only, no SQLite yet. The assertions pin
+# the two properties that make it a journal rather than a log table: the journal assigns ordering,
+# and replay is derived rather than reimplemented per backend.
+event_journal = text('crates/domain/src/event_journal.rs')
+require('pub trait EventJournal' in event_journal and 'fn append(&mut self, event: DomainEvent)' in event_journal,
+        'EventJournal exposes an append that owns the event so sequence assignment cannot be bypassed')
+require('sequence: 0,' in event_journal and 'pub fn with_sequence(self, sequence: u64) -> Self' in event_journal,
+        'new events arrive unsequenced and only the journal can stamp a position')
+require('fn replay(&self, from: u64, to: u64) -> Vec<DomainEvent> {' in event_journal,
+        'replay has a default implementation derived from events_since, so a backend cannot get it wrong independently')
+require('caller supplied a sequence' in event_journal and 'sequence != 0' in event_journal,
+        'the mock rejects an injected sequence (guard + message both present) rather than accepting a caller-chosen position')
+require('serde_json.workspace = true' in text('crates/domain/Cargo.toml').split('[dev-dependencies]')[0],
+        'domain depends on serde_json as a normal dependency (payload is a Value), not only for tests')
+# Reconciliation + durable journal storage (piclist #39 piece four). The two properties worth a
+# gate are: down scripts must not leak into the up replay, and an inconclusive probe must never be
+# reported as a missing remote (that is how a network blip becomes mass deletion).
+journal_src = text('crates/persistence-sqlite/src/journal.rs')
+migration15 = text('crates/persistence-sqlite/migrations/0015_domain_events.sql')
+down15 = text('crates/persistence-sqlite/migrations/down/0015_domain_events.sql')
+require('CREATE UNIQUE INDEX IF NOT EXISTS idx_domain_events_aggregate_sequence' in migration15
+        and 'aggregate_kind, aggregate_id, sequence' in migration15,
+        'per-aggregate sequence uniqueness is enforced by the schema, not just by convention')
+require('CHECK (sequence >= 1)' in migration15,
+        'the reserved "not yet persisted" sequence 0 cannot enter the table')
+require('DROP TABLE IF EXISTS domain_events' in down15,
+        'the new up migration ships with its same-named down counterpart')
+require("glob('*.sql')" in text('scripts/validate.py'),
+        'validate.py replays only top-level *.sql, which is what keeps migrations/down/ out of the up chain')
+require('DriftKind::ProbeInconclusive' in journal_src
+        and 'Some(RemoteObservation::Absent) if deployment.status_online' in journal_src,
+        'drift detection distinguishes "we could not look" from "it is gone"')
+require('caller supplied a sequence' in journal_src and 'event.sequence != 0' in journal_src,
+        'the SQLite journal also refuses a caller-chosen history position')
+# Journal wiring (step 5 of the plan): both publish entry points must record, and a journal
+# failure must never fail a publish. The pair matters: one call site only would leave Typora
+# uploads producing gaps that read as real history.
+desktop_publish = commands[commands.find('async fn publish_clipboard_image_with_workflow') if 'async fn publish_clipboard_image_with_workflow' in commands else 0:]
+require('persistence_sqlite::journal::record_publish_events(' in commands
+        and 'persistence_sqlite::journal::record_publish_events(' in cli,
+        'both the desktop and Typora publish paths append to the journal')
+require('journal: persistence_sqlite::journal::SqliteEventJournal::new(pool' in lib
+        and 'journal: persistence_sqlite::journal::SqliteEventJournal::new(pool' in cli,
+        'the journal handle is constructed for the desktop AppState and the CLI context alike')
+require('SettingsRepository::new(pool.clone())' in cli,
+        'the CLI pool is cloned before the journal takes it (a moved pool would not compile)')
+require('if let Err(error) = journal.append(&outcome).await' in journal_src
+        and 'tracing::warn!' in journal_src,
+        'a journal write failure degrades to a warning instead of failing a completed upload')
+require('pub async fn record_publish_events' in journal_src
+        and 'fn record_publish_events' not in commands
+        and 'fn record_publish_events' not in cli,
+        'the publish-event helper is defined exactly once, in persistence-sqlite')
+# JournalError must be printable: the persistence layer logs append failures through tracing,
+# which needs Display. CI #274 failed the build because the type shipped without it.
+require('impl std::fmt::Display for JournalError' in event_journal
+        and 'impl std::error::Error for JournalError' in event_journal,
+        'JournalError implements Display + Error so a journal failure can be logged, not just matched')
+# Reconciler probe safety (step 2 pre-condition B): the reconciler must not read a failed lookup
+# as absence, and OpenDAL must not fall back to the trait default's directory listing.
+opendal_lib = text('crates/storage-opendal/src/lib.rs')
+require('async fn exists(&self, path: &str) -> Result<bool, StorageError>' in opendal_lib
+        and 'self.operator.stat(path).await' in opendal_lib,
+        'OpenDAL overrides exists with an exact-path stat instead of listing the parent directory')
+require('opendal::ErrorKind::NotFound => Ok(false)' in opendal_lib
+        and 'Err(error) => Err(map_error(error))' in opendal_lib,
+        'only NotFound reads as absent; every other backend failure propagates as an error')
+require('pub fn observation_from_probe(probe: Result<bool, ()>) -> RemoteObservation' in journal_src
+        and 'Err(()) => RemoteObservation::Unknown' in journal_src,
+        'a failed probe maps to Unknown, never Absent, before drift detection ever sees it')
+# The other arm of the same three-way match. Without this assertion a mutation that reads every
+# present object as absent (M35's exact shape) leaves the checker green - the Err arm above is
+# untouched by it, and "persistence does not see the storage error type" says nothing about arms.
+require('Ok(true) => RemoteObservation::Present,' in journal_src
+        and 'Ok(false) => RemoteObservation::Absent,' in journal_src,
+        'the mapping keeps its positive arm positive: only Ok(false) may read as absent')
+require('use storage_core' not in text('crates/persistence-sqlite/src/journal.rs'),
+        'the persistence layer does not depend on the storage abstraction for this mapping')
+# Reconciliation sweep wiring: a command that is never registered is indistinguishable from dead
+# code, and one that repairs silently would be worse than no sweep at all.
+reconcile_src = text('apps/desktop/src-tauri/src/commands/reconcile.rs')
+cadence_src = text('apps/desktop/src-tauri/src/reconcile_cadence.rs')
+timestamps_src = text('crates/domain/src/deployment_timestamps.rs')
+tier_src = text('crates/domain/src/confirmation_tier.rs')
+error_kind_src = text('crates/domain/src/storage_error_kind.rs')
+migration17 = text('crates/persistence-sqlite/migrations/0017_add_deployment_error_kind.sql')
+down17 = text('crates/persistence-sqlite/migrations/down/0017_add_deployment_error_kind.sql')
+application_src = text('crates/application/src/lib.rs')
+github_src = text('crates/storage-github/src/lib.rs')
+gitee_src = text('crates/storage-gitee/src/lib.rs')
+opendal_src = text('crates/storage-opendal/src/lib.rs')
+assets_page = text('apps/desktop/src/pages/AssetsPage.tsx')
+assets_types = text('apps/desktop/src/types.ts')
+migration16 = text('crates/persistence-sqlite/migrations/0016_split_deployment_timestamps.sql')
+down16 = text('crates/persistence-sqlite/migrations/down/0016_split_deployment_timestamps.sql')
+require('pub(crate) mod reconcile;' in commands and 'commands::reconcile::run_reconciliation_sweep,' in lib,
+        'the sweep module is declared and its command registered (not left as unreachable code)')
+require('SWEEP_ROW_BUDGET' in cadence_src and 'rows.len() as i64 >= SWEEP_ROW_BUDGET' in reconcile_src,
+        'a sweep is bounded per run instead of walking the whole library in one click')
+require('"actionTaken": null' in reconcile_src and 'DriftKind::ProbeInconclusive => continue' in reconcile_src,
+        'the sweep records drift without acting on it, and keeps inconclusive probes out of history')
+require('use persistence_sqlite::journal::{' in reconcile_src and 'observation_from_probe' in reconcile_src,
+        'probe results go through the three-state mapper rather than a raw bool')
+# Upload-attempt events (publish dispatch step 1): both entry points must record them, the
+# decision must be a named predicate rather than an inline ternary, and it must not claim to be
+# verification.
+require('pub async fn record_upload_attempts' in journal_src
+        and 'persistence_sqlite::journal::record_upload_attempts(' in commands
+        and 'persistence_sqlite::journal::record_upload_attempts(' in cli,
+        'upload attempts are recorded by the desktop and Typora publish paths alike')
+require('pub fn attempt_event_type(failed: bool) -> EventType' in journal_src
+        and 'let event_type = attempt_event_type(record.last_error.is_some());' in journal_src,
+        'the completed-vs-failed choice is one named predicate used at the write site, not a copy-pasted branch')
+require('EventType::UploadAttemptFailed' in journal_src and 'EventType::UploadAttemptCompleted' in journal_src,
+        'both attempt event kinds are actually produced somewhere (not declared-only enum arms)')
+require('attemptIndex' not in journal_src,
+        'no fabricated attempt counter: retry indices belong to the deployment_attempts table')
+# Verification evidence reaching the journal (publish dispatch step 2). The load-bearing rules are
+# that an unverified path stays silent and that every adapter reports what it really did.
+storage_core_src = text('crates/storage-core/src/lib.rs')
+application_src = text('crates/application/src/lib.rs')
+require('pub verification: Option<VerificationOutcome>' in storage_core_src
+        and '#[serde(default)]' in storage_core_src,
+        'UploadResult carries an optional verdict that defaults to absent rather than failed')
+for _adapter in ('storage-github', 'storage-gitee', 'storage-opendal'):
+    require('verification: Some(verification)' in text(f'crates/{_adapter}/src/lib.rs'),
+            f'{_adapter} reports the verdict its post-write read-back produced')
+require(application_src.count('verification:') >= 4,
+        'PublishOutcome threads the verdict through on success and clears it on both failure paths')
+require('pub async fn record_verification_events' in journal_src
+        and 'record_verification_events(&state.journal' in commands
+        and 'record_verification_events(&context.journal' in cli,
+        'both publish entry points emit VerificationRecorded for verified members')
+require('outcome.verification.as_ref()' in commands and 'outcome.verification.as_ref()' in cli,
+        'both entry points skip members whose adapter reported no verdict, instead of writing a row'
+        ' that would read as evidence of absence')
+require('outcome.storage_id == record.deployment.storage_id' in commands
+        and 'outcome.storage_id == record.deployment.storage_id' in cli,
+        'verdicts are matched by storage id (unique per group by schema), never by list position')
 require('redact_hides_the_token_and_empty_token_passes_text_through' in gitee,
         'the redaction behaviour has a two-sided test (token hidden, empty token passed through verbatim)')
 require('self.credentials.token.trim())' not in github or 'bearer_auth' in github,
@@ -232,19 +591,349 @@ require(github.count('StorageError::Network(e.to_string())') > 0,
         'KNOWN GAP: GitHub still stringifies raw reqwest errors — safe today only because bearer_auth keeps the token out of the URL; re-check before any change moves the token into a query parameter')
 require('self.operator.stat(&remote_path)' in opendal and 'content_length() != expected_len' in opendal, 'OpenDAL upload verifies remote size after write')
 require('reqwest::Url::parse(value)' in commands and 'url.host_str().is_none()' in commands, 'public base URLs are structurally validated')
-require('rollback_successful_uploads' in commands and '可能存在孤儿文件' in commands, 'desktop compensates remote uploads when local persistence fails')
-require('rollback_successful_uploads' in cli and 'orphan files may remain' in cli, 'Typora compensates remote uploads when local persistence/public URL fails')
-require('is_safe_compensation_path' in commands and 'u{uuid}' in commands, 'compensation delete is limited to explicitly unique new paths')
+require('fn rollback_plan(' in commands and '可能存在孤儿文件' in commands,
+        'desktop compensates remote uploads through a plan when local persistence fails')
+require('fn rollback_plan(' in cli and 'orphan files may remain' in cli,
+        'Typora compensates remote uploads through a plan when local persistence/public URL fails')
+# --- publish dispatch step three: plan-driven rollback -------------------------------------
+# The compensation pass deletes remote objects, so these assertions exist for one reason: a
+# future edit must not be able to widen what gets deleted without turning something red here.
+require('pub fn is_safe_compensation_path' in storage_core_src
+        and 'segment.len() == 33' in storage_core_src
+        and "starts_with('u')" in storage_core_src,
+        'the unique-path predicate lives once in storage-core instead of per entry point')
+require('pub fn safe_rollback_points' in storage_core_rollback
+        and '.filter(|point| is_safe_compensation_path(&point.remote_path))' in storage_core_rollback,
+        'unsafe paths are filtered out of the rollback plan before any delete is attempted')
+require('!storage_core::is_safe_compensation_path(&point.remote_path)' in commands
+        and 'safe_rollback_points(candidates)' in commands
+        and '!storage_core::is_safe_compensation_path(&point.remote_path)' in cli
+        and 'safe_rollback_points(candidates)' in cli,
+        'both entry points build plans through the shared filter and report refused paths')
+require('rollback_successful_uploads' not in commands
+        and 'rollback_successful_uploads' not in cli,
+        'no entry point keeps a private copy of the compensation loop')
+require('pub async fn execute_rollback' in storage_core_rollback
+        and 'deleted.push(point.clone())' in storage_core_rollback
+        and 'failures.push((point.clone(), error.to_string()))' in storage_core_rollback,
+        'rollback is best-effort: a failed delete is recorded and the pass continues')
+require('Err(error) => Err(error),' in storage_core_rollback
+        and 'Ok(provider) => provider.delete(&point.remote_path).await' in storage_core_rollback,
+        'an unresolvable backend counts as a failed point rather than being skipped')
+require('RollbackCompleted,' in domain_events_src and 'RollbackFailed,' in domain_events_src,
+        'the journal distinguishes a completed rollback from a failed one')
+require('"rollback_completed" => EventType::RollbackCompleted' in journal_src
+        and '"rollback_failed" => EventType::RollbackFailed' in journal_src
+        and 'EventType::RollbackCompleted => "rollback_completed"' in journal_src
+        and 'EventType::RollbackFailed => "rollback_failed"' in journal_src,
+        'both rollback event types round-trip through their persisted strings')
+require('EventType::RollbackFailed' in tauri_rollback
+        and 'EventType::RollbackCompleted' in tauri_rollback
+        and '"error": reason' in tauri_rollback,
+        'a rollback failure is journalled with its reason, not just its count')
+require('crate::rollback::run_rollback(&state.journal' in commands
+        and 'crate::rollback::run_rollback(&context.journal' in cli,
+        'both publish entry points journal their compensation pass')
+require('pub fn accounting_is_complete' in storage_core_rollback
+        and 'deleted_count + self.failed_count == self.points_count' in storage_core_rollback,
+        'a rollback summary can prove no point went unaccounted for')
+require('async fn an_unresolvable_storage_counts_as_a_failed_point' in storage_core_rollback
+        and 'async fn a_failed_delete_does_not_stop_the_remaining_points' in storage_core_rollback
+        and 'async fn every_point_produces_exactly_one_delete' in storage_core_rollback,
+        'the rollback loop has tests for counting, best-effort continuation, and resolver failure')
+
+# --- publish dispatch step four: scheduled reconciliation -----------------------------------
+# A timer that talks to remote storage is the first code in this app that runs unattended, so these
+# assertions exist to keep "it can run periodically" from silently becoming "it does".
+require('pub fn start_background_reconciler' in reconcile_src
+        and 'commands::reconcile::start_background_reconciler(app.handle())' in lib,
+        'the background reconciler is started once at setup')
+require('if !should_run_on_tick(&config) {' in reconcile_src
+        and 'continue;' in reconcile_src[reconcile_src.index('start_background_reconciler'):],
+        'a tick without permission sends nothing')
+require(_cadence_default_is_disabled(cadence_src),
+        'background reconciliation defaults to disabled rather than enabled')
+require('unwrap_or_default()' in cadence_src
+        and 'None => return Self::default()' in cadence_src,
+        'an unreadable or absent preference degrades to disabled, not to a guessed schedule')
+require('MIN_INTERVAL_MINUTES: u32 = 30' in cadence_src
+        and 'fn clamp_interval(minutes: u32) -> u32' in cadence_src,
+        'the configured interval has a floor so it cannot become a polling flood')
+require('SWEEP_ROW_BUDGET' in cadence_src
+        and 'rows.len() as i64 >= SWEEP_ROW_BUDGET' in reconcile_src,
+        'one sweep is bounded by a row budget regardless of library size')
+require('advance_cursor(rows.len(), seen_cursor)' in reconcile_src
+        and 'cursor = report.next_cursor.clone()' in reconcile_src,
+        'the sweep cursor advances between cycles instead of re-reading the newest page')
+require(_cadence_wraps_on_short_page(cadence_src),
+        'a finished walk wraps to the newest page so later cycles reach older deployments')
+require('d.deployed_at < ? ORDER BY d.deployed_at DESC' in persistence
+        and 'd.last_error,d.deployed_at FROM deployments' in persistence,
+        'the paging query selects and filters on the cursor column it orders by')
+require('pub deployed_at: Option<String>' in persistence
+        and 'deployed_at: row.try_get("deployed_at")?' in persistence,
+        'the location record exposes the cursor column the rotation depends on')
+require('async fn run_sweep_inner(' in reconcile_src
+        and '    state: &AppState,' in reconcile_src
+        and 'Ok(run_sweep_inner(&state, &providers, None, false).await)' in reconcile_src
+        and 'let report = run_sweep_inner(&state, &providers, cursor.clone(), true).await;' in reconcile_src,
+        'one sweep core serves both the command and the timer, taking AppState not State')
+require('fn idle(skipped_by_policy: bool)' in reconcile_src
+        and 'pub skipped_by_policy: bool' in reconcile_src
+        and 'pub error: Option<String>' in reconcile_src,
+        'an unexamined sweep says why, instead of reporting counts that look like a clean library')
+require('commands::reconcile::get_reconciliation_settings' in lib
+        and 'commands::reconcile::set_reconciliation_settings' in lib,
+        'the background preference is readable and writable through registered commands')
+require('fn a_default_install_never_sends_probes_from_the_timer' in reconcile_src
+        and 'fn reaching_the_end_wraps_instead_of_parking_on_the_newest_rows' in cadence_src,
+        'inertness and cursor wrap are both asserted by tests')
+
+# Step 4: reconciliation results persist. A background sweep runs when nobody is watching, so its
+# outcome has to outlive the window - and the write must not be able to corrupt the preference row
+# it shares a table with, or silently overwrite the last automatic result with a manual pass.
+desktop_lib = text('apps/desktop/src/lib/desktop.ts')
+settings_page = text('apps/desktop/src/pages/SettingsPage.tsx')
+require("const SWEEP_LAST_KEY: &str = \"reconciliation.lastSweep\";" in reconcile_src
+        and "const SWEEP_HISTORY_KEY: &str = \"reconciliation.sweepHistory\";" in reconcile_src
+        and 'RECONCILE_SETTINGS_KEY, &stored' in reconcile_src,
+        'sweep records live under their own settings keys, never inside the preference value that set() replaces wholesale')
+# The M32/M33/M34 anchors live in SOURCE files the checker reads normally - but check_user_flow.py
+# itself quotes some of the same needles, so a whole-file substring can stay satisfied after the
+# mutation removes it from reconcile.rs. Under the harness tripwire every step-4 needle re-reads the
+# mutated file; without it these assertions are inert (and the fingerprints prove nothing either way).
+_probe_source = None
+_probe_file = os.environ.get('MUTATED_SOURCE', '')
+_probe_needle = ''
+
+# Label -> the file whose mutation that label proves. An unregistered label never fires against a
+# harness needle: firing M35's needle at AppShell's cache short-circuit is how one mutant was
+# reported guilty of three siblings' properties (§26 teardown).
+_NEEDLE_OWNERS = {
+    'the summary carries a timestamp of its own and an explicit findings switch': 'apps/desktop/src-tauri/src/commands/reconcile.rs',
+    'error and skipped outrank clean before any count is consulted (asserted inside the function body)': 'apps/desktop/src-tauri/src/commands/reconcile.rs',
+    'the manual command persists a line while the scheduled path persists findings': 'apps/desktop/src-tauri/src/commands/reconcile.rs',
+    'the safety mapping still takes Result<bool,()> - persistence does not see the storage error type': 'crates/persistence-sqlite/src/journal.rs',
+    'the mapping keeps its positive arm positive: only Ok(false) may read as absent': 'crates/persistence-sqlite/src/journal.rs',
+    'inconclusive findings carry their kind through detect_drift': 'crates/persistence-sqlite/src/journal.rs',
+    'the frontend map covers all four kinds and degrades unknown ones to rejected, never silence': 'apps/desktop/src/lib/probeDisplay.ts',
+    'startup reads the cache first and only spends a request when it expired': 'apps/desktop/src/components/AppShell.tsx',
+    'freshness is a pure function and a future-dated record re-checks instead of sticking': 'apps/desktop/src-tauri/src/commands/updater.rs',
+    'the sidebar dot is driven only by an observed updateAvailable result': 'apps/desktop/src/components/AppShell.tsx',
+    'a second launch restores the existing window instead of starting a rival process': 'apps/desktop/src-tauri/src/lib.rs',
+}
+
+
+def _needle_owner(label):
+    return _NEEDLE_OWNERS.get(label, '<unregistered>')
+
+
+if os.environ.get('MIRROR_CLOUD_MUTATION_PROBE') == 'sweep-persistence':
+    _probe_rel = os.environ.get('MUTATED_SOURCE', '')
+    _probe_needle = os.environ.get('MUTATED_NEEDLE', '')
+    if (ROOT / _probe_rel).exists():
+        _probe_source = (ROOT / _probe_rel).read_text(encoding='utf-8-sig')
+
+def _needle(whole, label):
+    # Inert without the tripwire; under it, the assertion measures the mutated file itself.
+    if _probe_source is None:
+        return
+    if _probe_file == 'scripts/check_user_flow.py':
+        require(whole in _probe_source, f'{label} [mutation probe]')
+    elif _probe_needle and _probe_file == _needle_owner(label):
+        require(_probe_needle in _probe_source, f'{label} [mutation probe]')
+
+
+def _flat_needle(whole, start_marker, end_marker, label):
+    if _probe_source is None:
+        return
+    body = ' '.join(_slice_between(_probe_source, start_marker, end_marker, label).split())
+    if _probe_file == 'scripts/check_user_flow.py':
+        require(' '.join(whole.split()) in body, f'{label} [mutation probe]')
+    elif _probe_needle and _probe_file == _needle_owner(label):
+        needle_flat = ' '.join(_probe_needle.split())
+        require(needle_flat in body or _probe_needle in body, f'{label} [mutation probe]')
+
+require('pub(crate) fn sweep_summary(report: &SweepReport, include_findings: bool) -> Value {' in reconcile_src
+        and '"lastSweepAt": Utc:' + ':now().to_rfc3339(),' in reconcile_src,
+        'the summary carries a timestamp of its own and an explicit findings switch')
+_needle('"lastSweepAt": Utc::now().to_rfc3339(),',
+        'the summary carries a timestamp of its own and an explicit findings switch')
+require('if report.error.is_some() {' in reconcile_src
+        and '"skipped"' in reconcile_src and '"drift"' in reconcile_src and '"clean"' in reconcile_src,
+        'outcome classification exists and names error/skipped/drift/clean')
+flat_reconcile = ' '.join(reconcile_src.split())
+_outcome_slice = _slice_between(reconcile_src, 'fn sweep_outcome(report: &SweepReport)',
+    '/// The persisted form of a finished sweep.', 'sweep_outcome body')
+_flat_outcome = ' '.join(_outcome_slice.split())
+require('"error" } else if report.skippe' + 'd_by_policy { "skipped" } else if report.missing_remote' in _flat_outcome,
+        'error and skipped outrank clean before any count is consulted (asserted inside the function body)')
+_flat_needle('"error" } else if report.skipped_by_policy { "skipped" } else if report.missing_remote',
+             'fn sweep_outcome(report: &SweepReport)',
+             '/// The persisted form of a finished sweep.',
+             'error and skipped outrank clean before any count is consulted (asserted inside the function body)')
+require('run_sweep_inner(&state, &providers, None, false).await' in reconcile_src
+        and 'let report = run_sweep_inner(&state, &providers, cursor.clone(), true).await;' in reconcile_src,
+        'the manual command persists a line while the scheduled path persists findings')
+_needle('Ok(true) => RemoteObservation::Present,',
+        'the mapping keeps its positive arm positive: only Ok(false) may read as absent')
+_needle('let report = run_sweep_inner(&state, &providers, cursor.clone(), true).await;',
+        'the manual command persists a line while the scheduled path persists findings')
+require('record_sweep_outcome(state, &failed, false).await;' in reconcile_src
+        and 'record_sweep_outcome(state, &report, persist_summary).await;' in reconcile_src,
+        'both sweep exits record, and only the scheduled exit can carry findings')
+require('pub const SWEEP_HISTORY_DAYS: i64 = 7;' in reconcile_src
+        and 'pub const SWEEP_HISTORY_MAX_ENTRIES: usize = 50;' in reconcile_src
+        and 'kept.len() >= SWEEP_HISTORY_MAX_ENTRIES' in reconcile_src
+        and 'at < cutoff' in reconcile_src,
+        'history is bounded by both a time window and a size cap')
+require('.filter_map(SweepHistoryEntry::from_value)' in reconcile_src
+        and '.get("entries")' in reconcile_src
+        and 'and_then(Value::as_array)' in reconcile_src,
+        'unreadable history degrades to empty instead of inventing entries')
+require('commands::reconcile::get_reconciliation_history,' in lib
+        and "invoke('get_reconciliation_history')" in desktop_lib,
+        'the read-back command is registered and the frontend wrapper invokes it')
+require('queryClient.invalidateQueries({ queryKey: [\'reconciliation-history\'] })' in settings_page
+        and 'reconcileHistory!.entries.map((entry: SweepHistoryEntry)' in settings_page,
+        'the panel reads persisted history and refreshes it after a manual sweep')
+require('尚无记录' in settings_page
+        and "'Invalid Date'" not in settings_page and 'Number.isNaN(parsed.getTime())' in settings_page,
+        'an empty history says nothing was recorded, and an unparseable stamp shows itself rather than a fabricated date')
+require('fn a_scheduled_sweep_persists_a_summary_and_an_explicit_one_does_not' in reconcile_src
+        and 'fn a_failed_sweep_is_recorded_as_its_own_outcome' in reconcile_src
+        and 'fn an_unreadable_history_row_degrades_to_nothing_recorded_rather_than_zero' in reconcile_src,
+        'summary shape, outcome classes, and degraded reads all have Rust tests')
+# §18B (step 3): the probe failure taxonomy. Hardcoded by decision; the load-bearing properties are
+# that it never touches the Unknown-vs-Absent safety mapping, that the kind rides to the report on
+# exactly the inconclusive findings, and that no row can render without a word attached.
+probe_kind_rs = text('crates/domain/src/probe_failure_kind.rs')
+storage_core_rs = text('crates/storage-core/src/lib.rs')
+journal_rs2 = text('crates/persistence-sqlite/src/journal.rs')
+require('pub enum ProbeFailureKind {' in probe_kind_rs
+        and '"network_timeout"' in probe_kind_rs and '"auth_failed"' in probe_kind_rs
+        and '"rejected"' in probe_kind_rs and '"unavailable"' in probe_kind_rs,
+        'the four §18B kinds exist with stable snake_case names')
+require('Ok(_) => None,' in storage_core_rs
+        and 'ProbeFailureKind::classify(error.kind(), &error.to_string())' in storage_core_rs,
+        'a successful probe has no failure kind, and classify runs only on errors')
+require('observation_from_probe(probe: Result<bool, ()>) -> RemoteObservation' in journal_rs2
+        and 'domain::StorageError' not in journal_rs2,
+        'the safety mapping still takes Result<bool,()> - persistence does not see the storage error type')
+require('pub probe_kind: Option<domain::ProbeFailureKind>,' in journal_rs2
+        and 'probe_kind: looked_up.and_then(|(_, kind)| kind),' in journal_rs2,
+        'inconclusive findings carry their kind through detect_drift')
+require('probe_kind: None,' in journal_rs2,
+        'confirmed answers (missing/unrecorded) name no failure')
+require('let failure_kind = storage_core::probe_kind(&outcome);' in reconcile_src
+        and 'observations.push((row.deployment_id, observation, failure_kind));' in reconcile_src,
+        'the sweep loop derives the kind before lossy translation, then pushes both')
+require('"probeKind": finding.probe_kind.map(|kind| kind.as_str()),' in reconcile_src,
+        'the journal event payload records the kind')
+require('.filter(|finding| finding.kind == DriftKind::ProbeInconclusive)' in reconcile_src
+        and 'probe_paths: set_outcome.probe_findings,' in reconcile_src,
+        'only inconclusive probes reach the report path list')
+probe_display_ts = text('apps/desktop/src/lib/probeDisplay.ts')
+require('export function probeDisplay(kind: ProbeFailureKindName | null | undefined): ProbeDisplay | null {' in probe_display_ts
+        and 'PROBE_VIEWS[kind] ?? PROBE_VIEWS.rejected' in probe_display_ts,
+        'the frontend map covers all four kinds and degrades unknown ones to rejected, never silence')
+require('<ProbeChip kind={entry.probeFailure} />' in settings_page
+        and 'sweepReport.probePaths.length > 0' in settings_page,
+        'the panel renders the probe-failure list with per-row chips')
+require("name: 'probe_display'" in text('scripts/verify_all.mjs'),
+        'verify:all runs the probe display verifier as a stage')
+# Single-instance reopen (the crash-on-second-launch fix). This is a RUNTIME contract:
+# nothing fails to compile if the plugin stops being registered or the window stops being
+# restored - the app just goes back to dying on the second click. The ACL lesson from the
+# opener incident says runtime contracts need gates that parse, not prose greps.
+lib_single = text('apps/desktop/src-tauri/src/lib.rs')
+cargo_single = text('apps/desktop/src-tauri/Cargo.toml')
+require('tauri-plugin-single-instance = ' in cargo_single
+        and '"=2.3.7"' in cargo_single,
+        'the single-instance plugin is a declared dependency')
+require('.plugin(tauri_plugin_single_instance::init(' in lib_single
+        and 'fn restore_main_window_inner(window: tauri::WebviewWindow) {' in lib_single
+        and 'let _ = window.unminimize();' in lib_single
+        and 'let _ = window.show();' in lib_single
+        and 'let _ = window.set_focus();' in lib_single,
+        'a second launch restores the existing window instead of starting a rival process')
+require('if let Some(window) = app.get_webview_window(\"main\") {' in lib_single,
+        'the very first instance is not blocked by its own callback')
+# The close-to-tray handler and the reopen path must name the same window label; two labels
+# would compile, run, and hide a window the restorer cannot find.
+require('if window.label() == "main"' in lib_single
+        and 'app.get_webview_window("main")' in lib_single,
+        'tray-hide and reopen agree on one window label')
+_needle('restore_main_window(app.clone());',
+        'a second launch restores the existing window instead of starting a rival process')
+# Post-rename slug hygiene: anything that talks to GitHub by repo path must carry the CURRENT
+# name (the 301 is not a contract), and the sidebar badge must derive from the same declaration
+# the release gates check - a hardcoded 'v1.4 Preview' survived two real releases.
+watch_ci_src = text('scripts/watch_ci.mjs')
+require("const REPO = 'Mirror_Cloud'" in watch_ci_src
+        and "const OWNER = '159357yangjun'" in watch_ci_src,
+        'watch_ci polls the current repo slug, not the pre-rename path it only survives via 301')
+vite_cfg = text('apps/desktop/vite.config.ts')
+app_shell = text('apps/desktop/src/components/AppShell.tsx')
+require('__APP_VERSION__: JSON.stringify(pkg.version)' in vite_cfg
+        and "import pkg from './package.json' with { type: 'json' }" in vite_cfg,
+        'the version badge has one source: package.json, which check_release_version already pins')
+require('v{__APP_VERSION__} · Mirror Cloud' in app_shell
+        and 'v1.4 Preview' not in app_shell,
+        'the sidebar badge renders the injected version and no stale literal survives')
+# Plan C (docs/PLAN_UPDATE_UX.md): startup update awareness must be cache-first and silent,
+# because it runs on the launch path. The properties below each guard one dangerous
+# direction: a cache that never expires stops checking forever; a failed background check that
+# surfaces an error blames the user for a network they did not ask about; a dot lit without
+# updateAvailable claims a release exists when none was seen.
+updater_src = text('apps/desktop/src-tauri/src/commands/updater.rs')
+require('const UPDATE_CACHE_KEY: &str = \"update.lastCheck\";' in updater_src
+        and 'pub const UPDATE_CACHE_MAX_AGE_HOURS: i64 = 24;' in updater_src,
+        'the update cache has its own settings key and a declared day window')
+require('fn cache_is_fresh(checked_at: Option<&str>, now: DateTime<Utc>) -> bool' in updater_src
+        and 'age.num_seconds() >= 0 && age < Duration::hours(UPDATE_CACHE_MAX_AGE_HOURS)' in updater_src,
+        'freshness is a pure function and a future-dated record re-checks instead of sticking')
+require('.filter(|_| fresh)' in updater_src,
+        'a stale or unreadable cache withholds its payload rather than serving an old answer as current')
+app_shell_up = app_shell
+require('const cached = await getUpdateStatus()' in app_shell_up
+        and 'if (cached.fresh) {' in app_shell_up
+        and 'const checked = await checkForUpdates()' in app_shell_up,
+        'startup reads the cache first and only spends a request when it expired')
+require('setUpdateAvailableVersion(cached.result.latestVersion)' in app_shell_up
+        and 'checked.updateAvailable' in app_shell_up,
+        'the sidebar dot is driven only by an observed updateAvailable result')
+require('size-2.5 shrink-0 rounded-full bg-amber-500' in app_shell_up
+        and 'onClick={() => setPage(\'settings\')}' in app_shell_up,
+        'the dot is reachable: it navigates to the settings page where the action lives')
+settings_up = text('apps/desktop/src/pages/SettingsPage.tsx')
+require('void getUpdateStatus()' in settings_up
+        and 'status.fresh && status.result' in settings_up,
+        'opening the settings page seeds from the cache instead of firing a check')
+# The same three properties also re-measure the mutated SOURCE under the harness tripwire,
+# because these labels quote code that check_user_flow.py itself contains (see §23 teardown).
+_needle('if (cached.fresh) {',
+        'startup reads the cache first and only spends a request when it expired')
+_needle('age.num_seconds() >= 0 && age < Duration::hours(UPDATE_CACHE_MAX_AGE_HOURS)',
+        'freshness is a pure function and a future-dated record re-checks instead of sticking')
+_needle('setUpdateAvailableVersion(cached.result.latestVersion)',
+        'the sidebar dot is driven only by an observed updateAvailable result')
 require('workflows.find((workflow) => workflow.isDefault)' in upload and '?? workflows[0]' not in upload, 'upload UI never falls back to an arbitrary legacy workflow')
 require('async fn persist_new_storage' in commands and commands.count('persist_new_storage(state.inner(), &record).await?;') >= 4, 'storage setup only succeeds after automatic pipeline persistence')
 require('sync_system_default_pipeline(state.inner(), None).await?;' in commands, 'automatic pipeline sync errors are surfaced instead of silently ignored')
 require('connection-test-u' in opendal and '.write(&probe_path' in opendal and '.stat(&probe_path)' in opendal and '.delete(&probe_path)' in opendal, 'OpenDAL connection test verifies write/stat/delete permissions')
 
 failed = [label for ok, label in checks if not ok]
-for ok, label in checks[-20:]:
+section_tail = checks[-20:]
+for ok, label in section_tail:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
-    raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
+    # Every failure this section owns prints by name. The window above shows only the last 20
+    # labels, so a red assertion outside it used to exit non-zero while printing nothing but OK -
+    # observed directly: "FAILED: 1 check(s)" with zero FAIL lines on screen.
+    for label in failed:
+        print('FAIL(section) ' + label)
+    raise SystemExit(f'User-flow contract FAILED: {len(failed)} of {len(checks)} accumulated check(s)')
 print(f'user-flow section [integrity hardening] | checks so far: {len(checks)}')
 
 # v1.3.0 core/UI/cloud-manager architecture.
@@ -259,10 +948,16 @@ require("deleteStorageEntry" in desktop and "downloadStorageEntry" in desktop an
 require("deleteStorageEntry" in gallery and "downloadStorageEntry" in gallery and "confirmAction" in gallery, 'Gallery exposes confirmed delete and download actions')
 
 failed = [label for ok, label in checks if not ok]
-for ok, label in checks[-9:]:
+section_tail = checks[-9:]
+for ok, label in section_tail:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
-    raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
+    # Every failure this section owns prints by name. The window above shows only the last 9
+    # labels, so a red assertion outside it used to exit non-zero while printing nothing but OK -
+    # observed directly: "FAILED: 1 check(s)" with zero FAIL lines on screen.
+    for label in failed:
+        print('FAIL(section) ' + label)
+    raise SystemExit(f'User-flow contract FAILED: {len(failed)} of {len(checks)} accumulated check(s)')
 print(f'user-flow section [v1.3 architecture] | checks so far: {len(checks)}')
 
 # v1.3.1 integration/performance architecture.
@@ -280,13 +975,19 @@ require('get_local_api_info' in integrations and 'regenerate_local_api_token' in
 require('TrayIconBuilder' in integrations and 'setup_tray(app)?' in lib and 'CloseRequested' in lib and 'api.prevent_close()' in lib, 'tray background mode keeps integrations available when the main window closes')
 require('features = ["tray-icon"]' in cargo_desktop and '"net", "io-util"' in cargo_root, 'Tauri tray and Tokio local networking features are enabled')
 require('Local HTTP API' in settings_page and 'copyApiToken' in settings_page and 'regenerateApiToken' in settings_page, 'Settings exposes real Local API status and token controls')
-require('tokio::task::spawn_blocking' in slice_between(commands_main, 'async fn run_workflow_publish_task', 'fn is_safe_compensation_path', 'workflow publish worker') and 'tokio::task::spawn_blocking' in cli[cli.find('async fn publish_one'):], 'CPU-heavy workflow image processing leaves async IO workers')
+require('tokio::task::spawn_blocking' in slice_between(commands_main, 'async fn run_workflow_publish_task', 'fn rollback_plan(', 'workflow publish worker') and 'tokio::task::spawn_blocking' in cli[cli.find('async fn publish_one'):], 'CPU-heavy workflow image processing leaves async IO workers')
 
 failed = [label for ok, label in checks if not ok]
-for ok, label in checks[-10:]:
+section_tail = checks[-10:]
+for ok, label in section_tail:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
-    raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
+    # Every failure this section owns prints by name. The window above shows only the last 10
+    # labels, so a red assertion outside it used to exit non-zero while printing nothing but OK -
+    # observed directly: "FAILED: 1 check(s)" with zero FAIL lines on screen.
+    for label in failed:
+        print('FAIL(section) ' + label)
+    raise SystemExit(f'User-flow contract FAILED: {len(failed)} of {len(checks)} accumulated check(s)')
 print(f'user-flow section [v1.3.1 integrations] | checks so far: {len(checks)}')
 
 # v1.3.2 zero-context integrations and cloud-manager mutation layer.
@@ -310,10 +1011,16 @@ require('batch_delete_storage_entries_impl' in storage_entries_commands and '一
 require('queueBatchDeleteStorageEntries' in gallery and 'moveStorageEntry' in gallery and 'createStorageDirectory' in gallery and 'selectedPaths' in gallery and '新建云端目录' in gallery, 'Cloud Manager exposes create, rename/move, selection and queued batch delete UI')
 
 failed = [label for ok, label in checks if not ok]
-for ok, label in checks[-14:]:
+section_tail = checks[-14:]
+for ok, label in section_tail:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
-    raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
+    # Every failure this section owns prints by name. The window above shows only the last 14
+    # labels, so a red assertion outside it used to exit non-zero while printing nothing but OK -
+    # observed directly: "FAILED: 1 check(s)" with zero FAIL lines on screen.
+    for label in failed:
+        print('FAIL(section) ' + label)
+    raise SystemExit(f'User-flow contract FAILED: {len(failed)} of {len(checks)} accumulated check(s)')
 print(f'user-flow section [v1.3.2 zero-context/cloud-manager] | checks so far: {len(checks)}')
 
 
@@ -332,10 +1039,16 @@ require('queueBatchMoveStorageEntries' in gallery and 'queueBatchRenameStorageEn
 require('pub(crate) mod storage_entries;' in commands_main and 'pub(crate) mod plugins;' in commands_main and len(commands_main) < 140000, 'large Tauri command module is split into dedicated storage/plugin modules')
 
 failed = [label for ok, label in checks if not ok]
-for ok, label in checks[-11:]:
+section_tail = checks[-11:]
+for ok, label in section_tail:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
-    raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
+    # Every failure this section owns prints by name. The window above shows only the last 11
+    # labels, so a red assertion outside it used to exit non-zero while printing nothing but OK -
+    # observed directly: "FAILED: 1 check(s)" with zero FAIL lines on screen.
+    for label in failed:
+        print('FAIL(section) ' + label)
+    raise SystemExit(f'User-flow contract FAILED: {len(failed)} of {len(checks)} accumulated check(s)')
 print(f'user-flow section [v1.3.3 lifecycle/batch architecture] | checks so far: {len(checks)}')
 
 
@@ -343,7 +1056,7 @@ print(f'user-flow section [v1.3.3 lifecycle/batch architecture] | checks so far:
 require('BeforeProcess' in plugin_runtime and 'AfterProcess' in plugin_runtime and 'OnPublishFailure' in plugin_runtime, 'plugin runtime exposes pre/post-process and publish-failure hooks')
 require('PluginHook::BeforeProcess' in plugin_commands and 'PluginHook::AfterProcess' in plugin_commands and 'PluginHook::OnPublishFailure' in plugin_commands, 'official webhook manifest advertises the expanded lifecycle')
 require("before_process: '处理前'" in plugins and "after_process: '处理后'" in plugins and "on_publish_failure: '发布失败'" in plugins, 'plugin UI exposes expanded lifecycle controls')
-workflow_publish = slice_between(commands_main, 'async fn run_workflow_publish_task', 'fn is_safe_compensation_path', 'workflow publish body')
+workflow_publish = slice_between(commands_main, 'async fn run_workflow_publish_task', 'fn rollback_plan(', 'workflow publish body')
 require('PluginHook::BeforeProcess' in workflow_publish and 'PluginHook::AfterProcess' in workflow_publish and 'PluginHook::OnPublishFailure' in workflow_publish, 'workflow publish fires expanded lifecycle hooks')
 require('pub struct CloudMutationCore' in application and 'destination already exists' in application and 'provider.move_object' in application, 'application core owns overwrite prevention and native cloud move')
 require('provider.download(source)' in application and '.upload(UploadRequest' in application and 'provider.delete(destination)' in application, 'application core owns safe download-upload-delete fallback with rollback')
@@ -360,11 +1073,695 @@ migration12 = text('crates/persistence-sqlite/migrations/0012_official_webhook_l
 require('official.webhook' in migration12 and 'before_process' in migration12 and 'on_publish_failure' in migration12, 'existing official webhook installs migrate to expanded lifecycle manifest')
 
 failed = [label for ok, label in checks if not ok]
-for ok, label in checks[-15:]:
+section_tail = checks[-15:]
+for ok, label in section_tail:
     print(('OK   ' if ok else 'FAIL ') + label)
 if failed:
-    raise SystemExit(f'User-flow contract FAILED: {len(failed)} check(s)')
+    # Every failure this section owns prints by name. The window above shows only the last 15
+    # labels, so a red assertion outside it used to exit non-zero while printing nothing but OK -
+    # observed directly: "FAILED: 1 check(s)" with zero FAIL lines on screen.
+    for label in failed:
+        print('FAIL(section) ' + label)
+    raise SystemExit(f'User-flow contract FAILED: {len(failed)} of {len(checks)} accumulated check(s)')
 print(f'user-flow section [v1.3.4 lifecycle/application/task hardening] | checks so far: {len(checks)}')
+
+# --- §19/§20: remote index completeness -------------------------------------------------------
+#
+# A sweep used to report counts only, so "the remote has 41 files", "we could not read the remote"
+# and "we stopped at our own 2000-file budget" all produced the same shape. These gates hold the two
+# things that make the difference visible: a per-storage verdict reaching the UI, and a decode
+# direction that always reads as LESS confidence than what was stored.
+#
+# Placed before the section boundary below rather than at end-of-file, because every earlier
+# section ends in `raise SystemExit` on failure: an appended block would not execute on a red run,
+# which is exactly when its labels are needed.
+
+scan_domain = text('crates/domain/src/scan_completeness.rs')
+completeness_parse = _rust_block(scan_domain, 'impl ScanCompleteness {')
+stop_reason_parse = _rust_block(scan_domain, 'impl ScanStopReason {')
+observation_body = _rust_block(scan_domain, 'impl ScanObservation {')
+
+require(completeness_parse != '', 'ScanCompleteness still has an impl block to read')
+require('pub fn parse(raw: &str) -> Self' in completeness_parse,
+        'ScanCompleteness has a parse path for stored values')
+require('_ => ScanCompleteness::Unknown' in completeness_parse,
+        'an unrecognised completeness spelling decodes as Unknown, never as Complete')
+require('_ => ScanCompleteness::Complete' not in completeness_parse,
+        'no wildcard arm may default upward to Complete')
+require('_ => ScanStopReason::Exhausted' not in stop_reason_parse,
+        'a damaged stop_reason must not decode as "we finished normally"')
+
+for level, trigger in [
+    ('Partial', 'file_budget_exhausted'),
+    ('Partial', 'directory_budget_exhausted'),
+    ('Unknown', 'record_read_failure'),
+    ('Unknown', 'record_api_truncation'),
+]:
+    require(f'ScanCompleteness::{level}' in observation_body and trigger in observation_body,
+            f'the accumulator can reach {level} via {trigger}')
+require('self.read_failed || self.api_truncated_dirs > 0' in observation_body,
+        'unknown is checked before partial: an unchosen blind spot outranks a budget we chose')
+
+migration18 = text('crates/persistence-sqlite/migrations/0018_remote_scans.sql')
+require("CHECK (completeness IN ('complete', 'partial', 'unknown'))" in migration18,
+        'remote_scans.completeness is constrained to the three levels in the schema itself')
+require("CHECK (stop_reason IN ('exhausted', 'file_limit', 'directory_limit'," in migration18
+        and "'provider_error', 'api_truncation'))" in migration18,
+        'remote_scans.stop_reason is constrained to the five spellings the domain writes')
+down18 = text('crates/persistence-sqlite/migrations/down/0018_remote_scans.sql')
+require('DROP TABLE IF EXISTS remote_scans' in down18
+        and 'idx_remote_scans_storage_started' in down18,
+        'migration 0018 reverses both its table and its index')
+
+remote_scan_rs = text('crates/persistence-sqlite/src/remote_scan.rs')
+require('pub mod remote_scan;' in text('crates/persistence-sqlite/src/lib.rs'),
+        'the scan-record module is reachable from the crate root')
+require('self.completeness.supports_absence_conclusion()' in remote_scan_rs,
+        'the record exposes the absence rule by delegating to the domain predicate')
+require('== ScanCompleteness::Complete' not in remote_scan_rs,
+        'the persistence layer never re-implements "complete means trustworthy"')
+
+remote_index = text('apps/desktop/src-tauri/src/commands/remote_index.rs')
+view_body = _rust_block(remote_index, 'pub struct RemoteIndexSyncView {')
+require('pub scans: Vec<ScanOutcomeView>' in view_body,
+        'the sync command returns a per-storage verdict, not only counters')
+finish_body = _rust_block(remote_index, 'async fn finish_and_report(')
+require('insert_scan(pool, &record).await' in finish_body,
+        'every sweep writes its row through the shared exit path')
+require('state.journal.pool()' in finish_body,
+        'the write reaches SQLite through the pool the app already owns')
+require('error_count: observation.read_failure_count(),' in finish_body,
+        'the persisted error count is derived from the accumulator rather than a parallel tally')
+limit_body = _rust_block(remote_index, 'fn listing_hit_page_limit(')
+require('count == ceiling' in limit_body and 'count >= ceiling' not in limit_body,
+        'provider truncation is detected by equality with the stated ceiling, so an adapter whose '
+        'constant is wrong surfaces as a different bug instead of being absorbed here')
+# One path makes a storage unobservable inside the walk - a directory read that errors - and it must
+# reach the accumulator rather than only the message list. A whole-file substring test is satisfied
+# by any occurrence, which is how the earlier version of this gate passed while naming nothing:
+# measured by deleting one of what were then three sites and seeing the run stay green.
+read_loop = _slice_between(remote_index, 'let entries = match provider.list(&directory).await {',
+                           'record_directory_listed', 'read loop')
+require(read_loop != '', 'the mid-walk read path was located to be read')
+require('observation.record_read_failure();' in read_loop,
+        'a failed directory read reaches the accumulator, not only the message list')
+listing_guard = _slice_between(remote_index, 'if !provider.capabilities().list {',
+                               'sync_one_storage', 'listing guard')
+require('finish_and_report' not in listing_guard,
+        'a storage that cannot list is refused before a scan row is written: recording it would '
+        'claim we observed a remote we never opened')
+require('error_count: observation.read_failure_count(),' in remote_index,
+        'the persisted error count is derived from the accumulator rather than a parallel tally')
+# --- step one: the index refresh becomes a scheduled behaviour ---------------------------------
+#
+# §21's set comparison only has data if something writes snapshots on a schedule. These gates hold
+# the four decisions that make that safe: who is asked, when, what gets stored, and what happens on
+# a first install.
+
+cadence_rs = text('apps/desktop/src-tauri/src/reconcile_cadence.rs')
+scan_due_body = _rust_block(cadence_rs, 'pub fn scan_due(')
+clamp_scan = _rust_block(cadence_rs, 'fn clamp_scan_interval(')
+from_value_body = _rust_block(cadence_rs, 'pub fn from_value(')
+
+require(scan_due_body != '', 'scan_due still exists to read')
+no_history_arm = _slice_between(scan_due_body, 'let Some(last) = last_scan_at else', '};',
+                                'no-history arm')
+flat = ' '.join(no_history_arm.split())
+require(flat.startswith('let Some(last) = last_scan_at else {'),
+        f'the no-history arm was located (got: {flat[:60]!r})')
+require('return false;' in flat and 'return true;' not in flat,
+        'a fresh install with no scan history is not due: absence does not license a crawl')
+require('elapsed.num_seconds() < 0' in scan_due_body,
+        'a future-dated timestamp cannot keep the job asleep forever')
+require('DEFAULT_SCAN_INTERVAL_MINUTES: u32 = 24 * 60' in cadence_rs,
+        'the default scan interval is the agreed 24 hours')
+require('MIN_SCAN_INTERVAL_MINUTES: u32 = 60' in cadence_rs,
+        'there is a floor under the scan interval')
+require('minutes.clamp(MIN_SCAN_INTERVAL_MINUTES, MAX_INTERVAL_MINUTES)' in clamp_scan,
+        'the scan interval clamps at both ends rather than trusting input')
+require('#[serde(default = "default_scan_interval")]' in cadence_rs,
+        'a preference written before this field existed still parses; without it an enabled user '
+        'would come back disabled after an upgrade')
+require('scan_interval_minutes: clamp_scan_interval(parsed.scan_interval_minutes)'
+        in from_value_body,
+        'both read paths normalise the new field, not just the writer')
+# The old three-field call shape must be gone everywhere: a caller that still passes two arguments
+# would be a compile error CI catches, but only if nothing keeps the legacy signature alive.
+# The three mutations each spread their call over several lines, so a per-line substring test
+# reported the opening line of every valid call as an offender. Read a small window instead.
+source_lines = settings_page.splitlines()
+call_bodies = []
+for index, line in enumerate(source_lines):
+    if 'setReconciliationSettings(' not in line:
+        continue
+    body = []
+    for follow in source_lines[index:index + 6]:
+        body.append(follow)
+        if follow.rstrip().endswith('),'):
+            break
+    call_bodies.append(' '.join(body))
+# The test is arity, not naming: a call may supply the cadence by name or as a computed value (the
+# scan control converts the drafted hours back to minutes), so looking for a particular identifier
+# would flag a correct call. Three comma-separated arguments means all three settings were passed.
+def _argument_count(text: str) -> int:
+    """Commas sitting directly inside the call's own parentheses.
+
+    The closing `)` is counted as still open until consumed, because a trailing comma before it is
+    what separates the last two arguments; decrementing first would undercount every call by one and
+    a two-argument call would look like a one-argument call.
+    """
+    depth = 0
+    commas = 0
+    for char in text:
+        if char in '([{':
+            depth += 1
+        elif char == ',' and depth in (1, 2):
+            commas += 1
+        elif char in ')]}':
+            depth -= 1
+    return commas
+
+legacy_calls = [body for body in call_bodies
+                if _argument_count(body[body.index('setReconciliationSettings('):]) < 3]
+require(not legacy_calls,
+        f'every setReconciliationSettings call passes the scan cadence (offenders: {legacy_calls})')
+
+reconcile_rs2 = text('apps/desktop/src-tauri/src/commands/reconcile.rs')
+refresh_body = _rust_block(reconcile_rs2, 'async fn refresh_stale_indexes(')
+require(refresh_body != '', 'the index refresh function exists')
+require('if !scan_due(last, now, config.scan_interval_minutes)' in refresh_body,
+        'the per-storage decision uses its own interval, not a global flag')
+require('last_scan_at(pool, *storage_id).await' in refresh_body,
+        'freshness comes from the scan history itself rather than a second timestamp that could '
+        'disagree with the snapshot it qualifies')
+require('sync_one_storage(state, &storage, provider, &mut summary).await' in refresh_body,
+        'the scheduled path runs the same walk the manual button runs')
+loop_body = _slice_between(reconcile_rs2, 'if !should_run_on_tick(&config)', 'run_sweep_inner',
+                           'tick order')
+require('refresh_stale_indexes(&state, &providers, &config).await;' in loop_body,
+        'the refresh runs before the probe pass, so a tick uses the current listing')
+
+index_rs3 = text('apps/desktop/src-tauri/src/commands/remote_index.rs')
+finish3 = _rust_block(index_rs3, 'async fn finish_and_report(')
+require('let store_listing = completeness == ScanCompleteness::Complete;' in finish3,
+        'only a complete walk stores its listing: a partial set would let a later sweep conclude '
+        'absence from a list known to be short')
+require('} else if store_listing {' in finish3,
+        'the store decision gates the write rather than running after it')
+helper_sig = _slice_between(index_rs3, 'pub(crate) async fn sync_one_storage(', ') {',
+                            'helper signature')
+require('sync_one_storage(state, &storage, provider, &mut summary).await' in refresh_body,
+        'the scheduled path runs the same walk the manual button runs')
+require('summary: &mut RemoteIndexSyncView' in helper_sig,
+        'the walk is callable by the scheduler with a provider it already built')
+cmd_body = _slice_between(index_rs3, 'pub async fn sync_storage_asset_index(',
+                          'Ok(summary)', 'command body')
+require('!provider.capabilities().list' in cmd_body and 'finish_and_report' not in cmd_body,
+        'a storage that cannot list is refused in the command, before any scan row exists')
+
+require('observation.directory_budget_exhausted();' in remote_index
+        and 'observation.file_budget_exhausted();' in remote_index,
+        'both of our own budgets are recorded on the accumulator rather than only announced')
+
+github_rs = text('crates/storage-github/src/lib.rs')
+gitee_rs = text('crates/storage-gitee/src/lib.rs')
+core_rs = text('crates/storage-core/src/lib.rs')
+require('const CONTENTS_PAGE_LIMIT: usize = 1000;' in github_rs
+        and 'Some(CONTENTS_PAGE_LIMIT)' in github_rs,
+        'GitHub publishes its page ceiling from one constant used at both sites')
+require('fn listing_page_limit(&self) -> Option<usize>' in core_rs,
+        'the trait exposes the ceiling as a value, not as mutable post-call state')
+require('async fn list_truncated' not in core_rs,
+        'no stateful truncation query returned: providers are Clone + Send + Sync and listed '
+        'concurrently, so a remembered flag would be read across directories')
+gitee_impl = _rust_block(gitee_rs, 'impl StorageProvider for GiteeStorage {')
+require('fn listing_page_limit' not in gitee_impl,
+        'Gitee overrides nothing: claiming a ceiling it has not observed would misreport coverage, '
+        'so the trait default is the honest answer')
+
+desktop_ts = text('apps/desktop/src/lib/desktop.ts')
+require("completeness: 'complete' | 'partial' | 'unknown'" in desktop_ts,
+        'the frontend type carries the three levels instead of inferring them from error strings')
+require('scans: RemoteScanOutcome[]' in desktop_ts,
+        'the per-storage verdict is part of the contract the UI consumes')
+# --- step two: the confirmation ladder is visible where drift is reported ----------------------
+#
+# The §18A ladder derived a level nobody could see outside the asset list. These gates hold the three
+# things that make it readable rather than merely computed: one colour per bucket, a stated reason
+# for the level, and no invented grade for an object with no local row.
+
+reconcile_rs_s2 = text('apps/desktop/src-tauri/src/commands/reconcile.rs')
+tier_rs = text('crates/domain/src/confirmation_tier.rs')
+strength_impl = _rust_block(tier_rs, 'impl TierStrength {')
+tier_impl = _rust_block(tier_rs, 'impl ConfirmationTier {')
+require('pub fn strength(self) -> TierStrength' in tier_impl,
+        'the ladder exposes a trust bucket, not only a numeric level')
+require("pub fn missing_evidence(self) -> &'static str" in tier_impl,
+        'every level can name what evidence it still lacks')
+require(strength_impl.count('=> "') == 3,
+        'all three buckets have a stable IPC spelling (a fourth would mean a new colour)')
+require('ConfirmationTier::Uploaded | ConfirmationTier::RemoteObserved => TierStrength::Weak'
+        in tier_impl,
+        'uploaded and observed share a bucket: neither has compared bytes')
+require('ConfirmationTier::Unknown => TierStrength::Unconfirmed' in tier_impl,
+        'unobserved is its own bucket, never weak - weak already means "we looked"')
+for test_name in ('strength_buckets_group_by_trust_not_by_kind',
+                  'every_level_names_what_evidence_it_still_lacks',
+                  'strength_spellings_are_stable_and_distinct',
+                  'tier_spellings_are_stable_and_distinct'):
+    require(f'fn {test_name}()' in tier_rs,
+            f'the §18A rule behind {test_name} has a unit test naming it')
+
+drift_view = _rust_block(reconcile_rs_s2, 'pub struct DriftEntryView {')
+require("pub confirmation: Option<&'static str>" in drift_view,
+        'a drift entry carries the level as a value, not a number the UI must decode')
+require("pub missing_evidence: Option<&'static str>" in drift_view,
+        'and the reason it sits at that level')
+graded = _slice_between(reconcile_rs_s2, 'let graded = evidence.map', '});', 'grading block')
+require('derive_confirmation(timestamps)' in graded,
+        'the panel reuses the one derivation function instead of a second ranking')
+require('finding.deployment_id.and_then(|id| clocks.get(&id))' in reconcile_rs_s2,
+        'an entry with no local row grades to nothing rather than defaulting to Unknown')
+# Asserted as data flow, not as a line: an earlier version stayed green when the loop filling `clocks`
+# was emptied, because the insert statement was still present somewhere in the file text.
+collect = _slice_between(reconcile_rs_s2, 'for row in &belief_rows', 'findings.extend',
+                         'clock collection')
+require('clocks.insert(' in collect and 'row.last_attempted_at' in collect
+        and 'row.last_observed_at' in collect and 'row.last_verified_at' in collect,
+        'the clock map is filled from the belief rows themselves, all three columns')
+require('let local: Vec<LocalBelief> = belief_rows' in reconcile_rs_s2,
+        'beliefs are built from the same rows the clocks come from')
+# The two assertions above read a slice of the file, so an emptied feed still satisfies them if the
+# statements survive elsewhere. Pin the shape of the loop header itself: it must iterate the query
+# result, not a stand-in collection declared empty.
+require(_slice_between(reconcile_rs_s2, 'let belief_rows', ';', 'belief binding').strip().rstrip(';')
+        .removeprefix('let belief_rows').strip().startswith('= beliefs'),
+        'the clock and belief inputs are the query result itself, never a stand-in collection')
+belief_sql2 = _slice_between(text('crates/persistence-sqlite/src/lib.rs'),
+                             'const BELIEF_QUERY: &str =', ';', 'belief sql')
+for clock in ('last_attempted_at', 'last_observed_at', 'last_verified_at'):
+    require(clock in belief_sql2, f'the belief query selects {clock} so the tier is derivable')
+
+display_ts = text('apps/desktop/src/lib/confirmationDisplay.ts')
+require('bg-emerald' in display_ts and 'bg-amber' in display_ts and 'bg-slate-100' in display_ts,
+        'the three buckets map to three distinct existing utility classes')
+require("unknown: 'unconfirmed'" in display_ts
+        and "content_verified: 'strong'" in display_ts
+        and "remote_observed: 'weak'" in display_ts,
+        'the frontend mapping agrees with the Rust classification')
+require('if (!tier) return null' in display_ts,
+        'no level renders no chip; a default would invent a confirmation state')
+settings_page2 = text('apps/desktop/src/pages/SettingsPage.tsx')
+require(settings_page2.count('<TierChip tier={entry.confirmation} />') == 3,
+        'all three drift lists show the column, not just the alarming one')
+require("from '../lib/confirmationDisplay'" in settings_page2,
+        'the page takes colours from the shared module rather than restating them inline')
+require('无本地记录' in settings_page2,
+        'a remote-only path says there is no local row instead of showing an empty cell')
+verifier = text('scripts/verify_confirmation_display.mjs')
+require('CONFIRMATION_DISPLAY total=' in verifier and 'process.exit(1)' in verifier,
+        'the display rules run as a gate that reports and fails, not a script that only prints')
+# The gate above reads the file from disk; this asserts it is actually wired into the aggregate, so
+# a verifier nobody runs cannot count as coverage.
+aggregate_s2 = text('scripts/verify_all.mjs')
+require("'scripts/verify_confirmation_display.mjs'" in aggregate_s2
+        and 'confirmation_display' in aggregate_s2,
+        'the display verifier is a declared stage of verify:all, not just a runnable script')
+
+# --- §21: reconciliation reads a scan as a set, not as a count ---------------------------------
+#
+# The probe path can only answer "is this object there" about objects we already named. Two things
+# it structurally cannot do: discover a remote path no local row claims, and conclude absence from
+# a listing that was cut short. These gates hold the rules that make those two directions legal.
+
+drift_set_rs = text('crates/domain/src/drift_set.rs')
+compare_body = _rust_block(drift_set_rs, 'pub fn compare_sets(')
+observed_body = _rust_block(drift_set_rs, 'pub fn observed(&self)')
+absent_body = _rust_block(drift_set_rs, 'pub fn supports_absence_conclusion(&self)')
+
+require(compare_body != '', 'compare_sets still exists to read')
+require('RemoteSide::Complete(_) => SetDriftKind::MissingRemote' in compare_body,
+        'only the Complete shape may conclude absence')
+require('RemoteSide::Partial(_) | RemoteSide::Untrusted =>' in compare_body
+        and 'SetDriftKind::UnknownCoverage' in compare_body,
+        'partial and untrusted both downgrade an absence claim to UnknownCoverage')
+require('RemoteSide::Partial(_) => SetDriftKind::MissingRemote' not in compare_body,
+        'a partial sweep must never reach MissingRemote')
+require('RemoteSide::Untrusted => None' in observed_body,
+        'an untrusted side exposes no set at all, so absence cannot be iterated out of it')
+require('matches!(self, RemoteSide::Complete(_))' in absent_body,
+        'the absence predicate accepts exactly one shape')
+
+migration19 = text('crates/persistence-sqlite/migrations/0019_remote_scan_entries.sql')
+require('REFERENCES remote_scans(id) ON DELETE CASCADE' in migration19,
+        'entries cannot outlive the coverage verdict that qualifies them')
+require('PRIMARY KEY (scan_id, remote_path)' in migration19,
+        'one path per scan is stored once, so a re-walked directory cannot duplicate findings')
+down19 = text('crates/persistence-sqlite/migrations/down/0019_remote_scan_entries.sql')
+require('DROP TABLE IF EXISTS remote_scan_entries' in down19
+        and 'idx_remote_scan_entries_path' in down19,
+        'migration 0019 reverses both its table and its index')
+
+remote_scan_rs2 = text('crates/persistence-sqlite/src/remote_scan.rs')
+insert_entries = _rust_block(remote_scan_rs2, 'pub async fn insert_scan_entries(')
+snapshot_fn = _rust_block(remote_scan_rs2, 'pub async fn fresh_scan_snapshot(')
+require(insert_entries != '' and snapshot_fn != '',
+        'the snapshot write and read paths both still exist')
+require('INSERT OR IGNORE INTO remote_scan_entries' in insert_entries,
+        'a duplicated path is skipped rather than aborting the batch mid-listing')
+require('return Ok(None)' in snapshot_fn and 'age > max_age' in snapshot_fn,
+        'a stale snapshot is refused rather than served as current evidence')
+require('age < chrono::Duration::zero()' in snapshot_fn,
+        'a clock-skewed future timestamp does not keep a snapshot fresh forever')
+require('rows.is_empty()' in snapshot_fn,
+        'a scan with no stored entries yields no snapshot; an empty set is never a valid answer')
+
+lib_rs_p = text('crates/persistence-sqlite/src/lib.rs')
+beliefs_fn = _rust_block(lib_rs_p, 'pub async fn all_deployment_beliefs(')
+require(beliefs_fn != '', 'all_deployment_beliefs still exists')
+# The SQL lives in BELIEF_QUERY above the function, so scoping to the body would read nothing.
+# The const is sliced by name and the assertion runs against THAT: other queries in this file
+# legitimately filter to online/degraded, and a whole-file test stayed green on that mutation.
+belief_sql = _slice_between(lib_rs_p, 'const BELIEF_QUERY: &str =', ';', 'BELIEF_QUERY')
+require(belief_sql.count('SELECT') == 1,
+        'BELIEF_QUERY bounded to one statement (a runaway slice examines the rest of the file)')
+require("d.status <> 'deleted'" in belief_sql,
+        'the belief query excludes tombstones only, not failed rows')
+require("'online','degraded'" not in belief_sql,
+        'the belief query does not re-narrow to online rows - that filter is what made the '
+        'unrecorded direction unreachable')
+
+reconcile_rs = text('apps/desktop/src-tauri/src/commands/reconcile.rs')
+compare_fn = _rust_block(reconcile_rs, 'async fn compare_against_snapshots(')
+probe_loop = reconcile_rs[reconcile_rs.find('async fn run_sweep_inner('):
+                          reconcile_rs.find('const PATHS_PER_KIND')]
+require(compare_fn != '' and probe_loop != '',
+        'both reconciliation halves are present to be read')
+require('ScanCompleteness::Partial => RemoteSide::Partial(paths)' in compare_fn
+        and 'ScanCompleteness::Unknown => RemoteSide::Untrusted' in compare_fn,
+        'the stored completeness level decides which RemoteSide the sweep compares against')
+require('accounting_is_complete_for(&findings)' in compare_fn,
+        'the tally identity runs on every sweep, so a new kind cannot silently vanish')
+# Match the CALL not the spelling: a bare `filter(f)` becomes `filter(|x| f(x))` when the iterator
+# yields owned values (CI #314 caught exactly that type mismatch), and the gate must survive the fix.
+require('filter(|path| is_image_path(path))' in compare_fn
+        and '.filter(|row| is_image_path(&row.remote_path))' in compare_fn,
+        'both sides pass through the same in-scope predicate')
+require('"evidenceSource": "probe"' in probe_loop,
+        'probe-path events name their source instead of leaving it implied')
+require('SNAPSHOT_MAX_AGE_HOURS: i64 = 24' in reconcile_rs,
+        'the freshness window is a named constant, not a number buried in a call')
+
+index_rs2 = text('apps/desktop/src-tauri/src/commands/remote_index.rs')
+finish2 = _rust_block(index_rs2, 'async fn finish_and_report(')
+require('insert_scan_entries(pool, record_id, listed_paths).await' in finish2,
+        'the sweep that produced a scan also stores its listing')
+require('listed_paths.push(remote_path.clone())' in index_rs2,
+        'the listing is collected during the walk rather than reconstructed afterwards')
+
+desktop_ts2 = text('apps/desktop/src/lib/desktop.ts')
+settings_tsx = text('apps/desktop/src/pages/SettingsPage.tsx')
+require("evidenceSource: 'scan' | 'probe_only' | 'none'" in desktop_ts2,
+        'the frontend type carries the evidence source as a closed set')
+require('missingPaths' in desktop_ts2 and 'unrecordedPaths' in desktop_ts2
+        and 'unknownPaths' in desktop_ts2,
+        'all three drift kinds cross the IPC boundary')
+# --- step one (cont.): the scan cadence is a user setting, not a constant -----------------------
+settings_page = text('apps/desktop/src/pages/SettingsPage.tsx')
+require('scanIntervalMinutes: number' in desktop_ts2,
+        'the settings type carries the scan cadence across IPC')
+require('MIN_SCAN_INTERVAL_MINUTES = 60' in desktop_ts2
+        and 'DEFAULT_SCAN_INTERVAL_MINUTES = 24 * 60' in desktop_ts2,
+        'the UI mirrors both the floor and the default so it can refuse a value the backend would '
+        'silently raise')
+require('scan_interval_minutes: Option<u32>' in reconcile_rs,
+        'the setter takes the new field as optional: an older caller keeps working and takes the '
+        'default rather than failing to bind')
+require('scanIntervalSaveMutation' in settings_page
+        and 'scanIntervalSaveMutation.mutate(scanDraft)' in settings_page,
+        'the scan cadence saves on its own control, not folded into the probe interval save')
+# Asserted on the labels, not just the handlers: an earlier version of this gate stayed green when
+# both buttons were relabelled 保存间隔, because it only checked that a second mutation existed. Two
+# controls with the same caption are indistinguishable to whoever reads the page.
+require(settings_page.count("保存刷新间隔") == 1
+        and settings_page.count("'保存间隔'") == 1,
+        'the two interval controls carry distinct captions')
+require('htmlFor="reconcile-scan-interval"' in settings_page
+        and 'id="reconcile-scan-interval"' in settings_page,
+        'the scan interval input has a label bound to it by id')
+require('首次安装不会自动扫描' in settings_page,
+        'the page states the no-first-scan rule where the switch is, rather than leaving it to a log')
+
+index_gate_rs = text('apps/desktop/src-tauri/src/commands/remote_index.rs')
+require('let store_listing = completeness == ScanCompleteness::Complete;' in index_gate_rs,
+        'storing is gated on coverage at the write site')
+require('云端有但本地没记录' in settings_tsx and '应存在但快照里没有' in settings_tsx
+        and '覆盖不足，无法判断' in settings_tsx,
+        'the settings page renders each kind under a distinct heading')
+require('pathsOmitted' in settings_tsx,
+        'a capped path list says how much it left out')
+
+
+failed = [label for ok, label in checks if not ok]
+section_tail = checks[-15:]
+for ok, label in section_tail:
+    print(('OK   ' if ok else 'FAIL ') + label)
+if failed:
+    # Every failure this section owns prints by name. The window above shows only the last 15
+    # labels, so a red assertion outside it used to exit non-zero while printing nothing but OK -
+    # observed directly: "FAILED: 1 check(s)" with zero FAIL lines on screen.
+    for label in failed:
+        print('FAIL(section) ' + label)
+    raise SystemExit(f'User-flow contract FAILED: {len(failed)} of {len(checks)} accumulated check(s)')
+print(f'user-flow section [piclist 19-20 remote scan completeness] | checks so far: {len(checks)}')
+
+# --- publish dispatch step five: reconciliation reaches the user ----------------------------
+# Step four shipped a background reconciler that no person can turn on: the commands existed and were
+# registered, but nothing in the frontend referenced them. These gates exist so "backend complete" can
+# never again be reported as "feature available" for this path.
+require('getReconciliationSettings' in desktop and 'setReconciliationSettings' in desktop
+        and "invoke('get_reconciliation_settings')" in desktop
+        and "invoke('set_reconciliation_settings'" in desktop,
+        'the desktop wrapper exposes both reconciliation settings calls to the frontend')
+require('runReconciliationSweep' in desktop
+        and "invoke('run_reconciliation_sweep')" in desktop,
+        'the desktop wrapper exposes the manual sweep call')
+require('reconcileSettings' in settings_page
+        and 'reconcileToggleMutation.mutate(!reconcileSettings?.enabled)' in settings_page,
+        'Settings renders a real background-reconciliation switch rather than static text')
+require('后台对账' in settings_page,
+        'the reconciliation section is labelled in the product language users see')
+require('mutationFn: runReconciliationSweep' in settings_page
+        and 'onClick={() => sweepMutation.mutate()}' in settings_page
+        and '立即扫描' in settings_page,
+        'Settings offers a manual sweep action wired to the command')
+require('setSweepReport(report)' in settings_page
+        and 'sweepReport.examined' in settings_page
+        and 'sweepReport.eventsRecorded' in settings_page,
+        'the sweep result is rendered from the report the backend returns')
+require('sweepReport.missingRemote' in settings_page
+        and 'sweepReport.unrecordedRemote' in settings_page
+        and 'sweepReport.inconclusive' in settings_page,
+        'drift findings are surfaced instead of only a success/failure toast')
+require(_ui_interval_floor_matches_backend(desktop, cadence_src),
+        'the interval control mirrors the backend floor instead of accepting any number')
+require(_desktop_default_is_inert(desktop),
+        "the frontend default matches the backend inert default rather than assuming enabled")
+
+# --- piclist section seventeen: four deployment clocks --------------------------------------
+# One column used to mean "written locally" while being named "verified", so a failed upload could
+# leave its row looking verified. These gates hold the split in place: each cause writes one field, and
+# no failure path reaches a success field.
+require('pub enum TimestampCause' in timestamps_src
+        and 'pub struct DeploymentTimestamps' in timestamps_src,
+        'the four deployment clocks are set through one enumerated cause vocabulary')
+require('pub timestamps: DeploymentTimestamps' in domain
+        and 'pub recorded_at' not in domain
+        and 'pub deployed_at' not in domain,
+        'Deployment carries the clock group instead of a single ambiguous timestamp field')
+require('fn record(mut self, cause: TimestampCause' in domain,
+        'callers advance a deployment clock only through Deployment::record')
+require('TimestampCause::Disproved => self,' in timestamps_src,
+        'a failed content check advances no timestamp at all')
+require('last_verified_at: Some(at),' in timestamps_src
+        and 'TimestampCause::Proved => Self {' in timestamps_src,
+        'only a passed content comparison moves last_verified_at')
+require('UPDATE deployments SET status=?, last_attempted_at=? WHERE id=?' in persistence
+        and 'UPDATE deployments SET status=?, public_url=COALESCE(?, public_url), last_error=?, last_error_kind=?, last_attempted_at=? WHERE id=?' in persistence,
+        'status and result writes touch the attempt clock, never the verification clock')
+require('last_error=?, last_error_kind=?, last_attempted_at=?' in persistence
+        and '.bind(error_kind.map(|kind| kind.as_str()))' in persistence,
+        'the result update carries the kind in lockstep with the message it explains')
+require('if !passed {' in persistence
+        and 'A mismatch records nothing here.' in persistence
+        and 'UPDATE deployments SET last_verified_at=? WHERE id=?' in persistence,
+        'verification recording bails before writing when the verdict is a mismatch')
+require('UPDATE deployments SET remote_path=?, public_url=?, last_observed_at=?' in persistence,
+        'remote-index sync records an observation rather than a write time')
+require('UPDATE deployments SET last_observed_at=? WHERE id=?' in persistence
+        and 'RemoteObservation::Present => {' in reconcile_src
+        and 'record_deployment_observation(row.deployment_id)' in reconcile_src,
+        'reconciliation stamps last_observed_at only on a positive probe')
+require('.record_deployment_verification(proof.deployment_id, proof.passed)' in commands
+        and '.record_deployment_verification(proof.deployment_id, proof.passed)' in cli,
+        'both publish paths record verification from the real verdict, not from now')
+require('ALTER TABLE deployments ADD COLUMN last_attempted_at TEXT' in migration16
+        and 'ALTER TABLE deployments ADD COLUMN last_observed_at TEXT' in migration16
+        and 'ALTER TABLE deployments ADD COLUMN last_verified_at TEXT' in migration16,
+        'the migration adds all three new clocks')
+require('UPDATE deployments SET last_attempted_at = recorded_at' in migration16
+        and 'last_verified_at = recorded_at' not in migration16,
+        'backfill routes old writes to the attempt clock and never into verification')
+require('ALTER TABLE deployments DROP COLUMN last_attempted_at' in down16
+        and 'ALTER TABLE deployments DROP COLUMN last_observed_at' in down16
+        and 'ALTER TABLE deployments DROP COLUMN last_verified_at' in down16,
+        'the downgrade removes exactly what the upgrade added')
+require('fn a_failed_deployment_is_never_recorded_as_verified' in timestamps_src
+        and 'fn a_reconciliation_probe_observes_without_verifying' in timestamps_src,
+        'the §15 invariant and the probe/verify distinction are asserted by tests')
+require('recorded_at' not in commands and 'recorded_at' not in cli
+        and 'recorded_at' not in text('apps/desktop/src-tauri/src/commands/remote_index.rs'),
+        'no entry point still writes the old single-clock column')
+require(not _names_bare_verified_at(timestamps_src),
+        'the clock vocabulary module does not reintroduce the bare verified_at name')
+# --- piclist section eighteen: publish success is a ladder, not a boolean ---------------------
+# "API returned 200 = success" was the whole story: `status = if error.is_none() { Online }`. These
+# gates hold the four rungs apart, and hold each rung to its own evidence, so a future edit cannot
+# quietly collapse the ladder back into the boolean it replaced.
+require('pub enum ConfirmationTier' in tier_src
+        and 'Unknown = 0,' in tier_src
+        and 'Uploaded = 1,' in tier_src
+        and 'RemoteObserved = 2,' in tier_src
+        and 'ContentVerified = 3,' in tier_src
+        and 'PubliclyReachable = 4,' in tier_src,
+        'the confirmation ladder has explicit numbered rungs')
+require('stamps.last_attempted_at.is_some()' in tier_src
+        and 'if uploaded {' in tier_src
+        and 'ConfirmationTier::Uploaded;' in tier_src,
+        'an attempt alone yields Uploaded and no higher')
+require('observed && uploaded' in tier_src
+        and 'ConfirmationTier::RemoteObserved;' in tier_src,
+        'RemoteObserved requires both our upload and a later independent look')
+require('if verified {' in tier_src
+        and 'return ConfirmationTier::ContentVerified;' in tier_src,
+        'a passed content comparison is what reaches ContentVerified')
+require('stamps.last_verified_at.is_some()' in tier_src,
+        'level three reads the verification clock rather than any weaker evidence')
+require(_tier_reports_unknown_without_evidence(tier_src),
+        'absence of every clock reports Unknown rather than defaulting to success')
+require('if public_url_fetched' not in tier_src
+        and 'matches!(self, ConfirmationTier::PubliclyReachable)' in tier_src,
+        'PubliclyReachable stays unimplemented instead of being claimed without a fetch')
+require('fn derive_confirmation(stamps: &DeploymentTimestamps)' in tier_src,
+        'the tier is derived from the section-seventeen clocks and never stored')
+require('pub timestamps: domain::DeploymentTimestamps' in persistence
+        and 'd.deployed_at,d.last_attempted_at,d.last_observed_at,d.last_verified_at' in persistence,
+        'the summary query carries the clocks out so the tier can be computed at read time')
+require('derive_confirmation(&deployment.timestamps).level()' in commands
+        and 'pub confirmation_level: u8' in commands,
+        'the desktop asset view publishes a per-copy confirmation level')
+require('confirmationLevel: number' in assets_types
+        and 'confirmationLabel(deployment)' in assets_page
+        and '已上传' in assets_page and '远端可见' in assets_page and '内容一致' in assets_page,
+        'the ladder is shown to the user in words, not only as a number')
+require('Math.min(CONFIRMATION_LABELS.length - 1' in assets_page,
+        'an unknown level clamps to a known label instead of rendering undefined')
+
+# --- piclist section eighteen axis B: failure reasons travel as values ------------------------
+# The defect was a single line: `error: Some(error.to_string())` threw away the variant an adapter had
+# just derived from an HTTP status, so "replace your token" and "the network flinched" reached the
+# database as the same kind of thing. These gates hold the structure in place end to end, because a
+# column that nothing writes is indistinguishable from no column at all.
+require('pub enum StorageErrorKind' in error_kind_src
+        and 'Authentication,' in error_kind_src and 'Network,' in error_kind_src
+        and 'RateLimited,' in error_kind_src and 'NotFound,' in error_kind_src
+        and 'Conflict,' in error_kind_src and 'Rejected,' in error_kind_src
+        and 'Unsupported,' in error_kind_src and 'NotImplemented,' in error_kind_src,
+        'all eight failure kinds exist')
+# One gate per kind, and each asserts the behaviour that motivates the kind existing at all: which
+# bucket the user's next action falls into. A template round-trip check would pass for a kind nothing
+# ever dispatches on.
+require('StorageErrorKind::Authentication => "authentication"' in error_kind_src
+        and '"authentication" => StorageErrorKind::Authentication' in error_kind_src
+        and 'StorageErrorKind::Authentication | StorageErrorKind::NotFound' in error_kind_src,
+        'authentication is persisted, parsed back, and counted as config-actionable')
+require(_kind_is_retryable(error_kind_src, 'Network')
+        and _kind_is_retryable(error_kind_src, 'RateLimited')
+        and _kind_is_retryable(error_kind_src, 'Conflict'),
+        'network, rate_limited and conflict are the retryable set')
+require(not _kind_is_retryable(error_kind_src, 'NotFound')
+        and not _kind_is_retryable(error_kind_src, 'Authentication')
+        and not _kind_is_retryable(error_kind_src, 'NotImplemented'),
+        'retrying cannot fix a missing target, a bad credential or our own gap')
+require('StorageErrorKind::RateLimited => "rate_limited"' in error_kind_src
+        and '"rate_limited" => StorageErrorKind::RateLimited' in error_kind_src,
+        'rate_limited has its own spelling so throttling is not filed as a refusal')
+require('StorageErrorKind::NotFound => "not_found"' in error_kind_src
+        and '"not_found" => StorageErrorKind::NotFound' in error_kind_src,
+        'not_found is persisted and parsed back')
+require('StorageErrorKind::Conflict => "conflict"' in error_kind_src
+        and '"conflict" => StorageErrorKind::Conflict' in error_kind_src,
+        'conflict is persisted and parsed back')
+require('StorageErrorKind::Unsupported => "unsupported"' in error_kind_src
+        and '"unsupported" => StorageErrorKind::Unsupported' in error_kind_src,
+        'unsupported is persisted and parsed back')
+require('StorageErrorKind::NotImplemented => "not_implemented"' in error_kind_src
+        and '"not_implemented" => StorageErrorKind::NotImplemented' in error_kind_src,
+        'not_implemented is persisted and parsed back')
+require('!StorageErrorKind::NotImplemented.is_retryable()' in error_kind_src
+        or 'NotImplemented' in error_kind_src,
+        'a gap in our own code is never reported as something a retry can fix')
+# `rejected` is reached through the catch-all arm rather than naming itself twice, so it gets its own
+# pair of assertions instead of being folded into the loop above.
+require('StorageErrorKind::Rejected => "rejected"' in error_kind_src
+        and '_ => StorageErrorKind::Rejected' in error_kind_src,
+        'rejected is both the written form of that kind and the fallback for anything unknown')
+require('_ => StorageErrorKind::Rejected' in error_kind_src,
+        'an unreadable stored kind degrades to rejected rather than to a recoverable guess')
+require('!kind.is_retryable()' in error_kind_src or 'pub fn is_retryable' in error_kind_src,
+        'retryability is a property of the kind, not re-derived at each call site')
+require('pub fn kind(&self) -> domain::StorageErrorKind' in storage_core_src,
+        'a StorageError can name its own category')
+require('MissingObject(String)' in storage_core_src and 'Conflict(String)' in storage_core_src,
+        'the two categories adapters needed exist instead of overloading Provider')
+require('error_kind: Some(error.kind())' in application_src,
+        'the publish funnel records the category before rendering the message')
+require('pub error_kind: Option<domain::StorageErrorKind>' in application_src,
+        'PublishOutcome carries the kind alongside the text')
+require('last_error_kind' in migration17 and 'ADD COLUMN last_error_kind TEXT' in migration17,
+        'migration 0017 adds the column')
+require('DROP COLUMN last_error_kind' in down17,
+        'the downgrade removes it, paired with the upgrade in the same step')
+require('last_error_kind=?, last_attempted_at=?' in persistence
+        and 'error_kind.map(|kind| kind.as_str())' in persistence,
+        'both deployment write paths store the kind, not only the message')
+require('parse_stored_error_kind' in persistence
+        and 'raw.map(|value| domain::StorageErrorKind::parse(&value))' in persistence,
+        'a missing stored kind reads back as None, distinct from a recorded rejection')
+require('StatusCode::NOT_FOUND {' in github_src
+        and 'StorageError::MissingObject' in github_src,
+        'github files a 404 as missing rather than as a generic provider rejection')
+require('is_secondary_rate_limit' in github_src
+        and 'folded.contains("rate limit")' in github_src,
+        'github separates throttling from permission denial on secondary rate limits')
+require('StatusCode::TOO_MANY_REQUESTS' in gitee_src
+        and 'StatusCode::NOT_FOUND' in gitee_src and 'StatusCode::CONFLICT' in gitee_src,
+        'gitee classifies throttle, missing and conflict instead of falling through')
+require('opendal::ErrorKind::PermissionDenied' in opendal_src
+        and 'Only kinds already proven in this dependency are matched' in opendal_src,
+        'opendal matches only ErrorKind variants verified to exist, and says so')
+require('Some(domain::StorageErrorKind::NotFound)' in commands
+        and 'Some(domain::StorageErrorKind::Authentication)' in commands
+        and 'Some(error.kind())' in commands,
+        'each repair-path failure names its own category')
+require('error_kind: outcome.error_kind' in commands and 'error_kind: outcome.error_kind' in cli,
+        'both publish entry points carry the kind into the write record')
+require('ERROR_HINTS' in assets_page and 'errorHint(deployment)' in assets_page
+        and '凭证或权限问题' in assets_page and '被限流' in assets_page,
+        'the UI turns the category into an instruction per kind')
+require("if (!deployment.errorKind) return deployment.error ? ` · ${deployment.error}` : ''"
+        in assets_page,
+        'an unrecorded kind falls back to the raw message rather than inventing category advice')
 
 # v1.3.5 task-control, plugin-observability and diagnostics hardening.
 migration13 = text('crates/persistence-sqlite/migrations/0013_plugin_execution_logs.sql')
@@ -380,6 +1777,24 @@ require('report_batch_task_progress' in storage_entries_commands and 'mark_runni
 require('pub async fn cancel_task' in storage_entries_commands and 'pub async fn retry_task' in storage_entries_commands and 'commands::cancel_task' in lib and 'commands::retry_task' in lib, 'Task Center control commands are implemented and registered')
 require('cancelTask' in tasks_page and 'retryTask' in tasks_page and 'task.canCancel' in tasks_page and 'task.canRetry' in tasks_page, 'Task Center exposes real cancel and bounded retry controls')
 require('CREATE TABLE IF NOT EXISTS plugin_execution_logs' in migration13 and 'duration_ms' in migration13 and 'plugin_id' in migration13, 'plugin execution audit migration exists')
+# deployments.verified_at claimed a check that never happened (it was written as `Some(now)` next to
+# `status = if error.is_none() { Online }`, with no remote read). It is now recorded_at. These
+# assertions are the regression net: reintroducing the old name anywhere - field, SQL, or by editing
+# 0001 instead of adding a migration - fails here rather than silently re-lending it authority.
+migration14 = text('crates/persistence-sqlite/migrations/0014_rename_verified_to_recorded.sql')
+require('ALTER TABLE deployments RENAME COLUMN verified_at TO recorded_at' in migration14,
+        'the rename ships as an additive migration so existing databases keep their rows')
+# Superseded by section seventeen: `recorded_at` was itself split into four clocks, so these now
+# assert the current contract while keeping the original guarantee - the lying name stays gone.
+require('pub timestamps: DeploymentTimestamps' in domain and 'pub verified_at' not in domain,
+        'the domain Deployment field is the clock group and the lying name is gone from it')
+require(not _names_bare_verified_at(persistence) and 'last_verified_at' in persistence,
+        'no SQL string in the persistence layer still names the old column')
+require(not _names_bare_verified_at(commands) and not _names_bare_verified_at(cli)
+        and not _names_bare_verified_at(text('apps/desktop/src-tauri/src/commands/remote_index.rs')),
+        'all three write sites name an explicit clock instead of asserting a verification they did not perform')
+require('verified_at TEXT' in text('crates/persistence-sqlite/migrations/0001_init.sql'),
+        '0001 keeps the original column name on purpose - migrations replay in order on a fresh database, so the rename must live in 0014')
 require('record_execution' in persistence and 'list_execution_logs' in persistence, 'plugin execution audit repository persists and reads logs')
 require(re.search(r'record_execution\(\s*&manifest\.id', commands_main) is not None and re.search(r'record_execution\(\s*&manifest\.id', cli) is not None, 'desktop and Typora/Local API plugin lifecycle executions are audited')
 require(re.search(r'"manual_trigger"\s*,\s*"success"', plugin_commands) is not None and re.search(r'"manual_trigger"\s*,\s*"failed"', plugin_commands) is not None, 'manual plugin runs are audited')
@@ -772,7 +2187,7 @@ aggregate = (ROOT / 'scripts' / 'verify_all.mjs').read_text(encoding='utf-8').re
 # Membership follows "is a stage", not "starts with verify_": a gate named anything else escaped the
 # table entirely (theme_face_inventory.mjs was wired into the aggregate and fingerprinted by nobody).
 # The same derivation lives in scripts/fingerprint_rows.mjs, which writes these rows.
-staged = sorted(set(re.findall(r"'scripts/([A-Za-z0-9_-]+\.mjs)'", aggregate)))
+staged = sorted(set(re.findall(r"'scripts/([A-Za-z0-9_-]+\.(?:mjs|py))'", aggregate)))
 # A gate's signed baseline is as much a gate input as the gate itself: editing it changes what
 # "drift" means without touching a line of code. It is matched by shape rather than by name so a
 # second baseline cannot join the chain invisibly.
@@ -982,10 +2397,26 @@ require(not _unused, f'all four read-failure panels render the shared component 
 require('<details' in text('apps/desktop/src/components/ReadFailurePanel.tsx'),
         'the raw exception stays retrievable on screen (folded in a details, not deleted)')
 
+# Single-source project state (piclist.md #29-#31: STATE.md / TASKS.md / README had drifted three ways).
+# Facts must be read from git/Cargo/package.json/API by one generator, and the prose that repeats them
+# is checked against that generator - never the other way round.
+project_state = text('scripts/project_state.py')
+require('def canonical_repo_name()' in project_state and '--verify' in project_state,
+        'project_state.py both generates facts and verifies hand-written prose against them')
+require(re.search(r're\.sub\(r"\^\.\*refs/tags/", ""', project_state) is not None,
+        'tag names are stripped of the ls-remote "<sha>\\t" prefix before matching (a raw match silently reports "no tags")')
+require('SKIP clone-URL check' in project_state,
+        'the clone-URL assertion degrades visibly when the API is unreachable instead of falling back to origin, which still carries the pre-rename path')
+require("PROJECT_STATE_VERIFY facts=(\\d+) problems=(\\d+)" in text('scripts/verify_all.mjs'),
+        'verify_all runs project_state --verify as a stage, so drift cannot pass an aggregate green')
+require('本文件不再手写事实' in text('.ai/STATE.md'),
+        'STATE.md states that it holds narrative only, pointing at the generated JSON for facts')
+
 failed = [label for ok, label in checks if not ok]
 # Print every failure, then a short tail of passing checks for context. Printing only the last 20
 # checks meant a failing assertion outside that window exited 1 without ever naming itself, which the
 # mutation runner reported as "the oracle stayed silent" for guards that had caught the mutation.
+
 for label in failed:
     print('FAIL ' + label)
 # On a GitHub runner, a failed step's stdout needs a token to read (the logs endpoint answers 403),

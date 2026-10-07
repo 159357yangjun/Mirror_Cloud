@@ -31,6 +31,22 @@ import type {
 } from '../types'
 
 
+export interface RemoteScanOutcome {
+  storageId: string
+  storageName: string
+  completeness: 'complete' | 'partial' | 'unknown'
+  stopReason:
+    | 'exhausted'
+    | 'file_limit'
+    | 'directory_limit'
+    | 'provider_error'
+    | 'api_truncation'
+  directoriesListed: number
+  entriesSeen: number
+  truncatedDirs: number
+  errorCount: number
+}
+
 export interface RemoteIndexSyncResult {
   storagesScanned: number
   filesScanned: number
@@ -38,6 +54,7 @@ export interface RemoteIndexSyncResult {
   skippedExisting: number
   skippedNonImages: number
   errors: string[]
+  scans: RemoteScanOutcome[]
 }
 
 const docsBaseUrl = (import.meta.env.VITE_DOCS_BASE_URL || '').trim().replace(/\/+$/, '')
@@ -358,6 +375,20 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
   return invoke('check_for_updates')
 }
 
+/** The cached outcome of the last completed check. Zero network: it reads what the backend stored. */
+export interface UpdateStatus {
+  checkedAt: string | null
+  fresh: boolean
+  result: UpdateCheckResult | null
+}
+
+export async function getUpdateStatus(): Promise<UpdateStatus> {
+  if (!isTauriRuntime()) {
+    return { checkedAt: null, fresh: false, result: null }
+  }
+  return invoke('get_update_status')
+}
+
 export async function downloadUpdate(check: UpdateCheckResult): Promise<DownloadedUpdateSummary> {
   return invoke('download_update', { check })
 }
@@ -414,6 +445,131 @@ export async function getGlobalShortcutInfo(): Promise<GlobalShortcutInfo> {
 
 export async function setGlobalShortcutEnabled(enabled: boolean): Promise<GlobalShortcutInfo> {
   return invoke('set_global_shortcut_enabled', { enabled })
+}
+
+/// Interval floor mirrored from the backend (`MIN_INTERVAL_MINUTES`). Duplicated deliberately:
+/// TypeScript cannot read a Rust const, and a UI that accepted 1 minute would be clamped silently on
+/// save, showing the user a number that never took effect. Keeping the number here lets the control
+/// refuse it at the point of entry instead.
+export const MIN_RECONCILE_INTERVAL_MINUTES = 30
+export const MAX_RECONCILE_INTERVAL_MINUTES = 7 * 24 * 60
+// Mirrored from `MIN_SCAN_INTERVAL_MINUTES` / the 24h default for the same reason as above: a scan
+// cadence the UI accepted and the backend silently raised would show a number that never took effect.
+export const MIN_SCAN_INTERVAL_MINUTES = 60
+export const DEFAULT_SCAN_INTERVAL_MINUTES = 24 * 60
+
+export interface ReconciliationSettings {
+  enabled: boolean
+  intervalMinutes: number
+  scanIntervalMinutes: number
+}
+
+export type ConfirmationTierName =
+  | 'unknown'
+  | 'uploaded'
+  | 'remote_observed'
+  | 'content_verified'
+  | 'publicly_reachable'
+
+export type TierStrengthName = 'strong' | 'weak' | 'unconfirmed'
+
+/** §18B: the four buckets a failed probe is reported with (mirrors domain::ProbeFailureKind). */
+export type ProbeFailureKindName = 'network_timeout' | 'auth_failed' | 'rejected' | 'unavailable'
+
+/** One drift finding with the evidence this build can actually claim about it. */
+export interface DriftEntry {
+  deploymentId: string | null
+  remotePath: string
+  confirmation: ConfirmationTierName | null
+  strength: TierStrengthName | null
+  missingEvidence: string | null
+  /** Set on probe-path rows only: why the lookup could not answer (§18B). */
+  probeFailure?: ProbeFailureKindName | null
+}
+
+export interface SweepReport {
+  examined: number
+  present: number
+  absent: number
+  inconclusive: number
+  missingRemote: number
+  unrecordedRemote: number
+  eventsRecorded: number
+  truncated: boolean
+  budgetExhausted: boolean
+  nextCursor: string | null
+  skippedByPolicy: boolean
+  error: string | null
+  // 'scan' = the set comparison used a stored listing; 'probe_only' = no fresh listing existed.
+  evidenceSource: 'scan' | 'probe_only' | 'none'
+  unrecordedPaths: DriftEntry[]
+  probePaths: DriftEntry[]
+  missingPaths: DriftEntry[]
+  unknownPaths: DriftEntry[]
+  pathsOmitted: number
+}
+
+// The inert default is restated in the browser build on purpose: outside Tauri there is no settings
+// row to read, and showing "on" would claim a background job this runtime cannot run.
+export const reconciliationDefaults: ReconciliationSettings = { enabled: false, intervalMinutes: 360, scanIntervalMinutes: DEFAULT_SCAN_INTERVAL_MINUTES }
+
+export async function getReconciliationSettings(): Promise<ReconciliationSettings> {
+  if (!isTauriRuntime()) {
+    return reconciliationDefaults
+  }
+  return invoke('get_reconciliation_settings')
+}
+
+export async function setReconciliationSettings(
+  enabled: boolean,
+  intervalMinutes: number,
+  scanIntervalMinutes: number,
+): Promise<ReconciliationSettings> {
+  // Clamped here as well as in the backend so the value rendered after saving is the value stored.
+  const bounded = clamp(intervalMinutes, MIN_RECONCILE_INTERVAL_MINUTES, MAX_RECONCILE_INTERVAL_MINUTES)
+  const boundedScan = clamp(scanIntervalMinutes, MIN_SCAN_INTERVAL_MINUTES, MAX_RECONCILE_INTERVAL_MINUTES)
+  return invoke('set_reconciliation_settings', {
+    enabled,
+    intervalMinutes: bounded,
+    scanIntervalMinutes: boundedScan,
+  })
+}
+
+function clamp(value: number, floor: number, ceiling: number): number {
+  return Math.min(Math.max(value, floor), ceiling)
+}
+
+export async function runReconciliationSweep(): Promise<SweepReport> {
+  return invoke('run_reconciliation_sweep')
+}
+
+/** What one recorded sweep says about itself. Scheduled records carry findings; manual ones are a line. */
+export interface SweepHistoryEntry {
+  lastSweepAt: string
+  trigger: 'scheduled' | 'manual' | 'unknown'
+  outcome: 'clean' | 'drift' | 'error' | 'skipped' | 'unknown'
+  examined: number
+  missingRemote: number
+  unrecordedRemote: number
+  unknownCoverage: number
+  probeFailures?: number
+  evidenceSource: string
+  error: string | null
+}
+
+export interface ReconciliationHistory {
+  last: Record<string, unknown>
+  entries: SweepHistoryEntry[]
+}
+
+/** Read-back of what past sweeps recorded. The browser build has no settings row, so it returns an
+ * empty history rather than inventing one - an empty panel says "nothing recorded", which a
+ * fabricated entry would not. */
+export async function getReconciliationHistory(): Promise<ReconciliationHistory> {
+  if (!isTauriRuntime()) {
+    return { last: {}, entries: [] }
+  }
+  return invoke('get_reconciliation_history')
 }
 
 export async function getWindowsContextMenuInfo(): Promise<WindowsContextMenuInfo> {

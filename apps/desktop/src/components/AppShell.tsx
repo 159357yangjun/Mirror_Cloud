@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { BookOpen, Boxes, Cloud, Images, ListTodo, Palette, Plug, Settings, Upload, Zap } from 'lucide-react'
-import { getDocsBaseUrl, openExternalUrlOrReport } from '../lib/desktop'
+import { checkForUpdates, getDocsBaseUrl, getUpdateStatus, openExternalUrlOrReport } from '../lib/desktop'
 import {
   applyThemePreferences,
   loadThemePreferences,
@@ -26,7 +26,7 @@ const items: Array<{ key: PageKey; label: string; icon: typeof Boxes }> = [
 const FIRST_RUN_HELP_KEY = 'image-hosting-platform.help.seen-v1'
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { page, setPage, openUpload } = useAppStore()
+  const { page, setPage, openUpload, updateAvailableVersion } = useAppStore()
   const docsUrl = getDocsBaseUrl()
   const [showHelp, setShowHelp] = useState(() => window.localStorage.getItem(FIRST_RUN_HELP_KEY) !== '1')
   const [showTheme, setShowTheme] = useState(false)
@@ -35,6 +35,32 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     applyThemePreferences(appearance)
   }, [appearance])
+
+  // Startup update awareness, cache-first: a fresh stored answer costs zero requests, and only an
+  // expired one triggers a background check. Every failure path here is silent on purpose - this is
+  // the launch sequence, and a network wobble while looking for a newer version must not surface as
+  // an error the user did not ask about. Manual checks (Settings page) keep their visible errors.
+  const setUpdateAvailableVersion = useAppStore((state) => state.setUpdateAvailableVersion)
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const cached = await getUpdateStatus()
+        if (cancelled) return
+        if (cached.fresh) {
+          if (cached.result?.updateAvailable) setUpdateAvailableVersion(cached.result.latestVersion)
+          return
+        }
+        const checked = await checkForUpdates()
+        if (!cancelled && checked.updateAvailable) setUpdateAvailableVersion(checked.latestVersion)
+      } catch {
+        // Silent: see the comment above.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [setUpdateAvailableVersion])
 
   function updateAppearance(next: ThemePreferences) {
     setAppearance(next)
@@ -98,7 +124,17 @@ export function AppShell({ children }: { children: ReactNode }) {
               <BookOpen size={14} /> <span className="app-docs-label">教程与帮助</span>
             </button>
             <div className="app-sidebar-footer theme-surface rounded-2xl border p-3">
-              <div className="text-xs font-medium text-[var(--text-secondary)]">v1.4 Preview · Mirror Cloud</div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs font-medium text-[var(--text-secondary)]">v{__APP_VERSION__} · Mirror Cloud</div>
+                {updateAvailableVersion && (
+                  <button
+                    onClick={() => setPage('settings')}
+                    title={`发现新版本 v${updateAvailableVersion}，点击去设置`}
+                    aria-label={`发现新版本 v${updateAvailableVersion}`}
+                    className="size-2.5 shrink-0 rounded-full bg-amber-500"
+                  />
+                )}
+              </div>
               <div className="mt-1 text-[11px] leading-5 text-[var(--text-muted)]">托管 · 管理 · 发布 · 多云可靠性</div>
               <div className="mt-3 flex items-center gap-2 text-[11px] text-emerald-600"><span className="size-1.5 rounded-full bg-emerald-500" /> UX / Sync / Theme 开发中</div>
             </div>

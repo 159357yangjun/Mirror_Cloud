@@ -5,14 +5,14 @@ description: Bucket、RAM 凭据、Endpoint 与公开域名配置。
 
 import { Steps, Aside } from '@astrojs/starlight/components'
 
-预计时间：**5–10 分钟**。你需要 Bucket、Endpoint、AccessKey ID、AccessKey Secret，以及公开访问域名/CDN 地址。应用目前要求配置公网访问域名才能测试并保存 OSS 连接。
+预计时间：**5–10 分钟**。你需要 Bucket、Endpoint、AccessKey ID、AccessKey Secret，以及公开访问域名/CDN 地址。
 
 <Steps>
 1. 登录阿里云并开通 OSS，创建 Bucket，选择离主要访客较近的地域。
 2. 在 Bucket 概览中记录 Endpoint，例如 `https://oss-cn-hangzhou.aliyuncs.com`。不要把控制台网页地址当 Endpoint。
 3. 创建独立 RAM 用户/凭据，并只授予目标 Bucket 需要的对象读写/删除权限。不要把主账号高权限 AccessKey 当日常图床密钥。
 4. 为公开图片准备自定义域名或 CDN 地址。它和 API Endpoint 是两个概念。
-5. Publisher 中选择 **阿里云 OSS**，填 Bucket、Endpoint、AccessKey、Secret 和 **公开访问域名**；Root 可选。应用不会从 Endpoint 推导图片地址，连接测试和保存都要求提供公开访问域名，因此当前不能将无公网地址的 OSS 连接保存为镜像 / 备份成员。
+5. Publisher 中选择 **阿里云 OSS**，填 Bucket、Endpoint、AccessKey、Secret；Root 可选，但 **公开访问域名** 在作为发布目标时必填：应用不会从 Endpoint 推导图片地址，留空时该云端只能作为镜像 / 备份成员，作为发布目标会失败并回滚。
 6. 点击 **测试并保存**。
 </Steps>
 

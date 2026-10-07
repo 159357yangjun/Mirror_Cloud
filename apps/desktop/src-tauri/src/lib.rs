@@ -1,5 +1,7 @@
 pub mod cli;
 mod commands;
+pub mod reconcile_cadence;
+mod rollback;
 
 use std::{
     path::PathBuf,
@@ -9,7 +11,7 @@ use std::{
 use credential_store::CredentialStore;
 use persistence_sqlite::{
     AssetRepository, PluginRepository, SettingsRepository, StorageGroupRepository,
-    StorageRepository, TaskRepository, WorkflowRepository,
+    StorageRepository, TaskRepository, WorkflowRepository, journal::SqliteEventJournal,
 };
 use task_engine::TaskEngine;
 use tauri::Manager;
@@ -23,6 +25,9 @@ pub struct AppState {
     pub groups: StorageGroupRepository,
     pub workflows: WorkflowRepository,
     pub plugins: PluginRepository,
+    /// Durable domain event journal. Separate from `tasks`: the task table answers "what is running
+    /// now", the journal answers "what happened, in order".
+    pub journal: SqliteEventJournal,
     pub tasks: TaskEngine,
     pub credentials: CredentialStore,
     pub upload_semaphore: Arc<tokio::sync::Semaphore>,
@@ -31,9 +36,34 @@ pub struct AppState {
     pub local_api_running: Arc<AtomicBool>,
 }
 
+/// Bring the main window back into view: unminimise, show, focus - in that order, because a
+/// minimised window that is merely shown stays invisible on Windows.
+fn restore_main_window(app: tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        restore_main_window_inner(window);
+    }
+}
+
+fn restore_main_window_inner(window: tauri::WebviewWindow) {
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    // A second launch must wake the window that is already running, not start a rival process.
+    // Without this the app has no single-instance guard at all: Windows spawns instance #2, it
+    // reaches setup(), finds the SQLite file locked by instance #1, and dies during migration -
+    // which is what users see as "clicking the icon makes it flash and vanish". The callback also
+    // runs for the FIRST instance; `open_paths` is empty there, so restoring only on a non-empty
+    // argument list keeps the initial window untouched.
+    builder = builder.plugin(tauri_plugin_single_instance::init(|app, open_paths, _| {
+        if !open_paths.is_empty() {
+            restore_main_window(app.clone());
+        }
+    }));
+    builder
         .on_window_event(|window, event| {
             if window.label() == "main" {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -68,7 +98,8 @@ pub fn run() {
                 settings: SettingsRepository::new(pool.clone()),
                 groups: StorageGroupRepository::new(pool.clone()),
                 workflows: WorkflowRepository::new(pool.clone()),
-                plugins: PluginRepository::new(pool),
+                plugins: PluginRepository::new(pool.clone()),
+                journal: persistence_sqlite::journal::SqliteEventJournal::new(pool),
                 tasks: TaskEngine::new(task_repo),
                 credentials,
                 upload_semaphore: Arc::new(tokio::sync::Semaphore::new(4)),
@@ -85,6 +116,7 @@ pub fn run() {
                 local_api_token,
                 local_api_running,
             );
+            commands::reconcile::start_background_reconciler(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -112,6 +144,10 @@ pub fn run() {
             commands::queue_batch_rename_storage_entries,
             commands::cancel_task,
             commands::retry_task,
+            commands::reconcile::run_reconciliation_sweep,
+            commands::reconcile::get_reconciliation_settings,
+            commands::reconcile::set_reconciliation_settings,
+            commands::reconcile::get_reconciliation_history,
             commands::create_storage_group,
             commands::list_storage_groups,
             commands::delete_storage_group,
@@ -132,6 +168,7 @@ pub fn run() {
             commands::integrations::get_output_preferences,
             commands::integrations::save_output_preferences,
             commands::updater::check_for_updates,
+            commands::updater::get_update_status,
             commands::updater::download_update,
             commands::updater::install_update,
             commands::integrations::get_system_diagnostics,

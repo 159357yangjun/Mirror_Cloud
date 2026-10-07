@@ -32,6 +32,37 @@ const outputFormatLabel: Record<OutputFormat, string> = {
   custom: '自定义格式',
 }
 
+// The ladder in the user's words. Level 1 is what "在线" has always silently meant: the provider
+// accepted the bytes. Anything above that requires having actually looked again, so the label says
+// which claim is on the table instead of letting one green chip cover four different situations.
+const CONFIRMATION_LABELS = ['未核对', '已上传', '远端可见', '内容一致'] as const
+
+function confirmationLabel(deployment: AssetView['deployments'][number]): string {
+  const level = Math.max(0, Math.min(CONFIRMATION_LABELS.length - 1, deployment.confirmationLevel))
+  return CONFIRMATION_LABELS[level]
+}
+// Turns the stored failure category into an instruction. Keyed off the kind rather than the message
+// so the advice stays stable when wording changes, and deliberately quiet when no kind was recorded:
+// rows predating that column have no reason to guess from, and inventing one is how a field starts
+// lying.
+const ERROR_HINTS: Record<string, string> = {
+  authentication: ' · 凭证或权限问题：请检查 Token 与授权范围',
+  network: ' · 网络未送达：稍后重试即可，无需改配置',
+  rate_limited: ' · 被限流：请放慢重试，不要立即重发',
+  not_found: ' · 目标不存在：请修正仓库/分支/路径设置',
+  conflict: ' · 与其他写入冲突：瞬时问题，可重试',
+  rejected: ' · 服务端拒绝：请看下方原始错误信息',
+  unsupported: ' · 该存储不支持此操作：换一个存储',
+  not_implemented: ' · 本应用尚未实现：欢迎反馈',
+}
+
+function errorHint(deployment: AssetView['deployments'][number]): string {
+  if (!deployment.errorKind) return deployment.error ? ` · ${deployment.error}` : ''
+  const hint = ERROR_HINTS[deployment.errorKind] ?? ERROR_HINTS.rejected
+  return `${hint}｜${deployment.error ?? ''}`
+}
+
+
 export function AssetsPage() {
   const openUpload = useAppStore((state) => state.openUpload)
   const setPage = useAppStore((state) => state.setPage)
@@ -215,10 +246,10 @@ export function AssetsPage() {
                 {asset.deployments.map((deployment) => (
                   <span
                     key={`${deployment.storage}-${deployment.role}`}
-                    title={deployment.error || `${deployment.providerKey} · ${deployment.role}`}
+                    title={`${deployment.providerKey} · ${deployment.role}${errorHint(deployment)}`}
                     className={`rounded-lg border px-2 py-1 text-[10px] ${deployment.ok ? 'border-[var(--border)] text-[var(--text-muted)]' : 'border-red-100 bg-red-50 text-red-500'}`}
                   >
-                    {deployment.storage} · {deployment.role}
+                    {deployment.storage} · {deployment.role} · {confirmationLabel(deployment)}
                   </span>
                 ))}
               </div>

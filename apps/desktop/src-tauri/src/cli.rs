@@ -33,65 +33,79 @@ const SYSTEM_PIPELINE_SOURCE: &str = "__system_default__";
 const AI_SETTINGS_KEY: &str = "ai.provider";
 const AI_CREDENTIAL_KEY: &str = "ai:provider";
 
-fn is_safe_compensation_path(path: &str) -> bool {
-    path.split(|character: char| !character.is_ascii_alphanumeric())
-        .any(|segment| {
-            segment.len() == 33
-                && segment.starts_with('u')
-                && segment[1..]
-                    .chars()
-                    .all(|character| character.is_ascii_hexdigit())
+/// Build the deletable set for a partial CLI publish, reporting what was refused.
+///
+/// Same rule as the desktop path, shared through storage-core so the two entry points cannot drift
+/// apart again on which remote objects this program may delete.
+fn rollback_plan(
+    variant_id: Uuid,
+    outcomes: &[PublishOutcome],
+) -> (Vec<storage_core::rollback::RollbackPoint>, Vec<String>) {
+    let candidates: Vec<storage_core::rollback::RollbackPoint> = outcomes
+        .iter()
+        .filter(|outcome| outcome.error.is_none())
+        .map(|outcome| storage_core::rollback::RollbackPoint {
+            variant_id,
+            storage_id: outcome.storage_id,
+            remote_path: outcome.remote_path.clone(),
+            label: Some(outcome.storage_name.clone()),
         })
+        .collect();
+    // One filter owns the deletable set; this function does not re-implement the predicate, which
+    // is how the two entry points drifted apart before.
+    let skipped: Vec<String> = candidates
+        .iter()
+        .filter(|point| !storage_core::is_safe_compensation_path(&point.remote_path))
+        .map(storage_core::rollback::skipped_legacy_path_message)
+        .collect();
+    (
+        storage_core::rollback::safe_rollback_points(candidates),
+        skipped,
+    )
 }
 
-async fn rollback_successful_uploads(
+/// Reload every storage named by the plan, then hand out providers from that snapshot.
+///
+/// The awaits happen up front because `execute_rollback` takes a synchronous resolver and
+/// storage-core cannot reach the database; see the same helper in the desktop path.
+async fn rollback_resolver(
     context: &CliContext,
-    outcomes: &[PublishOutcome],
-) -> Vec<String> {
-    let mut failures = Vec::new();
-    for outcome in outcomes.iter().filter(|outcome| outcome.error.is_none()) {
-        if !is_safe_compensation_path(&outcome.remote_path) {
-            failures.push(format!(
-                "{}: rollback skipped for legacy/non-unique path {}",
-                outcome.storage_name, outcome.remote_path
-            ));
-            continue;
-        }
-        let storage = match context.storages.get(outcome.storage_id).await {
-            Ok(Some(storage)) => storage,
-            Ok(None) => {
-                failures.push(format!(
-                    "{}: storage no longer exists",
-                    outcome.storage_name
-                ));
-                continue;
+    points: &[storage_core::rollback::RollbackPoint],
+) -> impl FnMut(Uuid) -> Result<Arc<dyn StorageProvider>, storage_core::StorageError> {
+    let mut providers: Vec<(Uuid, Arc<dyn StorageProvider>)> = Vec::new();
+    for storage_id in points
+        .iter()
+        .map(|point| point.storage_id)
+        .collect::<Vec<_>>()
+    {
+        // A storage that cannot be reloaded is left out of the snapshot on purpose: the resolver
+        // below then reports it as an error, so the point counts as failed instead of vanishing.
+        if let Ok(Some(record)) = context.storages.get(storage_id).await {
+            if let Ok(provider) = build_provider(context, &record) {
+                providers.push((storage_id, provider));
             }
-            Err(error) => {
-                failures.push(format!(
-                    "{}: cannot reload storage for rollback: {error}",
-                    outcome.storage_name
-                ));
-                continue;
-            }
-        };
-        let provider = match build_provider(context, &storage) {
-            Ok(provider) => provider,
-            Err(error) => {
-                failures.push(format!(
-                    "{}: cannot rebuild provider for rollback: {error}",
-                    outcome.storage_name
-                ));
-                continue;
-            }
-        };
-        if let Err(error) = provider.delete(&outcome.remote_path).await {
-            failures.push(format!(
-                "{}: rollback delete failed: {error}",
-                outcome.storage_name
-            ));
         }
     }
-    failures
+    move |storage_id| {
+        providers
+            .iter()
+            .find(|(id, _)| *id == storage_id)
+            .map(|(_, provider)| Arc::clone(provider))
+            .ok_or_else(|| {
+                storage_core::StorageError::Provider("storage no longer exists".to_string())
+            })
+    }
+}
+
+/// Merge counted delete failures with paths the plan refused to touch.
+fn combine_rollback_failures(
+    summary: storage_core::rollback::RollbackSummary,
+    mut skipped: Vec<String>,
+) -> Vec<String> {
+    if summary.failed_count > 0 {
+        skipped.insert(0, format!("{} 个远端对象删除失败", summary.failed_count));
+    }
+    skipped
 }
 
 struct CliContext {
@@ -102,6 +116,10 @@ struct CliContext {
     tasks: TaskEngine,
     plugins: PluginRepository,
     settings: SettingsRepository,
+    /// Typora uploads must land in the same journal as desktop uploads; a half-wired log (one
+    /// entry point recording, the other silently not) is worse than no log, because the gaps look
+    /// like real history.
+    journal: persistence_sqlite::journal::SqliteEventJournal,
     credentials: CredentialStore,
 }
 
@@ -152,7 +170,8 @@ pub async fn upload_with_default_workflow(
         assets: AssetRepository::new(pool.clone()),
         tasks: TaskEngine::new(task_repo),
         plugins: PluginRepository::new(pool.clone()),
-        settings: SettingsRepository::new(pool),
+        settings: SettingsRepository::new(pool.clone()),
+        journal: persistence_sqlite::journal::SqliteEventJournal::new(pool),
         credentials: CredentialStore::new("com.multicloud.publisher"),
     };
 
@@ -615,22 +634,29 @@ async fn publish_one(
                 } else {
                     DeploymentStatus::Failed
                 },
-                deployed_at: Some(now),
-                verified_at: Some(now),
+                timestamps: domain::DeploymentTimestamps {
+                    deployed_at: Some(now),
+                    last_attempted_at: Some(now),
+                    ..Default::default()
+                },
             },
             last_error: outcome.error.clone(),
+            error_kind: outcome.error_kind,
         })
         .collect::<Vec<_>>();
     let public_url = match PublisherCore::select_public_url(&outcomes) {
         Some(public_url) => public_url,
         None => {
-            let rollback_failures = rollback_successful_uploads(context, &outcomes).await;
-            let suffix = if rollback_failures.is_empty() {
+            let (points, skipped) = rollback_plan(variant.id, &outcomes);
+            let resolver = rollback_resolver(context, &points).await;
+            let summary = crate::rollback::run_rollback(&context.journal, &points, resolver).await;
+            let failures = combine_rollback_failures(summary, skipped);
+            let suffix = if failures.is_empty() {
                 "; uploaded files were rolled back".to_string()
             } else {
                 format!(
                     "; rollback was incomplete and orphan files may remain: {}",
-                    rollback_failures.join(" | ")
+                    failures.join(" | ")
                 )
             };
             return Err(format!(
@@ -644,16 +670,59 @@ async fn publish_one(
         .insert_published_many(&asset, &variant, &deployments)
         .await
     {
-        let rollback_failures = rollback_successful_uploads(context, &outcomes).await;
-        let suffix = if rollback_failures.is_empty() {
+        let (points, skipped) = rollback_plan(variant.id, &outcomes);
+        let resolver = rollback_resolver(context, &points).await;
+        let summary = crate::rollback::run_rollback(&context.journal, &points, resolver).await;
+        let failures = combine_rollback_failures(summary, skipped);
+        let suffix = if failures.is_empty() {
             "; uploaded files were rolled back".to_string()
         } else {
             format!(
                 "; rollback was incomplete and orphan files may remain: {}",
-                rollback_failures.join(" | ")
+                failures.join(" | ")
             )
         };
         return Err(format!("Cannot record uploaded asset: {error}{suffix}"));
+    }
+
+    persistence_sqlite::journal::record_publish_events(
+        &context.journal,
+        asset.id,
+        variant.id,
+        &deployments,
+        Some(public_url.as_str()),
+    )
+    .await;
+
+    persistence_sqlite::journal::record_upload_attempts(&context.journal, variant.id, &deployments)
+        .await;
+
+    let verified: Vec<persistence_sqlite::journal::VerifiedDeployment> = deployments
+        .iter()
+        .filter_map(|record| {
+            let proof = outcomes
+                .iter()
+                .find(|outcome| outcome.storage_id == record.deployment.storage_id)
+                .and_then(|outcome| outcome.verification.as_ref())?;
+            Some(persistence_sqlite::journal::VerifiedDeployment {
+                deployment_id: record.deployment.id,
+                method: proof.method.clone(),
+                passed: proof.passed,
+                expected: proof.expected.clone(),
+                observed: proof.observed.clone(),
+            })
+        })
+        .collect();
+    // Same storage-id matching as the desktop path: unique per group by schema, so unambiguous.
+    persistence_sqlite::journal::record_verification_events(&context.journal, &verified).await;
+    for proof in &verified {
+        if let Err(error) = context
+            .assets
+            .record_deployment_verification(proof.deployment_id, proof.passed)
+            .await
+        {
+            tracing::warn!(%error, "could not record a verification timestamp");
+        }
     }
 
     let mut warnings = before_process_warnings

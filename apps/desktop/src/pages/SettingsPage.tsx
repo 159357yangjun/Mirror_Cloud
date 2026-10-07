@@ -27,6 +27,17 @@ import {
   getGlobalShortcutInfo,
   getWindowsContextMenuInfo,
   getOutputPreferences,
+  getReconciliationSettings,
+  getUpdateStatus,
+  getReconciliationHistory,
+  runReconciliationSweep,
+  setReconciliationSettings,
+  DEFAULT_SCAN_INTERVAL_MINUTES,
+  MIN_SCAN_INTERVAL_MINUTES,
+  MIN_RECONCILE_INTERVAL_MINUTES,
+  type ReconciliationSettings,
+  type SweepHistoryEntry,
+  type SweepReport,
   getTyporaIntegrationInfo,
   installUpdate,
   openAppDataDir,
@@ -41,12 +52,123 @@ import {
 import type { DownloadedUpdateSummary, UpdateCheckResult } from '../lib/desktop'
 import { useAppStore } from '../store/useAppStore'
 import { confirmAction } from '../store/useConfirmStore'
+import { tierDisplay, tierReason } from '../lib/confirmationDisplay'
+import { probeDisplay } from '../lib/probeDisplay'
+import type { ProbeFailureKindName } from '../lib/desktop'
+import type { ConfirmationTierName } from '../lib/desktop'
 import type { OutputFormat, OutputPreferences } from '../types'
+
+// The colour comes from `tierDisplay`, never inline here: the same ladder is shown on the asset rows
+// and a divergence between the two would mean one of them is lying about how much to trust a copy.
+function TierChip({ tier }: { tier: ConfirmationTierName | null }) {
+  const view = tierDisplay(tier)
+  if (!view) return <span className="text-[10px] text-slate-300">无本地记录</span>
+  return (
+    <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium ${view.chipClass}`}>
+      {view.label}
+    </span>
+  )
+}
+
+function ProbeChip({ kind }: { kind: ProbeFailureKindName | null | undefined }) {
+  const view = probeDisplay(kind)
+  if (!view) return <span className="text-[10px] text-slate-300">未命名</span>
+  return (
+    <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium ${view.chipClass}`}>
+      {view.label}
+    </span>
+  )
+}
+const sweepOutcomeView: Record<SweepHistoryEntry['outcome'], { label: string; chipClass: string }> = {
+  clean: { label: '无差异', chipClass: 'bg-emerald-50 text-emerald-700' },
+  drift: { label: '有差异', chipClass: 'bg-amber-50 text-amber-700' },
+  error: { label: '未完成', chipClass: 'bg-red-50 text-red-600' },
+  skipped: { label: '未发送请求', chipClass: 'bg-slate-100 text-slate-500' },
+  unknown: { label: '未知', chipClass: 'bg-slate-100 text-slate-500' },
+}
+
+function SweepOutcomeChip({ outcome }: { outcome: SweepHistoryEntry['outcome'] }) {
+  const view = sweepOutcomeView[outcome] ?? sweepOutcomeView.unknown
+  return <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium ${view.chipClass}`}>{view.label}</span>
+}
+
+// An unparseable timestamp renders as itself rather than "Invalid Date": a stored record we cannot
+// read should look broken, not like a sweep at the epoch.
+function sweepTimeLabel(raw: string): string {
+  const parsed = new Date(raw)
+  return Number.isNaN(parsed.getTime()) ? raw : parsed.toLocaleString()
+}
 
 export function SettingsPage() {
   const queryClient = useQueryClient()
   const setPage = useAppStore((state) => state.setPage)
   const localApiGuideUrl = getLocalApiGuideUrl()
+  // Reconciliation: the settings row is read once and re-read after each save, so the switch label
+  // reflects what the backend stored rather than what was clicked. The interval keeps a separate
+  // draft because an input that wrote through on every keystroke would persist while typing "3".
+  const { data: reconcileSettings, error: reconcileError } = useQuery({
+    queryKey: ['reconciliation-settings'],
+    queryFn: getReconciliationSettings,
+    refetchOnWindowFocus: false,
+  })
+  const [intervalDraft, setIntervalDraft] = useState<number>(MIN_RECONCILE_INTERVAL_MINUTES)
+  const [scanDraft, setScanDraft] = useState<number>(DEFAULT_SCAN_INTERVAL_MINUTES)
+  useEffect(() => {
+    if (reconcileSettings) {
+      setIntervalDraft(reconcileSettings.intervalMinutes)
+      setScanDraft(reconcileSettings.scanIntervalMinutes)
+    }
+  }, [reconcileSettings])
+  function intervalDraftChange(minutes: number) {
+    setIntervalDraft(Number.isFinite(minutes) ? minutes : MIN_RECONCILE_INTERVAL_MINUTES)
+  }
+  const reconcileToggleMutation = useMutation({
+    mutationFn: (enabled: boolean) =>
+      setReconciliationSettings(
+        enabled,
+        reconcileSettings?.intervalMinutes ?? 360,
+        reconcileSettings?.scanIntervalMinutes ?? DEFAULT_SCAN_INTERVAL_MINUTES,
+      ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reconciliation-settings'] }),
+  })
+  const intervalSaveMutation = useMutation({
+    mutationFn: (minutes: number) =>
+      setReconciliationSettings(
+        reconcileSettings?.enabled ?? false,
+        minutes,
+        reconcileSettings?.scanIntervalMinutes ?? DEFAULT_SCAN_INTERVAL_MINUTES,
+      ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reconciliation-settings'] }),
+  })
+  // The scan cadence is saved on its own because it bounds a different cost: the probe interval caps
+  // requests per row page, while one scan walks every directory of every enabled storage. A user who
+  // raises one should not silently change the other.
+  const scanIntervalSaveMutation = useMutation({
+    mutationFn: (hours: number) =>
+      setReconciliationSettings(
+        reconcileSettings?.enabled ?? false,
+        reconcileSettings?.intervalMinutes ?? 360,
+        Math.round(hours * 60),
+      ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reconciliation-settings'] }),
+  })
+  // Manual sweeps are not cached: each run is a fresh observation of the remote, and a stale report
+  // would be indistinguishable from "nothing changed since last time".
+  const [sweepReport, setSweepReport] = useState<SweepReport | null>(null)
+  const sweepMutation = useMutation({
+    mutationFn: runReconciliationSweep,
+    onSuccess: (report) => {
+      setSweepReport(report)
+      queryClient.invalidateQueries({ queryKey: ['reconciliation-history'] })
+    },
+  })
+  // Persisted outcomes: what the background job recorded while nobody was watching, plus one line
+  // per manual pass. Invalidated after a manual sweep so its record lands in the list.
+  const { data: reconcileHistory } = useQuery({
+    queryKey: ['reconciliation-history'],
+    queryFn: getReconciliationHistory,
+  })
+
   const { data } = useQuery({ queryKey: ['output-preferences'], queryFn: getOutputPreferences })
   const { data: typora, error: typoraError, isFetching: typoraChecking, refetch: refreshTypora } = useQuery({
     queryKey: ['typora-integration'],
@@ -89,7 +211,22 @@ export function SettingsPage() {
     onSuccess: (saved) => queryClient.setQueryData(['output-preferences'], saved),
   })
 
+  // Seeded from the backend cache: whatever the startup check (or a previous session's manual
+  // click) learned is shown here without spending a request just to open a settings page.
   const [updateCheck, setUpdateCheck] = useState<UpdateCheckResult | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    void getUpdateStatus()
+      .then((status) => {
+        if (!cancelled && status.fresh && status.result) setUpdateCheck(status.result)
+      })
+      .catch(() => {
+        // Silent: nothing cached simply renders as no detail block.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const [updateDownloaded, setUpdateDownloaded] = useState<DownloadedUpdateSummary | null>(null)
   const checkUpdateMutation = useMutation({
     mutationFn: checkForUpdates,
@@ -397,8 +534,196 @@ export function SettingsPage() {
 
       <section className="mt-6 rounded-[24px] border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="text-sm font-semibold">后台对账</div>
+            <div className="mt-1 text-xs leading-5 text-slate-400">
+              定期把本地记录的“已上线”与远端实际存在的对象做比对，只报告差异，不删除、不改状态。默认关闭：开启后才会向各存储发起读取请求。
+            </div>
+          </div>
+          <button
+            disabled={reconcileToggleMutation.isPending}
+            onClick={() => reconcileToggleMutation.mutate(!reconcileSettings?.enabled)}
+            className="h-10 shrink-0 rounded-xl border border-slate-200 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            title={reconcileSettings?.enabled ? '点击关闭后台对账' : '点击开启后台对账'}
+          >
+            {reconcileToggleMutation.isPending ? '保存中…' : reconcileSettings?.enabled ? '已开启' : '已关闭'}
+          </button>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+          <label className="text-xs font-medium text-slate-600" htmlFor="reconcile-interval">扫描间隔（分钟）</label>
+          <input
+            id="reconcile-interval"
+            type="number"
+            min={MIN_RECONCILE_INTERVAL_MINUTES}
+            step={30}
+            value={reconcileSettings?.intervalMinutes ?? 360}
+            disabled={!reconcileSettings?.enabled}
+            onChange={(event) => intervalDraftChange(Number(event.target.value))}
+            className="h-10 w-32 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none disabled:opacity-50"
+          />
+          <span className="text-[11px] text-slate-400">不低于 {MIN_RECONCILE_INTERVAL_MINUTES} 分钟；更小的值会被后端抬到该下限。</span>
+          <button
+            disabled={!reconcileSettings?.enabled || intervalSaveMutation.isPending}
+            onClick={() => intervalSaveMutation.mutate(intervalDraft)}
+            className="ml-auto h-9 rounded-xl bg-slate-950 px-3 text-xs font-medium text-white disabled:opacity-40"
+          >
+            {intervalSaveMutation.isPending ? '保存中…' : '保存间隔'}
+          </button>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+          <label className="text-xs font-medium text-slate-600" htmlFor="reconcile-scan-interval">云端索引刷新间隔（小时）</label>
+          <input
+            id="reconcile-scan-interval"
+            type="number"
+            min={Math.ceil(MIN_SCAN_INTERVAL_MINUTES / 60)}
+            step={6}
+            value={Math.round((reconcileSettings?.scanIntervalMinutes ?? DEFAULT_SCAN_INTERVAL_MINUTES) / 60)}
+            disabled={!reconcileSettings?.enabled}
+            onChange={(event) => setScanDraft(Number(event.target.value) * 60)}
+            className="h-10 w-32 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none disabled:opacity-50"
+          />
+          <span className="text-[11px] text-slate-400">不低于 {Math.ceil(MIN_SCAN_INTERVAL_MINUTES / 60)} 小时。首次安装不会自动扫描，第一份快照由你点“同步云端索引”或“手动扫描”产生。</span>
+          <button
+            disabled={!reconcileSettings?.enabled || scanIntervalSaveMutation.isPending}
+            onClick={() => scanIntervalSaveMutation.mutate(scanDraft)}
+            className="ml-auto h-9 rounded-xl bg-slate-950 px-3 text-xs font-medium text-white disabled:opacity-40"
+          >
+            {scanIntervalSaveMutation.isPending ? '保存中…' : '保存刷新间隔'}
+          </button>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            disabled={sweepMutation.isPending}
+            onClick={() => sweepMutation.mutate()}
+            className="h-10 rounded-xl border border-slate-200 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {sweepMutation.isPending ? '扫描中…' : '立即扫描'}
+          </button>
+          <span className="text-[11px] text-slate-400">手动扫描不受开关限制，始终会读取远端。</span>
+        </div>
+
+        {sweepReport && (
+          <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-xs leading-6 text-slate-600">
+            <div>
+              本次核对 <span className="font-mono">{sweepReport.examined}</span> 条部署记录：远端存在{' '}
+              <span className="font-mono">{sweepReport.present}</span> · 远端缺失 <span className="font-mono">{sweepReport.absent}</span> · 无法确认{' '}
+              <span className="font-mono">{sweepReport.inconclusive}</span>
+            </div>
+            <div className="mt-1">
+              写入历史 <span className="font-mono">{sweepReport.eventsRecorded}</span> 条 · 应存在却查不到{' '}
+              <span className="font-mono">{sweepReport.missingRemote}</span> · 未记录却存在{' '}
+              <span className="font-mono">{sweepReport.unrecordedRemote}</span>
+            </div>
+            {sweepReport.truncated && (
+              <div className="mt-1 text-amber-700">本轮受行数上限截断，剩余部分会在下次扫描继续。</div>
+            )}
+            {sweepReport.error && <div className="mt-1 text-red-600">扫描未完成：{sweepReport.error}</div>}
+            {sweepReport.skippedByPolicy && <div className="mt-1 text-slate-500">后台任务当前处于关闭状态，本轮未发送任何请求。</div>}
+            <div className="mt-2 text-[11px] text-slate-500">
+              差异依据：{sweepReport.evidenceSource === 'scan' ? '云端索引快照（24 小时内的完整扫描）' : sweepReport.evidenceSource === 'probe_only' ? '逐个对象探测（没有可用的近期快照）' : '本轮未产生集合比对'}
+            </div>
+            {(sweepReport.missingPaths.length > 0 || sweepReport.unrecordedPaths.length > 0 || sweepReport.unknownPaths.length > 0 || sweepReport.probePaths.length > 0) && (
+              <div className="mt-2 space-y-2">
+                {sweepReport.missingPaths.length > 0 && (
+                  <div>
+                    <div className="font-medium text-red-600">应存在但快照里没有</div>
+                    <ul className="mt-1 max-h-32 overflow-y-auto rounded-xl bg-white px-3 py-2 text-[11px]">
+                      {sweepReport.missingPaths.map((entry) => (
+                        <li key={entry.remotePath} className="flex flex-wrap items-baseline gap-2 py-0.5">
+                          <TierChip tier={entry.confirmation} />
+                          <span className="font-mono text-slate-500">{entry.remotePath}</span>
+                          <span className="text-slate-400">{tierReason(entry)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {sweepReport.unrecordedPaths.length > 0 && (
+                  <div>
+                    <div className="font-medium text-amber-700">云端有但本地没记录</div>
+                    <ul className="mt-1 max-h-32 overflow-y-auto rounded-xl bg-white px-3 py-2 text-[11px]">
+                      {sweepReport.unrecordedPaths.map((entry) => (
+                        <li key={entry.remotePath} className="flex flex-wrap items-baseline gap-2 py-0.5">
+                          <TierChip tier={entry.confirmation} />
+                          <span className="font-mono text-slate-500">{entry.remotePath}</span>
+                          <span className="text-slate-400">{tierReason(entry)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {sweepReport.probePaths.length > 0 && (
+                  <div>
+                    <div className="font-medium text-sky-700">探测失败（无法确认，不代表缺失）</div>
+                    <ul className="mt-1 max-h-32 overflow-y-auto rounded-xl bg-white px-3 py-2 text-[11px]">
+                      {sweepReport.probePaths.map((entry) => (
+                        <li key={entry.remotePath} className="flex flex-wrap items-baseline gap-2 py-0.5">
+                          <ProbeChip kind={entry.probeFailure} />
+                          <span className="font-mono text-slate-500">{entry.remotePath}</span>
+                          <span className="text-slate-400">{probeDisplay(entry.probeFailure)?.hint ?? "本轮未能核对"}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                            {sweepReport.unknownPaths.length > 0 && (
+                  <div>
+                    <div className="font-medium text-slate-500">覆盖不足，无法判断</div>
+                    <ul className="mt-1 max-h-32 overflow-y-auto rounded-xl bg-white px-3 py-2 text-[11px]">
+                      {sweepReport.unknownPaths.map((entry) => (
+                        <li key={entry.remotePath} className="flex flex-wrap items-baseline gap-2 py-0.5">
+                          <TierChip tier={entry.confirmation} />
+                          <span className="font-mono text-slate-400">{entry.remotePath}</span>
+                          <span className="text-slate-400">{tierReason(entry)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {sweepReport.pathsOmitted > 0 && (
+                  <div className="text-[11px] text-slate-400">另有 {sweepReport.pathsOmitted} 条未列出（每类最多显示 20 条）。</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        {(reconcileToggleMutation.error || intervalSaveMutation.error || sweepMutation.error) && (
+          <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">
+            {String(reconcileToggleMutation.error || intervalSaveMutation.error || sweepMutation.error)}
+          </div>
+        )}
+        <div className="mt-4 rounded-2xl border border-slate-100 px-4 py-3">
+          <div className="text-xs font-medium text-slate-600">对账记录</div>
+          <div className="mt-1 text-[11px] leading-5 text-slate-400">
+            后台扫描会把完整结果留在这里（保留 7 天）；手动扫描只留一行，不会覆盖你回来时看到的最近一次后台结果。
+          </div>
+          {(reconcileHistory?.entries.length ?? 0) === 0 ? (
+            <div className="mt-2 text-[11px] text-slate-400">尚无记录：还没有完成过一次后台或手动扫描。</div>
+          ) : (
+            <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto text-[11px]">
+              {reconcileHistory!.entries.map((entry: SweepHistoryEntry) => (
+                <li key={entry.lastSweepAt} className="flex flex-wrap items-baseline gap-2">
+                  <span className="font-mono text-slate-500">{sweepTimeLabel(entry.lastSweepAt)}</span>
+                  <span className="text-slate-400">{entry.trigger === 'scheduled' ? '后台' : entry.trigger === 'manual' ? '手动' : '未知来源'}</span>
+                  <SweepOutcomeChip outcome={entry.outcome} />
+                  <span className="text-slate-400">
+                    核对 {entry.examined} · 缺失 {entry.missingRemote} · 未记录 {entry.unrecordedRemote} · 无法判断 {entry.unknownCoverage}
+                  </span>
+                  {entry.error && <span className="text-red-600">{entry.error}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+
+      <section className="mt-6 rounded-[24px] border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div><div className="text-sm font-semibold">关于与更新</div><div className="mt-1 text-xs leading-5 text-slate-400">检查 GitHub Releases 的新版本；下载的安装包必须通过 sha256 校验才会被启动。配置、索引和密钥保存在系统目录，更新不会触碰。</div></div>
-          <button disabled={checkUpdateMutation.isPending} onClick={() => checkUpdateMutation.mutate()} className="h-10 shrink-0 rounded-xl border border-slate-200 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">{checkUpdateMutation.isPending ? '检查中…' : '检查更新'}</button>
+          <div className="flex shrink-0 flex-col items-end gap-1"><span className="font-mono text-[11px] text-slate-400">v{__APP_VERSION__}</span><button disabled={checkUpdateMutation.isPending} onClick={() => checkUpdateMutation.mutate()} className="h-9 rounded-xl border border-slate-200 px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">{checkUpdateMutation.isPending ? '检查中…' : '检查更新'}</button></div>
         </div>
         {updateCheck && (
           <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-xs leading-6 text-slate-600">

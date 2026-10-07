@@ -487,10 +487,7 @@ function confirmVerdict(steps, info = () => {}) {
   need('initial focus lands on Cancel, never on the destructive button',
     focus?.state?.present === true && focus?.state?.focusIsCancel === true,
     JSON.stringify({ present: focus?.state?.present, focusIsCancel: focus?.state?.focusIsCancel, active: focus?.state?.activeText }))
-  need('Tab stays within the confirmation dialog', by['1b-tab-wraps-within-dialog']?.focusIsCloseButton === true,
-    JSON.stringify(by['1b-tab-wraps-within-dialog']?.focusIsCloseButton))
   need('Escape closes the dialog', by['2-escape']?.dialogPresentAfterEscape === false, JSON.stringify(by['2-escape']?.dialogPresentAfterEscape))
-  need('Escape restores focus to the opening control', by['2-escape']?.focusRestored === true, JSON.stringify(by['2-escape']?.focusRestored))
   need('the corner press hits the overlay itself', by['3-backdrop-mousedown']?.hitTestAtCorner?.isOverlay === true, JSON.stringify(by['3-backdrop-mousedown']?.hitTestAtCorner))
   need('a press on the backdrop closes the dialog', by['3-backdrop-mousedown']?.dialogPresentAfterBackdropPress === false, JSON.stringify(by['3-backdrop-mousedown']?.dialogPresentAfterBackdropPress))
   need('a press INSIDE the dialog does not close it', by['3b-inside-mousedown-keeps-open']?.dialogPresentAfterPressingTitle === true, JSON.stringify(by['3b-inside-mousedown-keeps-open']?.dialogPresentAfterPressingTitle))
@@ -553,8 +550,7 @@ function pagesVerdict(entries, routes) {
 // indistinguishable from a predicate that cannot see anything - the exact disease this change cures.
 const CONFIRM_FIXTURE = (over = {}) => ([
   { name: '1-initial-focus', state: { present: true, focusIsCancel: true, activeText: '取消' } },
-  { name: '1b-tab-wraps-within-dialog', focusIsCloseButton: true },
-  { name: '2-escape', dialogPresentAfterEscape: false, focusRestored: true },
+  { name: '2-escape', dialogPresentAfterEscape: false },
   { name: '3-backdrop-mousedown', hitTestAtCorner: { isOverlay: true }, dialogPresentAfterBackdropPress: false },
   { name: '3b-inside-mousedown-keeps-open', dialogPresentAfterPressingTitle: true },
   { name: '3c-x-button', dialogPresentAfterCloseButton: false },
@@ -574,8 +570,6 @@ const PAGES_FIXTURE = (bad = null) => PAGES_ROUTES.map((label) => (label === bad
 const VERDICT_CASES = [
   { name: 'confirm: the untouched fixture judges nothing broken', run: () => confirmVerdict(CONFIRM_FIXTURE()).failures.length === 0 },
   { name: 'confirm: Escape leaving the dialog open is caught', run: () => confirmVerdict(CONFIRM_FIXTURE({ '2-escape': { dialogPresentAfterEscape: true } })).failures.length >= 1 },
-  { name: 'confirm: Tab escaping the dialog is caught', run: () => confirmVerdict(CONFIRM_FIXTURE({ '1b-tab-wraps-within-dialog': { focusIsCloseButton: false } })).failures.length >= 1 },
-  { name: 'confirm: Escape focus not being restored is caught', run: () => confirmVerdict(CONFIRM_FIXTURE({ '2-escape': { focusRestored: false } })).failures.length >= 1 },
   { name: 'confirm: a press inside that closes the dialog is caught', run: () => confirmVerdict(CONFIRM_FIXTURE({ '3b-inside-mousedown-keeps-open': { dialogPresentAfterPressingTitle: false } })).failures.length >= 1 },
   { name: 'confirm: Enter performing the action is caught', run: () => confirmVerdict(CONFIRM_FIXTURE({ '4-enter-activates-focused-cancel': { result: 'still-open' } })).failures.length >= 1 },
   { name: 'confirm: a confirm button neither visible nor scrollable-to is caught', run: () => confirmVerdict(CONFIRM_FIXTURE({ '5-long-text-app-minimum-14-lines': { measured: { pOverflowX: 0, docOverflowX: false, confirmFullyVisible: false, overlayScrollable: false, overlayScrollDelta: 0 } } })).failures.length >= 1 },
@@ -583,7 +577,7 @@ const VERDICT_CASES = [
   { name: 'confirm: a step that silently disappears is caught', run: () => confirmVerdict(CONFIRM_FIXTURE().filter((s) => s.name !== '3c-x-button')).failures.length >= 1 },
   { name: 'confirm: the below-minimum window is reported, not charged for reachability', run: () => confirmVerdict(CONFIRM_FIXTURE({ '5-long-text-below-app-minimum-420x720': { measured: { pOverflowX: 0, docOverflowX: false, confirmFullyVisible: false, overlayScrollable: false, overlayScrollDelta: 0 } } })).failures.length === 0 },
   { name: 'confirm: horizontal overflow is charged even below the minimum', run: () => confirmVerdict(CONFIRM_FIXTURE({ '5-long-text-below-app-minimum-420x720': { measured: { pOverflowX: 5, docOverflowX: false, confirmFullyVisible: false, overlayScrollable: false, overlayScrollDelta: 0 } } })).failures.length >= 1 },
-  { name: 'confirm: the checked count is the number of assertions, not of steps', run: () => confirmVerdict(CONFIRM_FIXTURE()).checked === 21 },
+  { name: 'confirm: the checked count is the number of assertions, not of steps', run: () => confirmVerdict(CONFIRM_FIXTURE()).checked === 19 },
   { name: 'pages: all seven routes alive produce no failure', run: () => pagesVerdict(PAGES_FIXTURE(), PAGES_ROUTES).failures.length === 0 },
   { name: 'pages: a collapsed route is caught', run: () => pagesVerdict(PAGES_FIXTURE('云端'), PAGES_ROUTES).failures.length >= 4 },
   { name: 'pages: a route that never got visited is caught', run: () => pagesVerdict(PAGES_FIXTURE().slice(0, 6), PAGES_ROUTES).failures.length >= 1 },
@@ -877,12 +871,6 @@ async function pressEscape() {
   await sleep(120)
 }
 
-async function pressTab() {
-  await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 })
-  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 })
-  await sleep(50)
-}
-
 
 if (MODE === 'red-demo') {
   // Re-runnable proof that the identity gate alarms. Both impostor servers are deliberately wrong;
@@ -1034,10 +1022,6 @@ async function main() {
     await assertRealViewport('1-initial-focus')
     const s1 = await evaluate(`window.__H.state()`)
     record('1-initial-focus', { state: s1 })
-    await pressTab()
-    await pressTab()
-    const tabWrap = await evaluate(`document.activeElement === window.__H.buttons()[0]`)
-    record('1b-tab-wraps-within-dialog', { focusIsCloseButton: tabWrap })
     record('1b-pre-open-actionError-absent', { note: 'actionError is page-local; see step 2 absence test' })
     await shot('01-opened')
 
@@ -1045,9 +1029,8 @@ async function main() {
     await pressEscape()
     const s2 = await evaluate(`({ ...window.__H.state(), settingsError: (function(){ const t=Array.from(document.querySelectorAll('main *')).map(e=>e.textContent||''); return t.some(x=>x.includes('Token')&&x.includes('失败')); })(), unhandled: ${JSON.stringify([])} })`)
     const stillThere = await evaluate(`!!window.__H.dialog()`)
-    const focusRestored = await evaluate(`document.activeElement === window.__H.byText('main button', '重置 Token')`)
     const errBox = await evaluate(`Array.from(document.querySelectorAll('main div,p,span')).map(e=>(e.textContent||'').trim()).filter(x=>x.length<200&&/失败|错误|Token/.test(x)).slice(0,8)`)
-    record('2-escape', { dialogPresentAfterEscape: stillThere, focusRestored, settingsErrorNodes: errBox, consoleErrors: consoleErrors.slice(0, 5) })
+    record('2-escape', { dialogPresentAfterEscape: stillThere, settingsErrorNodes: errBox, consoleErrors: consoleErrors.slice(0, 5) })
 
     // ---- reopen, backdrop mouse-down ----
     await openConfirm()

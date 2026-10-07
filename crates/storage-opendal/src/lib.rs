@@ -4,6 +4,7 @@ use opendal::{Operator, services};
 use serde::{Deserialize, Serialize};
 use storage_core::{
     ConnectionReport, StorageEntry, StorageError, StorageProvider, UploadRequest, UploadResult,
+    VerificationOutcome,
 };
 use uuid::Uuid;
 
@@ -221,6 +222,10 @@ fn normalized_root(root: &str) -> String {
 
 fn map_error(error: opendal::Error) -> StorageError {
     let message = error.to_string();
+    // Only kinds already proven in this dependency are matched. ErrorKind has no local source to
+    // consult here and there is no compiler, so guessing at variant names would be an unverifiable
+    // edit that only CI could falsify. Unrecognised kinds fall through to Provider, whose own
+    // classifier sorts by status text - weaker, but covered by storage-core tests.
     match error.kind() {
         opendal::ErrorKind::PermissionDenied => StorageError::Authentication(message),
         opendal::ErrorKind::Unsupported => StorageError::Unsupported,
@@ -316,16 +321,41 @@ impl StorageProvider for OpenDalStorage {
             )));
         }
 
+        let verification =
+            VerificationOutcome::stat_bytes(expected_len as u64, verified.content_length());
         Ok(UploadResult {
             remote_path: remote_path.clone(),
             public_url: self.public_url_for(&remote_path),
             etag: meta.etag().map(ToOwned::to_owned),
+            verification: Some(verification),
         })
     }
 
     async fn download(&self, path: &str) -> Result<bytes::Bytes, StorageError> {
         let buffer = self.operator.read(path).await.map_err(map_error)?;
         Ok(buffer.to_bytes())
+    }
+
+    /// Exact-path lookup instead of the trait default's directory listing.
+    ///
+    /// The default implementation calls `list(parent)` and scans for a name match. Object stores
+    /// do not truncate listings the way repository contents APIs do, but a prefix can still hold
+    /// tens of thousands of keys, so the default is both slow here and - once a listing is capped
+    /// anywhere in the chain - capable of reporting a present object as absent. For a reconciler
+    /// that is the worst possible failure direction: a false "absent" reads as deleted user
+    /// content.
+    ///
+    /// Three outcomes are kept distinct on purpose:
+    ///   Ok(true)  / Ok(false) only come from a completed stat;
+    ///   Err(_)    covers every other failure (auth, network, rate limit), which callers must
+    ///             treat as "unknown", never as absence. NotFound maps to Ok(false); anything
+    ///             else propagates.
+    async fn exists(&self, path: &str) -> Result<bool, StorageError> {
+        match self.operator.stat(path).await {
+            Ok(metadata) => Ok(metadata.is_file()),
+            Err(error) if error.kind() == opendal::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(map_error(error)),
+        }
     }
 
     async fn delete(&self, path: &str) -> Result<(), StorageError> {
@@ -339,6 +369,10 @@ impl StorageProvider for OpenDalStorage {
             remote_path: to.to_string(),
             public_url: self.public_url_for(to),
             etag: metadata.etag().map(ToOwned::to_owned),
+            // The stat above proves the destination resolves, but nothing was compared against it
+            // (no expected SHA, no expected length), so there is no verdict to report. Claiming
+            // passed: true here would put an unverified path in the same tier as a checked one.
+            verification: None,
         })
     }
 
@@ -354,6 +388,11 @@ impl StorageProvider for OpenDalStorage {
     }
 
     async fn list(&self, path: &str) -> Result<Vec<StorageEntry>, StorageError> {
+        // OpenDAL's `list` is a stream-backed helper that pages the underlying service until the
+        // directory is exhausted, so there is no per-call ceiling for the scanner to compare a
+        // count against. The trait default (None) is therefore the accurate answer here, not an
+        // unverified one: truncation in this adapter surfaces as an error from `list_with`, which
+        // the caller already records as a failed read.
         let normalized = path.trim_matches('/');
         let directory = if normalized.is_empty() {
             String::new()

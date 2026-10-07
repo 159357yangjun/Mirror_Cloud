@@ -32,7 +32,7 @@ import { Steps, Aside } from '@astrojs/starlight/components'
 
 ## 3. 创建最小权限凭据
 
-在 R2 的 API Token / S3 凭据页面创建一组只用于当前 Bucket 的凭据。连接测试会写入、读取并删除一个临时探测对象，因此需要对象读取、写入和删除权限；之后在 Publisher 删除远端资源也需要删除对象权限。
+在 R2 的 API Token / S3 凭据页面创建一组只用于当前 Bucket 的凭据。至少需要对象读取和写入权限；如果要在 Publisher 中删除远端资源，还需要删除对象权限。
 
 你会得到：
 

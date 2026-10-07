@@ -10,3 +10,7 @@ bytes.workspace = true
 domain = { path = "../domain" }
 serde.workspace = true
 thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }

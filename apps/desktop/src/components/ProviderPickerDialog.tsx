@@ -31,7 +31,7 @@ export function ProviderPickerDialog({
       onMouseDown={onClose}
     >
       <section
-        className="max-h-[calc(100vh-3rem)] w-full max-w-[760px] overflow-y-auto rounded-[28px] border border-white bg-white p-6 shadow-[0_30px_100px_rgba(15,23,42,.22)]"
+        className="w-full max-w-[760px] rounded-[28px] border border-white bg-white p-6 shadow-[0_30px_100px_rgba(15,23,42,.22)]"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between">

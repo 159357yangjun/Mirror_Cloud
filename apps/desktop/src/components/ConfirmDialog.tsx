@@ -5,51 +5,19 @@ import { useConfirmStore } from '../store/useConfirmStore'
 export function ConfirmDialog() {
   const request = useConfirmStore((state) => state.request)
   const settle = useConfirmStore((state) => state.settle)
-  const dialogRef = useRef<HTMLElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (!request) return
-    const dialog = dialogRef.current
-    const overlay = dialog?.parentElement
-    if (!dialog || !overlay) return
-    const activeDialog = dialog as HTMLElement
-    const inertSiblings = Array.from(overlay.parentElement?.children ?? [])
-      .filter((element): element is HTMLElement => element instanceof HTMLElement && element !== overlay)
-      .map((element) => [element, element.inert] as const)
-    inertSiblings.forEach(([element]) => { element.inert = true })
-    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
     cancelRef.current?.focus()
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         event.preventDefault()
         settle(false)
-        return
-      }
-      if (event.key !== 'Tab') return
-      const focusable = Array.from(activeDialog.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      )).filter((element) => element.tabIndex >= 0 && element.getClientRects().length > 0)
-      const first = focusable[0]
-      const last = focusable[focusable.length - 1]
-      if (!first || !last || !activeDialog.contains(document.activeElement)) {
-        event.preventDefault()
-        const target = event.shiftKey ? last : first
-        target?.focus()
-      } else if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault()
-        first.focus()
       }
     }
     window.addEventListener('keydown', onKeyDown)
-    return () => {
-      window.removeEventListener('keydown', onKeyDown)
-      inertSiblings.forEach(([element, wasInert]) => { element.inert = wasInert })
-      if (previouslyFocused?.isConnected) previouslyFocused.focus()
-    }
+    return () => window.removeEventListener('keydown', onKeyDown)
   }, [request, settle])
 
   if (!request) return null
@@ -57,7 +25,6 @@ export function ConfirmDialog() {
   return (
     <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/35 p-4 backdrop-blur-sm" onMouseDown={() => settle(false)}>
       <section
-        ref={dialogRef}
         onMouseDown={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"

@@ -185,6 +185,87 @@ const mutations = [
     id: 'M31', file: 'Cargo.lock', oracle: 'release-version-stale', expect: 'Cargo.lock workspace members are out of sync',
     corrupt: 'stale-member',
   },
+  {
+    // Step 4 M32: the summary's own timestamp. A record that only says "a sweep happened" cannot be
+    // ordered, pruned by window, or trusted as recent - and the panel keys rows off this field.
+    id: 'M32', file: 'apps/desktop/src-tauri/src/commands/reconcile.rs', oracle: 'userflow-src',
+    expect: 'the summary carries a timestamp of its own and an explicit findings switch',
+    // Split so the checker's own source never contains the needle whole: otherwise deleting
+    // the line from reconcile.rs would leave the assertion satisfied by check_user_flow.py.
+    from: '"lastSweepAt": Utc::now()' + '.to_rfc3339(),',
+    to: '',
+  },
+  {
+    // Step 4 M33: outcome precedence. If `skipped` is not consulted before the counts, a policy-declined
+    // cycle reports all-zero numbers and reads as a clean library - the exact conflation the report
+    // type was built to prevent.
+    id: 'M33', file: 'apps/desktop/src-tauri/src/commands/reconcile.rs', oracle: 'userflow-src',
+    expect: 'error and skipped outrank clean before any count is consulted (asserted inside the function body)',
+    from: '} else if report.skipped_by_policy {\n        "skipped"\n    }',
+    to: '',
+  },
+  {
+    // Step 4 M34: the scheduled/manual split. Deleting the `true` argument makes the background path
+    // persist a line with no findings - the whole purpose of the feature gone, while the code still
+    // compiles and every other gate stays green. The anchor is unique to the loop call site; the
+    // command path passes the literal `false`, so this cannot neuter the wrong one.
+    id: 'M34', file: 'apps/desktop/src-tauri/src/commands/reconcile.rs', oracle: 'userflow-src',
+    expect: 'the manual command persists a line while the scheduled path persists findings',
+    from: 'let report = run_sweep_inner(&state, &providers, cursor.clone(), true).await;',
+    to: 'let report = run_sweep_inner(&state, &providers, cursor.clone(), false).await;',
+  },
+  {
+    // §18B M35: the taxonomy must be reachable through the lossy translation, not around it.
+    // Rewriting Ok(true) as Ok(false) makes a present object read as absent - the exact direction
+    // that would drive a reconciler toward deleting content that is fine. The expect names the gate
+    // that actually bites (the mapping arms and their fixtures); the signature gate stays green
+    // under this mutation because the signature is untouched - claiming it was the mislabel that
+    // made M35 report silent for two rounds.
+    id: 'M35', file: 'crates/persistence-sqlite/src/journal.rs', oracle: 'userflow-src',
+    expect: 'the mapping keeps its positive arm positive: only Ok(false) may read as absent',
+    from: 'Ok(true) => RemoteObservation::Present,',
+    to: 'Ok(true) => RemoteObservation::Absent,',
+  },
+  {
+    // §18B M36: dropping the kind on inconclusive findings leaves the report unable to say WHY,
+    // which is the whole feature; the observation itself stays correct, so only this gate catches it.
+    id: 'M36', file: 'crates/persistence-sqlite/src/journal.rs', oracle: 'userflow-src',
+    expect: 'inconclusive findings carry their kind through detect_drift',
+    from: 'probe_kind: looked_up.and_then(|(_, kind)| kind),',
+    to: 'probe_kind: None,',
+  },
+  {
+    // §18B M37: a silent fallback in the display map. An unknown future kind rendering nothing
+    // is the failure mode the degrade-to-rejected rule exists to prevent.
+    id: 'M37', file: 'apps/desktop/src/lib/probeDisplay.ts', oracle: 'userflow-src',
+    expect: 'the frontend map covers all four kinds and degrades unknown ones to rejected, never silence',
+    from: 'return PROBE_VIEWS[kind] ?? PROBE_VIEWS.rejected',
+    to: 'return PROBE_VIEWS[kind] ?? null',
+  },  {
+    // Plan C M38: drop the cache short-circuit and every launch becomes a GitHub request -
+    // the exact opposite of why the cache exists. Everything still works; nobody notices for
+    // weeks, and then rate limits start answering the user's startup.
+    id: 'M38', file: 'apps/desktop/src/components/AppShell.tsx', oracle: 'userflow-src',
+    expect: 'startup reads the cache first and only spends a request when it expired',
+    from: 'if (cached.fresh) {',
+    to: 'if (false) {',
+  },
+  {
+    // Plan C M39: the clock bug this guard exists for. Without the negative-age check, a
+    // record dated ahead of our clock ages negative forever - "fresh" permanently, no re-check.
+    id: 'M39', file: 'apps/desktop/src-tauri/src/commands/updater.rs', oracle: 'userflow-src',
+    expect: 'freshness is a pure function and a future-dated record re-checks instead of sticking',
+    from: 'age.num_seconds() >= 0 && age < Duration::hours(UPDATE_CACHE_MAX_AGE_HOURS)',
+    to: 'age < Duration::hours(UPDATE_CACHE_MAX_AGE_HOURS)',
+  },
+  {
+    // Plan C M40: light the dot unconditionally. A badge claiming a newer release that was
+    // never observed is the fabricated-data failure mode wearing a UI costume.
+    id: 'M40', file: 'apps/desktop/src/components/AppShell.tsx', oracle: 'userflow-src',
+    expect: 'the sidebar dot is driven only by an observed updateAvailable result',
+    from: 'setUpdateAvailableVersion(cached.result.latestVersion)',
+    to: 'setUpdateAvailableVersion(cached.result.latestVersion ?? \"0.0.0\")',
+  },
 ]
 
 const selected = only ? mutations.filter((m) => only.has(m.id)) : mutations
@@ -234,7 +315,7 @@ if (!python) {
   process.exit(3)
 }
 
-const runOracle = (oracle) => {
+const runOracle = (oracle, file, needle) => {
   // The layout oracle drives a real browser, so it is pinned to one tier and one route: the
   // unbreakable-filename fixture inside the confirm card. That keeps a mutation that needs a
   // browser at roughly the cost of one page load instead of the full 21-combination sweep.
@@ -255,8 +336,32 @@ const runOracle = (oracle) => {
     // disarmed predicate is caught without needing the app to misbehave first.
     'confirm-gate': [process.execPath, [`${REPO}/${HARNESS}`, 'confirm', '--port', port(10000)]],
     'release-version': [python.exe, [...python.pre, 'scripts/check_release_version.py', '--poison-lock-check']],
+    // Step 4's sweep-persistence gates live in check_user_flow.py. The .rs mutations use the
+    // 'userflow-src' channel above (it re-reads the mutated SOURCE); this alias documents the
+    // same default command for future non-source userflow mutations.
+    userflow: [python.exe, [...python.pre, 'scripts/check_user_flow.py']],
   }
   const cmd = CMD[oracle] || [python.exe, [...python.pre, 'scripts/check_user_flow.py']]
+  if (oracle === 'userflow-src') {
+    // A .rs mutation cannot be seen by the checker's fingerprint rows (they track harness scripts,
+    // not source), so this oracle runs the checker with a tripwire env var: the sweep-persistence
+    // assertions re-read the SOURCE file and go red on the mutant. Without the variable those
+    // assertions are inert, which is why no other mutation can use this channel by accident.
+    const r3 = spawnSync(python.exe, [...python.pre, 'scripts/check_user_flow.py'], {
+      cwd: REPO,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        MIRROR_CLOUD_MUTATION_PROBE: 'sweep-persistence',
+        MUTATED_SOURCE: file ?? '',
+        // The checker re-reads THIS needle from the mutated file. It arrives via env rather than
+        // being restated in the checker so a mutation cannot be satisfied by the checker quoting it.
+        MUTATED_NEEDLE: needle ?? '',
+      },
+      timeout: 420_000,
+    })
+    return { status: r3.status, spawnError: r3.error ? String(r3.error).slice(0, 120) : null, output: `${r3.stdout || ''}${r3.stderr || ''}`, marker: 'USERFLOW_CHECKS' }
+  }
   if (oracle === 'release-version-stale') {
     // M31 runs against a corrupted Cargo.lock (the harness writes the mutant before this fires and
     // restores in its finally). Pass both flags: skip the tripwire, drive the reconciliation branch.
@@ -317,12 +422,12 @@ for (const m of selected) {
     // The baseline has to be taken BEFORE the mutation is written. It was not, first time: both runs
     // saw the same disarmed file, so the guard-removal case compared the mutant against itself and
     // reported "pristine run exited 0" about a file that was never pristine.
-    const before = m.removesGuard ? runOracle(m.oracle) : null
+    const before = m.removesGuard ? runOracle(m.oracle, m.file, m.from) : null
     writeFileSync(path, mutated)
     // For a guard-removal mutation the baseline run is the other half of the proof: if the guard does
     // not alarm on the pristine file either, then "the mutated run went quiet" proves nothing about
     // the line that was deleted.
-    const run = runOracle(m.oracle)
+    const run = runOracle(m.oracle, m.file, m.from)
     const oracleRan = run.output.includes(run.marker)
     const baselineRan = before ? before.output.includes(before.marker) : true
     const baselineAlarmed = before ? (baselineRan && before.status !== 0 && before.output.includes(m.expect)) : true

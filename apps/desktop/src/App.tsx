@@ -22,7 +22,6 @@ export default function App() {
 
   useEffect(() => {
     if (!isTauriRuntime()) return
-    let disposed = false
     let unlisten: (() => void) | undefined
     void import('@tauri-apps/api/event').then(({ listen }) =>
       listen<PublishedEvent>('asset://published', async (event) => {
@@ -35,15 +34,9 @@ export default function App() {
         } catch {
           notifyError('发布成功，但自动复制失败，请到资源页手动复制')
         }
-      }).then((cleanup) => {
-        if (disposed) cleanup()
-        else unlisten = cleanup
-      }),
+      }).then((cleanup) => { unlisten = cleanup }),
     )
-    return () => {
-      disposed = true
-      unlisten?.()
-    }
+    return () => unlisten?.()
   }, [])
 
   return (

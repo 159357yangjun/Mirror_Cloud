@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use storage_core::{
     ConnectionReport, StorageEntry, StorageError, StorageProvider, UploadRequest, UploadResult,
+    VerificationOutcome,
 };
 
 const API_ROOT: &str = "https://gitee.com/api/v5/";
@@ -203,6 +204,15 @@ impl GiteeStorage {
         let message = redact(&message, token);
         if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
             StorageError::Authentication(format!("{context}: {message}"))
+        } else if status == StatusCode::TOO_MANY_REQUESTS {
+            // Split out of the catch-all so a throttle is not reported as a permanent rejection.
+            // Gitee returns this far less often than GitHub returns its 403 variant, hence no
+            // wording sniffing here: without a distinct code there is nothing honest to match on.
+            StorageError::Network(format!("{context} ({status}): {message}"))
+        } else if status == StatusCode::NOT_FOUND {
+            StorageError::MissingObject(format!("{context} ({status}): {message}"))
+        } else if status == StatusCode::CONFLICT {
+            StorageError::Conflict(format!("{context} ({status}): {message}"))
         } else {
             StorageError::Provider(format!("{context} ({status}): {message}"))
         }
@@ -264,6 +274,15 @@ impl StorageProvider for GiteeStorage {
     fn provider_key(&self) -> &'static str {
         "gitee"
     }
+
+    /// Left at the trait default (None = "trust a short listing as complete"), on purpose.
+    ///
+    /// Gitee's Contents-compatible endpoint mirrors GitHub's, which would put its ceiling at
+    /// 1000 too - but that is an inference from a compatible API, not a limit this adapter has
+    /// observed. Claiming `Some(1000)` here would set an unverified number in front of a scanner
+    /// that uses it to decide whether a directory is fully known, and a wrong ceiling is worse
+    /// than none: at 900 entries it would report Partial for a listing that was actually
+    /// complete.
 
     fn capabilities(&self) -> StorageCapabilities {
         StorageCapabilities {
@@ -455,10 +474,16 @@ impl StorageProvider for GiteeStorage {
             Some(self.raw_public_url(&repository_path)?)
         };
 
+        // expected stays None when the write response carried no SHA: we still confirmed the file
+        // resolves on the target branch, but must not claim we compared against something.
+        let expected = response_sha.clone();
+        let observed = Some(verified_sha.clone());
+        let verification = VerificationOutcome::sha_readback(true, expected, observed);
         Ok(UploadResult {
             remote_path: logical_path,
             public_url,
             etag: Some(verified_sha),
+            verification: Some(verification),
         })
     }
 

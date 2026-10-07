@@ -1,0 +1,15 @@
+-- Rename deployments.verified_at to recorded_at.
+--
+-- Why: the column never held verification. Every write path set it to the same instant as
+-- deployed_at with no independent check (`status = if error.is_none() { Online }` and
+-- `verified_at: Some(now)` sit in the same literal - commands.rs, remote_index.rs, cli.rs).
+-- Calling that "verified" made the field unusable as evidence once real VerificationEvidence
+-- existed, because a reader could not tell a claimed check from an actual one.
+--
+-- Semantics of recorded_at: "the moment this row was written locally". Honest, and deliberately
+-- distinct from verification, which will be carried by its own table with a method and a result.
+--
+-- 0001_init.sql keeps the original column name on purpose: migrations are replayed in order on a
+-- fresh database (scripts/validate.py does exactly that against :memory:), so the rename must
+-- happen here rather than by editing history.
+ALTER TABLE deployments RENAME COLUMN verified_at TO recorded_at;

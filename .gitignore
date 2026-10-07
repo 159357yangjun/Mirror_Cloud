@@ -4,8 +4,6 @@ dist/
 .vite/
 coverage/
 .cache/
-website/.astro/
-image-hosting-probes/
 *.tsbuildinfo
 *.log
 npm-debug.log*
@@ -58,3 +56,5 @@ Desktop.ini
 
 # Archived process screenshots (kept on disk, out of the repo)
 docs/_archive-*/
+
+__pycache__/

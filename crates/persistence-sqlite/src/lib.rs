@@ -1,5 +1,8 @@
 use std::path::Path;
 
+pub mod journal;
+pub mod remote_scan;
+
 use chrono::{DateTime, Utc};
 use domain::{
     Asset, AssetVariant, Deployment, DeploymentRole, DeploymentStatus, StorageCategory, Task,
@@ -622,6 +625,10 @@ impl StorageGroupRepository {
 pub struct DeploymentWriteRecord {
     pub deployment: Deployment,
     pub last_error: Option<String>,
+    /// Structured failure category, stored beside the message so a reader can branch on it without
+    /// matching prose. `None` means "not recorded", which includes rows predating this column - it
+    /// does not mean "no error".
+    pub error_kind: Option<domain::StorageErrorKind>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -632,6 +639,15 @@ pub struct DeploymentLocationRecord {
     pub public_url: Option<String>,
     pub status: String,
     pub last_error: Option<String>,
+    /// Ordering key the reconciliation cursor walks. The query already sorts by it; exposing it
+    /// lets a sweep continue past the page it read instead of re-reading the newest rows.
+    pub deployed_at: Option<String>,
+    /// The three evidence clocks behind `derive_confirmation`. Read with `try_get` so a query that
+    /// does not select them yields None rather than a row-decode error: three call sites share
+    /// this parser and only the reconciliation one needs them.
+    pub last_attempted_at: Option<String>,
+    pub last_observed_at: Option<String>,
+    pub last_verified_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -645,6 +661,11 @@ pub struct DeploymentSummaryRecord {
     pub remote_path: String,
     pub public_url: Option<String>,
     pub last_error: Option<String>,
+    /// Structured reason for `last_error`, or None when nothing recorded one.
+    pub error_kind: Option<domain::StorageErrorKind>,
+    /// Evidence clocks, read out the database so the confirmation tier is derived rather than
+    /// stored. A tier computed here cannot disagree with the row it came from.
+    pub timestamps: domain::DeploymentTimestamps,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -703,6 +724,7 @@ impl AssetRepository {
             &[DeploymentWriteRecord {
                 deployment: deployment.clone(),
                 last_error: None,
+                error_kind: None,
             }],
         )
         .await
@@ -737,17 +759,22 @@ impl AssetRepository {
             .await?;
         for record in deployments {
             let deployment = &record.deployment;
-            sqlx::query("INSERT INTO deployments (id,variant_id,storage_id,role,remote_path,public_url,status,deployed_at,verified_at,last_error) VALUES (?,?,?,?,?,?,?,?,?,?)")
-                .bind(deployment.id.to_string())
-                .bind(deployment.variant_id.to_string())
-                .bind(deployment.storage_id.to_string())
-                .bind(deployment_role_str(&deployment.role))
-                .bind(&deployment.remote_path)
-                .bind(&deployment.public_url)
-                .bind(deployment_status_str(&deployment.status))
-                .bind(deployment.deployed_at.map(|value| value.to_rfc3339()))
-                .bind(deployment.verified_at.map(|value| value.to_rfc3339()))
-                .bind(&record.last_error)
+            sqlx::query(
+                "INSERT INTO deployments (id,variant_id,storage_id,role,remote_path,public_url,status,deployed_at,last_attempted_at,last_observed_at,last_verified_at,last_error,last_error_kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            )
+            .bind(deployment.id.to_string())
+            .bind(deployment.variant_id.to_string())
+            .bind(deployment.storage_id.to_string())
+            .bind(deployment_role_str(&deployment.role))
+            .bind(&deployment.remote_path)
+            .bind(&deployment.public_url)
+            .bind(deployment_status_str(&deployment.status))
+            .bind(deployment.timestamps.deployed_at.map(|value| value.to_rfc3339()))
+            .bind(deployment.timestamps.last_attempted_at.map(|value| value.to_rfc3339()))
+            .bind(deployment.timestamps.last_observed_at.map(|value| value.to_rfc3339()))
+            .bind(deployment.timestamps.last_verified_at.map(|value| value.to_rfc3339()))
+            .bind(&record.last_error)
+            .bind(record.error_kind.map(|kind| kind.as_str()))
                 .execute(&mut *tx)
                 .await?;
         }
@@ -766,7 +793,7 @@ impl AssetRepository {
             let variant_raw: String = row.try_get("variant_id")?;
             let created: String = row.try_get("created_at")?;
             let variant_id = parse_uuid(&variant_raw)?;
-            let dep_rows = sqlx::query("SELECT d.id AS deployment_id,d.storage_id,s.name AS storage_name,s.provider_key,d.role,d.status,d.remote_path,d.public_url,d.last_error FROM deployments d JOIN storages s ON s.id=d.storage_id WHERE d.variant_id=? ORDER BY CASE d.role WHEN 'primary' THEN 0 WHEN 'mirror' THEN 1 ELSE 2 END")
+            let dep_rows = sqlx::query("SELECT d.id AS deployment_id,d.storage_id,s.name AS storage_name,s.provider_key,d.role,d.status,d.remote_path,d.public_url,d.last_error,d.last_error_kind,                         d.deployed_at,d.last_attempted_at,d.last_observed_at,d.last_verified_at                          FROM deployments d JOIN storages s ON s.id=d.storage_id WHERE d.variant_id=?                          ORDER BY CASE d.role WHEN 'primary' THEN 0 WHEN 'mirror' THEN 1 ELSE 2 END")
                 .bind(variant_id.to_string())
                 .fetch_all(&self.pool)
                 .await?;
@@ -785,6 +812,8 @@ impl AssetRepository {
                         remote_path: deployment.try_get("remote_path")?,
                         public_url: deployment.try_get("public_url")?,
                         last_error: deployment.try_get("last_error")?,
+                        error_kind: parse_stored_error_kind(deployment.try_get("last_error_kind")?),
+                        timestamps: read_clocks(&deployment)?,
                     })
                 })
                 .collect::<Result<Vec<_>, sqlx::Error>>()?;
@@ -874,6 +903,60 @@ impl AssetRepository {
         rows.into_iter().map(parse_deployment_location).collect()
     }
 
+    /// Deployments believed to be live, newest first, capped by `limit`.
+    ///
+    /// A reconciliation sweep needs "everything the app thinks is online", which no existing query
+    /// provides: deployment_locations is scoped to one asset and repair_context to one variant.
+    /// Without this the scheduler would have to enumerate every asset first, turning a bounded
+    /// scan into an unbounded one.
+    ///
+    /// The limit is required rather than advisory - a large library must not be probed in a single
+    /// pass, both for memory and because each row costs a remote request later on. Callers page by
+    /// advancing `after_deployed_at`.
+    pub async fn online_deployments(
+        &self,
+        limit: i64,
+        after_deployed_at: Option<&str>,
+    ) -> Result<Vec<DeploymentLocationRecord>, sqlx::Error> {
+        let rows = match after_deployed_at {
+            Some(cursor) => sqlx::query(
+                "SELECT d.id AS deployment_id,d.storage_id,d.remote_path,d.public_url,d.status,                 d.last_error,d.deployed_at FROM deployments d WHERE d.status IN ('online','degraded')                  AND d.deployed_at < ? ORDER BY d.deployed_at DESC LIMIT ?",
+            )
+            .bind(cursor)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?,
+            None => sqlx::query(
+                "SELECT d.id AS deployment_id,d.storage_id,d.remote_path,d.public_url,d.status,                 d.last_error,d.deployed_at FROM deployments d WHERE d.status IN ('online','degraded')                  ORDER BY d.deployed_at DESC LIMIT ?",
+            )
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?,
+        };
+        rows.into_iter().map(parse_deployment_location).collect()
+    }
+
+    /// Every non-deleted deployment row for one storage, whatever its status.
+    ///
+    /// Reconciliation's second direction needs this and could not have it: the sweep used to read
+    /// `online_deployments`, which filters to online/degraded, so a failed row was never fed to a
+    /// comparison that has a branch for "the object is there but our row says it is not". That
+    /// branch existed and was unreachable. Widening the row source is what makes it fire;
+    /// `status_online` carries the distinction instead of the WHERE clause.
+    ///
+    /// `deleted` stays excluded on purpose. A tombstone is not a belief about the remote, and
+    /// including it would report every deliberately removed object as drift forever.
+    pub async fn all_deployment_beliefs(
+        &self,
+        storage_id: Uuid,
+    ) -> Result<Vec<DeploymentLocationRecord>, sqlx::Error> {
+        let rows = sqlx::query(BELIEF_QUERY)
+            .bind(storage_id.to_string())
+            .fetch_all(&self.pool)
+            .await?;
+        rows.into_iter().map(parse_deployment_location).collect()
+    }
+
     pub async fn repair_context(
         &self,
         asset_id: Uuid,
@@ -929,7 +1012,8 @@ impl AssetRepository {
         new_remote_path: &str,
         public_url: Option<String>,
     ) -> Result<u64, sqlx::Error> {
-        let result = sqlx::query("UPDATE deployments SET remote_path=?, public_url=?, verified_at=? WHERE storage_id=? AND remote_path=? AND status <> 'deleted'")
+        // Re-indexing observed the object at a new path; that is presence, not content proof.
+        let result = sqlx::query("UPDATE deployments SET remote_path=?, public_url=?, last_observed_at=? WHERE storage_id=? AND remote_path=? AND status <> 'deleted'")
             .bind(new_remote_path)
             .bind(public_url)
             .bind(Utc::now().to_rfc3339())
@@ -945,8 +1029,50 @@ impl AssetRepository {
         deployment_id: Uuid,
         status: DeploymentStatus,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query("UPDATE deployments SET status=?, verified_at=? WHERE id=?")
+        // A status change is an attempt, never a proof: this write used to stamp `verified_at` on
+        // failures. Verification advances only where a content comparison actually passed.
+        sqlx::query("UPDATE deployments SET status=?, last_attempted_at=? WHERE id=?")
             .bind(deployment_status_str(&status))
+            .bind(Utc::now().to_rfc3339())
+            .bind(deployment_id.to_string())
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Record that a reconciliation pass looked at this deployment's remote object.
+    ///
+    /// Presence only: a probe answers "is something there", which is weaker than a content check.
+    /// It must not move `last_verified_at`, or a provider serving a placeholder for a deleted key
+    /// would mark the copy verified.
+    pub async fn record_deployment_observation(
+        &self,
+        deployment_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE deployments SET last_observed_at=? WHERE id=?")
+            .bind(Utc::now().to_rfc3339())
+            .bind(deployment_id.to_string())
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Advance `last_verified_at` for a deployment whose content comparison passed.
+    ///
+    /// Kept apart from the status and result updates deliberately: those run on every attempt,
+    /// failures included. Folding it into either would recreate the old defect where a failed
+    /// upload left its row looking verified.
+    pub async fn record_deployment_verification(
+        &self,
+        deployment_id: Uuid,
+        passed: bool,
+    ) -> Result<(), sqlx::Error> {
+        if !passed {
+            // A mismatch records nothing here. The journal keeps the failed check as history; this
+            // column answers only "was the last content check a pass, and when".
+            return Ok(());
+        }
+        sqlx::query("UPDATE deployments SET last_verified_at=? WHERE id=?")
             .bind(Utc::now().to_rfc3339())
             .bind(deployment_id.to_string())
             .execute(&self.pool)
@@ -960,11 +1086,16 @@ impl AssetRepository {
         status: DeploymentStatus,
         public_url: Option<String>,
         last_error: Option<String>,
+        error_kind: Option<domain::StorageErrorKind>,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query("UPDATE deployments SET status=?, public_url=COALESCE(?, public_url), last_error=?, verified_at=? WHERE id=?")
+        // The kind is written unconditionally rather than COALESCE'd: carrying an old failure's
+        // category forward under a new message would mislabel the row, which is the mistake this
+        // column exists to stop.
+        sqlx::query("UPDATE deployments SET status=?, public_url=COALESCE(?, public_url), last_error=?, last_error_kind=?, last_attempted_at=? WHERE id=?")
             .bind(deployment_status_str(&status))
             .bind(public_url)
             .bind(last_error)
+            .bind(error_kind.map(|kind| kind.as_str()))
             .bind(Utc::now().to_rfc3339())
             .bind(deployment_id.to_string())
             .execute(&self.pool)
@@ -981,6 +1112,52 @@ impl AssetRepository {
     }
 }
 
+/// Read a persisted kind, mapping absent or unrecognised to None.
+///
+/// `parse` alone folds an unknown spelling into `Rejected`, right for a value written
+/// deliberately but wrong for NULL: no row means "never recorded", not "recorded as refused".
+fn parse_stored_error_kind(raw: Option<String>) -> Option<domain::StorageErrorKind> {
+    raw.map(|value| domain::StorageErrorKind::parse(&value))
+}
+
+/// Read the four evidence clocks out of a row, tolerating absent values.
+///
+/// Unparseable timestamps become None rather than an error. Deliberate but not free: a corrupt
+/// value then reads as "less evidence", never as "more", so a bad row degrades toward
+/// Unknown instead of inventing a verification.
+fn read_clocks(row: &SqliteRow) -> Result<domain::DeploymentTimestamps, sqlx::Error> {
+    Ok(domain::DeploymentTimestamps {
+        deployed_at: parse_optional_time(row.try_get("deployed_at")?),
+        last_attempted_at: parse_optional_time(row.try_get("last_attempted_at")?),
+        last_observed_at: parse_optional_time(row.try_get("last_observed_at")?),
+        last_verified_at: parse_optional_time(row.try_get("last_verified_at")?),
+    })
+}
+
+fn parse_optional_time(raw: Option<String>) -> Option<chrono::DateTime<Utc>> {
+    raw.and_then(|value| DateTime::parse_from_rfc3339(&value).ok())
+        .map(|value| value.with_timezone(&Utc))
+}
+
+const BELIEF_QUERY: &str = concat!(
+    "SELECT d.id AS deployment_id,d.storage_id,d.remote_path,d.public_url,",
+    "d.status,d.last_error,d.deployed_at,d.last_attempted_at,d.last_observed_at,",
+    "d.last_verified_at FROM deployments d ",
+    "WHERE d.storage_id = ? AND d.status <> 'deleted' ORDER BY d.remote_path"
+);
+
+/// Read a text column that some queries in this file do not select.
+///
+/// `try_get` on a missing column is an error, and treating it as one would make
+/// `deployment_locations` fail for a field it never asked for. Absent means "no evidence", which
+/// is exactly what None says, so the fallback is honest rather than convenient.
+fn optional_column(row: &SqliteRow, name: &str) -> Option<String> {
+    match row.try_get::<Option<String>, _>(name) {
+        Ok(value) => value,
+        Err(_) => None,
+    }
+}
+
 fn parse_deployment_location(row: SqliteRow) -> Result<DeploymentLocationRecord, sqlx::Error> {
     let deployment_id: String = row.try_get("deployment_id")?;
     let storage_id: String = row.try_get("storage_id")?;
@@ -991,6 +1168,10 @@ fn parse_deployment_location(row: SqliteRow) -> Result<DeploymentLocationRecord,
         public_url: row.try_get("public_url")?,
         status: row.try_get("status")?,
         last_error: row.try_get("last_error")?,
+        deployed_at: row.try_get("deployed_at")?,
+        last_attempted_at: optional_column(&row, "last_attempted_at"),
+        last_observed_at: optional_column(&row, "last_observed_at"),
+        last_verified_at: optional_column(&row, "last_verified_at"),
     })
 }
 

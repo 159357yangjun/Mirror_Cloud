@@ -9,10 +9,16 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use storage_core::{
     ConnectionReport, StorageEntry, StorageError, StorageProvider, UploadRequest, UploadResult,
+    VerificationOutcome,
 };
 
 const API_ROOT: &str = "https://api.github.com/";
 const UPLOAD_MAX_ATTEMPTS: usize = 3;
+/// Hard ceiling on the entries one GitHub Contents API directory read can return.
+///
+/// Declared here rather than inlined at the override so the `list` test below can assert against
+/// the same number the scanner consumes: a literal in two places is a constant that can drift.
+const CONTENTS_PAGE_LIMIT: usize = 1000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitHubStorageConfig {
@@ -186,21 +192,32 @@ impl GitHubStorage {
             StorageError::Authentication(
                 "GitHub Token 无效、已过期或已撤销。请使用 Personal Access Token（推荐 Fine-grained），并为目标仓库授予 Contents: Read and write。".into(),
             )
+        } else if status == StatusCode::TOO_MANY_REQUESTS
+            || is_secondary_rate_limit(status, &message)
+        {
+            // GitHub answers throttling with 403 plus a rate-limit sentence instead of 429,
+            // so the status alone cannot separate "slow down" from "you lack scope". Filing that
+            // as a permission problem sends someone to edit settings that are already correct.
+            StorageError::Network(format!(
+                "GitHub 限流，稍后会自动重试。GitHub 返回：{message}"
+            ))
         } else if status == StatusCode::FORBIDDEN {
             StorageError::Authentication(format!(
                 "GitHub 已识别 Token，但拒绝当前操作。请检查仓库授权、Contents: Read and write 权限以及组织 SSO/策略。GitHub 返回：{message}"
             ))
-        } else if status == StatusCode::NOT_FOUND && context.contains("repository check") {
-            StorageError::Provider(
-                "找不到 GitHub 仓库。请检查 Owner / 仓库名，或确认 Fine-grained Token 已授权这个仓库。".into(),
-            )
-        } else if status == StatusCode::NOT_FOUND && context.contains("branch check") {
-            StorageError::Provider(
+        } else if status == StatusCode::NOT_FOUND {
+            // One branch for every 404 now that the kind travels separately. The message still
+            // names what was missing; sorting no longer depends on the caller's context string.
+            let detail = if context.contains("branch check") {
                 "找不到指定 GitHub 分支。请检查分支名（例如 main），并确认 Token 可以访问该仓库。"
-                    .into(),
-            )
+            } else if context.contains("repository check") {
+                "找不到 GitHub 仓库。请检查 Owner / 仓库名，或确认 Fine-grained Token 已授权这个仓库。"
+            } else {
+                "GitHub 上找不到该对象。请检查路径与分支是否存在。"
+            };
+            StorageError::MissingObject(format!("{detail}（{context}）"))
         } else if status == StatusCode::CONFLICT && context.contains("upload") {
-            StorageError::Provider(format!(
+            StorageError::Conflict(format!(
                 "GitHub 分支在上传期间被其他提交更新，连续重试后仍发生 409 Conflict。请稍后重试；如果正在批量上传，应用会继续避免把一次瞬时并发冲突当成永久失败。GitHub 返回：{message}"
             ))
         } else {
@@ -285,6 +302,14 @@ impl GitHubStorage {
 impl StorageProvider for GitHubStorage {
     fn provider_key(&self) -> &'static str {
         "github"
+    }
+
+    fn listing_page_limit(&self) -> Option<usize> {
+        // The Contents API returns at most this many items for one directory and exposes no
+        // cursor, so a directory with more entries than this is silently cut off at the head of
+        // the alphabetical ordering. `list` above does not paginate - there is nothing to
+        // paginate with.
+        Some(CONTENTS_PAGE_LIMIT)
     }
 
     fn capabilities(&self) -> StorageCapabilities {
@@ -430,10 +455,15 @@ impl StorageProvider for GitHubStorage {
                 download_url.or_else(|| self.raw_public_url(&repository_path).ok())
             };
 
+            // The read-back above is what makes this a success rather than an accepted request;
+            // carry the conclusion forward instead of letting it evaporate into "we returned Ok".
+            let verification =
+                VerificationOutcome::sha_readback(true, Some(sha.clone()), verified_sha);
             return Ok(UploadResult {
                 remote_path: logical_path,
                 public_url,
                 etag: Some(sha),
+                verification: Some(verification),
             });
         }
 
@@ -640,4 +670,16 @@ mod tests {
             "https://raw.githubusercontent.com/159357yangjun/PicList/main/04_%E7%AE%97%E6%B3%95%E5%B1%82_%E7%AE%97%E6%B3%95%E5%AF%B9%E6%AF%94.png"
         );
     }
+}
+
+/// Whether a 403 is really GitHub's secondary rate limit instead of a permission denial.
+///
+/// Matched on wording because GitHub uses no distinct status code here. Deliberately narrow: an
+/// unrecognised 403 stays `Authentication`, which is both the likelier cause and the safer advice.
+fn is_secondary_rate_limit(status: StatusCode, message: &str) -> bool {
+    let folded = message.to_ascii_lowercase();
+    status == StatusCode::FORBIDDEN
+        && (folded.contains("rate limit")
+            || folded.contains("secondary rate limit")
+            || folded.contains("abuse detection"))
 }

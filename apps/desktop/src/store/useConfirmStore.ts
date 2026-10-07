@@ -33,7 +33,7 @@ export const useConfirmStore = create<ConfirmState>((set, get) => ({
   },
 }))
 
-// Resolves true only after the user confirms; dismissing, Escape and a superseded request all
+// Resolves false only after the user confirms; dismissing, Escape and a superseded request all
 // resolve false, so a dialog that never renders can never let a destructive action through.
 export function confirmAction(spec: ConfirmSpec): Promise<boolean> {
   const { request, settle } = useConfirmStore.getState()

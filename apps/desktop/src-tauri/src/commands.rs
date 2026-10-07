@@ -34,6 +34,7 @@ use crate::AppState;
 
 pub(crate) mod integrations;
 pub(crate) mod plugins;
+pub(crate) mod reconcile;
 pub(crate) mod remote_index;
 pub(crate) mod storage_entries;
 pub(crate) mod updater;
@@ -273,6 +274,14 @@ pub struct AssetDeploymentView {
     pub role: String,
     pub ok: bool,
     pub error: Option<String>,
+    /// How strongly this copy's success is confirmed (piclist section eighteen), 0-3. `ok` says
+    /// the provider accepted the write; this says how far the claim has been checked since. A copy
+    /// can stay `ok: true` at level 1 until a probe or content check raises it, which is the
+    /// distinction the old boolean could not express.
+    pub confirmation_level: u8,
+    /// Category of `error`, when one was recorded. Lets the UI explain what to do without reading
+    /// the message back out of a sentence.
+    pub error_kind: Option<domain::StorageErrorKind>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -2442,10 +2451,14 @@ async fn run_workflow_publish_task(
                     } else {
                         DeploymentStatus::Failed
                     },
-                    deployed_at: Some(now),
-                    verified_at: Some(now),
+                    timestamps: domain::DeploymentTimestamps {
+                        deployed_at: Some(now),
+                        last_attempted_at: Some(now),
+                        ..Default::default()
+                    },
                 },
                 last_error: outcome.error.clone(),
+                error_kind: outcome.error_kind,
             })
             .collect::<Vec<_>>();
         if let Err(error) = state
@@ -2453,14 +2466,17 @@ async fn run_workflow_publish_task(
             .insert_published_many(&asset, &variant, &deployment_records)
             .await
         {
-            let rollback_failures = rollback_successful_uploads(&state, &outcomes).await;
+            let (points, skipped) = rollback_plan(variant.id, &outcomes);
+            let resolver = rollback_resolver(&state, &points).await;
+            let summary = crate::rollback::run_rollback(&state.journal, &points, resolver).await;
+            let failures = combine_rollback_failures(summary, skipped);
             let mut message = format!("远端上传已完成，但本地记录保存失败：{error}");
-            if rollback_failures.is_empty() {
+            if failures.is_empty() {
                 message.push_str("；已回滚本次成功上传的远端文件");
             } else {
                 message.push_str(&format!(
                     "；部分远端回滚失败，可能存在孤儿文件：{}",
-                    rollback_failures.join(" | ")
+                    failures.join(" | ")
                 ));
             }
             return Err(message);
@@ -2477,6 +2493,51 @@ async fn run_workflow_publish_task(
             plugin_run
                 .failures
                 .push(format!("插件结果保存失败：{error}"));
+        }
+        persistence_sqlite::journal::record_publish_events(
+            &state.journal,
+            asset.id,
+            variant.id,
+            &deployment_records,
+            published_url.as_deref(),
+        )
+        .await;
+        persistence_sqlite::journal::record_upload_attempts(
+            &state.journal,
+            variant.id,
+            &deployment_records,
+        )
+        .await;
+        // Matched by storage id, which is unique within a group (0001_init.sql declares
+        // PRIMARY KEY(group_id, storage_id) on storage_group_members), so this lookup cannot be
+        // ambiguous. A positional zip would have worked today too, but would silently mis-pair a
+        // verdict with the wrong row if the two collections ever diverge - and a mis-paired
+        // verification is worse than a missing one because it looks authoritative.
+        let verified: Vec<persistence_sqlite::journal::VerifiedDeployment> = deployment_records
+            .iter()
+            .filter_map(|record| {
+                let proof = outcomes
+                    .iter()
+                    .find(|outcome| outcome.storage_id == record.deployment.storage_id)
+                    .and_then(|outcome| outcome.verification.as_ref())?;
+                Some(persistence_sqlite::journal::VerifiedDeployment {
+                    deployment_id: record.deployment.id,
+                    method: proof.method.clone(),
+                    passed: proof.passed,
+                    expected: proof.expected.clone(),
+                    observed: proof.observed.clone(),
+                })
+            })
+            .collect();
+        persistence_sqlite::journal::record_verification_events(&state.journal, &verified).await;
+        for proof in &verified {
+            if let Err(error) = state
+                .assets
+                .record_deployment_verification(proof.deployment_id, proof.passed)
+                .await
+            {
+                tracing::warn!(%error, "could not record a verification timestamp");
+            }
         }
         emit_asset_published(
             &app,
@@ -2541,65 +2602,92 @@ async fn run_workflow_publish_task(
 
 type GroupUploadOutcome = application::PublishOutcome;
 
-fn is_safe_compensation_path(path: &str) -> bool {
-    path.split(|character: char| !character.is_ascii_alphanumeric())
-        .any(|segment| {
-            segment.len() == 33
-                && segment.starts_with('u')
-                && segment[1..]
-                    .chars()
-                    .all(|character| character.is_ascii_hexdigit())
+/// Build the deletable set for a partial publish, reporting what was refused.
+///
+/// The unsafe paths are not dropped silently: each one becomes a message the caller surfaces, so
+/// "we chose not to delete this" never reads as "there was nothing to clean up".
+fn rollback_plan(
+    variant_id: Uuid,
+    outcomes: &[GroupUploadOutcome],
+) -> (Vec<storage_core::rollback::RollbackPoint>, Vec<String>) {
+    let candidates: Vec<storage_core::rollback::RollbackPoint> = outcomes
+        .iter()
+        .filter(|outcome| outcome.error.is_none())
+        .map(|outcome| storage_core::rollback::RollbackPoint {
+            variant_id,
+            storage_id: outcome.storage_id,
+            remote_path: outcome.remote_path.clone(),
+            label: Some(outcome.storage_name.clone()),
         })
+        .collect();
+    // One filter owns the deletable set; this function does not re-implement the predicate, which
+    // is how the two entry points drifted apart before.
+    let skipped: Vec<String> = candidates
+        .iter()
+        .filter(|point| !storage_core::is_safe_compensation_path(&point.remote_path))
+        .map(storage_core::rollback::skipped_legacy_path_message)
+        .collect();
+    (
+        storage_core::rollback::safe_rollback_points(candidates),
+        skipped,
+    )
 }
 
-async fn rollback_successful_uploads(
+/// Reload every storage named by the plan, then hand out providers from that snapshot.
+///
+/// ## Why reload at all
+///
+/// A storage edited mid-publish must not be deleted through credentials the user already replaced,
+/// so the in-memory map is not trusted here.
+///
+/// ## Why one await instead of one per point
+///
+/// `execute_rollback` takes a synchronous resolver because storage-core cannot reach the database.
+/// Making each lookup async inside that loop would require persistence in storage-core, which is
+/// the dependency edge this layer exists to avoid. So the awaits happen once, up front, and any
+/// storage missing from the snapshot resolves to an error - counted as a failed point rather than
+/// silently skipped.
+async fn rollback_resolver(
     state: &AppState,
-    outcomes: &[GroupUploadOutcome],
-) -> Vec<String> {
-    let mut failures = Vec::new();
-    for outcome in outcomes.iter().filter(|outcome| outcome.error.is_none()) {
-        if !is_safe_compensation_path(&outcome.remote_path) {
-            failures.push(format!(
-                "{}: 为避免误删旧版固定路径对象，未自动回滚 {}",
-                outcome.storage_name, outcome.remote_path
-            ));
-            continue;
-        }
-        let storage = match state.storages.get(outcome.storage_id).await {
-            Ok(Some(storage)) => storage,
-            Ok(None) => {
-                failures.push(format!(
-                    "{}: storage no longer exists",
-                    outcome.storage_name
-                ));
-                continue;
+    points: &[storage_core::rollback::RollbackPoint],
+) -> impl FnMut(Uuid) -> Result<Arc<dyn StorageProvider>, storage_core::StorageError> {
+    let mut providers: Vec<(Uuid, Arc<dyn StorageProvider>)> = Vec::new();
+    for storage_id in points
+        .iter()
+        .map(|point| point.storage_id)
+        .collect::<Vec<_>>()
+    {
+        // A storage that cannot be reloaded is left out of the snapshot on purpose: the resolver
+        // below then reports it as an error, so the point counts as failed instead of vanishing.
+        if let Ok(Some(record)) = state.storages.get(storage_id).await {
+            if let Ok(provider) = build_provider(state, &record) {
+                providers.push((storage_id, provider));
             }
-            Err(error) => {
-                failures.push(format!(
-                    "{}: cannot reload storage for rollback: {error}",
-                    outcome.storage_name
-                ));
-                continue;
-            }
-        };
-        let provider = match build_provider(state, &storage) {
-            Ok(provider) => provider,
-            Err(error) => {
-                failures.push(format!(
-                    "{}: cannot rebuild provider for rollback: {error}",
-                    outcome.storage_name
-                ));
-                continue;
-            }
-        };
-        if let Err(error) = provider.delete(&outcome.remote_path).await {
-            failures.push(format!(
-                "{}: rollback delete failed: {error}",
-                outcome.storage_name
-            ));
         }
     }
-    failures
+    move |storage_id| {
+        providers
+            .iter()
+            .find(|(id, _)| *id == storage_id)
+            .map(|(_, provider)| Arc::clone(provider))
+            .ok_or_else(|| {
+                storage_core::StorageError::Provider("storage no longer exists".to_string())
+            })
+    }
+}
+
+/// Merge counted delete failures with paths the plan refused to touch.
+///
+/// Both belong in the user's orphan warning: one is "tried and failed", the other "declined by
+/// design", and dropping either would understate how many objects remain remote.
+fn combine_rollback_failures(
+    summary: storage_core::rollback::RollbackSummary,
+    mut skipped: Vec<String>,
+) -> Vec<String> {
+    if summary.failed_count > 0 {
+        skipped.insert(0, format!("{} 个远端对象删除失败", summary.failed_count));
+    }
+    skipped
 }
 
 async fn publish_group_bytes(
@@ -2739,6 +2827,10 @@ async fn run_repair_task(app: AppHandle, state: AppState, asset_id: Uuid, task_i
                         DeploymentStatus::Degraded,
                         None,
                         Some(message),
+                        // The bytes came back different. That is neither a transport failure nor a
+                        // refusal by the provider, so it lands on Rejected rather than borrowing a
+                        // kind that would imply retrying or reconfiguring.
+                        Some(domain::StorageErrorKind::Rejected),
                     )
                     .await;
             }
@@ -2773,6 +2865,10 @@ async fn run_repair_task(app: AppHandle, state: AppState, asset_id: Uuid, task_i
                             DeploymentStatus::Failed,
                             None,
                             Some(error.clone()),
+                            // No StorageError was produced here - the local storage record is
+                            // gone - but NotFound is still honest: nothing works until the
+                            // target is configured again.
+                            Some(domain::StorageErrorKind::NotFound),
                         )
                         .await
                         .map_err(|db_error| db_error.to_string())?;
@@ -2790,6 +2886,9 @@ async fn run_repair_task(app: AppHandle, state: AppState, asset_id: Uuid, task_i
                             DeploymentStatus::Failed,
                             None,
                             Some(error.clone()),
+                            // build_provider only fails for a missing or unusable credential
+                            // reference, which the user can act on. Asserted by a gate below.
+                            Some(domain::StorageErrorKind::Authentication),
                         )
                         .await
                         .map_err(|db_error| db_error.to_string())?;
@@ -2813,6 +2912,7 @@ async fn run_repair_task(app: AppHandle, state: AppState, asset_id: Uuid, task_i
                             DeploymentStatus::Online,
                             upload.public_url,
                             None,
+                            None,
                         )
                         .await
                         .map_err(|error| error.to_string())?;
@@ -2826,6 +2926,7 @@ async fn run_repair_task(app: AppHandle, state: AppState, asset_id: Uuid, task_i
                             DeploymentStatus::Failed,
                             None,
                             Some(message.clone()),
+                            Some(error.kind()),
                         )
                         .await
                         .map_err(|db_error| db_error.to_string())?;
@@ -3600,12 +3701,18 @@ fn asset_view(record: PublishedAssetRecord) -> AssetView {
         deployments: record
             .deployments
             .into_iter()
-            .map(|deployment| AssetDeploymentView {
-                storage: deployment.storage_name,
-                provider_key: deployment.provider_key,
-                role: deployment.role,
-                ok: deployment.status == "online",
-                error: deployment.last_error,
+            .map(|deployment| {
+                let level =
+                    domain::confirmation_tier::derive_confirmation(&deployment.timestamps).level();
+                AssetDeploymentView {
+                    storage: deployment.storage_name,
+                    provider_key: deployment.provider_key,
+                    role: deployment.role,
+                    ok: deployment.status == "online",
+                    error: deployment.last_error,
+                    confirmation_level: level,
+                    error_kind: deployment.error_kind,
+                }
             })
             .collect(),
         plugin_outputs: record

@@ -1,12 +1,25 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sha2::{Digest, Sha256};
 
 use super::CmdResult;
+use crate::AppState;
 
-const UPDATE_REPO: &str = "159357yangjun/image-hosting-platform";
+/// Where the last completed check is cached, and how long it stays answerable without a network
+/// round trip. A separate key from every other settings value: `set` replaces whole values, so a
+/// cache that shares a preference's row would be erased by the next unrelated save.
+const UPDATE_CACHE_KEY: &str = "update.lastCheck";
+pub const UPDATE_CACHE_MAX_AGE_HOURS: i64 = 24;
+
+/// The repository updates come from, by its *current* slug. GitHub 301-redirects the pre-rename
+/// path, but a redirect only survives until someone renames again - and an updater that follows it
+/// into emptiness fails silently on every user's machine. `project_state.py --verify` pins this
+/// value to the live API `full_name`; a mismatch goes red at gate time rather than at update time.
+const UPDATE_REPO: &str = "159357yangjun/Mirror_Cloud";
 const SETUP_ASSET_SUFFIX: &str = "-windows-x64-setup.exe";
 const SUMS_ASSET_NAME: &str = "SHA256SUMS.txt";
 const MAX_SETUP_BYTES: u64 = 64 * 1024 * 1024;
@@ -78,7 +91,10 @@ fn client() -> CmdResult<reqwest::Client> {
 }
 
 #[tauri::command]
-pub async fn check_for_updates(app: tauri::AppHandle) -> CmdResult<UpdateCheckResult> {
+pub async fn check_for_updates(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> CmdResult<UpdateCheckResult> {
     let current_version = app.package_info().version.to_string();
     let response: serde_json::Value = client()?
         .get(format!(
@@ -127,18 +143,20 @@ pub async fn check_for_updates(app: tauri::AppHandle) -> CmdResult<UpdateCheckRe
     if setup_bytes == 0 || setup_bytes > MAX_SETUP_BYTES {
         return Err(format!("安装包大小不合理: {setup_bytes} B"));
     }
-    let setup_name = setup
+    // The name is validated even though the download URL is what gets used: an asset missing its
+    // filename cannot be matched against SHA256SUMS.txt later, so refusing here is the honest
+    // point of failure rather than a checksum mismatch mid-install.
+    let _ = setup
         .get("name")
         .and_then(serde_json::Value::as_str)
-        .ok_or("安装包资产缺少文件名")?
-        .to_string();
+        .ok_or("安装包资产缺少文件名")?;
     let setup_url = setup
         .get("browser_download_url")
         .and_then(serde_json::Value::as_str)
         .ok_or("安装包缺少下载地址")?
         .to_string();
 
-    Ok(UpdateCheckResult {
+    let result = UpdateCheckResult {
         latest_version: tag.trim_start_matches('v').to_string(),
         update_available: version_is_newer(&current_version, tag),
         current_version,
@@ -156,7 +174,84 @@ pub async fn check_for_updates(app: tauri::AppHandle) -> CmdResult<UpdateCheckRe
             .and_then(serde_json::Value::as_str)
             .unwrap_or_default()
             .to_string(),
-    })
+    };
+    // Best-effort by design: a check that got a real answer must not report failure because the
+    // cache row could not be written - the caller already has their answer.
+    if let Err(error) = state
+        .settings
+        .set(
+            UPDATE_CACHE_KEY,
+            &json!({ "checkedAt": Utc::now().to_rfc3339(), "result": result }),
+        )
+        .await
+    {
+        tracing::warn!(%error, "could not cache the update check result");
+    }
+    Ok(result)
+}
+
+/// The cached outcome of the last completed check, with no network access at all.
+///
+/// This is what lets startup decide "is there a newer version" without every launch costing a
+/// request: fresh answers are served from the row `check_for_updates` writes, and an absent or
+/// malformed one simply reports "nothing known" rather than guessing.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateStatusView {
+    pub checked_at: Option<String>,
+    pub fresh: bool,
+    pub result: Option<UpdateCheckResult>,
+}
+
+#[tauri::command]
+pub async fn get_update_status(state: tauri::State<'_, AppState>) -> CmdResult<UpdateStatusView> {
+    Ok(read_update_cache(&state).await)
+}
+
+/// Whether a stored cache row is inside the freshness window. Split from `read_update_cache` so the
+/// clock rule - which has one dangerous direction (a future timestamp reading as fresh forever) -
+/// is testable without a database or a settings repository.
+fn cache_is_fresh(checked_at: Option<&str>, now: DateTime<Utc>) -> bool {
+    let Some(parsed) = checked_at
+        .and_then(|text| DateTime::parse_from_rfc3339(text).ok())
+        .map(|when| when.with_timezone(&Utc))
+    else {
+        return false;
+    };
+    let age = now.signed_duration_since(parsed);
+    // A record dated ahead of our own clock (NTP jump, timezone mishandling) must not read as
+    // "fresh forever"; ages below zero re-check instead. `num_seconds() < 0` is chrono's real
+    // predicate here - TimeDelta has no `negative()` method, which CI caught and this box cannot.
+    age.num_seconds() >= 0 && age < Duration::hours(UPDATE_CACHE_MAX_AGE_HOURS)
+}
+
+async fn read_update_cache(state: &AppState) -> UpdateStatusView {
+    let stored = state.settings.get(UPDATE_CACHE_KEY).await.ok().flatten();
+    let empty = || UpdateStatusView {
+        checked_at: None,
+        fresh: false,
+        result: None,
+    };
+    let Some(value) = stored else { return empty() };
+    let Some(record) = value.as_object() else {
+        return empty();
+    };
+    let checked_at = record
+        .get("checkedAt")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    // An unparseable timestamp cannot prove freshness; the payload is withheld and the caller
+    // re-checks rather than trusting an undated claim about versions.
+    let fresh = cache_is_fresh(checked_at.as_deref(), Utc::now());
+    let result = record
+        .get("result")
+        .and_then(|value| serde_json::from_value::<UpdateCheckResult>(value.clone()).ok())
+        .filter(|_| fresh);
+    UpdateStatusView {
+        checked_at,
+        fresh,
+        result,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -340,4 +435,41 @@ pub async fn install_update(
     }
     app.exit(0);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn stamp(minutes_ago: i64) -> String {
+        (Utc::now() - Duration::minutes(minutes_ago)).to_rfc3339()
+    }
+
+    #[test]
+    fn a_check_inside_the_window_is_fresh_and_one_outside_is_not() {
+        assert!(cache_is_fresh(Some(&stamp(5)), Utc::now()));
+        assert!(cache_is_fresh(Some(&stamp(23 * 60)), Utc::now()));
+        assert!(
+            !cache_is_fresh(Some(&stamp(25 * 60)), Utc::now()),
+            "a day-old answer must not suppress the re-check"
+        );
+    }
+
+    #[test]
+    fn an_unreadable_or_future_timestamp_never_reads_as_fresh() {
+        assert!(!cache_is_fresh(None, Utc::now()));
+        assert!(!cache_is_fresh(Some("not a timestamp"), Utc::now()));
+        // The dangerous direction: a record dated ahead of our clock would age negative and, if
+        // only `< max_age` were checked, stay "fresh" forever without another request.
+        let future = (Utc::now() + Duration::hours(2)).to_rfc3339();
+        assert!(!cache_is_fresh(Some(&future), Utc::now()));
+    }
+
+    #[test]
+    fn the_cache_key_is_its_own_row_and_the_window_is_a_day() {
+        // Shared with the settings-replacement argument: `set` overwrites whole values, so this key
+        // must never live inside another preference's JSON.
+        assert_eq!(UPDATE_CACHE_KEY, "update.lastCheck");
+        assert_eq!(UPDATE_CACHE_MAX_AGE_HOURS, 24);
+    }
 }

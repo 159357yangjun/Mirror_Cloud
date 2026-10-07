@@ -1,15 +1,15 @@
 {
   "_meta": {
-    "takenAt": "2026-10-04T12:32:09",
-    "head": "157d0e781b7d61022601e6dd3b3a9cd0ced9f27b",
-    "reason": "Added dialog focus-trap and focus-restoration assertions to the confirm harness"
+    "takenAt": "2026-10-06T10:53:32",
+    "head": "a302b6fe49957c6207208bd87a126cb693256cb3",
+    "reason": "step 3: M35-M37 + needle-via-env (+32L/+1820B)"
   },
   "files": [
     {
       "file": "scripts/verify_all.mjs",
       "exists": true,
-      "lines": 361,
-      "bytes": 26714,
+      "lines": 367,
+      "bytes": 27454,
       "families": {
         "failures.push": 0,
         "emitGate": 0,
@@ -20,10 +20,24 @@
       }
     },
     {
+      "file": "scripts/verify_confirmation_display.mjs",
+      "exists": true,
+      "lines": 126,
+      "bytes": 5053,
+      "families": {
+        "failures.push": 1,
+        "emitGate": 0,
+        "harness-fault exit": 0,
+        "gate line": 0,
+        "positive control": 0,
+        "throw": 0
+      }
+    },
+    {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 3814,
-      "bytes": 313539,
+      "lines": 3797,
+      "bytes": 312097,
       "families": {
         "failures.push": 29,
         "emitGate": 16,
@@ -36,8 +50,8 @@
     {
       "file": "scripts/verify_guard_mutations.mjs",
       "exists": true,
-      "lines": 372,
-      "bytes": 29915,
+      "lines": 450,
+      "bytes": 34919,
       "families": {
         "failures.push": 1,
         "emitGate": 0,
@@ -76,6 +90,20 @@
       }
     },
     {
+      "file": "scripts/verify_probe_display.mjs",
+      "exists": true,
+      "lines": 74,
+      "bytes": 2893,
+      "families": {
+        "failures.push": 1,
+        "emitGate": 0,
+        "harness-fault exit": 0,
+        "gate line": 0,
+        "positive control": 0,
+        "throw": 0
+      }
+    },
+    {
       "file": "scripts/verify_shape.mjs",
       "exists": true,
       "lines": 314,
@@ -91,11 +119,11 @@
     }
   ],
   "totals": {
-    "files": 6,
-    "lines": 5669,
-    "bytes": 437367,
+    "files": 8,
+    "lines": 5936,
+    "bytes": 449615,
     "families": {
-      "failures.push": 31,
+      "failures.push": 33,
       "emitGate": 16,
       "harness-fault exit": 47,
       "gate line": 11,

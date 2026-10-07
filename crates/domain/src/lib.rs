@@ -2,6 +2,16 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+pub mod attempt_and_evidence;
+pub mod confirmation_tier;
+pub mod deployment_timestamps;
+pub mod drift_set;
+pub mod event_journal;
+pub mod probe_failure_kind;
+pub mod publish_plan;
+pub mod scan_completeness;
+pub mod storage_error_kind;
+
 pub type AssetId = Uuid;
 pub type VariantId = Uuid;
 pub type DeploymentId = Uuid;
@@ -120,8 +130,27 @@ pub struct Deployment {
     pub remote_path: String,
     pub public_url: Option<String>,
     pub status: DeploymentStatus,
-    pub deployed_at: Option<DateTime<Utc>>,
-    pub verified_at: Option<DateTime<Utc>>,
+    /// Four clocks, because one column could not answer "was this verified" honestly. Callers
+    /// use [`Deployment::record`], never assignment, so a failure cannot write a success field.
+    /// `deployed_at` lives in here too: it is one of the four, and keeping it outside would let a
+    /// caller advance three clocks while forgetting the fourth.
+    pub timestamps: DeploymentTimestamps,
+}
+
+pub use deployment_timestamps::{DeploymentTimestamps, TimestampCause};
+/// Re-exported at the root because three downstream crates name it as `domain::StorageErrorKind`
+/// (storage-core's error classification, application's publish outcome, persistence's stored-kind
+/// column). The module stays public too; this only removes the requirement that every caller spell
+/// the module path.
+pub use probe_failure_kind::ProbeFailureKind;
+pub use storage_error_kind::StorageErrorKind;
+
+impl Deployment {
+    /// Move exactly the timestamp the given cause legitimately sets, returning the new value.
+    pub fn record(mut self, cause: TimestampCause, at: DateTime<Utc>) -> Self {
+        self.timestamps = self.timestamps.with(cause, at);
+        self
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
