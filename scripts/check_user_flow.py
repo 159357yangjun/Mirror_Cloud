@@ -720,6 +720,7 @@ _NEEDLE_OWNERS = {
     'startup reads the cache first and only spends a request when it expired': 'apps/desktop/src/components/AppShell.tsx',
     'freshness is a pure function and a future-dated record re-checks instead of sticking': 'apps/desktop/src-tauri/src/commands/updater.rs',
     'the sidebar dot is driven only by an observed updateAvailable result': 'apps/desktop/src/components/AppShell.tsx',
+    'a second launch restores the existing window instead of starting a rival process': 'apps/desktop/src-tauri/src/lib.rs',
 }
 
 
@@ -862,6 +863,8 @@ require('if let Some(window) = app.get_webview_window(\"main\") {' in lib_single
 require('if window.label() == "main"' in lib_single
         and 'app.get_webview_window("main")' in lib_single,
         'tray-hide and reopen agree on one window label')
+_needle('restore_main_window(app.clone());',
+        'a second launch restores the existing window instead of starting a rival process')
 # Post-rename slug hygiene: anything that talks to GitHub by repo path must carry the CURRENT
 # name (the 301 is not a contract), and the sidebar badge must derive from the same declaration
 # the release gates check - a hardcoded 'v1.4 Preview' survived two real releases.
