@@ -514,6 +514,12 @@ require('opendal::ErrorKind::NotFound => Ok(false)' in opendal_lib
 require('pub fn observation_from_probe(probe: Result<bool, ()>) -> RemoteObservation' in journal_src
         and 'Err(()) => RemoteObservation::Unknown' in journal_src,
         'a failed probe maps to Unknown, never Absent, before drift detection ever sees it')
+# The other arm of the same three-way match. Without this assertion a mutation that reads every
+# present object as absent (M35's exact shape) leaves the checker green - the Err arm above is
+# untouched by it, and "persistence does not see the storage error type" says nothing about arms.
+require('Ok(true) => RemoteObservation::Present,' in journal_src
+        and 'Ok(false) => RemoteObservation::Absent,' in journal_src,
+        'the mapping keeps its positive arm positive: only Ok(false) may read as absent')
 require('use storage_core' not in text('crates/persistence-sqlite/src/journal.rs'),
         'the persistence layer does not depend on the storage abstraction for this mapping')
 # Reconciliation sweep wiring: a command that is never registered is indistinguishable from dead
@@ -708,6 +714,7 @@ _NEEDLE_OWNERS = {
     'error and skipped outrank clean before any count is consulted (asserted inside the function body)': 'apps/desktop/src-tauri/src/commands/reconcile.rs',
     'the manual command persists a line while the scheduled path persists findings': 'apps/desktop/src-tauri/src/commands/reconcile.rs',
     'the safety mapping still takes Result<bool,()> - persistence does not see the storage error type': 'crates/persistence-sqlite/src/journal.rs',
+    'the mapping keeps its positive arm positive: only Ok(false) may read as absent': 'crates/persistence-sqlite/src/journal.rs',
     'inconclusive findings carry their kind through detect_drift': 'crates/persistence-sqlite/src/journal.rs',
     'the frontend map covers all four kinds and degrades unknown ones to rejected, never silence': 'apps/desktop/src/lib/probeDisplay.ts',
     'startup reads the cache first and only spends a request when it expired': 'apps/desktop/src/components/AppShell.tsx',
@@ -767,6 +774,8 @@ _flat_needle('"error" } else if report.skipped_by_policy { "skipped" } else if r
 require('run_sweep_inner(&state, &providers, None, false).await' in reconcile_src
         and 'let report = run_sweep_inner(&state, &providers, cursor.clone(), true).await;' in reconcile_src,
         'the manual command persists a line while the scheduled path persists findings')
+_needle('Ok(true) => RemoteObservation::Present,',
+        'the mapping keeps its positive arm positive: only Ok(false) may read as absent')
 _needle('let report = run_sweep_inner(&state, &providers, cursor.clone(), true).await;',
         'the manual command persists a line while the scheduled path persists findings')
 require('record_sweep_outcome(state, &failed, false).await;' in reconcile_src

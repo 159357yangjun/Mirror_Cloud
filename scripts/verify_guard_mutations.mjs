@@ -217,9 +217,12 @@ const mutations = [
   {
     // §18B M35: the taxonomy must be reachable through the lossy translation, not around it.
     // Rewriting Ok(true) as Ok(false) makes a present object read as absent - the exact direction
-    // that would drive a reconciler toward deleting content that is fine.
+    // that would drive a reconciler toward deleting content that is fine. The expect names the gate
+    // that actually bites (the mapping arms and their fixtures); the signature gate stays green
+    // under this mutation because the signature is untouched - claiming it was the mislabel that
+    // made M35 report silent for two rounds.
     id: 'M35', file: 'crates/persistence-sqlite/src/journal.rs', oracle: 'userflow-src',
-    expect: 'the safety mapping still takes Result<bool,()> - persistence does not see the storage error type',
+    expect: 'the mapping keeps its positive arm positive: only Ok(false) may read as absent',
     from: 'Ok(true) => RemoteObservation::Present,',
     to: 'Ok(true) => RemoteObservation::Absent,',
   },
