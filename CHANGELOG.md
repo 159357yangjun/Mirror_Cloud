@@ -2100,6 +2100,14 @@ G0 dev 全绿 → G1 P0-4 信任边界（Rust 自持 PendingUpdate{version, cano
 **沉淀规则（用户批准，写入本仓协作纪律）**：CI 红 ⇒ **先读一手诊断（annotation/compiler error/artifact），只有证据不足才允许假设；禁止沿同一假设连续多轮盲改**。顺序固定：读证据 → 锁第一错误 → 最小修复 → 复验。本次事故的正解路径本来只要两步：#194 起红已不在 fmt，早一天装 annotation 通道就早一天结案。
 **副产品（保留，非本轮验收项）**：ci.yml 的两条失败自证通道从此常驻——rustfmt 有 patch artifact，cargo check 有 log artifact + 公开 annotation（取首个 `^error` 起 9 行，GBK 无关、annotations API 无认证可读）。
 
+### 27. v1.4.9 变更集：自动检查更新、单实例唤醒、徽章跟版、slug 收尾（2026-10-07）
+
+**进包的改动**（自 `5469905`/v1.4.8 起，全部 CI #330–#333 绿过）：① plan C——检查结果缓存进 settings（`update.lastCheck`），启动时缓存优先、24h 过期才发请求、失败全静默，侧栏版本行亮琥珀圆点跳设置页；「关于与更新」卡收口成紧凑行+就地展开。② 单实例唤醒——第二次启动不再起竞争进程撞 SQLite 锁闪退，改为 unminimise→show→set_focus 唤醒现有窗口（插件 `tauri-plugin-single-instance =2.3.7`，2.3.3 已被 yank 是 cargo 本机抓到的第一个错）。③ 版本徽章吃 `__APP_VERSION__`（vite 从 package.json 注入，check_release_version 已钉它），"v1.4 Preview" 这种能活过两次发布的死文案从此不可能。④ slug 收尾：updater 的 UPDATE_REPO 与 watch_ci 的 REPO 都改指 `Mirror_Cloud`，project_state --verify 新增"UPDATE_REPO vs API full_name"事实（篡回旧值当场演示会红）。⑤ 门的三笔修复：探针 needle 归属账本（M35 误伤兄弟断言结案）、正臂门补牙、M39 锚点跟谓词重写走。
+
+**门禁现值**：user-flow **609**、变异 **39/39**、contracts 74/74/74、shape OK(81+)、指纹表 21 行全签；fmt/tsc rc=0。CI #333 success @ `4d84cb0` 给 Rust 面作证（新依赖+lib.rs）。
+
+**G3 提醒（tag 前必须有人拍板）**：不可变 tag 规矩写的是"矩阵全绿后创建一次"。**v1.4.8 未经十行保真矩阵就发了 tag**——当时你点名解除了出包链，但 G3 没跑这一条要记在案。v1.4.9 若照发，缺口累积；矩阵里至少"版本号/SQLite/token/默认目标/Typora 链/主题/资源索引/新传一图"八行可以覆盖安装当场过。谁跑、什么时候跑，归你定。
+
 ### 26. v1.4.8 出包闭环：不可变 tag 首用 + 三方哈希对账（2026-10-06）
 
 **链**：CI #327 success(`bbc9e2a`) → bump `5469905`（五处声明+cargo 重生成 lock 13 成员，metadata 独立枚举第二证人）→ CI #328 success → 用户确认 → **新建附注 tag v1.4.8**（对象 `ca0844d` → commit `5469905`；这是不可变规矩下第一次建 tag，没有移任何旧引用）→ Release Bundle **#35 completed/success**（updated 11:55:02Z）→ Release `Mirror Cloud v1.4.8`（id 404652713，四资产）。
