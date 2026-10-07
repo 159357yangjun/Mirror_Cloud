@@ -143,11 +143,13 @@ pub async fn check_for_updates(
     if setup_bytes == 0 || setup_bytes > MAX_SETUP_BYTES {
         return Err(format!("安装包大小不合理: {setup_bytes} B"));
     }
-    let setup_name = setup
+    // The name is validated even though the download URL is what gets used: an asset missing its
+    // filename cannot be matched against SHA256SUMS.txt later, so refusing here is the honest
+    // point of failure rather than a checksum mismatch mid-install.
+    let _ = setup
         .get("name")
         .and_then(serde_json::Value::as_str)
-        .ok_or("安装包资产缺少文件名")?
-        .to_string();
+        .ok_or("安装包资产缺少文件名")?;
     let setup_url = setup
         .get("browser_download_url")
         .and_then(serde_json::Value::as_str)
