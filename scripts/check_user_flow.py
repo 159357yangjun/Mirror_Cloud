@@ -866,7 +866,7 @@ require('const UPDATE_CACHE_KEY: &str = \"update.lastCheck\";' in updater_src
         and 'pub const UPDATE_CACHE_MAX_AGE_HOURS: i64 = 24;' in updater_src,
         'the update cache has its own settings key and a declared day window')
 require('fn cache_is_fresh(checked_at: Option<&str>, now: DateTime<Utc>) -> bool' in updater_src
-        and '!age.negative() && age < Duration::hours(UPDATE_CACHE_MAX_AGE_HOURS)' in updater_src,
+        and 'age.num_seconds() >= 0 && age < Duration::hours(UPDATE_CACHE_MAX_AGE_HOURS)' in updater_src,
         'freshness is a pure function and a future-dated record re-checks instead of sticking')
 require('.filter(|_| fresh)' in updater_src,
         'a stale or unreadable cache withholds its payload rather than serving an old answer as current')
@@ -889,7 +889,7 @@ require('void getUpdateStatus()' in settings_up
 # because these labels quote code that check_user_flow.py itself contains (see §23 teardown).
 _needle('if (cached.fresh) {',
         'startup reads the cache first and only spends a request when it expired')
-_needle('!age.negative() && age < Duration::hours(UPDATE_CACHE_MAX_AGE_HOURS)',
+_needle('age.num_seconds() >= 0 && age < Duration::hours(UPDATE_CACHE_MAX_AGE_HOURS)',
         'freshness is a pure function and a future-dated record re-checks instead of sticking')
 _needle('setUpdateAvailableVersion(cached.result.latestVersion)',
         'the sidebar dot is driven only by an observed updateAvailable result')

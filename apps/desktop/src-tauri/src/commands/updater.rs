@@ -220,8 +220,9 @@ fn cache_is_fresh(checked_at: Option<&str>, now: DateTime<Utc>) -> bool {
     };
     let age = now.signed_duration_since(parsed);
     // A record dated ahead of our own clock (NTP jump, timezone mishandling) must not read as
-    // "fresh forever"; negative ages re-check instead.
-    !age.negative() && age < Duration::hours(UPDATE_CACHE_MAX_AGE_HOURS)
+    // "fresh forever"; ages below zero re-check instead. `num_seconds() < 0` is chrono's real
+    // predicate here - TimeDelta has no `negative()` method, which CI caught and this box cannot.
+    age.num_seconds() >= 0 && age < Duration::hours(UPDATE_CACHE_MAX_AGE_HOURS)
 }
 
 async fn read_update_cache(state: &AppState) -> UpdateStatusView {
