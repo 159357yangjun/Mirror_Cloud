@@ -375,6 +375,20 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
   return invoke('check_for_updates')
 }
 
+/** The cached outcome of the last completed check. Zero network: it reads what the backend stored. */
+export interface UpdateStatus {
+  checkedAt: string | null
+  fresh: boolean
+  result: UpdateCheckResult | null
+}
+
+export async function getUpdateStatus(): Promise<UpdateStatus> {
+  if (!isTauriRuntime()) {
+    return { checkedAt: null, fresh: false, result: null }
+  }
+  return invoke('get_update_status')
+}
+
 export async function downloadUpdate(check: UpdateCheckResult): Promise<DownloadedUpdateSummary> {
   return invoke('download_update', { check })
 }

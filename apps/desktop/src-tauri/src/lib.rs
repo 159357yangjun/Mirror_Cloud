@@ -143,6 +143,7 @@ pub fn run() {
             commands::integrations::get_output_preferences,
             commands::integrations::save_output_preferences,
             commands::updater::check_for_updates,
+            commands::updater::get_update_status,
             commands::updater::download_update,
             commands::updater::install_update,
             commands::integrations::get_system_diagnostics,

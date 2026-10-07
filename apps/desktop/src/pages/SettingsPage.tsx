@@ -28,6 +28,7 @@ import {
   getWindowsContextMenuInfo,
   getOutputPreferences,
   getReconciliationSettings,
+  getUpdateStatus,
   getReconciliationHistory,
   runReconciliationSweep,
   setReconciliationSettings,
@@ -210,7 +211,22 @@ export function SettingsPage() {
     onSuccess: (saved) => queryClient.setQueryData(['output-preferences'], saved),
   })
 
+  // Seeded from the backend cache: whatever the startup check (or a previous session's manual
+  // click) learned is shown here without spending a request just to open a settings page.
   const [updateCheck, setUpdateCheck] = useState<UpdateCheckResult | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    void getUpdateStatus()
+      .then((status) => {
+        if (!cancelled && status.fresh && status.result) setUpdateCheck(status.result)
+      })
+      .catch(() => {
+        // Silent: nothing cached simply renders as no detail block.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const [updateDownloaded, setUpdateDownloaded] = useState<DownloadedUpdateSummary | null>(null)
   const checkUpdateMutation = useMutation({
     mutationFn: checkForUpdates,
@@ -707,7 +723,7 @@ export function SettingsPage() {
       <section className="mt-6 rounded-[24px] border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div><div className="text-sm font-semibold">关于与更新</div><div className="mt-1 text-xs leading-5 text-slate-400">检查 GitHub Releases 的新版本；下载的安装包必须通过 sha256 校验才会被启动。配置、索引和密钥保存在系统目录，更新不会触碰。</div></div>
-          <button disabled={checkUpdateMutation.isPending} onClick={() => checkUpdateMutation.mutate()} className="h-10 shrink-0 rounded-xl border border-slate-200 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">{checkUpdateMutation.isPending ? '检查中…' : '检查更新'}</button>
+          <div className="flex shrink-0 flex-col items-end gap-1"><span className="font-mono text-[11px] text-slate-400">v{__APP_VERSION__}</span><button disabled={checkUpdateMutation.isPending} onClick={() => checkUpdateMutation.mutate()} className="h-9 rounded-xl border border-slate-200 px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">{checkUpdateMutation.isPending ? '检查中…' : '检查更新'}</button></div>
         </div>
         {updateCheck && (
           <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-xs leading-6 text-slate-600">

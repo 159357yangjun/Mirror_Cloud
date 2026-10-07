@@ -829,6 +829,43 @@ require('__APP_VERSION__: JSON.stringify(pkg.version)' in vite_cfg
 require('v{__APP_VERSION__} · Mirror Cloud' in app_shell
         and 'v1.4 Preview' not in app_shell,
         'the sidebar badge renders the injected version and no stale literal survives')
+# Plan C (docs/PLAN_UPDATE_UX.md): startup update awareness must be cache-first and silent,
+# because it runs on the launch path. The properties below each guard one dangerous
+# direction: a cache that never expires stops checking forever; a failed background check that
+# surfaces an error blames the user for a network they did not ask about; a dot lit without
+# updateAvailable claims a release exists when none was seen.
+updater_src = text('apps/desktop/src-tauri/src/commands/updater.rs')
+require('const UPDATE_CACHE_KEY: &str = \"update.lastCheck\";' in updater_src
+        and 'pub const UPDATE_CACHE_MAX_AGE_HOURS: i64 = 24;' in updater_src,
+        'the update cache has its own settings key and a declared day window')
+require('fn cache_is_fresh(checked_at: Option<&str>, now: DateTime<Utc>) -> bool' in updater_src
+        and '!age.negative() && age < Duration::hours(UPDATE_CACHE_MAX_AGE_HOURS)' in updater_src,
+        'freshness is a pure function and a future-dated record re-checks instead of sticking')
+require('.filter(|_| fresh)' in updater_src,
+        'a stale or unreadable cache withholds its payload rather than serving an old answer as current')
+app_shell_up = app_shell
+require('const cached = await getUpdateStatus()' in app_shell_up
+        and 'if (cached.fresh) {' in app_shell_up
+        and 'const checked = await checkForUpdates()' in app_shell_up,
+        'startup reads the cache first and only spends a request when it expired')
+require('setUpdateAvailableVersion(cached.result.latestVersion)' in app_shell_up
+        and 'checked.updateAvailable' in app_shell_up,
+        'the sidebar dot is driven only by an observed updateAvailable result')
+require('size-2.5 shrink-0 rounded-full bg-amber-500' in app_shell_up
+        and 'onClick={() => setPage(\'settings\')}' in app_shell_up,
+        'the dot is reachable: it navigates to the settings page where the action lives')
+settings_up = text('apps/desktop/src/pages/SettingsPage.tsx')
+require('void getUpdateStatus()' in settings_up
+        and 'status.fresh && status.result' in settings_up,
+        'opening the settings page seeds from the cache instead of firing a check')
+# The same three properties also re-measure the mutated SOURCE under the harness tripwire,
+# because these labels quote code that check_user_flow.py itself contains (see §23 teardown).
+_needle('if (cached.fresh) {',
+        'startup reads the cache first and only spends a request when it expired')
+_needle('!age.negative() && age < Duration::hours(UPDATE_CACHE_MAX_AGE_HOURS)',
+        'freshness is a pure function and a future-dated record re-checks instead of sticking')
+_needle('setUpdateAvailableVersion(cached.result.latestVersion)',
+        'the sidebar dot is driven only by an observed updateAvailable result')
 require('workflows.find((workflow) => workflow.isDefault)' in upload and '?? workflows[0]' not in upload, 'upload UI never falls back to an arbitrary legacy workflow')
 require('async fn persist_new_storage' in commands and commands.count('persist_new_storage(state.inner(), &record).await?;') >= 4, 'storage setup only succeeds after automatic pipeline persistence')
 require('sync_system_default_pipeline(state.inner(), None).await?;' in commands, 'automatic pipeline sync errors are surfaced instead of silently ignored')
