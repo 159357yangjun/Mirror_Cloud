@@ -255,7 +255,7 @@ const mutations = [
     // record dated ahead of our clock ages negative forever - "fresh" permanently, no re-check.
     id: 'M39', file: 'apps/desktop/src-tauri/src/commands/updater.rs', oracle: 'userflow-src',
     expect: 'freshness is a pure function and a future-dated record re-checks instead of sticking',
-    from: '!age.negative() && age < Duration::hours(UPDATE_CACHE_MAX_AGE_HOURS)',
+    from: 'age.num_seconds() >= 0 && age < Duration::hours(UPDATE_CACHE_MAX_AGE_HOURS)',
     to: 'age < Duration::hours(UPDATE_CACHE_MAX_AGE_HOURS)',
   },
   {
