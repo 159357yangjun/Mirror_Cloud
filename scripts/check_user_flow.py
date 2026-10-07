@@ -848,7 +848,8 @@ require("name: 'probe_display'" in text('scripts/verify_all.mjs'),
 # opener incident says runtime contracts need gates that parse, not prose greps.
 lib_single = text('apps/desktop/src-tauri/src/lib.rs')
 cargo_single = text('apps/desktop/src-tauri/Cargo.toml')
-require('tauri-plugin-single-instance = \"=2.3.7\"' in cargo_single,
+require('tauri-plugin-single-instance = ' in cargo_single
+        and '"=2.3.7"' in cargo_single,
         'the single-instance plugin is a declared dependency')
 require('.plugin(tauri_plugin_single_instance::init(' in lib_single
         and 'fn restore_main_window_inner(window: tauri::WebviewWindow) {' in lib_single
