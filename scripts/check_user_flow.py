@@ -841,6 +841,27 @@ require('<ProbeChip kind={entry.probeFailure} />' in settings_page
         'the panel renders the probe-failure list with per-row chips')
 require("name: 'probe_display'" in text('scripts/verify_all.mjs'),
         'verify:all runs the probe display verifier as a stage')
+# Single-instance reopen (the crash-on-second-launch fix). This is a RUNTIME contract:
+# nothing fails to compile if the plugin stops being registered or the window stops being
+# restored - the app just goes back to dying on the second click. The ACL lesson from the
+# opener incident says runtime contracts need gates that parse, not prose greps.
+lib_single = text('apps/desktop/src-tauri/src/lib.rs')
+cargo_single = text('apps/desktop/src-tauri/Cargo.toml')
+require('tauri-plugin-single-instance = ' in cargo_single,
+        'the single-instance plugin is a declared dependency')
+require('.plugin(tauri_plugin_single_instance::init(' in lib_single
+        and 'fn restore_main_window_inner(window: tauri::WebviewWindow) {' in lib_single
+        and 'let _ = window.unminimize();' in lib_single
+        and 'let _ = window.show();' in lib_single
+        and 'let _ = window.set_focus();' in lib_single,
+        'a second launch restores the existing window instead of starting a rival process')
+require('if let Some(window) = app.get_webview_window(\"main\") {' in lib_single,
+        'the very first instance is not blocked by its own callback')
+# The close-to-tray handler and the reopen path must name the same window label; two labels
+# would compile, run, and hide a window the restorer cannot find.
+require('if window.label() == "main"' in lib_single
+        and 'app.get_webview_window("main")' in lib_single,
+        'tray-hide and reopen agree on one window label')
 # Post-rename slug hygiene: anything that talks to GitHub by repo path must carry the CURRENT
 # name (the 301 is not a contract), and the sidebar badge must derive from the same declaration
 # the release gates check - a hardcoded 'v1.4 Preview' survived two real releases.

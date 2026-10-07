@@ -36,9 +36,34 @@ pub struct AppState {
     pub local_api_running: Arc<AtomicBool>,
 }
 
+/// Bring the main window back into view: unminimise, show, focus - in that order, because a
+/// minimised window that is merely shown stays invisible on Windows.
+fn restore_main_window(app: tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        restore_main_window_inner(window);
+    }
+}
+
+fn restore_main_window_inner(window: tauri::WebviewWindow) {
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    // A second launch must wake the window that is already running, not start a rival process.
+    // Without this the app has no single-instance guard at all: Windows spawns instance #2, it
+    // reaches setup(), finds the SQLite file locked by instance #1, and dies during migration -
+    // which is what users see as "clicking the icon makes it flash and vanish". The callback also
+    // runs for the FIRST instance; `open_paths` is empty there, so restoring only on a non-empty
+    // argument list keeps the initial window untouched.
+    builder = builder.plugin(tauri_plugin_single_instance::init(|app, open_paths, _| {
+        if !open_paths.is_empty() {
+            restore_main_window(app.clone());
+        }
+    }));
+    builder
         .on_window_event(|window, event| {
             if window.label() == "main" {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
