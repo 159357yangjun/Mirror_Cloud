@@ -2100,6 +2100,14 @@ G0 dev 全绿 → G1 P0-4 信任边界（Rust 自持 PendingUpdate{version, cano
 **沉淀规则（用户批准，写入本仓协作纪律）**：CI 红 ⇒ **先读一手诊断（annotation/compiler error/artifact），只有证据不足才允许假设；禁止沿同一假设连续多轮盲改**。顺序固定：读证据 → 锁第一错误 → 最小修复 → 复验。本次事故的正解路径本来只要两步：#194 起红已不在 fmt，早一天装 annotation 通道就早一天结案。
 **副产品（保留，非本轮验收项）**：ci.yml 的两条失败自证通道从此常驻——rustfmt 有 patch artifact，cargo check 有 log artifact + 公开 annotation（取首个 `^error` 起 9 行，GBK 无关、annotations API 无认证可读）。
 
+### 28. v1.4.9 发布闭环：G3 全绿 → A′ 裁定 → tag/Release/装机复验（2026-10-07）
+
+**链**：CI #335 success(`2b936e5`=候选 A) → bot 两笔把 dev 推到 `0422c0d`（树等式实测 `748e58ce` 不变，diff 0 行）→ dispatch RC Bundle **#36 success** → G3 真机实验在装好的 v1.4.8 上跑满十行（BEFORE-0→五步审计链→BEFORE-1 冻结 sha256=`e69be3ab…`；RC setup 三方对账后覆盖安装；行 1-6/8-10 机器取证 PASS，其中插件行以 after_upload 钩子在新资产上真执行+`G3-v149::` 模板输出为证）→ 用户裁 **A′**（认 `0422c0d` 为候选，"G3 测哪个就发哪个"）→ ff+门禁复跑(609/74³/state/fmt/tsc 全绿) → **新建不可变附注 tag v1.4.9**（对象 `86ba4c8` → commit `0422c0d`，未动任何旧引用）→ Release Bundle **#37 completed/success** → Release id 406269157。
+
+**四资产与对账**：setup.exe **8,488,690 B / `545ae9c3…44b3524f`**（本地 Node crypto 重算 == SHA256SUMS.txt == GitHub digest，3/3；比较器带捏造负例）、msi 12,648,448 B、source.zip 6,782,819 B、SHA256SUMS.txt。**如实记录一条反直觉事实**：正式包比 G3 实测的 RC 包大 4,248 B、哈希不同——同树≠同字节（Rust 构建无 reproducible 承诺），所以"G3 测 A′"严格说测的是同源码的另一份二进制；处置=把**正式发布件本身**再装上机器复验：注册表 1.4.9、exe ProductVersion 1.4.9、窗口标题实拍、CLI 活上传 rc=0+URL 200、**单实例行为首验通过**（第二次启动不产生新进程、pid 15936 原样且被置前——正是该修复的设计语义）。
+
+**登记挂账**：① Pages Source 设置仍是用户侧一次点击（release.yml bake 空值根因，Docs Site run #9 failure 在册）；② 应用内"检查更新"此刻真读数=已是最新（v1.4.9 即 releases/latest）；③ 探针文件 probe_after.png/probe_upload.* 留在用户 PicList 仓库 assets/uploads/，可删；④ G3 台账/HANDOFF/VERDICT 仍在 %TEMP%，随下一笔文档提交入仓。
+
 ### 27. v1.4.9 变更集：自动检查更新、单实例唤醒、徽章跟版、slug 收尾（2026-10-07）
 
 **进包的改动**（自 `5469905`/v1.4.8 起，全部 CI #330–#333 绿过）：① plan C——检查结果缓存进 settings（`update.lastCheck`），启动时缓存优先、24h 过期才发请求、失败全静默，侧栏版本行亮琥珀圆点跳设置页；「关于与更新」卡收口成紧凑行+就地展开。② 单实例唤醒——第二次启动不再起竞争进程撞 SQLite 锁闪退，改为 unminimise→show→set_focus 唤醒现有窗口（插件 `tauri-plugin-single-instance =2.3.7`，2.3.3 已被 yank 是 cargo 本机抓到的第一个错）。③ 版本徽章吃 `__APP_VERSION__`（vite 从 package.json 注入，check_release_version 已钉它），"v1.4 Preview" 这种能活过两次发布的死文案从此不可能。④ slug 收尾：updater 的 UPDATE_REPO 与 watch_ci 的 REPO 都改指 `Mirror_Cloud`，project_state --verify 新增"UPDATE_REPO vs API full_name"事实（篡回旧值当场演示会红）。⑤ 门的三笔修复：探针 needle 归属账本（M35 误伤兄弟断言结案）、正臂门补牙、M39 锚点跟谓词重写走。
