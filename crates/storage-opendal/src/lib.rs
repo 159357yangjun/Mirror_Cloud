@@ -8,6 +8,15 @@ use storage_core::{
 };
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ObjectAccessMode {
+    #[default]
+    Public,
+    // Requested visibility, not proof of the remote bucket's ACL or CDN configuration.
+    PrivateRequested,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct S3StorageConfig {
     pub endpoint: String,
@@ -16,6 +25,8 @@ pub struct S3StorageConfig {
     #[serde(default)]
     pub root: String,
     pub public_base_url: Option<String>,
+    #[serde(default)]
+    pub access_mode: ObjectAccessMode,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,6 +109,13 @@ impl OpenDalStorage {
         config: &S3StorageConfig,
         credentials: &S3Credentials,
     ) -> Result<Self, StorageError> {
+        if config.access_mode == ObjectAccessMode::PrivateRequested
+            && (provider_key != "r2" || config.public_base_url.is_some())
+        {
+            return Err(StorageError::Provider(
+                "Private-requested storage requires R2 with no configured public URL".into(),
+            ));
+        }
         let mut builder = services::S3::default()
             .bucket(&config.bucket)
             .region(&config.region)
