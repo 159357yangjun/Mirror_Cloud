@@ -71,14 +71,19 @@ jobs:
         run: |
           $tokens = $null
           $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path scripts/e2e_private_share.ps1).Path,
-            [ref]$tokens,
-            [ref]$errors
-          ) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors | ForEach-Object { Write-Error $_.Message }
-            exit 1
+          foreach ($script in @('scripts/e2e_private_share.ps1', 'scripts/run_r2_private_e2e.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $script).Path,
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              Write-Error "PowerShell syntax check failed: $script"
+              $errors | ForEach-Object { Write-Error $_.Message }
+              exit 1
+            }
           }
       - name: Rust format
         id: rustfmt
