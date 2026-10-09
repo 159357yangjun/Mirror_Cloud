@@ -15,6 +15,16 @@ use uuid::Uuid;
 const EXPIRES_SECONDS: u64 = 600;
 const CLOCK_MARGIN_SECONDS: u64 = 30;
 
+// A network failure is NEVER a privacy PASS. A valid HTTP rejection can be checked
+// only after reqwest completed the request and returned a real status code.
+fn is_anonymous_read_denied(status: u16) -> bool {
+    matches!(status, 401 | 403 | 404)
+}
+
+fn is_expired_signature_rejected(status: u16) -> bool {
+    matches!(status, 400 | 401 | 403)
+}
+
 fn required_env(name: &str) -> Result<String, String> {
     std::env::var(name)
         .ok()
@@ -213,7 +223,7 @@ async fn perform_real_r2_private_e2e() -> Result<(), String> {
 
         let unsigned_url = format!("{endpoint}/{bucket}/{path}");
         let (status, _) = anonymous_get_status(&unsigned_client, &unsigned_url).await?;
-        if !matches!(status, 401 | 403 | 404) {
+        if !is_anonymous_read_denied(status) {
             return Err(format!("R2 API unsigned object GET returned HTTP {status}"));
         }
         println!("PASS unsigned-read: object exists, unsigned S3 API GET denied ({status})");
@@ -229,8 +239,11 @@ async fn perform_real_r2_private_e2e() -> Result<(), String> {
             || parsed.username() != ""
             || parsed.password().is_some()
             || !parsed.query_pairs().any(|(key, _)| key == "X-Amz-Signature")
+            || !parsed
+                .query_pairs()
+                .any(|(key, value)| key == "X-Amz-Expires" && value == "600")
         {
-            return Err("Presigned link is not a browser-ready R2 HTTPS GET URL".into());
+            return Err("Presigned link must be an HTTPS R2 GET signed for exactly 600 seconds".into());
         }
 
         let (signed_status, signed_body) =
@@ -248,7 +261,7 @@ async fn perform_real_r2_private_e2e() -> Result<(), String> {
         .await;
         let (expired_status, _) =
             anonymous_get_status(&unsigned_client, &signed_url).await?;
-        if !matches!(expired_status, 400 | 401 | 403) {
+        if !is_expired_signature_rejected(expired_status) {
             return Err(format!(
                 "Expired GET returned unexpected status {expired_status}; privacy not proven"
             ));
@@ -277,7 +290,26 @@ async fn perform_real_r2_private_e2e() -> Result<(), String> {
 
 #[cfg(test)]
 mod audit_contract_tests {
-    use super::{require_custom_private, require_managed_private};
+    use super::{
+        is_anonymous_read_denied, is_expired_signature_rejected, require_custom_private,
+        require_managed_private,
+    };
+
+    #[test]
+    fn denial_checks_reject_success_redirect_errors_and_rate_limits() {
+        for code in [200, 204, 301, 302, 307, 408, 429, 500, 502, 503] {
+            assert!(!is_anonymous_read_denied(code));
+            assert!(!is_expired_signature_rejected(code));
+        }
+        for code in [401, 403, 404] {
+            assert!(is_anonymous_read_denied(code));
+        }
+        for code in [400, 401, 403] {
+            assert!(is_expired_signature_rejected(code));
+        }
+        assert!(!is_expired_signature_rejected(404));
+        assert!(!is_anonymous_read_denied(400));
+    }
     use serde_json::json;
 
     #[test]
