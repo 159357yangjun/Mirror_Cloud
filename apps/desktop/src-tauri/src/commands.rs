@@ -273,7 +273,10 @@ pub struct StorageGroupView {
 #[serde(rename_all = "camelCase")]
 pub struct AssetDeploymentView {
     pub storage: String,
+    pub storage_id: String,
+    pub remote_path: String,
     pub provider_key: String,
+    pub access_mode: String,
     pub role: String,
     pub ok: bool,
     pub error: Option<String>,
@@ -3759,7 +3762,10 @@ fn asset_view(record: PublishedAssetRecord) -> AssetView {
                     domain::confirmation_tier::derive_confirmation(&deployment.timestamps).level();
                 AssetDeploymentView {
                     storage: deployment.storage_name,
+                    storage_id: deployment.storage_id.to_string(),
+                    remote_path: deployment.remote_path,
                     provider_key: deployment.provider_key,
+                    access_mode: deployment.access_mode,
                     role: deployment.role,
                     ok: deployment.status == "online",
                     error: deployment.last_error,
