@@ -6,6 +6,7 @@ import { ReadFailurePanel } from '../components/ReadFailurePanel'
 import { CloudIndexSyncBanner } from '../components/CloudIndexSyncBanner'
 import {
   copyText,
+  createTemporaryShareLink,
   deleteAsset,
   getOutputPreferences,
   listAssets,
@@ -86,6 +87,9 @@ export function AssetsPage() {
   const [search, setSearch] = useState('')
   const [copied, setCopied] = useState<string | null>(null)
   const [repairing, setRepairing] = useState<string | null>(null)
+  const [sharing, setSharing] = useState<string | null>(null)
+  const [shareError, setShareError] = useState<string | null>(null)
+  const [shareExpiry, setShareExpiry] = useState<600 | 3600 | 86400>(600)
 
   const listTruncated = assets.length >= assetLimit
 
@@ -139,6 +143,26 @@ export function AssetsPage() {
     )
   }
 
+  async function sharePrivateAsset(asset: AssetView) {
+    const target = asset.deployments.find(
+      (entry) => entry.ok && entry.providerKey === 'r2' && entry.accessMode === 'private_requested',
+    )
+    if (!target || sharing) return
+    const requestedExpiry = shareExpiry
+    setSharing(asset.id)
+    setShareError(null)
+    try {
+      const signedUrl = await createTemporaryShareLink(target.storageId, target.remotePath, requestedExpiry)
+      await copyText(signedUrl)
+      setCopied(`share:${asset.id}`)
+    } catch {
+      // A provider error can contain a signed URL; never mirror it into an untrusted toast.
+      setShareError('临时分享失败，请检查存储连接、对象路径和签名权限。')
+    } finally {
+      setSharing(null)
+    }
+  }
+
   async function copyPluginOutput(assetId: string, pluginId: string, text: string) {
     if (!text) return
     await copyText(text)
@@ -190,7 +214,17 @@ export function AssetsPage() {
             <option value="custom">自定义模板</option>
           </select>
         </div>
+        <label className="flex h-10 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-xs text-[var(--text-secondary)]">
+          限时分享
+          <select value={shareExpiry} onChange={(event) => setShareExpiry(Number(event.target.value) as 600 | 3600 | 86400)} className="bg-transparent text-xs" aria-label="限时分享有效期">
+            <option value={600}>10 分钟</option>
+            <option value={3600}>1 小时</option>
+            <option value={86400}>24 小时</option>
+          </select>
+        </label>
       </div>
+      {shareError && <p role="alert" className="mt-3 text-xs text-red-600">{shareError}</p>}
+      {copied?.startsWith('share:') && <p role="status" className="mt-3 text-xs text-amber-700">临时只读链接已复制。持有链接的人在有效期内可能访问该对象；请勿公开粘贴。</p>}
 
       <section className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(290px,1fr))] gap-5">
         {assetsError && !assets.length && <ReadFailurePanel className="col-span-full rounded-[26px] border border-dashed border-red-200 bg-red-50 p-10 text-center text-sm text-red-600" subject="资源" error={assetsError} />}
@@ -223,7 +257,7 @@ export function AssetsPage() {
               {asset.publicUrl ? (
                 <img src={asset.publicUrl} alt={asset.name} className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.015]" loading="lazy" decoding="async" />
               ) : (
-                <div className="grid h-full place-items-center text-xs text-[var(--text-muted)]">没有公开 URL</div>
+                <div className="grid h-full place-items-center px-3 text-center text-xs text-[var(--text-muted)]">{asset.deployments.some((deployment) => deployment.ok && deployment.accessMode === 'private_requested') ? '已上传至私有模式目标 · 无公开 URL' : '没有公开 URL · 访问状态未知'}</div>
               )}
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-slate-950/35 to-transparent opacity-0 transition group-hover:opacity-100" />
               <button disabled={deleteMutation.isPending} onClick={() => void remove(asset)} className="absolute right-3 top-3 rounded-xl bg-white/92 p-2 text-slate-500 opacity-0 shadow-sm backdrop-blur transition hover:text-red-500 group-hover:opacity-100" title="永久删除这个资源已记录的远端副本">
@@ -238,10 +272,11 @@ export function AssetsPage() {
                   <div className="mt-1 text-[11px] text-[var(--text-muted)]">{sizeLabel(asset.sizeBytes)} · {asset.mimeType}{asset.width && asset.height ? ` · ${asset.width}×${asset.height}` : ''}</div>
                 </div>
                 <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[10px] ${asset.status === 'online' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
-                  {asset.status === 'online' ? <Check size={11} /> : <WifiOff size={11} />} {asset.status === 'online' ? '在线' : '部分异常'}
+                  {asset.status === 'online' ? <Check size={11} /> : <WifiOff size={11} />} {asset.status === 'online' ? (asset.publicUrl ? '已上传 · 有公开链接' : '已上传 · 无公开链接') : asset.status === 'partial' ? '部分异常' : '上传失败'}
                 </span>
               </div>
 
+              {asset.deployments.some((deployment) => deployment.accessMode === 'private_requested') && <p className="mt-2 text-[11px] leading-5 text-amber-700">已请求私有存储，但镜云尚未验证 Bucket、域名或 CDN 是否允许匿名访问。</p>}
               <div className="mt-4 flex flex-wrap items-center gap-1.5">
                 {asset.deployments.map((deployment) => (
                   <span
@@ -249,7 +284,7 @@ export function AssetsPage() {
                     title={`${deployment.providerKey} · ${deployment.role}${errorHint(deployment)}`}
                     className={`rounded-lg border px-2 py-1 text-[10px] ${deployment.ok ? 'border-[var(--border)] text-[var(--text-muted)]' : 'border-red-100 bg-red-50 text-red-500'}`}
                   >
-                    {deployment.storage} · {deployment.role} · {confirmationLabel(deployment)}
+                    {deployment.storage} · {deployment.role} · {confirmationLabel(deployment)}{deployment.accessMode === 'private_requested' ? ' · 私有意图' : ''}
                   </span>
                 ))}
               </div>
@@ -263,6 +298,11 @@ export function AssetsPage() {
                     title="从健康云端副本重新写入失败的云端"
                   >
                     <RefreshCw size={12} className={repairing === asset.id ? 'animate-spin' : ''} />修复副本
+                  </button>
+                )}
+                {asset.deployments.some((deployment) => deployment.ok && deployment.providerKey === 'r2' && deployment.accessMode === 'private_requested') && (
+                  <button disabled={sharing !== null} onClick={() => void sharePrivateAsset(asset)} className="inline-flex items-center gap-1.5 rounded-xl bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-800 disabled:opacity-30">
+                    {copied === `share:${asset.id}` ? '限时链接已复制' : sharing === asset.id ? '生成中…' : '临时分享'}
                   </button>
                 )}
                 <button disabled={!asset.publicUrl} onClick={() => copy(asset)} className="ml-auto inline-flex items-center gap-1.5 rounded-xl bg-[var(--surface-soft)] px-3 py-2 text-[11px] font-medium text-[var(--text-secondary)] hover:opacity-80 disabled:opacity-30" title={`复制为 ${outputFormatLabel[preferences.defaultFormat]}`}>
