@@ -28,9 +28,9 @@ fn validate_identifiers(account: &str, bucket: &str) -> Result<(), String> {
     }
     if bucket.len() < 3
         || bucket.len() > 63
-        || !bucket.bytes().all(|b| {
-            b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'.'
-        })
+        || !bucket
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'.')
     {
         return Err("R2_E2E_BUCKET must be a valid lower-case test Bucket name".into());
     }
@@ -255,6 +255,8 @@ async fn perform_real_r2_private_e2e() -> Result<(), String> {
     }
     test_result?;
     println!("PASS cleanup: test object deleted and absence confirmed");
-    println!("PASS LIVE R2 E2E: all scoped checks succeeded; Workers/other proxies still require audit");
+    println!(
+        "PASS LIVE R2 E2E: all scoped checks succeeded; Workers/other proxies still require audit"
+    );
     Ok(())
 }
