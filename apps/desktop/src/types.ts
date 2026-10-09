@@ -268,7 +268,10 @@ export interface AssetView {
   createdAt: string
   deployments: Array<{
     storage: string
+    storageId: string
+    remotePath: string
     providerKey: string
+    accessMode: 'private_requested' | 'unknown'
     role: DeploymentRole
     ok: boolean
     error?: string | null
