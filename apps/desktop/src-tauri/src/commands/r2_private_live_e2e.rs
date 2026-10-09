@@ -294,9 +294,12 @@ mod audit_contract_tests {
         assert!(require_custom_private(&json!({
             "result":{"domains":[{"domain":"a.example","enabled":false},{"domain":"b.example","enabled":false}]}
         })).is_ok());
-        assert!(require_custom_private(&json!({
-            "result":{"domains":[{"enabled":false},{"enabled":true}]}
-        })).is_err());
+        assert!(
+            require_custom_private(&json!({
+                "result":{"domains":[{"enabled":false},{"enabled":true}]}
+            }))
+            .is_err()
+        );
         assert!(require_custom_private(&json!({"result":{"domains":[{}]}})).is_err());
         assert!(require_custom_private(&json!({"result":{}})).is_err());
     }
