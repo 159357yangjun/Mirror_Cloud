@@ -31,6 +31,7 @@ export interface StorageView {
   detail: string
   publicBaseUrl?: string | null
   publicHint: string
+  accessMode?: 'public' | 'private_requested' | 'unknown'
 }
 
 
@@ -61,6 +62,7 @@ export interface BatchStorageOperationView {
 
 export interface CreateS3StorageInput {
   providerKey: 'r2' | 's3'
+  accessMode?: 'public' | 'private_requested'
   name: string
   accountId?: string
   endpoint?: string
