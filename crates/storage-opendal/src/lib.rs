@@ -346,7 +346,11 @@ impl StorageProvider for OpenDalStorage {
         if !matches!(self.provider_key, "r2" | "s3") {
             return Err(StorageError::Unsupported);
         }
-        let signed = self.operator.presign_read(path, expires).await.map_err(map_error)?;
+        let signed = self
+            .operator
+            .presign_read(path, expires)
+            .await
+            .map_err(map_error)?;
         // A copied URL cannot supply arbitrary auth headers. Never return a link that appears
         // shareable but fails outside this app (or requests more privileges than read-only GET).
         if signed.method().as_str() != "GET"
@@ -357,7 +361,10 @@ impl StorageProvider for OpenDalStorage {
         let uri = signed.uri();
         let secure = uri.scheme_str() == Some("https");
         let loopback = uri.scheme_str() == Some("http")
-            && matches!(uri.host(), Some("localhost" | "127.0.0.1" | "::1" | "[::1]"));
+            && matches!(
+                uri.host(),
+                Some("localhost" | "127.0.0.1" | "::1" | "[::1]")
+            );
         if !secure && !loopback {
             return Err(StorageError::Provider(
                 "temporary sharing requires HTTPS (or localhost for local tests)".into(),
