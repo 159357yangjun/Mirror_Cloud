@@ -179,7 +179,7 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
                     </div>
                     <div className="p-3"><div className="truncate text-xs font-medium" title={entry.name}>{entry.name}</div><div className="mt-1 text-[10px] text-slate-400">{entry.isDir ? '目录' : sizeLabel(entry.sizeBytes) || '远端文件'}</div></div>
                   </button>
-                  {!entry.isDir && <div className="flex items-center gap-1 border-t border-slate-100 p-2 opacity-80 group-hover:opacity-100">
+                  {!entry.isDir && <div className="flex flex-wrap items-center gap-1 border-t border-slate-100 p-2 opacity-80 group-hover:opacity-100">
                     {entry.publicUrl && <button onClick={() => void copyText(entry.publicUrl || '')} className="flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[10px] text-slate-500 hover:bg-slate-50" title="复制公开链接"><Copy size={12} />复制</button>}
                     {entry.publicUrl && <button onClick={() => openExternalUrlOrReport(entry.publicUrl || '')} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50" title="浏览器打开"><ExternalLink size={12} /></button>}
                     {supportsTemporaryShare && <button disabled={busyPath === entry.path} onClick={() => void shareEntry(entry)} className="flex items-center gap-1 rounded-lg p-1.5 text-[10px] text-indigo-600 hover:bg-indigo-50 disabled:opacity-30" title="为当前对象生成限时 GET 签名链接并复制"><Link2 size={12} />限时链接</button>}
