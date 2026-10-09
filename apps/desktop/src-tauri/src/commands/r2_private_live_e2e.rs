@@ -69,6 +69,35 @@ async fn cloudflare_json(
     Ok(document)
 }
 
+// An API response without a definitive boolean is *not* proof of privacy.
+// Keep these checks pure so normal CI can test the fail-closed policy without R2 keys.
+fn require_managed_private(doc: &Value) -> Result<(), String> {
+    match doc.pointer("/result/enabled").and_then(Value::as_bool) {
+        Some(false) => Ok(()),
+        Some(true) => Err("r2.dev public URL is enabled: refusing to upload".into()),
+        None => Err("r2.dev public state unknown: refusing to upload".into()),
+    }
+}
+
+fn require_custom_private(doc: &Value) -> Result<(), String> {
+    let domains = doc
+        .pointer("/result/domains")
+        .and_then(Value::as_array)
+        .ok_or("Cloudflare custom domain list missing: refusing to upload")?;
+    for domain in domains {
+        match domain.get("enabled").and_then(Value::as_bool) {
+            Some(false) => {}
+            Some(true) => {
+                return Err("An R2 custom domain is public: refusing to upload".into());
+            }
+            None => {
+                return Err("R2 custom domain state unknown: refusing to upload".into());
+            }
+        }
+    }
+    Ok(())
+}
+
 /// The API check must finish successfully before creating any object. This is not a
 /// claim about third-party Workers or a cached/forwarded alternate endpoint.
 async fn assert_no_public_r2_domains(
@@ -78,24 +107,9 @@ async fn assert_no_public_r2_domains(
     bucket: &str,
 ) -> Result<(), String> {
     let managed = cloudflare_json(client, token, account, bucket, "managed").await?;
-    match managed.pointer("/result/enabled").and_then(Value::as_bool) {
-        Some(false) => {}
-        Some(true) => return Err("r2.dev public URL is enabled: refusing to upload".into()),
-        None => return Err("r2.dev public state unknown: refusing to upload".into()),
-    }
-
+    require_managed_private(&managed)?;
     let custom = cloudflare_json(client, token, account, bucket, "custom").await?;
-    let domains = custom
-        .pointer("/result/domains")
-        .and_then(Value::as_array)
-        .ok_or("Cloudflare custom domain list missing: refusing to upload")?;
-    for domain in domains {
-        match domain.get("enabled").and_then(Value::as_bool) {
-            Some(false) => {}
-            Some(true) => return Err("An R2 custom domain is public: refusing to upload".into()),
-            None => return Err("R2 custom domain state unknown: refusing to upload".into()),
-        }
-    }
+    require_custom_private(&custom)?;
     println!("PASS domain-audit: r2.dev and all returned custom domains disabled");
     Ok(())
 }
@@ -259,4 +273,31 @@ async fn perform_real_r2_private_e2e() -> Result<(), String> {
         "PASS LIVE R2 E2E: all scoped checks succeeded; Workers/other proxies still require audit"
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod audit_contract_tests {
+    use super::{require_custom_private, require_managed_private};
+    use serde_json::json;
+
+    #[test]
+    fn managed_r2_dev_must_be_explicitly_disabled() {
+        assert!(require_managed_private(&json!({"result":{"enabled":false}})).is_ok());
+        assert!(require_managed_private(&json!({"result":{"enabled":true}})).is_err());
+        assert!(require_managed_private(&json!({"result":{}})).is_err());
+        assert!(require_managed_private(&json!({"result":{"enabled":"false"}})).is_err());
+    }
+
+    #[test]
+    fn every_custom_domain_must_be_explicitly_disabled() {
+        assert!(require_custom_private(&json!({"result":{"domains":[]}})).is_ok());
+        assert!(require_custom_private(&json!({
+            "result":{"domains":[{"domain":"a.example","enabled":false},{"domain":"b.example","enabled":false}]}
+        })).is_ok());
+        assert!(require_custom_private(&json!({
+            "result":{"domains":[{"enabled":false},{"enabled":true}]}
+        })).is_err());
+        assert!(require_custom_private(&json!({"result":{"domains":[{}]}})).is_err());
+        assert!(require_custom_private(&json!({"result":{}})).is_err());
+    }
 }
