@@ -417,12 +417,14 @@ async fn load_ai_settings(context: &CliContext) -> serde_json::Value {
 // satisfy that output contract, so reject it before writing any remote object.
 fn reject_private_cli_target(record: &StorageRecord) -> Result<(), String> {
     if record.provider_key == "r2"
-        && record.config_json.get("access_mode").and_then(serde_json::Value::as_str)
+        && record
+            .config_json
+            .get("access_mode")
+            .and_then(serde_json::Value::as_str)
             == Some("private_requested")
     {
         return Err(
-            "私有 R2 不能通过 Typora / CLI 公网链接模式发布，请改用镜云桌面上传与临时分享"
-                .into(),
+            "私有 R2 不能通过 Typora / CLI 公网链接模式发布，请改用镜云桌面上传与临时分享".into(),
         );
     }
     Ok(())
