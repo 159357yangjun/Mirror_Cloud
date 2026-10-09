@@ -176,6 +176,15 @@ export async function browseStorage(storageId: string, path: string): Promise<St
   return invoke('browse_storage', { storageId, path })
 }
 
+export async function createTemporaryShareLink(
+  storageId: string,
+  path: string,
+  expiresInSeconds: 600 | 3600 | 86400,
+): Promise<string> {
+  if (!isTauriRuntime()) throw new Error('临时分享仅在桌面应用中可用')
+  return invoke('create_temporary_share_link', { storageId, path, expiresInSeconds })
+}
+
 export async function syncStorageAssetIndex(storageId?: string): Promise<RemoteIndexSyncResult> {
   return invoke('sync_storage_asset_index', { storageId: storageId || null })
 }

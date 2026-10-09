@@ -9,6 +9,7 @@ import {
   Image as ImageIcon,
   List,
   LoaderCircle,
+  Link2,
   RefreshCw,
   Search,
   Trash2,
@@ -16,7 +17,8 @@ import {
 } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { browseStorage, chooseDownloadPath, copyText, deleteStorageEntry, downloadStorageEntry, openExternalUrlOrReport } from '../lib/desktop'
+import { browseStorage, chooseDownloadPath, copyText, createTemporaryShareLink, deleteStorageEntry, downloadStorageEntry, openExternalUrlOrReport } from '../lib/desktop'
+import { notifySuccess } from '../store/useToastStore'
 import { confirmAction } from '../store/useConfirmStore'
 import type { StorageEntryView, StorageView } from '../types'
 
@@ -45,6 +47,8 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [preview, setPreview] = useState<StorageEntryView | null>(null)
   const [busyPath, setBusyPath] = useState<string | null>(null)
+  const [shareExpiry, setShareExpiry] = useState<600 | 3600 | 86400>(3600)
+  const supportsTemporaryShare = storage.providerKey === 'r2' || storage.providerKey === 's3'
   const [actionError, setActionError] = useState<string | null>(null)
   const queryKey = useMemo(() => ['storage-browser', storage.id, path], [storage.id, path])
   const { data: entries = [], isLoading, error, refetch, isFetching } = useQuery({
@@ -68,6 +72,29 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
       await downloadStorageEntry(storage.id, entry.path, destination)
     } catch (error) {
       setActionError(`下载失败：${String(error)}`)
+    } finally {
+      setBusyPath(null)
+    }
+  }
+
+  async function shareEntry(entry: StorageEntryView) {
+    if (entry.isDir || !supportsTemporaryShare || busyPath !== null) return
+    const requestedExpiry = shareExpiry
+    setBusyPath(entry.path)
+    setActionError(null)
+    try {
+      const signedUrl = await createTemporaryShareLink(storage.id, entry.path, requestedExpiry)
+      try {
+        await copyText(signedUrl)
+      } catch {
+        // Do not interpolate the signed URL into an error message or any log/toast.
+        setActionError('链接已生成，但写入剪贴板失败；请重新操作。')
+        return
+      }
+      const label = requestedExpiry === 600 ? '10 分钟' : requestedExpiry === 3600 ? '1 小时' : '24 小时'
+      notifySuccess(`限时 ${label} 的只读链接已复制。持有链接的任何人均可访问。`)
+    } catch (error) {
+      setActionError(`临时分享失败：${String(error)}`)
     } finally {
       setBusyPath(null)
     }
@@ -112,6 +139,15 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
             <Search size={14} className="text-slate-400" />
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索文件名…" className="min-w-0 flex-1 bg-transparent text-xs outline-none" />
           </div>
+          {supportsTemporaryShare && <label className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2 text-xs text-slate-600" title="私有对象不必改成公开；链接过期后失效，不能逐链接撤销">
+            <Link2 size={13} aria-hidden="true" />
+            <span>临时分享</span>
+            <select aria-label="临时链接有效期" value={shareExpiry} onChange={(event) => setShareExpiry(Number(event.target.value) as 600 | 3600 | 86400)} className="bg-transparent text-xs outline-none">
+              <option value={600}>10 分钟</option>
+              <option value={3600}>1 小时</option>
+              <option value={86400}>24 小时</option>
+            </select>
+          </label>}
           <button onClick={() => void refetch()} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" title="刷新">{isFetching ? <LoaderCircle size={15} className="animate-spin" /> : <RefreshCw size={15} />}</button>
           <div className="flex rounded-lg bg-slate-100 p-1">
             <button onClick={() => setView('grid')} className={`rounded-md p-1.5 ${view === 'grid' ? 'bg-white shadow-sm' : 'text-slate-400'}`} title="网格"><Grid2X2 size={14} /></button>
@@ -121,7 +157,7 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
 
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-2 text-[11px] text-slate-400">
           <span>{filtered.length} 项 · {imageCount} 张可预览图片</span>
-          <span>点击目录进入 · 点击图片预览</span>
+          <span>{supportsTemporaryShare ? '临时链接仅限 GET；持有者均可访问，过期前无法单独撤销' : '点击目录进入 · 点击图片预览'}</span>
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto p-4">
@@ -144,9 +180,10 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
                     </div>
                     <div className="p-3"><div className="truncate text-xs font-medium" title={entry.name}>{entry.name}</div><div className="mt-1 text-[10px] text-slate-400">{entry.isDir ? '目录' : sizeLabel(entry.sizeBytes) || '远端文件'}</div></div>
                   </button>
-                  {!entry.isDir && <div className="flex items-center gap-1 border-t border-slate-100 p-2 opacity-80 group-hover:opacity-100">
+                  {!entry.isDir && <div className="flex flex-wrap items-center gap-1 border-t border-slate-100 p-2 opacity-80 group-hover:opacity-100">
                     {entry.publicUrl && <button onClick={() => void copyText(entry.publicUrl || '')} className="flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[10px] text-slate-500 hover:bg-slate-50" title="复制公开链接"><Copy size={12} />复制</button>}
                     {entry.publicUrl && <button onClick={() => openExternalUrlOrReport(entry.publicUrl || '')} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50" title="浏览器打开"><ExternalLink size={12} /></button>}
+                    {supportsTemporaryShare && <button disabled={busyPath !== null} onClick={() => void shareEntry(entry)} className="flex items-center gap-1 rounded-lg p-1.5 text-[10px] text-indigo-600 hover:bg-indigo-50 disabled:opacity-30" title="为当前对象生成限时 GET 签名链接并复制"><Link2 size={12} />限时链接</button>}
                     <button disabled={busyPath === entry.path} onClick={() => void downloadEntry(entry)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 disabled:opacity-30" title="下载"><Download size={12} /></button>
                     <button disabled={busyPath === entry.path} onClick={() => void deleteEntry(entry)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30" title="永久删除"><Trash2 size={12} /></button>
                   </div>}
@@ -167,6 +204,7 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
               {!entry.isDir && <>
                 {entry.publicUrl && <button onClick={() => void copyText(entry.publicUrl || '')} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700" title="复制公开链接"><Copy size={14} /></button>}
                 {entry.publicUrl && <button onClick={() => openExternalUrlOrReport(entry.publicUrl || '')} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700" title="浏览器打开"><ExternalLink size={14} /></button>}
+                {supportsTemporaryShare && <button disabled={busyPath !== null} onClick={() => void shareEntry(entry)} className="flex items-center gap-1 rounded-lg p-2 text-xs text-indigo-600 hover:bg-indigo-50 disabled:opacity-30" title="生成限时 GET 签名链接并复制"><Link2 size={14} />临时分享</button>}
                 <button disabled={busyPath === entry.path} onClick={() => void downloadEntry(entry)} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700 disabled:opacity-30" title="下载"><Download size={14} /></button>
                 <button disabled={busyPath === entry.path} onClick={() => void deleteEntry(entry)} className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30" title="永久删除"><Trash2 size={14} /></button>
               </>}

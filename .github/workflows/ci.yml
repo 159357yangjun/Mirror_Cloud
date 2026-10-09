@@ -66,6 +66,20 @@ jobs:
           foreach ($lock in $locks) {
             if (-not (Test-Path $lock)) { throw "Missing committed dependency lock: $lock" }
           }
+      - name: Private-share E2E script syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path scripts/e2e_private_share.ps1).Path,
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
       - name: Rust format
         id: rustfmt
         shell: pwsh
