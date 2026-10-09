@@ -68,11 +68,14 @@ $client.Timeout = [TimeSpan]::FromSeconds(45)
 try {
     for ($i = 0; $i -lt $AnonymousUrls.Count; $i++) {
         Assert-Https $AnonymousUrls[$i]
+        if (-not [string]::IsNullOrEmpty(([System.Uri]$AnonymousUrls[$i]).Query)) {
+            throw '未签名对象 URL 不应包含查询参数；请提供原始匿名对象地址。'
+        }
         $response = Get-Anonymous $client $AnonymousUrls[$i]
         try {
             Write-Host ("anonymous[{0}]: HTTP {1}" -f ($i + 1), [int]$response.StatusCode)
-            if ($response.IsSuccessStatusCode) {
-                throw ('FAIL: anonymous[{0}] 可以在无签名情况下直接访问，该对象不满足私有访问前提。' -f ($i + 1))
+            if ([int]$response.StatusCode -notin @(401, 403, 404)) {
+                throw ('UNVERIFIED: anonymous[{0}] 未返回明确的拒绝访问/未找到响应。' -f ($i + 1))
             }
         }
         finally {
@@ -109,8 +112,8 @@ try {
         $response = Get-Anonymous $client $signedUrl
         try {
             Write-Host ("expired: HTTP {0}" -f [int]$response.StatusCode)
-            if ($response.IsSuccessStatusCode) {
-                throw 'FAIL: 过期后原签名 GET 仍可成功读取；需调查缓存或签名实现。'
+            if ([int]$response.StatusCode -notin @(400, 401, 403)) {
+                throw 'UNVERIFIED: 到期后并未返回明确的签名拒绝状态，需要进一步核对。'
             }
             Write-Host 'PASS: 原签名链接到期后已被拒绝。'
         }
