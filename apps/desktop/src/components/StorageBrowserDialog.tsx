@@ -78,11 +78,12 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
   }
 
   async function shareEntry(entry: StorageEntryView) {
-    if (entry.isDir || !supportsTemporaryShare) return
+    if (entry.isDir || !supportsTemporaryShare || busyPath !== null) return
+    const requestedExpiry = shareExpiry
     setBusyPath(entry.path)
     setActionError(null)
     try {
-      const signedUrl = await createTemporaryShareLink(storage.id, entry.path, shareExpiry)
+      const signedUrl = await createTemporaryShareLink(storage.id, entry.path, requestedExpiry)
       try {
         await copyText(signedUrl)
       } catch {
@@ -90,7 +91,7 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
         setActionError('链接已生成，但写入剪贴板失败；请重新操作。')
         return
       }
-      const label = shareExpiry === 600 ? '10 分钟' : shareExpiry === 3600 ? '1 小时' : '24 小时'
+      const label = requestedExpiry === 600 ? '10 分钟' : requestedExpiry === 3600 ? '1 小时' : '24 小时'
       notifySuccess(`限时 ${label} 的只读链接已复制。持有链接的任何人均可访问。`)
     } catch (error) {
       setActionError(`临时分享失败：${String(error)}`)
@@ -182,7 +183,7 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
                   {!entry.isDir && <div className="flex flex-wrap items-center gap-1 border-t border-slate-100 p-2 opacity-80 group-hover:opacity-100">
                     {entry.publicUrl && <button onClick={() => void copyText(entry.publicUrl || '')} className="flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[10px] text-slate-500 hover:bg-slate-50" title="复制公开链接"><Copy size={12} />复制</button>}
                     {entry.publicUrl && <button onClick={() => openExternalUrlOrReport(entry.publicUrl || '')} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50" title="浏览器打开"><ExternalLink size={12} /></button>}
-                    {supportsTemporaryShare && <button disabled={busyPath === entry.path} onClick={() => void shareEntry(entry)} className="flex items-center gap-1 rounded-lg p-1.5 text-[10px] text-indigo-600 hover:bg-indigo-50 disabled:opacity-30" title="为当前对象生成限时 GET 签名链接并复制"><Link2 size={12} />限时链接</button>}
+                    {supportsTemporaryShare && <button disabled={busyPath !== null} onClick={() => void shareEntry(entry)} className="flex items-center gap-1 rounded-lg p-1.5 text-[10px] text-indigo-600 hover:bg-indigo-50 disabled:opacity-30" title="为当前对象生成限时 GET 签名链接并复制"><Link2 size={12} />限时链接</button>}
                     <button disabled={busyPath === entry.path} onClick={() => void downloadEntry(entry)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 disabled:opacity-30" title="下载"><Download size={12} /></button>
                     <button disabled={busyPath === entry.path} onClick={() => void deleteEntry(entry)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30" title="永久删除"><Trash2 size={12} /></button>
                   </div>}
@@ -203,7 +204,7 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
               {!entry.isDir && <>
                 {entry.publicUrl && <button onClick={() => void copyText(entry.publicUrl || '')} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700" title="复制公开链接"><Copy size={14} /></button>}
                 {entry.publicUrl && <button onClick={() => openExternalUrlOrReport(entry.publicUrl || '')} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700" title="浏览器打开"><ExternalLink size={14} /></button>}
-                {supportsTemporaryShare && <button disabled={busyPath === entry.path} onClick={() => void shareEntry(entry)} className="flex items-center gap-1 rounded-lg p-2 text-xs text-indigo-600 hover:bg-indigo-50 disabled:opacity-30" title="生成限时 GET 签名链接并复制"><Link2 size={14} />临时分享</button>}
+                {supportsTemporaryShare && <button disabled={busyPath !== null} onClick={() => void shareEntry(entry)} className="flex items-center gap-1 rounded-lg p-2 text-xs text-indigo-600 hover:bg-indigo-50 disabled:opacity-30" title="生成限时 GET 签名链接并复制"><Link2 size={14} />临时分享</button>}
                 <button disabled={busyPath === entry.path} onClick={() => void downloadEntry(entry)} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700 disabled:opacity-30" title="下载"><Download size={14} /></button>
                 <button disabled={busyPath === entry.path} onClick={() => void deleteEntry(entry)} className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30" title="永久删除"><Trash2 size={14} /></button>
               </>}
