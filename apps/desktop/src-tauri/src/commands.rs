@@ -3787,3 +3787,124 @@ fn asset_view(record: PublishedAssetRecord) -> AssetView {
             .collect(),
     }
 }
+
+#[cfg(test)]
+mod r2_private_access_tests {
+    use super::*;
+
+    fn input(access_mode: ObjectAccessMode, public_base_url: Option<&str>) -> CreateS3StorageInput {
+        CreateS3StorageInput {
+            provider_key: "r2".into(),
+            name: "test-r2".into(),
+            account_id: Some("testaccount".into()),
+            endpoint: None,
+            region: Some("auto".into()),
+            bucket: "test-bucket".into(),
+            root: Some("assets".into()),
+            public_base_url: public_base_url.map(str::to_string),
+            access_mode,
+            access_key_id: "test-key".into(),
+            secret_access_key: "not-a-real-secret".into(),
+        }
+    }
+
+    fn storage(access_mode: &str, provider_key: &str) -> StorageRecord {
+        let now = Utc::now();
+        StorageRecord {
+            id: Uuid::new_v4(),
+            name: "test".into(),
+            provider_key: provider_key.into(),
+            category: "object".into(),
+            credential_ref: None,
+            config_json: json!({"access_mode":access_mode}),
+            capabilities_json: json!({}),
+            enabled: true,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[test]
+    fn private_r2_can_be_configured_without_any_public_url() {
+        let (config, _, key) = normalize_s3(&input(ObjectAccessMode::PrivateRequested, None))
+            .expect("private-requested R2 config should be valid");
+        assert_eq!(key, "r2");
+        assert_eq!(config.access_mode, ObjectAccessMode::PrivateRequested);
+        assert!(config.public_base_url.is_none());
+    }
+
+    #[test]
+    fn private_r2_refuses_public_base_and_other_s3_providers() {
+        assert!(
+            normalize_s3(&input(
+                ObjectAccessMode::PrivateRequested,
+                Some("https://public.example")
+            ))
+            .is_err()
+        );
+        let mut generic_s3 = input(ObjectAccessMode::PrivateRequested, None);
+        generic_s3.provider_key = "s3".into();
+        assert!(normalize_s3(&generic_s3).is_err());
+    }
+
+    #[test]
+    fn legacy_r2_payload_stays_public_after_deserialization() {
+        let old: CreateS3StorageInput = serde_json::from_value(json!({
+            "providerKey":"r2", "name":"legacy", "accountId":"testaccount",
+            "bucket":"test-bucket", "accessKeyId":"test-key",
+            "secretAccessKey":"not-a-real-secret", "publicBaseUrl":"https://public.example"
+        }))
+        .expect("old payload");
+        assert_eq!(old.access_mode, ObjectAccessMode::Public);
+        let (config, _, _) = normalize_s3(&old).expect("old public R2 config");
+        assert_eq!(config.public_base_url.as_deref(), Some("https://public.example"));
+    }
+
+    #[test]
+    fn private_groups_reject_public_and_missing_targets() {
+        let private = storage("private_requested", "r2");
+        let public = storage("public", "r2");
+        assert!(validate_group_access_intents(&[private.clone()], 1).is_ok());
+        assert!(validate_group_access_intents(&[private.clone(), private.clone()], 2).is_ok());
+        assert!(validate_group_access_intents(&[private.clone(), public.clone()], 2).is_err());
+        assert!(validate_group_access_intents(&[private], 2).is_err());
+        assert!(validate_group_access_intents(&[public], 1).is_ok());
+    }
+
+    #[test]
+    fn private_uploaded_deployment_is_online_without_public_url() {
+        let now = Utc::now();
+        let deployment = persistence_sqlite::DeploymentSummaryRecord {
+            deployment_id: Uuid::new_v4(),
+            storage_id: Uuid::new_v4(),
+            storage_name: "private R2".into(),
+            provider_key: "r2".into(),
+            access_mode: "private_requested".into(),
+            role: "primary".into(),
+            status: "online".into(),
+            remote_path: "test/image.png".into(),
+            public_url: None,
+            last_error: None,
+            error_kind: None,
+            timestamps: domain::DeploymentTimestamps::default(),
+        };
+        let record = PublishedAssetRecord {
+            id: Uuid::new_v4(),
+            name: "image.png".into(),
+            variant_id: Uuid::new_v4(),
+            mime_type: "image/png".into(),
+            size_bytes: 4,
+            width: None,
+            height: None,
+            content_hash: "test".into(),
+            created_at: now,
+            deployments: vec![deployment],
+            plugin_outputs: vec![],
+        };
+        let rendered = asset_view(record);
+        assert_eq!(rendered.status, "online");
+        assert!(rendered.public_url.is_empty());
+        assert_eq!(rendered.deployments[0].access_mode, "private_requested");
+        assert!(rendered.deployments[0].ok);
+    }
+}
