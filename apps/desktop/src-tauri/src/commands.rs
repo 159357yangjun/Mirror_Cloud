@@ -800,9 +800,15 @@ fn normalize_s3(
     }
 
     let public_base_url = match input.access_mode {
-        ObjectAccessMode::Public => Some(normalize_public_base_url(input.public_base_url.as_deref())?),
+        ObjectAccessMode::Public => {
+            Some(normalize_public_base_url(input.public_base_url.as_deref())?)
+        }
         ObjectAccessMode::PrivateRequested if provider_key == "r2" => {
-            if input.public_base_url.as_deref().is_some_and(|url| !url.trim().is_empty()) {
+            if input
+                .public_base_url
+                .as_deref()
+                .is_some_and(|url| !url.trim().is_empty())
+            {
                 return Err("私有存储目标不能同时配置公开 URL；请另建公开目标".into());
             }
             None
@@ -3388,15 +3394,22 @@ fn storage_group_view(record: StorageGroupRecord) -> StorageGroupView {
 
 fn storage_requests_private(record: &StorageRecord) -> bool {
     record.provider_key == "r2"
-        && record.config_json.get("access_mode").and_then(Value::as_str)
+        && record
+            .config_json
+            .get("access_mode")
+            .and_then(Value::as_str)
             == Some("private_requested")
 }
 
 // Applies to both setup and later group publishing: a storage intent must never silently
 // cross from a private-requested R2 target into a public replica.
-fn validate_group_access_intents(storages: &[StorageRecord], expected_count: usize) -> CmdResult<()> {
+fn validate_group_access_intents(
+    storages: &[StorageRecord],
+    expected_count: usize,
+) -> CmdResult<()> {
     if storages.iter().any(storage_requests_private)
-        && (storages.len() != expected_count || storages.iter().any(|s| !storage_requests_private(s)))
+        && (storages.len() != expected_count
+            || storages.iter().any(|s| !storage_requests_private(s)))
     {
         return Err("私有 R2 不能与公开、未知或已删除的目标组成同一发布组，请拆分工作流".into());
     }
@@ -3857,7 +3870,10 @@ mod r2_private_access_tests {
         .expect("old payload");
         assert_eq!(old.access_mode, ObjectAccessMode::Public);
         let (config, _, _) = normalize_s3(&old).expect("old public R2 config");
-        assert_eq!(config.public_base_url.as_deref(), Some("https://public.example"));
+        assert_eq!(
+            config.public_base_url.as_deref(),
+            Some("https://public.example")
+        );
     }
 
     #[test]
