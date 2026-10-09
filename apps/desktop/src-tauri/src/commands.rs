@@ -2719,6 +2719,7 @@ async fn publish_group_bytes(
     };
 
     let mut members = Vec::with_capacity(group.members.len());
+    let mut storage_records = Vec::with_capacity(group.members.len());
     for member in &group.members {
         let role = deployment_role_from_str(&member.role)?;
         let provider = match state
@@ -2727,8 +2728,12 @@ async fn publish_group_bytes(
             .await
             .map_err(|error| error.to_string())?
         {
-            Some(storage) => build_provider(state, &storage)
-                .map_err(|error| format!("Cannot initialize {}: {error}", member.storage_name)),
+            Some(storage) => {
+                let provider = build_provider(state, &storage)
+                    .map_err(|error| format!("Cannot initialize {}: {error}", member.storage_name));
+                storage_records.push(storage);
+                provider
+            }
             None => Err("Storage no longer exists".to_string()),
         };
         members.push(PublishMember {
@@ -2740,6 +2745,8 @@ async fn publish_group_bytes(
         });
     }
 
+    // This second guard also covers direct group calls that did not run UI preflight.
+    validate_group_access_intents(&storage_records, group.members.len())?;
     PublisherCore::publish_group(strategy, members, bytes, remote_path, mime_type)
         .await
         .map_err(|error| error.to_string())
@@ -3243,6 +3250,7 @@ async fn preflight_workflow_target(state: &AppState, workflow: &Workflow) -> Cmd
                 .map_err(|error| error.to_string())?
                 .ok_or("Workflow Storage Group no longer exists")?;
             let mut viable = 0usize;
+            let mut storage_records = Vec::with_capacity(group.members.len());
             for member in &group.members {
                 let Some(storage) = state
                     .storages
@@ -3255,7 +3263,9 @@ async fn preflight_workflow_target(state: &AppState, workflow: &Workflow) -> Cmd
                 if build_provider(state, &storage).is_ok() {
                     viable += 1;
                 }
+                storage_records.push(storage);
             }
+            validate_group_access_intents(&storage_records, group.members.len())?;
             if viable == 0 {
                 return Err("Storage Group has no locally configured publish target".into());
             }
