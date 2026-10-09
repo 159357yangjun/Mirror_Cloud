@@ -92,7 +92,7 @@ pub async fn create_temporary_share_link(
 
 #[cfg(test)]
 mod temporary_share_tests {
-    use super::{safe_share_error, validated_share_expiry, StorageError};
+    use super::{StorageError, safe_share_error, validated_share_expiry};
 
     #[test]
     fn provider_diagnostics_cannot_leak_presigned_query_or_credentials() {
