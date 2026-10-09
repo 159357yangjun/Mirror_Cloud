@@ -808,7 +808,8 @@ impl AssetRepository {
                     let config: Value = parse_json(&config_raw)?;
                     let provider_key: String = deployment.try_get("provider_key")?;
                     let access_mode = if provider_key == "r2"
-                        && config.get("access_mode").and_then(Value::as_str) == Some("private_requested")
+                        && config.get("access_mode").and_then(Value::as_str)
+                            == Some("private_requested")
                     {
                         "private_requested"
                     } else {
