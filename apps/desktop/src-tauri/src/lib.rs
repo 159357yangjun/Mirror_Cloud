@@ -131,6 +131,7 @@ pub fn run() {
             commands::delete_storage,
             commands::test_storage,
             commands::browse_storage,
+            commands::create_temporary_share_link,
             commands::sync_storage_asset_index,
             commands::delete_storage_entry,
             commands::download_storage_entry,
