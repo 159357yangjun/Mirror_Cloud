@@ -21,6 +21,75 @@ pub async fn browse_storage(
         .map(|items| items.into_iter().map(storage_entry_view).collect())
 }
 
+/// Share an existing object without making its bucket public. This URL is a bearer secret:
+/// it is returned only to the caller (clipboard), never written to settings or the asset index.
+fn validated_share_expiry(path: &str, expires_in_seconds: u64) -> CmdResult<std::time::Duration> {
+    if path.is_empty()
+        || path.starts_with('/')
+        || path.ends_with('/')
+        || path.contains('\\')
+        || path.chars().any(char::is_control)
+        || path.split('/').any(|part| part.is_empty() || part == "." || part == "..")
+    {
+        return Err("请选择有效的远端文件路径".into());
+    }
+    if !matches!(expires_in_seconds, 600 | 3600 | 86_400) {
+        return Err("临时分享仅支持 10 分钟、1 小时或 24 小时".into());
+    }
+    Ok(std::time::Duration::from_secs(expires_in_seconds))
+}
+
+#[tauri::command]
+pub async fn create_temporary_share_link(
+    state: State<'_, AppState>,
+    storage_id: String,
+    path: String,
+    expires_in_seconds: u64,
+) -> CmdResult<String> {
+    let expiry = validated_share_expiry(&path, expires_in_seconds)?;
+    let id = Uuid::parse_str(&storage_id).map_err(|error| error.to_string())?;
+    let storage = state
+        .storages
+        .get(id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or("Storage not found")?;
+    if !storage.enabled || !matches!(storage.provider_key.as_str(), "r2" | "s3") {
+        return Err("该存储暂不支持临时分享（当前只开放 R2/S3）".into());
+    }
+    let provider = build_provider(&state, &storage)?;
+    if !provider.exists(&path).await.map_err(|error| error.to_string())? {
+        return Err("该云端对象已不存在，未生成分享链接".into());
+    }
+    provider
+        .temporary_read_url(&path, expiry)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod temporary_share_tests {
+    use super::validated_share_expiry;
+
+    #[test]
+    fn only_read_share_presets_are_accepted() {
+        for seconds in [600, 3600, 86_400] {
+            assert_eq!(validated_share_expiry("photos/a.png", seconds).unwrap().as_secs(), seconds);
+        }
+        for seconds in [0, 1, 599, 604_800, u64::MAX] {
+            assert!(validated_share_expiry("photos/a.png", seconds).is_err());
+        }
+    }
+
+    #[test]
+    fn root_traversal_and_control_characters_are_refused() {
+        for path in ["", "/x", "x/", "x//y", "../x", "x/../y", "x/./y", "x\\y", "x\ny"] {
+            assert!(validated_share_expiry(path, 600).is_err(), "{path:?}");
+        }
+        assert!(validated_share_expiry("中文/图片.png", 600).is_ok());
+    }
+}
+
 #[tauri::command]
 pub async fn delete_storage_entry(
     state: State<'_, AppState>,
