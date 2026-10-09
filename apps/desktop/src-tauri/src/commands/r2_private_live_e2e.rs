@@ -170,21 +170,21 @@ async fn perform_real_r2_private_e2e() -> Result<(), String> {
     let body = Bytes::from(format!("mirror-private-e2e-test-payload-{id}"));
     let expected_hash = Sha256::digest(&body);
 
-    let upload = storage
-        .upload(UploadRequest {
-            path: path.clone(),
-            content_type: Some("text/plain".into()),
-            body: body.clone(),
-        })
-        .await
-        .map_err(|_| "Test object upload failed; check Bucket write permissions")?;
-    if upload.public_url.is_some() {
-        // Always delete the test object on the way out.
-        let _ = storage.delete(&path).await;
-        return Err("Private-requested R2 returned a public URL".into());
-    }
-
     let test_result: Result<(), String> = async {
+        // Even a failed upload can have written bytes before the subsequent stat failed.
+        // Keep every cloud write inside this scope so the cleanup below always runs.
+        let upload = storage
+            .upload(UploadRequest {
+                path: path.clone(),
+                content_type: Some("text/plain".into()),
+                body: body.clone(),
+            })
+            .await
+            .map_err(|_| "Test object upload failed; check Bucket write permissions")?;
+        if upload.public_url.is_some() {
+            return Err("Private-requested R2 returned a public URL".into());
+        }
+
         if !storage.exists(&path).await.map_err(|_| "R2 HEAD/stat failed")? {
             return Err("Uploaded object missing despite successful upload".into());
         }
@@ -244,7 +244,8 @@ async fn perform_real_r2_private_e2e() -> Result<(), String> {
     }
     .await;
 
-    // A cleanup failure is never hidden by a green test.
+    // A cleanup failure is never hidden by a green test. Deleting an absent
+    // object is idempotent on R2, so even an incomplete upload is cleaned up.
     let cleanup = storage.delete(&path).await;
     if cleanup.is_err() {
         return Err("Cleanup failed: manually inspect the dedicated test Bucket".into());
