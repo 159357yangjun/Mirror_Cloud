@@ -209,6 +209,9 @@ export function UploadDialog() {
   }
 
   const selectedWorkflow = defaultWorkflow
+  const selectedStorage = selectedWorkflow?.targetKind === 'storage'
+    ? storages.find((storage) => storage.id === selectedWorkflow.targetId)
+    : undefined
   const canPublish = Boolean(defaultWorkflow) && (mode === 'files' ? paths.length > 0 : mode === 'urls' ? urls.length > 0 : true)
 
   return (
@@ -252,7 +255,11 @@ export function UploadDialog() {
               {workflowError && <div className="mt-2 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-xs text-red-700">自动上传链同步失败：{String(workflowError)}</div>}
               {selectedWorkflow ? <div className="mt-2 rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3">
                 <div className="flex items-center justify-between gap-3"><div><div className="text-xs font-semibold text-indigo-900">{selectedWorkflow.targetName}</div><div className="mt-1 text-[11px] text-indigo-700">图片处理：{selectedWorkflow.format.toUpperCase()} · Q{selectedWorkflow.quality}{selectedWorkflow.maxWidth ? ` · 最大 ${selectedWorkflow.maxWidth}px` : ''}</div></div><span className="rounded-full bg-white px-2 py-1 text-[10px] font-medium text-indigo-600">自动</span></div>
-                <div className="mt-2 text-[11px] text-slate-400">上传成功后会按“插件”页面当前开关依次执行插件；本地文件、URL、剪贴板和 Typora 共用这一条链。</div>
+                {selectedStorage?.accessMode === 'private_requested' ? (
+                  <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-800">当前目标请求私有存储：上传成功后不会产生永久公开 URL，请到“资源”生成限时分享。Bucket 是否真正禁止公开访问尚未验证；Typora/CLI 无法使用此目标。</div>
+                ) : (
+                  <div className="mt-2 text-[11px] text-slate-400">上传成功后会按“插件”页面当前开关依次执行插件；本地文件、URL、剪贴板和 Typora 共用这一条链。</div>
+                )}
               </div> : <div className="mt-2 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-700">还没有默认上传目标。先到“云端”连接一个存储，系统会自动创建上传链。</div>}
               {!storages.length && <div className="mt-2 text-xs text-amber-600">请先到“云端”连接至少一个存储。</div>}
             </div>
