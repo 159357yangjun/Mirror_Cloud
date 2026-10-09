@@ -192,7 +192,7 @@ export function StoragesPage() {
                 <div className="ml-auto flex shrink-0 items-center gap-2">{defaultTarget?.kind === 'storage' && defaultTarget.id === storage.id && <span className="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-medium text-indigo-600">默认</span>}{testResults[storage.id] === true && <span className="flex items-center gap-1 text-[10px] text-emerald-600"><CheckCircle2 size={12} /> 已验证</span>}{testResults[storage.id] === false && <span className="text-[10px] text-red-500">连接失败</span>}</div>
                 <button onClick={() => void removeStorage(storage.id, storage.name)} className="rounded-lg p-2 text-slate-300 transition hover:bg-red-50 hover:text-red-500" title="删除连接"><Trash2 size={14} /></button>
               </div>
-              <div className="mt-4 truncate text-[11px] text-slate-400">{storage.publicBaseUrl || storage.publicHint}</div>
+              <div className={`mt-4 truncate text-[11px] ${storage.accessMode === 'private_requested' ? 'text-amber-700' : 'text-slate-400'}`}>{storage.accessMode === 'private_requested' ? '私有模式请求 · Bucket 是否公开尚未验证' : storage.publicBaseUrl || storage.publicHint}</div>
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <button onClick={() => setBrowser(storage)} className="flex items-center justify-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs font-medium"><FolderOpen size={13} /> 浏览</button>
                 <button disabled={testing === storage.id} onClick={() => handleTest(storage.id)} className="flex items-center justify-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs font-medium">
