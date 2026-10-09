@@ -22,8 +22,8 @@ use storage_core::{StorageEntry, StorageError, StorageProvider, UploadRequest};
 use storage_gitee::{GiteeCredentials, GiteeStorage, GiteeStorageConfig};
 use storage_github::{GitHubCredentials, GitHubStorage, GitHubStorageConfig};
 use storage_opendal::{
-    CosCredentials, CosStorageConfig, OpenDalStorage, OssCredentials, OssStorageConfig,
-    S3Credentials, S3StorageConfig, WebDavCredentials, WebDavStorageConfig,
+    CosCredentials, CosStorageConfig, ObjectAccessMode, OpenDalStorage, OssCredentials,
+    OssStorageConfig, S3Credentials, S3StorageConfig, WebDavCredentials, WebDavStorageConfig,
 };
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -98,6 +98,8 @@ pub struct CreateS3StorageInput {
     pub bucket: String,
     pub root: Option<String>,
     pub public_base_url: Option<String>,
+    #[serde(default)]
+    pub access_mode: ObjectAccessMode,
     pub access_key_id: String,
     pub secret_access_key: String,
 }
@@ -180,6 +182,7 @@ pub struct StorageView {
     pub detail: String,
     pub public_base_url: Option<String>,
     pub public_hint: String,
+    pub access_mode: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -793,7 +796,18 @@ fn normalize_s3(
         return Err("Access Key and Secret Key are required".into());
     }
 
-    let public_base_url = normalize_public_base_url(input.public_base_url.as_deref())?;
+    let public_base_url = match input.access_mode {
+        ObjectAccessMode::Public => Some(normalize_public_base_url(input.public_base_url.as_deref())?),
+        ObjectAccessMode::PrivateRequested if provider_key == "r2" => {
+            if input.public_base_url.as_deref().is_some_and(|url| !url.trim().is_empty()) {
+                return Err("私有存储目标不能同时配置公开 URL；请另建公开目标".into());
+            }
+            None
+        }
+        ObjectAccessMode::PrivateRequested => {
+            return Err("当前仅 Cloudflare R2 支持创建私有访问意图的目标".into());
+        }
+    };
 
     let endpoint = if provider_key == "r2" {
         // R2's synthesized URL is https-by-construction below; user endpoints are checked after.
@@ -835,7 +849,8 @@ fn normalize_s3(
             region,
             bucket: input.bucket.trim().into(),
             root: input.root.clone().unwrap_or_default(),
-            public_base_url: Some(public_base_url),
+            public_base_url,
+            access_mode: input.access_mode,
         },
         S3Credentials {
             access_key_id: input.access_key_id.trim().to_string(),
@@ -3358,6 +3373,23 @@ fn storage_group_view(record: StorageGroupRecord) -> StorageGroupView {
     }
 }
 
+fn storage_requests_private(record: &StorageRecord) -> bool {
+    record.provider_key == "r2"
+        && record.config_json.get("access_mode").and_then(Value::as_str)
+            == Some("private_requested")
+}
+
+// Applies to both setup and later group publishing: a storage intent must never silently
+// cross from a private-requested R2 target into a public replica.
+fn validate_group_access_intents(storages: &[StorageRecord], expected_count: usize) -> CmdResult<()> {
+    if storages.iter().any(storage_requests_private)
+        && (storages.len() != expected_count || storages.iter().any(|s| !storage_requests_private(s)))
+    {
+        return Err("私有 R2 不能与公开、未知或已删除的目标组成同一发布组，请拆分工作流".into());
+    }
+    Ok(())
+}
+
 fn storage_view(record: &StorageRecord) -> StorageView {
     let public_base_url = record
         .config_json
@@ -3412,7 +3444,18 @@ fn storage_view(record: &StorageRecord) -> StorageView {
         enabled: record.enabled,
         detail,
         public_base_url,
-        public_hint,
+        public_hint: if storage_requests_private(record) {
+            "已请求私有 · Bucket 公开策略未验证".into()
+        } else {
+            public_hint
+        },
+        access_mode: if storage_requests_private(record) {
+            "private_requested".into()
+        } else if record.provider_key == "r2" || record.provider_key == "s3" {
+            "public".into()
+        } else {
+            "unknown".into()
+        },
     }
 }
 
