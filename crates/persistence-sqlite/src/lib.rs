@@ -656,6 +656,8 @@ pub struct DeploymentSummaryRecord {
     pub storage_id: Uuid,
     pub storage_name: String,
     pub provider_key: String,
+    /// Stored intent from R2 config_json, not a remotely proven privacy verdict.
+    pub access_mode: String,
     pub role: String,
     pub status: String,
     pub remote_path: String,
@@ -793,7 +795,7 @@ impl AssetRepository {
             let variant_raw: String = row.try_get("variant_id")?;
             let created: String = row.try_get("created_at")?;
             let variant_id = parse_uuid(&variant_raw)?;
-            let dep_rows = sqlx::query("SELECT d.id AS deployment_id,d.storage_id,s.name AS storage_name,s.provider_key,d.role,d.status,d.remote_path,d.public_url,d.last_error,d.last_error_kind,                         d.deployed_at,d.last_attempted_at,d.last_observed_at,d.last_verified_at                          FROM deployments d JOIN storages s ON s.id=d.storage_id WHERE d.variant_id=?                          ORDER BY CASE d.role WHEN 'primary' THEN 0 WHEN 'mirror' THEN 1 ELSE 2 END")
+            let dep_rows = sqlx::query("SELECT d.id AS deployment_id,d.storage_id,s.name AS storage_name,s.provider_key,s.config_json AS storage_config_json,d.role,d.status,d.remote_path,d.public_url,d.last_error,d.last_error_kind,                         d.deployed_at,d.last_attempted_at,d.last_observed_at,d.last_verified_at                          FROM deployments d JOIN storages s ON s.id=d.storage_id WHERE d.variant_id=?                          ORDER BY CASE d.role WHEN 'primary' THEN 0 WHEN 'mirror' THEN 1 ELSE 2 END")
                 .bind(variant_id.to_string())
                 .fetch_all(&self.pool)
                 .await?;
@@ -802,11 +804,22 @@ impl AssetRepository {
                 .map(|deployment| {
                     let deployment_id: String = deployment.try_get("deployment_id")?;
                     let storage_id: String = deployment.try_get("storage_id")?;
+                    let config_raw: String = deployment.try_get("storage_config_json")?;
+                    let config: Value = parse_json(&config_raw)?;
+                    let provider_key: String = deployment.try_get("provider_key")?;
+                    let access_mode = if provider_key == "r2"
+                        && config.get("access_mode").and_then(Value::as_str) == Some("private_requested")
+                    {
+                        "private_requested"
+                    } else {
+                        "unknown"
+                    };
                     Ok(DeploymentSummaryRecord {
                         deployment_id: parse_uuid(&deployment_id)?,
                         storage_id: parse_uuid(&storage_id)?,
                         storage_name: deployment.try_get("storage_name")?,
-                        provider_key: deployment.try_get("provider_key")?,
+                        provider_key,
+                        access_mode: access_mode.to_string(),
                         role: deployment.try_get("role")?,
                         status: deployment.try_get("status")?,
                         remote_path: deployment.try_get("remote_path")?,
