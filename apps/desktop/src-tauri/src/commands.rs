@@ -34,11 +34,11 @@ use crate::AppState;
 
 pub(crate) mod integrations;
 pub(crate) mod plugins;
+#[cfg(test)]
+mod r2_private_live_e2e;
 pub(crate) mod reconcile;
 pub(crate) mod remote_index;
 pub(crate) mod storage_entries;
-#[cfg(test)]
-mod r2_private_live_e2e;
 pub(crate) mod updater;
 pub use plugins::*;
 pub use remote_index::*;
