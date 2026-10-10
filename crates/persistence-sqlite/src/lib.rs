@@ -85,7 +85,7 @@ impl StorageRepository {
     /// The single SQLite statement makes the conflict decision and insertion indivisible.
     /// Existing duplicates are tolerated; only new reconnections are guarded.
     pub async fn insert_if_no_conflict(&self, record: &StorageRecord) -> Result<bool, sqlx::Error> {
-        let field = |name| {
+        let field = |name: &str| {
             record
                 .config_json
                 .get(name)
@@ -1482,7 +1482,7 @@ impl PluginRepository {
 mod reconnect_conflict_tests {
     use super::{StorageRecord, StorageRepository};
     use chrono::Utc;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     use sqlx::SqlitePool;
     use uuid::Uuid;
 
@@ -1503,29 +1503,52 @@ mod reconnect_conflict_tests {
     }
 
     #[sqlx::test]
-    async fn reconnect_insert_prevents_duplicate_name_and_bucket(pool: SqlitePool) -> Result<(), sqlx::Error> {
+    async fn rejects_duplicate_name_and_bucket(pool: SqlitePool) -> Result<(), sqlx::Error> {
         sqlx::query("CREATE TABLE storages (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, provider_key TEXT NOT NULL, category TEXT NOT NULL, credential_ref TEXT, config_json TEXT NOT NULL, capabilities_json TEXT NOT NULL, enabled INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)")
             .execute(&pool)
             .await?;
         let repository = StorageRepository::new(pool);
-        assert!(repository.insert_if_no_conflict(&storage("Photos", "r2", json!({"bucket":"my-pics"}))).await?);
-        assert!(!repository.insert_if_no_conflict(&storage(" PHOTOS ", "r2", json!({"bucket":"other"}))).await?);
-        assert!(!repository.insert_if_no_conflict(&storage("New name", "r2", json!({"bucket":"MY-PICS"}))).await?);
-        assert!(repository.insert_if_no_conflict(&storage("Photos", "s3", json!({"bucket":"my-pics"}))).await?);
-        assert!(repository.insert_if_no_conflict(&storage("Other target", "r2", json!({"bucket":"different"}))).await?);
+
+        let first = storage("Photos", "r2", json!({"bucket": "my-pics"}));
+        let same_name = storage(" PHOTOS ", "r2", json!({"bucket": "other"}));
+        let same_bucket = storage("New name", "r2", json!({"bucket": "MY-PICS"}));
+        let different_provider = storage("Photos", "s3", json!({"bucket": "my-pics"}));
+        let different_target = storage("Other target", "r2", json!({"bucket": "different"}));
+
+        assert!(repository.insert_if_no_conflict(&first).await?);
+        assert!(!repository.insert_if_no_conflict(&same_name).await?);
+        assert!(!repository.insert_if_no_conflict(&same_bucket).await?);
+        assert!(repository.insert_if_no_conflict(&different_provider).await?);
+        assert!(repository.insert_if_no_conflict(&different_target).await?);
         assert_eq!(repository.list().await?.len(), 3);
         Ok(())
     }
 
     #[sqlx::test]
-    async fn reconnect_insert_checks_repo_identity_and_allows_different_branches(pool: SqlitePool) -> Result<(), sqlx::Error> {
+    async fn rejects_duplicate_repository_identity(pool: SqlitePool) -> Result<(), sqlx::Error> {
         sqlx::query("CREATE TABLE storages (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, provider_key TEXT NOT NULL, category TEXT NOT NULL, credential_ref TEXT, config_json TEXT NOT NULL, capabilities_json TEXT NOT NULL, enabled INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)")
             .execute(&pool)
             .await?;
         let repository = StorageRepository::new(pool);
-        assert!(repository.insert_if_no_conflict(&storage("Git A", "github", json!({"owner":"Alice","repo":"pics","branch":"main"}))).await?);
-        assert!(!repository.insert_if_no_conflict(&storage("Git B", "github", json!({"owner":"ALICE","repo":"PICS","branch":"MAIN"}))).await?);
-        assert!(repository.insert_if_no_conflict(&storage("Git C", "github", json!({"owner":"Alice","repo":"pics","branch":"archive"}))).await?);
+
+        let first = storage(
+            "Git A",
+            "github",
+            json!({"owner": "Alice", "repo": "pics", "branch": "main"}),
+        );
+        let same_target = storage(
+            "Git B",
+            "github",
+            json!({"owner": "ALICE", "repo": "PICS", "branch": "MAIN"}),
+        );
+        let other_branch = storage(
+            "Git C",
+            "github",
+            json!({"owner": "Alice", "repo": "pics", "branch": "archive"}),
+        );
+        assert!(repository.insert_if_no_conflict(&first).await?);
+        assert!(!repository.insert_if_no_conflict(&same_target).await?);
+        assert!(repository.insert_if_no_conflict(&other_branch).await?);
         assert_eq!(repository.list().await?.len(), 2);
         Ok(())
     }

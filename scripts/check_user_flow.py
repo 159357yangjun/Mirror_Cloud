@@ -276,7 +276,7 @@ require("key: 'workflows'" not in app_shell, 'no Workflow navigation item')
 require("'workflows'" not in types.split('export type PageKey', 1)[1].split('\n', 1)[0], 'PageKey hides workflows')
 
 # A connected storage creates or repairs the hidden automatic pipeline.
-require(commands.count('persist_new_storage(state.inner(), &record).await?;') >= 4, 'all storage creation paths persist and auto-ensure pipeline')
+require((commands.count('persist_new_storage(state.inner(), &record).await?;') + commands.count('persist_new_storage(state.inner(), &record, input.restore_guard).await?;')) >= 4, 'all storage creation paths persist and auto-ensure pipeline')
 require('sync_system_default_pipeline' in commands and 'SYSTEM_PIPELINE_SOURCE' in commands, 'hidden system pipeline exists')
 require('set_default_publish_target' in commands and 'get_default_publish_target' in commands, 'default cloud target commands exist')
 require('commands::set_default_publish_target' in lib and 'commands::get_default_publish_target' in lib, 'default cloud target commands registered')
@@ -919,7 +919,7 @@ _needle('age.num_seconds() >= 0 && age < Duration::hours(UPDATE_CACHE_MAX_AGE_HO
 _needle('setUpdateAvailableVersion(cached.result.latestVersion)',
         'the sidebar dot is driven only by an observed updateAvailable result')
 require('workflows.find((workflow) => workflow.isDefault)' in upload and '?? workflows[0]' not in upload, 'upload UI never falls back to an arbitrary legacy workflow')
-require('async fn persist_new_storage' in commands and commands.count('persist_new_storage(state.inner(), &record).await?;') >= 4, 'storage setup only succeeds after automatic pipeline persistence')
+require('async fn persist_new_storage' in commands and (commands.count('persist_new_storage(state.inner(), &record).await?;') + commands.count('persist_new_storage(state.inner(), &record, input.restore_guard).await?;')) >= 4, 'storage setup only succeeds after automatic pipeline persistence')
 require('sync_system_default_pipeline(state.inner(), None).await?;' in commands, 'automatic pipeline sync errors are surfaced instead of silently ignored')
 require('connection-test-u' in opendal and '.write(&probe_path' in opendal and '.stat(&probe_path)' in opendal and '.delete(&probe_path)' in opendal, 'OpenDAL connection test verifies write/stat/delete permissions')
 
