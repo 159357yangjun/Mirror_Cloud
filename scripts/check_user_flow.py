@@ -281,10 +281,21 @@ require('sync_system_default_pipeline' in commands and 'SYSTEM_PIPELINE_SOURCE' 
 require('set_default_publish_target' in commands and 'get_default_publish_target' in commands, 'default cloud target commands exist')
 require('commands::set_default_publish_target' in lib and 'commands::get_default_publish_target' in lib, 'default cloud target commands registered')
 
-# Every desktop input mode uses the same hidden workflow.
-require('publishFilesWithWorkflow(defaultWorkflow.id, paths)' in upload, 'local files use automatic pipeline')
-require('publishUrlsWithWorkflow(defaultWorkflow.id, urls)' in upload, 'URL upload uses automatic pipeline')
-require('publishClipboardImageWithWorkflow(defaultWorkflow.id)' in upload, 'clipboard upload uses automatic pipeline')
+# Each first submission snapshots the same hidden default workflow; the invocation
+# modes use that pinned workflow ID instead of re-reading a potentially changed
+# default during a failed-only republish.
+require('workflowId: defaultWorkflow.id' in upload, 'new publication pins automatic workflow')
+require("if (request.mode === 'urls') return publishUrlsWithWorkflow(request.workflowId, request.sources)" in upload, 'URL upload uses pinned automatic pipeline')
+require("if (request.mode === 'clipboard') return [await publishClipboardImageWithWorkflow(request.workflowId)]" in upload, 'clipboard upload uses pinned automatic pipeline')
+require("return publishFilesWithWorkflow(request.workflowId, request.sources)" in upload, 'local files use pinned automatic pipeline')
+# The failure-only UI cannot silently replay completed tasks.
+require("task.id === id)?.status === 'failed'" in upload, 'retry selection accepts failed tasks only')
+require('failedIndexes.map((index) => sources[index])' in upload, 'retry submits only failed original sources')
+require('failedIndexes.forEach((index, i) => { updated[index] = ids[i] })' in upload, 'retry preserves successful task IDs')
+require("if (mode === 'files') return publishFilesWithWorkflow(workflowId, failedSources)" in upload, 'retry files retains pinned target')
+require("if (mode === 'urls') return publishUrlsWithWorkflow(workflowId, failedSources)" in upload, 'retry URLs retains pinned target')
+require("throw new Error('剪贴板图片无法保证与之前的内容相同" in upload, 'retry refuses changed clipboard data')
+require("const accepted = await confirmAction({" in upload and "retryFailedMutation.mutate({ submission" in upload, 'failed-only republish asks for explicit confirmation')
 
 # Typora self-heals the same pipeline.
 require('ensure_default_workflow(&context).await?' in cli, 'Typora auto-ensures default pipeline')
