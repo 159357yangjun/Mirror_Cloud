@@ -148,6 +148,7 @@ pub fn run() {
             commands::list_portable_staged_items,
             commands::update_portable_staged_item_review,
             commands::assess_portable_asset_activation,
+            commands::apply_portable_staged_batch_decision,
             commands::discard_portable_asset_staging,
             commands::get_default_publish_target,
             commands::set_default_publish_target,
