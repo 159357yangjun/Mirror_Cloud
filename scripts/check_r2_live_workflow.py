@@ -26,16 +26,16 @@ checks = {
     ),
     "read-only GitHub token": "\npermissions:\n  contents: read\n" in workflow,
     "non-preemptive manual run": "cancel-in-progress: false" in workflow,
-    "protected environment and manual confirmation": all(
+    "feature copy explicitly inert; activation is PR #9": all(
         token in workflow
         for token in (
             "environment:\n      name: r2-private-e2e",
-            "inputs.confirmation == 'RUN_DISPOSABLE_R2_E2E'",
-            "github.event_name == 'workflow_dispatch'",
-            "github.repository == '159357yangjun/Mirror_Cloud'",
-            "github.ref == 'refs/heads/feature/r2-private-publish-v1'",
+            "if: ${{ false }}",
+            "RUN_DISPOSABLE_R2_E2E",
+            "separate, reviewed PR #9",
         )
-    ),
+    )
+    and "github.ref == 'refs/heads/feature/r2-private-publish-v1'" not in workflow,
     "no persisted checkout token": "persist-credentials: false" in workflow,
     "secret scope only in live step": (
         workflow.index("secrets.R2_E2E_ACCESS_KEY_ID")
