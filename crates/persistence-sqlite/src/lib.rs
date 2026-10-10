@@ -1504,9 +1504,6 @@ mod reconnect_conflict_tests {
 
     #[sqlx::test]
     async fn rejects_duplicate_name_and_bucket(pool: SqlitePool) -> Result<(), sqlx::Error> {
-        sqlx::query("CREATE TABLE storages (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, provider_key TEXT NOT NULL, category TEXT NOT NULL, credential_ref TEXT, config_json TEXT NOT NULL, capabilities_json TEXT NOT NULL, enabled INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)")
-            .execute(&pool)
-            .await?;
         let repository = StorageRepository::new(pool);
 
         let first = storage("Photos", "r2", json!({"bucket": "my-pics"}));
@@ -1530,9 +1527,6 @@ mod reconnect_conflict_tests {
 
     #[sqlx::test]
     async fn rejects_duplicate_repository_identity(pool: SqlitePool) -> Result<(), sqlx::Error> {
-        sqlx::query("CREATE TABLE storages (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, provider_key TEXT NOT NULL, category TEXT NOT NULL, credential_ref TEXT, config_json TEXT NOT NULL, capabilities_json TEXT NOT NULL, enabled INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)")
-            .execute(&pool)
-            .await?;
         let repository = StorageRepository::new(pool);
 
         let first = storage(
