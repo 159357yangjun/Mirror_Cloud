@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle,
   CheckCircle2,
@@ -67,11 +67,17 @@ export function UploadDialog() {
   const [dragging, setDragging] = useState(false)
   const [taskIds, setTaskIds] = useState<string[]>([])
   const [submission, setSubmission] = useState<PublishSubmission | null>(null)
+  // Synchronous guards also cover the gap before React Query updates isPending.
+  const publishDispatchRef = useRef(false)
+  const retryDispatchRef = useRef(false)
+  const dialogGenerationRef = useRef(0)
   const [finishedHandled, setFinishedHandled] = useState(false)
 
   const { data: allTasks = [] } = useQuery({
     queryKey: ['tasks'],
-    queryFn: () => listTasks(),
+    // A batch can contain more than the default 100 tasks. Leave headroom for
+    // unrelated background jobs created after this batch was dispatched.
+    queryFn: () => listTasks(Math.min(10_000, Math.max(300, taskIds.length * 5))),
     enabled: uploadOpen && taskIds.length > 0,
     // Progress normally arrives through task://updated; this slower interval only backstops a
     // missed event so a stalled bar cannot hide a finished upload.
@@ -186,6 +192,7 @@ export function UploadDialog() {
       setTaskIds(ids)
       await queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
+    onSettled: () => { publishDispatchRef.current = false },
   })
 
   const retryFailedMutation = useMutation({
@@ -211,22 +218,58 @@ export function UploadDialog() {
       setFinishedHandled(false)
       await queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
+    onSettled: () => { retryDispatchRef.current = false },
   })
 
   async function retryFailedOnly() {
-    if (!failedOnlyAvailable || !submission || retryFailedMutation.isPending || publishMutation.isPending) return
-    const accepted = await confirmAction({
+    // A rejected IPC call can still leave queued tasks. Never offer a second
+    // failed-only replay until the user checks Tasks and starts a fresh session.
+    if (!failedOnlyAvailable || !submission || retryDispatchRef.current || retryFailedMutation.isError || retryFailedMutation.isPending || publishMutation.isPending) return
+    retryDispatchRef.current = true
+    const generation = dialogGenerationRef.current
+    let accepted = false
+    try {
+      accepted = await confirmAction({
       title: `仅重新发布 ${failedIndexes.length} 个失败项？`,
       detail: '已成功项目和已完成但有警告的项目不会重新上传。失败任务也可能已向部分云端写入文件；重新发布可能产生重复对象或副本，请先检查任务和资源记录。此操作不会复用旧任务状态。',
       confirmLabel: `确认重新发布 ${failedIndexes.length} 项`,
       danger: true,
-    })
-    if (!accepted || retryFailedMutation.isPending) return
+      })
+    } catch {
+      retryDispatchRef.current = false
+      return
+    }
+    if (!accepted || generation !== dialogGenerationRef.current || retryFailedMutation.isPending) {
+      retryDispatchRef.current = false
+      return
+    }
     retryFailedMutation.mutate({ submission, failedIndexes: [...failedIndexes] })
   }
 
-  function startPublish() {
-    if (!defaultWorkflow || !canPublish || publishMutation.isPending) return
+  async function startPublish() {
+    if (!defaultWorkflow || !canPublish || publishMutation.isPending || publishDispatchRef.current) return
+    publishDispatchRef.current = true
+    const generation = dialogGenerationRef.current
+    if (publishMutation.isError) {
+      // A failed multi-source command might have queued some earlier sources.
+      // Require an explicit decision instead of silently replaying the batch.
+      let accepted = false
+      try {
+        accepted = await confirmAction({
+          title: '上次提交状态不确定，仍要再次发布？',
+          detail: '之前的提交虽然返回错误，但部分图片可能已经开始上传。请先到任务中心核对；重新提交可能产生重复资源。',
+          confirmLabel: '我已检查，仍要发布',
+          danger: true,
+        })
+      } catch {
+        publishDispatchRef.current = false
+        return
+      }
+      if (!accepted || generation !== dialogGenerationRef.current) {
+        publishDispatchRef.current = false
+        return
+      }
+    }
     publishMutation.mutate({
       workflowId: defaultWorkflow.id,
       mode,
@@ -242,6 +285,7 @@ export function UploadDialog() {
   }
 
   function resetPublish() {
+    dialogGenerationRef.current += 1
     setTaskIds([])
     setSubmission(null)
     setFinishedHandled(false)
@@ -329,7 +373,7 @@ export function UploadDialog() {
               {!storages.length && <div className="mt-2 text-xs text-amber-600">请先到“云端”连接至少一个存储。</div>}
             </div>
 
-            {publishMutation.error && <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs leading-5 text-red-600"><div className="font-medium">发布前检查没有通过</div><div className="mt-1">{String(publishMutation.error)}</div><div className="mt-1 text-red-700">不会创建“假成功”任务；修复云端凭据后再重试。</div></div>}
+            {publishMutation.error && <div role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs leading-5 text-red-600"><div className="font-medium">提交失败，部分任务状态可能不确定</div><div className="mt-1">{String(publishMutation.error)}</div><div className="mt-1 text-red-700">请先在任务中心检查是否已有任务开始运行。再次点击发布会要求确认，不能假设之前没有上传。</div></div>}
             <div className="mt-5 flex justify-end"><button disabled={!canPublish || publishMutation.isPending} onClick={startPublish} className="flex items-center gap-2 rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-30">{publishMutation.isPending && <LoaderCircle size={15} className="animate-spin" />}{publishMutation.isPending ? '检查目标…' : mode === 'urls' ? `发布 ${urls.length || ''} 个 URL` : mode === 'clipboard' ? '发布剪贴板图片' : '开始发布'}</button></div>
           </>
         ) : (
@@ -364,10 +408,10 @@ export function UploadDialog() {
               只允许重新发布失败项；成功项和完成但有警告的项不会再次提交。部分云端可能已经收到失败任务的数据，重新发布前请确认重复对象风险。
             </div>}
             {retryFailedMutation.error && <div role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">
-              失败项重新提交未成功。请到任务中心确认是否已有新任务开始运行，避免重复操作。
+              失败项重新提交未成功，可能已有新任务运行。为避免重复发布，本次会话已禁用再次重试；请先到任务中心核对后重新选择输入。
             </div>}
             {terminal && <div className="mt-5 flex flex-wrap justify-end gap-2">
-              {failedOnlyAvailable && <button disabled={retryFailedMutation.isPending}
+              {failedOnlyAvailable && <button disabled={retryFailedMutation.isPending || retryFailedMutation.isError}
                 onClick={() => void retryFailedOnly()}
                 className="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-700 disabled:opacity-40">
                 {retryFailedMutation.isPending ? '重新提交失败项…' : `仅重试失败的 ${failedIndexes.length} 项`}
