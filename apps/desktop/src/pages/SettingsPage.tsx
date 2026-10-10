@@ -36,6 +36,9 @@ import {
   inspectPortableReferenceManifest,
   previewPortableReferenceRestore,
   restorePortableStorageGroup,
+  exportPortableGroupMapping,
+  inspectPortableGroupMapping,
+  restorePortableWorkflow,
   listStorages,
   getReconciliationSettings,
   getUpdateStatus,
@@ -59,7 +62,7 @@ import {
   uninstallWindowsContextMenu,
   saveOutputPreferences,
 } from '../lib/desktop'
-import type { DownloadedUpdateSummary, UpdateCheckResult, PortableStorageManifest, PortableReferenceManifest, PortableReferencePreview, PortableStorageIdMapping } from '../lib/desktop'
+import type { DownloadedUpdateSummary, UpdateCheckResult, PortableStorageManifest, PortableReferenceManifest, PortableReferencePreview, PortableStorageIdMapping, PortableGroupIdMapping } from '../lib/desktop'
 import { useAppStore } from '../store/useAppStore'
 import { confirmAction } from '../store/useConfirmStore'
 import { tierDisplay, tierReason } from '../lib/confirmationDisplay'
@@ -221,6 +224,7 @@ export function SettingsPage() {
   const [referenceManifest, setReferenceManifest] = useState<PortableReferenceManifest | null>(null)
   const [referencePreview, setReferencePreview] = useState<PortableReferencePreview | null>(null)
   const [restoredGroupIds, setRestoredGroupIds] = useState<Map<string, string>>(() => new Map())
+  const [restoredWorkflowIds, setRestoredWorkflowIds] = useState<Map<string, string>>(() => new Map())
   const { data: connectedStorages = [], isLoading: storagesLoading, error: storagesError } = useQuery({
     queryKey: ['storages'],
     queryFn: listStorages,
@@ -437,8 +441,12 @@ export function SettingsPage() {
     }
   }
 
-  async function previewReferencePlan(manifest: PortableReferenceManifest) {
-    const preview = await previewPortableReferenceRestore(manifest, currentStorageMappings())
+  function currentGroupMappings(groups = restoredGroupIds): PortableGroupIdMapping[] {
+    return [...groups].map(([oldGroupId, newGroupId]) => ({ oldGroupId, newGroupId }))
+  }
+
+  async function previewReferencePlan(manifest: PortableReferenceManifest, groups = restoredGroupIds) {
+    const preview = await previewPortableReferenceRestore(manifest, currentStorageMappings(), currentGroupMappings(groups))
     setReferencePreview(preview)
   }
 
@@ -448,13 +456,14 @@ export function SettingsPage() {
     setReferenceManifest(null)
     setReferencePreview(null)
     setRestoredGroupIds(new Map())
+    setRestoredWorkflowIds(new Map())
     try {
       const { open } = await import('@tauri-apps/plugin-dialog')
       const source = await open({ multiple: false, filters: [{ name: 'JSON', extensions: ['json'] }] })
       if (typeof source === 'string') {
         const manifest = await inspectPortableReferenceManifest(source)
         setReferenceManifest(manifest)
-        await previewReferencePlan(manifest)
+        await previewReferencePlan(manifest, new Map())
         setPortableMessage('关系清单检查完成：需要先完成对应存储 ID 映射，才能逐项恢复多云组。')
       }
     } catch {
@@ -493,8 +502,8 @@ export function SettingsPage() {
       const id = await restorePortableStorageGroup(referenceManifest, currentStorageMappings(), sourceGroupId)
       setRestoredGroupIds((current) => new Map(current).set(sourceGroupId, id))
       await queryClient.invalidateQueries({ queryKey: ['storage-groups'] })
-      await previewReferencePlan(referenceManifest)
-      setPortableMessage('多云组已新建，成员写入具有事务保护；工作流仍须单独重建。')
+      await previewReferencePlan(referenceManifest, new Map(restoredGroupIds).set(sourceGroupId, id))
+      setPortableMessage('多云组已新建。可导出 Group ID 映射并继续恢复标准工作流。')
     } catch {
       setReferencePreview(null)
       setPortableMessage('多云组恢复失败：可能存在目标冲突、缺失映射或权限意图冲突。未标记成功。')
@@ -538,6 +547,7 @@ export function SettingsPage() {
     setReconnectedIds(new Map())
     setReferencePreview(null)
     setRestoredGroupIds(new Map())
+    setRestoredWorkflowIds(new Map())
     try {
       const { open } = await import('@tauri-apps/plugin-dialog')
       const source = await open({
