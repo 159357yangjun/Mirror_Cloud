@@ -118,7 +118,7 @@ fn private_preview_mime(bytes: &[u8]) -> Option<&'static str> {
     }
 }
 
-/// Load a small private R2 image into memory only when the user requests a
+/// Load a small private R2/S3 image into memory only when the user requests a
 /// preview. No signed URL is exposed to the renderer, stored in SQLite or logged.
 #[tauri::command]
 pub async fn preview_private_storage_entry(
@@ -135,7 +135,7 @@ pub async fn preview_private_storage_entry(
         .map_err(|_| "无法读取存储信息".to_string())?
         .ok_or("该云端存储已不存在")?;
     if !storage.enabled || !storage_requests_private(&storage) {
-        return Err("此入口仅可预览已经配置为私有意图的 R2 文件".into());
+        return Err("此入口仅可预览已经配置为私有意图的 R2/S3 文件".into());
     }
     let provider =
         build_provider(&state, &storage).map_err(|_| "无法初始化私有存储连接".to_string())?;

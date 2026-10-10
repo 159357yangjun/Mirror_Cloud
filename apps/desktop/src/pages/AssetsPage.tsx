@@ -161,14 +161,14 @@ export function AssetsPage() {
     )
   }
 
-  function privateR2Target(asset: AssetView) {
+  function privateS3Target(asset: AssetView) {
     return asset.deployments.find(
-      (entry) => entry.ok && entry.providerKey === 'r2' && entry.accessMode === 'private_requested',
+      (entry) => entry.ok && (entry.providerKey === 'r2' || entry.providerKey === 's3') && entry.accessMode === 'private_requested',
     )
   }
 
   async function openPrivatePreview(asset: AssetView) {
-    const target = privateR2Target(asset)
+    const target = privateS3Target(asset)
     if (!target || previewing || !asset.mimeType.startsWith('image/')) return
     setPrivateActionError(null)
     setPreviewing(asset.id)
@@ -188,7 +188,7 @@ export function AssetsPage() {
   }
 
   async function savePrivateOriginal(asset: AssetView) {
-    const target = privateR2Target(asset)
+    const target = privateS3Target(asset)
     if (!target || downloading) return
     setPrivateActionError(null)
     setDownloading(asset.id)
@@ -204,7 +204,7 @@ export function AssetsPage() {
 
   async function sharePrivateAsset(asset: AssetView) {
     const target = asset.deployments.find(
-      (entry) => entry.ok && entry.providerKey === 'r2' && entry.accessMode === 'private_requested',
+      (entry) => entry.ok && (entry.providerKey === 'r2' || entry.providerKey === 's3') && entry.accessMode === 'private_requested',
     )
     if (!target || sharing) return
     const requestedExpiry = shareExpiry
@@ -360,7 +360,7 @@ export function AssetsPage() {
                     <RefreshCw size={12} className={repairing === asset.id ? 'animate-spin' : ''} />修复副本
                   </button>
                 )}
-                {privateR2Target(asset) && (
+                {privateS3Target(asset) && (
                   <>
                   <button disabled={previewing !== null || asset.sizeBytes > 5 * 1024 * 1024} onClick={() => void openPrivatePreview(asset)} className="inline-flex items-center gap-1 rounded-xl bg-[var(--surface-soft)] px-2.5 py-2 text-[11px] font-medium text-[var(--text-secondary)] disabled:opacity-30" title={asset.sizeBytes > 5 * 1024 * 1024 ? '原图超过 5 MB，请使用保存原图' : '通过云端凭据安全预览，不产生公开链接'}>
                     <Eye size={13} />{previewing === asset.id ? '读取中…' : '预览'}

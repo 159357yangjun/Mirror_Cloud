@@ -12,17 +12,17 @@ export interface CloudImagePreview {
   privateMode: boolean
 }
 
-/** URL-free R2 preview is available only when the selected storage requested privacy. */
-export function isPrivateR2Storage(storage?: StorageView): boolean {
-  return Boolean(storage?.enabled && storage.providerKey === 'r2' && storage.accessMode === 'private_requested')
+/** URL-free R2/S3 preview is available only when the selected storage requested privacy. */
+export function isPrivateS3Storage(storage?: StorageView): boolean {
+  return Boolean(storage?.enabled && (storage.providerKey === 'r2' || storage.providerKey === 's3') && storage.accessMode === 'private_requested')
 }
 
 export function canPreviewCloudImage(entry: StorageEntryView, storage?: StorageView): boolean {
   if (entry.isDir) return false
   // Do not attempt private reads for BMP (unsupported by the Rust signature allowlist).
-  // A private-requested R2 configuration takes precedence over stale public
+  // A private-requested R2/S3 configuration takes precedence over stale public
   // URLs from legacy records. Never use such an address for private preview.
-  if (isPrivateR2Storage(storage)) return PRIVATE_IMAGE_EXTENSION.test(entry.name)
+  if (isPrivateS3Storage(storage)) return PRIVATE_IMAGE_EXTENSION.test(entry.name)
   // Preserve the existing public-gallery behavior for extensionless object names:
   // public URLs may carry the image suffix even when the displayed name does not.
   if (entry.publicUrl) {
@@ -74,12 +74,12 @@ export function useCloudImagePreview() {
     setPreview(null)
     setPreviewError(null)
 
-    if (!isPrivateR2Storage(storage) && entry.publicUrl) {
+    if (!isPrivateS3Storage(storage) && entry.publicUrl) {
       setPreview({ entry, src: entry.publicUrl, privateMode: false })
       setPreviewingPath(null)
       return
     }
-    if (!storage || !isPrivateR2Storage(storage)) return
+    if (!storage || !isPrivateS3Storage(storage)) return
     if (entry.sizeBytes != null && entry.sizeBytes > MAX_PREVIEW_BYTES) {
       setPreviewError('图片超过 5 MB，请选择下载原图。')
       setPreviewingPath(null)

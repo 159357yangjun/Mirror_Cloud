@@ -656,7 +656,7 @@ pub struct DeploymentSummaryRecord {
     pub storage_id: Uuid,
     pub storage_name: String,
     pub provider_key: String,
-    /// Stored intent from R2 config_json, not a remotely proven privacy verdict.
+    /// Stored intent from R2/S3 config_json, not a remotely proven privacy verdict.
     pub access_mode: String,
     pub role: String,
     pub status: String,
@@ -807,7 +807,7 @@ impl AssetRepository {
                     let config_raw: String = deployment.try_get("storage_config_json")?;
                     let config: Value = parse_json(&config_raw)?;
                     let provider_key: String = deployment.try_get("provider_key")?;
-                    let access_mode = if provider_key == "r2"
+                    let access_mode = if matches!(provider_key.as_str(), "r2" | "s3")
                         && config.get("access_mode").and_then(Value::as_str)
                             == Some("private_requested")
                     {
