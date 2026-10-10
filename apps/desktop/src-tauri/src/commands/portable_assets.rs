@@ -373,7 +373,7 @@ mod tests {
         assert!(validate_manifest(&base).is_ok());
         let mut json = serde_json::to_value(base).unwrap();
         json["entries"][0]["status"] = serde_json::json!("online");
-        assert!(serde_json::from_value::<PortableAssetManifest>(json).is_err());
+        assert!(serde_json::from_value::<PortableAssetManifest>(json.clone()).is_err());
         json["entries"][0].as_object_mut().unwrap().remove("status");
         json["entries"][0]["publicUrl"] = serde_json::json!("https://signed.invalid/?key=x");
         assert!(serde_json::from_value::<PortableAssetManifest>(json).is_err());
