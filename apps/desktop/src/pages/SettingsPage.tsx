@@ -32,6 +32,10 @@ import {
   exportPortableStorageManifest,
   inspectPortableStorageManifest,
   exportPortableReconnectMap,
+  exportPortableReferenceManifest,
+  inspectPortableReferenceManifest,
+  previewPortableReferenceRestore,
+  restorePortableStorageGroup,
   listStorages,
   getReconciliationSettings,
   getUpdateStatus,
@@ -55,7 +59,7 @@ import {
   uninstallWindowsContextMenu,
   saveOutputPreferences,
 } from '../lib/desktop'
-import type { DownloadedUpdateSummary, UpdateCheckResult, PortableStorageManifest } from '../lib/desktop'
+import type { DownloadedUpdateSummary, UpdateCheckResult, PortableStorageManifest, PortableReferenceManifest, PortableReferencePreview, PortableStorageIdMapping } from '../lib/desktop'
 import { useAppStore } from '../store/useAppStore'
 import { confirmAction } from '../store/useConfirmStore'
 import { tierDisplay, tierReason } from '../lib/confirmationDisplay'
@@ -214,6 +218,9 @@ export function SettingsPage() {
   // A new ID only exists after provider creation succeeded. Never reuse a source UUID.
   // This map is deliberately session-local until the user explicitly exports an audit receipt.
   const [reconnectedIds, setReconnectedIds] = useState<Map<number, string>>(() => new Map())
+  const [referenceManifest, setReferenceManifest] = useState<PortableReferenceManifest | null>(null)
+  const [referencePreview, setReferencePreview] = useState<PortableReferencePreview | null>(null)
+  const [restoredGroupIds, setRestoredGroupIds] = useState<Map<string, string>>(() => new Map())
   const { data: connectedStorages = [], isLoading: storagesLoading, error: storagesError } = useQuery({
     queryKey: ['storages'],
     queryFn: listStorages,
@@ -400,6 +407,102 @@ export function SettingsPage() {
     }
   }
 
+  function currentStorageMappings(): PortableStorageIdMapping[] {
+    if (portablePreview?.schemaVersion !== 2) return []
+    return portablePreview.profiles.flatMap((profile, index) => {
+      const newStorageId = reconnectedIds.get(index)
+      return profile.sourceStorageId && newStorageId
+        ? [{ oldStorageId: profile.sourceStorageId, newStorageId, providerKey: profile.providerKey }]
+        : []
+    })
+  }
+
+  async function exportReferenceManifest() {
+    if (portableBusy) return
+    setPortableBusy(true)
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog')
+      const destination = await save({
+        defaultPath: 'mirror-cloud-relationships.json',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      })
+      if (destination) {
+        const count = await exportPortableReferenceManifest(destination)
+        setPortableMessage(`已导出 ${count} 项多云组或工作流关系引用，未包含凭据或完整工作流步骤。`)
+      }
+    } catch {
+      setPortableMessage('关系清单导出失败；不会覆盖已有文件。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
+  async function previewReferencePlan(manifest: PortableReferenceManifest) {
+    const preview = await previewPortableReferenceRestore(manifest, currentStorageMappings())
+    setReferencePreview(preview)
+  }
+
+  async function inspectReferencePlan() {
+    if (portableBusy) return
+    setPortableBusy(true)
+    setReferenceManifest(null)
+    setReferencePreview(null)
+    setRestoredGroupIds(new Map())
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const source = await open({ multiple: false, filters: [{ name: 'JSON', extensions: ['json'] }] })
+      if (typeof source === 'string') {
+        const manifest = await inspectPortableReferenceManifest(source)
+        setReferenceManifest(manifest)
+        await previewReferencePlan(manifest)
+        setPortableMessage('关系清单检查完成：需要先完成对应存储 ID 映射，才能逐项恢复多云组。')
+      }
+    } catch {
+      setPortableMessage('关系清单检查失败：版本、字段、UUID 或成员约束不符合要求。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
+  async function refreshReferencePlan() {
+    if (portableBusy || !referenceManifest) return
+    setPortableBusy(true)
+    try {
+      await previewReferencePlan(referenceManifest)
+    } catch {
+      setReferencePreview(null)
+      setPortableMessage('映射预览失败：请检查目标存储是否仍存在、已启用且 Provider 匹配。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
+  async function restoreOneGroup(sourceGroupId: string) {
+    if (portableBusy || !referenceManifest || !referencePreview) return
+    const group = referencePreview.groups.find((item) => item.sourceGroupId === sourceGroupId)
+    if (!group || group.status !== 'ready' || restoredGroupIds.has(sourceGroupId)) return
+    const accepted = await confirmAction({
+      title: '确认恢复多云组',
+      detail: `将使用新的 Group ID 新建多云组“${group.name}”，只建立本地成员关系，不覆盖现有组，也不自动创建工作流。`,
+      confirmLabel: '确认新建多云组',
+      danger: false,
+    })
+    if (!accepted || portableBusy) return
+    setPortableBusy(true)
+    try {
+      const id = await restorePortableStorageGroup(referenceManifest, currentStorageMappings(), sourceGroupId)
+      setRestoredGroupIds((current) => new Map(current).set(sourceGroupId, id))
+      await queryClient.invalidateQueries({ queryKey: ['storage-groups'] })
+      await previewReferencePlan(referenceManifest)
+      setPortableMessage('多云组已新建，成员写入具有事务保护；工作流仍须单独重建。')
+    } catch {
+      setReferencePreview(null)
+      setPortableMessage('多云组恢复失败：可能存在目标冲突、缺失映射或权限意图冲突。未标记成功。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
   async function exportReconnectionMap() {
     if (portableBusy || !portablePreview || portablePreview.schemaVersion !== 2) return
     const mappings = portablePreview.profiles.flatMap((profile, index) => {
@@ -433,6 +536,8 @@ export function SettingsPage() {
     setPortablePreview(null)
     setRestoreIndex(null)
     setReconnectedIds(new Map())
+    setReferencePreview(null)
+    setRestoredGroupIds(new Map())
     try {
       const { open } = await import('@tauri-apps/plugin-dialog')
       const source = await open({
@@ -467,6 +572,8 @@ export function SettingsPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button disabled={portableBusy} onClick={() => void exportReferenceManifest()} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium disabled:opacity-40">导出组/工作流关系</button>
+            <button disabled={portableBusy} onClick={() => void inspectReferencePlan()} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium disabled:opacity-40">导入关系清单</button>
             <button disabled={portableBusy} onClick={() => void exportPortablePlan()} className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-medium text-white disabled:opacity-40">{portableBusy ? '处理中…' : '导出无密钥清单'}</button>
             <button disabled={portableBusy} onClick={() => void inspectPortablePlan()} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 disabled:opacity-40">导入前检查</button>
           </div>
@@ -514,6 +621,34 @@ export function SettingsPage() {
           {reconnectedIds.size > 0 && portablePreview.schemaVersion === 2 && <p className="mt-2 text-[11px] text-amber-700">ID 对照仅保存在本次页面会话中，请及时导出映射文件。导出前关闭页面会丢失对照；不会自动恢复工作流和资源记录。</p>}
           <p className="mt-2 text-[11px] leading-5 text-amber-700">每项都要手动复核 Endpoint/公开地址和权限、重新输入凭据、确认新增，并通过原有连接测试才能保存。不会覆盖本机已有配置或自动恢复资源索引、工作流。</p>
         </div>}
+        {referenceManifest && <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <strong>关系恢复预览 · {referenceManifest.groups.length} 个多云组 · {referenceManifest.workflows.length} 条工作流引用</strong>
+            <button type="button" disabled={portableBusy} onClick={() => void refreshReferencePlan()} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-40">重新检查冲突</button>
+          </div>
+          {!referencePreview && <p role="alert" className="mt-2 text-amber-700">当前预览无效。重新检查成功前不允许恢复。</p>}
+          <div className="mt-2 space-y-2">
+            {referencePreview?.groups.map((group) => {
+              const restoredId = restoredGroupIds.get(group.sourceGroupId)
+              return <div key={group.sourceGroupId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white p-2">
+                <div className="min-w-0">
+                  <div className="font-medium">{group.name} · {restoredId ? '已恢复' : group.status === 'ready' ? '可恢复' : '无法恢复'}</div>
+                  <p className="text-[11px] text-slate-500">{restoredId ? `新 Group ID：${restoredId}` : group.detail}</p>
+                </div>
+                <button type="button" disabled={portableBusy || Boolean(restoredId) || group.status !== 'ready'}
+                  onClick={() => void restoreOneGroup(group.sourceGroupId)}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40">
+                  {restoredId ? '已创建' : '确认恢复该组'}
+                </button>
+              </div>
+            })}
+            {referencePreview?.workflows.map((workflow, index) => <div key={index} className="rounded-lg bg-white p-2">
+              <div className="font-medium">{workflow.name} · 工作流只读预览</div>
+              <p className="mt-1 text-[11px] text-amber-700">{workflow.detail}</p>
+            </div>)}
+          </div>
+          <p className="mt-2 text-[11px] text-amber-700">不恢复旧 Group ID、完整工作流步骤、默认发布目标或资源记录；远端权限未实测。</p>
+        </div>}
       </section>
 
       {portablePreview && restoreIndex !== null && (() => {
@@ -525,7 +660,7 @@ export function SettingsPage() {
           key={index}
           provider={provider}
           restoreProfile={profile}
-          onCreated={(created) => setReconnectedIds((current) => new Map(current).set(index, created.id))}
+          onCreated={(created) => { setReconnectedIds((current) => new Map(current).set(index, created.id)); setReferencePreview(null) }}
           onClose={() => setRestoreIndex(null)}
         />
       })()}
