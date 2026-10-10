@@ -129,8 +129,7 @@ fn validate_manifest(manifest: &PortableStorageManifest) -> CmdResult<()> {
         match (manifest.schema_version, &profile.source_storage_id) {
             (LEGACY_VERSION, None) => {}
             (VERSION, Some(old_id)) => {
-                let id = uuid::Uuid::parse_str(old_id)
-                    .map_err(|_| "清单包含无效旧 Storage ID")?;
+                let id = uuid::Uuid::parse_str(old_id).map_err(|_| "清单包含无效旧 Storage ID")?;
                 if !old_ids.insert(id) {
                     return Err("清单中的旧 Storage ID 重复".into());
                 }
@@ -200,18 +199,25 @@ pub async fn export_portable_reconnect_map(
     if mappings.is_empty() || mappings.len() > MAX_PROFILES {
         return Err("没有可导出的有效映射记录".into());
     }
-    let storages = state.storages.list().await.map_err(|_| "无法核实当前存储")?;
+    let storages = state
+        .storages
+        .list()
+        .await
+        .map_err(|_| "无法核实当前存储")?;
     let mut old_ids = HashSet::new();
     let mut new_ids = HashSet::new();
     for mapping in &mappings {
-        let old = uuid::Uuid::parse_str(&mapping.old_storage_id)
-            .map_err(|_| "无效的旧 Storage ID")?;
-        let new = uuid::Uuid::parse_str(&mapping.new_storage_id)
-            .map_err(|_| "无效的新 Storage ID")?;
+        let old =
+            uuid::Uuid::parse_str(&mapping.old_storage_id).map_err(|_| "无效的旧 Storage ID")?;
+        let new =
+            uuid::Uuid::parse_str(&mapping.new_storage_id).map_err(|_| "无效的新 Storage ID")?;
         if old == new || !old_ids.insert(old) || !new_ids.insert(new) {
             return Err("映射存在重复或新旧 ID 相同".into());
         }
-        if !storages.iter().any(|storage| storage.id == new && storage.provider_key == mapping.provider_key) {
+        if !storages
+            .iter()
+            .any(|storage| storage.id == new && storage.provider_key == mapping.provider_key)
+        {
             return Err("映射目标已不存在或 Provider 不匹配".into());
         }
     }
@@ -221,8 +227,7 @@ pub async fn export_portable_reconnect_map(
         generated_at: Utc::now().to_rfc3339(),
         mappings,
     };
-    let bytes = serde_json::to_vec_pretty(&receipt)
-        .map_err(|_| "无法序列化映射结果")?;
+    let bytes = serde_json::to_vec_pretty(&receipt).map_err(|_| "无法序列化映射结果")?;
     let destination = ensure_json_path(&destination_path)?;
     let mut output = std::fs::OpenOptions::new()
         .write(true)
@@ -292,7 +297,10 @@ mod tests {
             assert!(!json.contains(forbidden), "leaked {forbidden}");
         }
         assert_eq!(profile.access_mode, "private_requested");
-        assert_eq!(profile.source_storage_id.as_deref(), Some(record.id.to_string().as_str()));
+        assert_eq!(
+            profile.source_storage_id.as_deref(),
+            Some(record.id.to_string().as_str())
+        );
         assert_eq!(profile.bucket.as_deref(), Some("photos"));
     }
 
