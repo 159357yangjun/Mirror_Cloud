@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { BookOpen, CheckCircle2, Cloud, ExternalLink, GitBranch, GitFork, HardDrive, LoaderCircle, Server, X } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -126,6 +126,9 @@ export function StorageSetupDialog({
   // just because public was the historical default in the setup form.
   const [restoreModeConfirmed, setRestoreModeConfirmed] = useState(false)
   const [tokenStatus, setTokenStatus] = useState<string | null>(null)
+  // A synchronous lock covers the confirmation dialog as well as the async provider call.
+  const submitGuard = useRef(false)
+  const [submitBusy, setSubmitBusy] = useState(false)
   const [s3Form, setS3Form] = useState<CreateS3StorageInput>({
     providerKey: provider === 's3' ? 's3' : 'r2',
     name: restoreProfile?.name ?? (provider === 's3' ? 'S3 Storage' : 'Cloudflare R2'),
@@ -260,18 +263,35 @@ export function StorageSetupDialog({
     if (restoreProfile && blank(webdavForm.publicBaseUrl)) missingFields.push('重新确认公开访问域名')
   }
 
+  function requestClose() {
+    // A close while the confirmation or provider call is pending can otherwise
+    // leave the user thinking the operation was cancelled when it is still running.
+    if (submitGuard.current || mutation.isPending) return
+    onClose()
+  }
+
   async function submitStorage() {
-    if (mutation.isPending || missingFields.length > 0) return
-    if (restoreProfile) {
-      const accepted = await confirmAction({
-        title: '确认新增连接配置',
-        detail: `将以“${isRepository ? repoForm.name : isGenericS3 ? s3Form.name : isObject ? objectForm.name : webdavForm.name}”新建一条 ${providerNames[provider]} 连接。将先测试新凭据；不会覆盖或关联旧资源记录、图片、工作流和现有存储。`,
-        confirmLabel: '确认测试并新建',
-        danger: false,
-      })
-      if (!accepted) return
+    if (submitGuard.current || mutation.isPending || missingFields.length > 0) return
+    submitGuard.current = true
+    setSubmitBusy(true)
+    try {
+      if (restoreProfile) {
+        const accepted = await confirmAction({
+          title: '确认新增连接配置',
+          detail: `将以“${isRepository ? repoForm.name : isGenericS3 ? s3Form.name : isObject ? objectForm.name : webdavForm.name}”新建一条 ${providerNames[provider]} 连接。将先测试新凭据；不会覆盖或关联旧资源记录、图片、工作流和现有存储。`,
+          confirmLabel: '确认测试并新建',
+          danger: false,
+        })
+        if (!accepted) return
+      }
+      await mutation.mutateAsync()
+    } catch {
+      // The mutation owns error presentation. In migration mode it redacts
+      // provider errors so secrets and signed URLs are never echoed to the UI.
+    } finally {
+      submitGuard.current = false
+      setSubmitBusy(false)
     }
-    mutation.mutate()
   }
 
   async function openGitHubTokenPage() {
@@ -291,7 +311,7 @@ export function StorageSetupDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/25 p-3 backdrop-blur-sm sm:p-6" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/25 p-3 backdrop-blur-sm sm:p-6" onMouseDown={requestClose}>
       <section onMouseDown={(event) => event.stopPropagation()} className="max-h-[92vh] w-full max-w-[760px] overflow-auto rounded-[24px] border border-white bg-white p-4 shadow-[0_30px_100px_rgba(15,23,42,.22)] sm:rounded-[28px] sm:p-6">
         <div className="flex items-start gap-4">
           <div className="grid size-11 place-items-center rounded-2xl bg-slate-100"><Icon size={19} /></div>
@@ -309,7 +329,7 @@ export function StorageSetupDialog({
             <button type="button" onClick={() => setShowGuide((value) => !value)} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-100">
               <BookOpen size={14} /> {showGuide ? '收起教程' : '配置教程'}
             </button>
-            <button onClick={onClose} className="rounded-full p-2 text-slate-400 hover:bg-slate-100" aria-label="关闭"><X size={18} /></button>
+            <button onClick={requestClose} className="rounded-full p-2 text-slate-400 hover:bg-slate-100" aria-label="关闭"><X size={18} /></button>
           </div>
         </div>
 
@@ -441,8 +461,8 @@ export function StorageSetupDialog({
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-700">还需填写：{missingFields.join('、')}</div>
           ) : <span />}
           <div className="flex gap-2">
-            <button onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm">取消</button>
-            <button disabled={mutation.isPending || missingFields.length > 0} onClick={() => void submitStorage()} className="flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">
+            <button disabled={submitBusy || mutation.isPending} onClick={requestClose} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm disabled:opacity-50">取消</button>
+            <button disabled={submitBusy || mutation.isPending || missingFields.length > 0} onClick={() => void submitStorage()} className="flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">
               {mutation.isPending && <LoaderCircle size={15} className="animate-spin" />}
               {restoreProfile ? '测试并新增连接' : '测试并保存'}
             </button>
