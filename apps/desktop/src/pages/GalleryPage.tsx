@@ -115,7 +115,7 @@ export function GalleryPage() {
   const revealCapped = visibleCount >= GALLERY_RENDER_CAP && hiddenCount > GALLERY_PAGE_SIZE
 
   async function copyUrl(entry: StorageEntryView) {
-    if (!entry.publicUrl) return
+    if (privateR2 || !entry.publicUrl) return
     await copyText(entry.publicUrl)
     setCopied(entry.path)
     window.setTimeout(() => setCopied((current) => current === entry.path ? null : current), 1200)
@@ -337,7 +337,7 @@ export function GalleryPage() {
       {visibleEntries.map((entry) => (
         <GalleryMediaCard
           key={entry.path}
-          entry={entry}
+          entry={privateR2 ? { ...entry, publicUrl: null } : entry}
           selected={selectedPaths.has(entry.path)}
           copied={copied === entry.path}
           busy={busyPath === entry.path}
@@ -364,7 +364,7 @@ export function GalleryPage() {
   {!isLoading && !error && view === 'list' && visibleEntries.map((entry) => (
               <div key={entry.path} className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-slate-50">
                 <div className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-xl bg-slate-100 text-slate-500">
-                  {entry.isDir ? <Folder size={17} /> : isImage(entry) && entry.publicUrl ? <img src={entry.publicUrl} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" /> : <File size={17} />}
+                  {entry.isDir ? <Folder size={17} /> : !privateR2 && isImage(entry) && entry.publicUrl ? <img src={entry.publicUrl} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" /> : <File size={17} />}
                 </div>
                 <button disabled={!entry.isDir && !canPreviewCloudImage(entry, storage)} onClick={() => entry.isDir ? setPath(entry.path) : void openPreview(entry, storage)} className="min-w-0 flex-1 text-left disabled:cursor-default">
                   {previewingPath === entry.path && <span className="text-[10px] text-amber-700">读取私有预览中…</span>}
@@ -372,8 +372,8 @@ export function GalleryPage() {
                   <div className="mt-0.5 truncate text-[11px] text-slate-400">{entry.isDir ? '目录' : `${sizeLabel(entry.sizeBytes)} · ${entry.path}`}</div>
                 </button>
                 {!entry.isDir && <>
-                  {entry.publicUrl && <button onClick={() => void copyUrl(entry)} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700" title="复制公开链接"><Copy size={14} /></button>}
-                  {entry.publicUrl && <button onClick={() => openExternalUrlOrReport(entry.publicUrl || '')} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700" title="浏览器打开"><ExternalLink size={14} /></button>}
+                  {!privateR2 && entry.publicUrl && <button onClick={() => void copyUrl(entry)} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700" title="复制公开链接"><Copy size={14} /></button>}
+                  {!privateR2 && entry.publicUrl && <button onClick={() => openExternalUrlOrReport(entry.publicUrl || '')} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700" title="浏览器打开"><ExternalLink size={14} /></button>}
                   {privateR2 && <button disabled={busyPath !== null} onClick={() => void shareEntry(entry)} className="rounded-lg p-2 text-indigo-600 hover:bg-indigo-50 disabled:opacity-30" title="复制限时分享链接"><Link2 size={14} /></button>}
                   <button disabled={operationBusy} onClick={() => setPathDialog({ mode: 'rename', entry, value: entry.name })} className="rounded-lg px-2 py-1.5 text-[11px] text-slate-400 hover:bg-white hover:text-slate-700" title="重命名">改名</button>
                   <button disabled={operationBusy} onClick={() => setPathDialog({ mode: 'move', entry, value: parentPath(entry.path) })} className="rounded-lg px-2 py-1.5 text-[11px] text-slate-400 hover:bg-white hover:text-slate-700" title="移动">移动</button>
