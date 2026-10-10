@@ -644,9 +644,11 @@ pub async fn apply_portable_staged_batch_decision(
         }
         changes.push((id, item.expected_revision));
     }
-    let success = state.asset_staging
+    let success = state
+        .asset_staging
         .update_batch_decisions(batch, &changes, &decision)
-        .await.map_err(|_| "批量审核保存失败；未修改任何正式资源")?;
+        .await
+        .map_err(|_| "批量审核保存失败；未修改任何正式资源")?;
     if !success {
         return Err("批量审核版本冲突或条目已变化；全部回滚，请刷新后重新选择".into());
     }
