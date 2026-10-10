@@ -3883,7 +3883,10 @@ mod r2_private_access_tests {
         assert_eq!(old.access_mode, ObjectAccessMode::Public);
         let (config, _, key) = normalize_s3(&old).expect("legacy S3 is public");
         assert_eq!(key, "s3");
-        assert_eq!(config.public_base_url.as_deref(), Some("https://public.example"));
+        assert_eq!(
+            config.public_base_url.as_deref(),
+            Some("https://public.example")
+        );
     }
 
     #[test]
