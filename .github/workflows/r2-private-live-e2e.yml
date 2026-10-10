@@ -29,7 +29,7 @@ jobs:
       - name: Checkout explicitly reviewed immutable test code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: e7070e8640342860030ada1c8c1c9e7730aa36ff
+          ref: 68eabaefdbf9f01d0a445eb9b26c718ddcaf4f89
           persist-credentials: false
 
       - name: Install pinned Rust toolchain
@@ -40,7 +40,7 @@ jobs:
       - name: Check reviewed commit and compile exact OpenDAL test without secrets
         shell: pwsh
         env:
-          R2_E2E_EXPECTED_SHA: e7070e8640342860030ada1c8c1c9e7730aa36ff
+          R2_E2E_EXPECTED_SHA: 68eabaefdbf9f01d0a445eb9b26c718ddcaf4f89
         run: |
           $ErrorActionPreference = 'Stop'
           $actual = (& git rev-parse HEAD).Trim()
@@ -60,7 +60,7 @@ jobs:
         id: live
         shell: pwsh
         env:
-          R2_E2E_EXPECTED_SHA: e7070e8640342860030ada1c8c1c9e7730aa36ff
+          R2_E2E_EXPECTED_SHA: 68eabaefdbf9f01d0a445eb9b26c718ddcaf4f89
           R2_E2E_ACCOUNT_ID: ${{ vars.R2_E2E_ACCOUNT_ID }}
           R2_E2E_BUCKET: ${{ vars.R2_E2E_BUCKET }}
           R2_E2E_ACCESS_KEY_ID: ${{ secrets.R2_E2E_ACCESS_KEY_ID }}
