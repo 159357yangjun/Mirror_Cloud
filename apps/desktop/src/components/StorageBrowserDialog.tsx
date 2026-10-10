@@ -19,7 +19,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { browseStorage, chooseDownloadPath, copyText, createTemporaryShareLink, deleteStorageEntry, downloadStorageEntry, openExternalUrlOrReport } from '../lib/desktop'
 import { notifySuccess } from '../store/useToastStore'
-import { canPreviewCloudImage, useCloudImagePreview } from '../lib/useCloudImagePreview'
+import { canPreviewCloudImage, isPrivateR2Storage, useCloudImagePreview } from '../lib/useCloudImagePreview'
 import { confirmAction } from '../store/useConfirmStore'
 import type { StorageEntryView, StorageView } from '../types'
 
@@ -50,6 +50,7 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
   const [busyPath, setBusyPath] = useState<string | null>(null)
   const [shareExpiry, setShareExpiry] = useState<600 | 3600 | 86400>(3600)
   const supportsTemporaryShare = storage.providerKey === 'r2' || storage.providerKey === 's3'
+  const privateR2 = isPrivateR2Storage(storage)
   const [actionError, setActionError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -185,13 +186,13 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
                     className="block w-full text-left"
                   >
                     <div className="grid aspect-[4/3] place-items-center overflow-hidden bg-slate-50">
-                      {entry.isDir ? <Folder size={34} className="text-slate-300" /> : image && entry.publicUrl ? <img src={entry.publicUrl} alt={entry.name} loading="lazy" decoding="async" className="h-full w-full object-contain" /> : image ? <ImageIcon size={32} className="text-slate-300" /> : <File size={30} className="text-slate-300" />}
+                      {entry.isDir ? <Folder size={34} className="text-slate-300" /> : !privateR2 && image && entry.publicUrl ? <img src={entry.publicUrl} alt={entry.name} loading="lazy" decoding="async" className="h-full w-full object-contain" /> : image ? <ImageIcon size={32} className="text-slate-300" /> : <File size={30} className="text-slate-300" />}
                     </div>
                     <div className="p-3"><div className="truncate text-xs font-medium" title={entry.name}>{entry.name}</div><div className="mt-1 text-[10px] text-slate-400">{previewingPath === entry.path ? '读取私有预览中…' : entry.isDir ? '目录' : sizeLabel(entry.sizeBytes) || '远端文件'}</div></div>
                   </button>
                   {!entry.isDir && <div className="flex flex-wrap items-center gap-1 border-t border-slate-100 p-2 opacity-80 group-hover:opacity-100">
-                    {entry.publicUrl && <button onClick={() => void copyText(entry.publicUrl || '')} className="flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[10px] text-slate-500 hover:bg-slate-50" title="复制公开链接"><Copy size={12} />复制</button>}
-                    {entry.publicUrl && <button onClick={() => openExternalUrlOrReport(entry.publicUrl || '')} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50" title="浏览器打开"><ExternalLink size={12} /></button>}
+                    {!privateR2 && entry.publicUrl && <button onClick={() => void copyText(entry.publicUrl || '')} className="flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[10px] text-slate-500 hover:bg-slate-50" title="复制公开链接"><Copy size={12} />复制</button>}
+                    {!privateR2 && entry.publicUrl && <button onClick={() => openExternalUrlOrReport(entry.publicUrl || '')} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50" title="浏览器打开"><ExternalLink size={12} /></button>}
                     {supportsTemporaryShare && <button disabled={busyPath !== null} onClick={() => void shareEntry(entry)} className="flex items-center gap-1 rounded-lg p-1.5 text-[10px] text-indigo-600 hover:bg-indigo-50 disabled:opacity-30" title="为当前对象生成限时 GET 签名链接并复制"><Link2 size={12} />限时链接</button>}
                     <button disabled={busyPath === entry.path} onClick={() => void downloadEntry(entry)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 disabled:opacity-30" title="下载"><Download size={12} /></button>
                     <button disabled={busyPath === entry.path} onClick={() => void deleteEntry(entry)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30" title="永久删除"><Trash2 size={12} /></button>
@@ -204,15 +205,15 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
           {!isLoading && !error && view === 'list' && filtered.map((entry) => (
             <div key={entry.path} className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-slate-50">
               <div className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-xl bg-slate-100 text-slate-500">
-                {entry.isDir ? <Folder size={16} /> : isImage(entry) && entry.publicUrl ? <img src={entry.publicUrl} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" /> : <File size={16} />}
+                {entry.isDir ? <Folder size={16} /> : !privateR2 && isImage(entry) && entry.publicUrl ? <img src={entry.publicUrl} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" /> : <File size={16} />}
               </div>
               <button disabled={!entry.isDir && !canPreviewCloudImage(entry, storage)} onClick={() => entry.isDir ? setPath(entry.path) : void openPreview(entry, storage)} className="min-w-0 flex-1 text-left disabled:cursor-default">
                 <div className="truncate text-sm font-medium">{entry.name}</div>
                 <div className="mt-0.5 truncate text-[11px] text-slate-400">{previewingPath === entry.path ? '读取私有预览中…' : entry.isDir ? '目录' : `${sizeLabel(entry.sizeBytes)} · ${entry.path}`}</div>
               </button>
               {!entry.isDir && <>
-                {entry.publicUrl && <button onClick={() => void copyText(entry.publicUrl || '')} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700" title="复制公开链接"><Copy size={14} /></button>}
-                {entry.publicUrl && <button onClick={() => openExternalUrlOrReport(entry.publicUrl || '')} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700" title="浏览器打开"><ExternalLink size={14} /></button>}
+                {!privateR2 && entry.publicUrl && <button onClick={() => void copyText(entry.publicUrl || '')} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700" title="复制公开链接"><Copy size={14} /></button>}
+                {!privateR2 && entry.publicUrl && <button onClick={() => openExternalUrlOrReport(entry.publicUrl || '')} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700" title="浏览器打开"><ExternalLink size={14} /></button>}
                 {supportsTemporaryShare && <button disabled={busyPath !== null} onClick={() => void shareEntry(entry)} className="flex items-center gap-1 rounded-lg p-2 text-xs text-indigo-600 hover:bg-indigo-50 disabled:opacity-30" title="生成限时 GET 签名链接并复制"><Link2 size={14} />临时分享</button>}
                 <button disabled={busyPath === entry.path} onClick={() => void downloadEntry(entry)} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700 disabled:opacity-30" title="下载"><Download size={14} /></button>
                 <button disabled={busyPath === entry.path} onClick={() => void deleteEntry(entry)} className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30" title="永久删除"><Trash2 size={14} /></button>
