@@ -616,6 +616,47 @@ impl StorageGroupRepository {
         Ok(())
     }
 
+    /// Restore one group without overwriting existing names or leaving half its members.
+    /// The name check is inside INSERT; the group and members share a transaction.
+    pub async fn insert_restored_if_name_free(
+        &self,
+        id: Uuid,
+        name: &str,
+        strategy: &str,
+        members: &[NewStorageGroupMember],
+    ) -> Result<bool, sqlx::Error> {
+        let now = Utc::now().to_rfc3339();
+        let mut tx = self.pool.begin().await?;
+        let result = sqlx::query(
+            "INSERT INTO storage_groups (id,name,strategy,created_at,updated_at) \
+             SELECT ?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM storage_groups WHERE lower(trim(name))=lower(trim(?)))",
+        )
+        .bind(id.to_string())
+        .bind(name)
+        .bind(strategy)
+        .bind(&now)
+        .bind(&now)
+        .bind(name)
+        .execute(&mut *tx)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Ok(false);
+        }
+        for member in members {
+            sqlx::query(
+                "INSERT INTO storage_group_members (group_id,storage_id,role,priority) VALUES (?,?,?,?)",
+            )
+            .bind(id.to_string())
+            .bind(member.storage_id.to_string())
+            .bind(&member.role)
+            .bind(member.priority)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(true)
+    }
+
     pub async fn get(&self, id: Uuid) -> Result<Option<StorageGroupRecord>, sqlx::Error> {
         let row = sqlx::query(
             "SELECT id,name,strategy,created_at,updated_at FROM storage_groups WHERE id=?",
@@ -1548,6 +1589,94 @@ mod reconnect_conflict_tests {
         assert!(!repository.insert_if_no_conflict(&same_target).await?);
         assert!(repository.insert_if_no_conflict(&other_branch).await?);
         assert_eq!(repository.list().await?.len(), 2);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod restored_group_transaction_tests {
+    use super::{NewStorageGroupMember, StorageGroupRepository};
+    use sqlx::SqlitePool;
+    use uuid::Uuid;
+
+    #[sqlx::test]
+    async fn group_restore_avoids_overwrite_and_rolls_back_member_error(
+        pool: SqlitePool,
+    ) -> Result<(), sqlx::Error> {
+        let repository = StorageGroupRepository::new(pool);
+        let storage_id = Uuid::new_v4();
+        // The same member twice violates the compound primary key. A failed member
+        // insert must also roll back the previously inserted group header.
+        let members = vec![
+            NewStorageGroupMember {
+                storage_id,
+                role: "primary".into(),
+                priority: 0,
+            },
+            NewStorageGroupMember {
+                storage_id,
+                role: "backup".into(),
+                priority: 1,
+            },
+        ];
+        let attempted_id = Uuid::new_v4();
+        assert!(
+            repository
+                .insert_restored_if_name_free(attempted_id, "Recover me", "mirror_all", &members)
+                .await
+                .is_err()
+        );
+        assert!(repository.get(attempted_id).await?.is_none());
+        assert!(repository.list().await?.is_empty());
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn group_restore_rejects_existing_name_without_overwriting(
+        pool: SqlitePool,
+    ) -> Result<(), sqlx::Error> {
+        let repository = StorageGroupRepository::new(pool.clone());
+        let storage_a = Uuid::new_v4();
+        let storage_b = Uuid::new_v4();
+        let now = chrono::Utc::now().to_rfc3339();
+        for id in [storage_a, storage_b] {
+            sqlx::query("INSERT INTO storages (id,name,provider_key,category,credential_ref,config_json,capabilities_json,enabled,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
+                .bind(id.to_string())
+                .bind(id.to_string())
+                .bind("r2")
+                .bind("object")
+                .bind(Option::<String>::None)
+                .bind("{}")
+                .bind("{}")
+                .bind(1)
+                .bind(&now)
+                .bind(&now)
+                .execute(&pool)
+                .await?;
+        }
+        let members = vec![
+            NewStorageGroupMember {
+                storage_id: storage_a,
+                role: "primary".into(),
+                priority: 0,
+            },
+            NewStorageGroupMember {
+                storage_id: storage_b,
+                role: "backup".into(),
+                priority: 1,
+            },
+        ];
+        assert!(
+            repository
+                .insert_restored_if_name_free(Uuid::new_v4(), "Photos", "mirror_all", &members)
+                .await?
+        );
+        assert!(
+            !repository
+                .insert_restored_if_name_free(Uuid::new_v4(), " PHOTOS ", "mirror_all", &members)
+                .await?
+        );
+        assert_eq!(repository.list().await?.len(), 1);
         Ok(())
     }
 }

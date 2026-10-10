@@ -35,6 +35,8 @@ use crate::AppState;
 pub(crate) mod integrations;
 pub(crate) mod portable_backup;
 pub use portable_backup::*;
+pub(crate) mod portable_references;
+pub use portable_references::*;
 pub(crate) mod plugins;
 #[cfg(test)]
 mod r2_private_live_e2e;

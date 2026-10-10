@@ -158,6 +158,50 @@ export async function exportPortableReconnectMap(
   return invoke('export_portable_reconnect_map', { destinationPath, sourceManifestExportedAt, mappings })
 }
 
+export interface PortableReferenceMember {
+  sourceStorageId: string
+  role: 'primary' | 'mirror' | 'backup'
+  priority: number
+}
+export interface PortableReferenceGroup {
+  sourceGroupId: string
+  name: string
+  strategy: 'mirror_all' | 'primary_with_backups'
+  members: PortableReferenceMember[]
+}
+export interface PortableReferenceWorkflow {
+  sourceWorkflowId: string
+  name: string
+  targetKind: 'storage' | 'group' | 'unsupported'
+  sourceTargetId: string
+}
+export interface PortableReferenceManifest {
+  schemaVersion: 1
+  exportedAt: string
+  groups: PortableReferenceGroup[]
+  workflows: PortableReferenceWorkflow[]
+}
+export interface PortableReferencePreview {
+  groups: Array<{ sourceGroupId: string; name: string; status: string; detail: string }>
+  workflows: Array<{ name: string; status: string; detail: string }>
+}
+export async function exportPortableReferenceManifest(destinationPath: string): Promise<number> {
+  return invoke('export_portable_reference_manifest', { destinationPath })
+}
+export async function inspectPortableReferenceManifest(sourcePath: string): Promise<PortableReferenceManifest> {
+  return invoke('inspect_portable_reference_manifest', { sourcePath })
+}
+export async function previewPortableReferenceRestore(
+  manifest: PortableReferenceManifest, mappings: PortableStorageIdMapping[],
+): Promise<PortableReferencePreview> {
+  return invoke('preview_portable_reference_restore', { manifest, mappings })
+}
+export async function restorePortableStorageGroup(
+  manifest: PortableReferenceManifest, mappings: PortableStorageIdMapping[], sourceGroupId: string,
+): Promise<string> {
+  return invoke('restore_portable_storage_group', { manifest, mappings, sourceGroupId })
+}
+
 export async function listStorages(): Promise<StorageView[]> {
   if (!isTauriRuntime()) return []
   return invoke('list_storages')
