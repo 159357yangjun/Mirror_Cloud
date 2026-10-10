@@ -295,7 +295,10 @@ require('failedIndexes.forEach((index, i) => { updated[index] = ids[i] })' in up
 require("if (mode === 'files') return publishFilesWithWorkflow(workflowId, failedSources)" in upload, 'retry files retains pinned target')
 require("if (mode === 'urls') return publishUrlsWithWorkflow(workflowId, failedSources)" in upload, 'retry URLs retains pinned target')
 require("throw new Error('剪贴板图片无法保证与之前的内容相同" in upload, 'retry refuses changed clipboard data')
-require("const accepted = await confirmAction({" in upload and "retryFailedMutation.mutate({ submission" in upload, 'failed-only republish asks for explicit confirmation')
+require("accepted = await confirmAction({" in upload and "retryFailedMutation.mutate({ submission" in upload, 'failed-only republish asks for explicit confirmation')
+require("retryFailedMutation.isError" in upload and "retryDispatchRef.current" in upload, 'ambiguous failed retry cannot be replayed in same session')
+require("publishDispatchRef.current" in upload and "上次提交状态不确定" in upload, 'ambiguous initial submission requires explicit confirmation')
+require("listTasks(Math.min(10_000" in upload, 'upload dialog requests more than default 100 task rows')
 
 # Typora self-heals the same pipeline.
 require('ensure_default_workflow(&context).await?' in cli, 'Typora auto-ensures default pipeline')
