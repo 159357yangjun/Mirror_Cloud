@@ -29,7 +29,7 @@ jobs:
       - name: Checkout explicitly reviewed immutable test code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: b337f5bed87c765af882aa78910821a1f57a428d
+          ref: 4cf2dd51199962dac90e2ef6821dd37a11506757
           persist-credentials: false
 
       # Explicit fail-closed operator readiness switch. Merely referencing an
@@ -53,7 +53,7 @@ jobs:
       - name: Check reviewed commit and compile exact OpenDAL test without secrets
         shell: pwsh
         env:
-          R2_E2E_EXPECTED_SHA: b337f5bed87c765af882aa78910821a1f57a428d
+          R2_E2E_EXPECTED_SHA: 4cf2dd51199962dac90e2ef6821dd37a11506757
         run: |
           $ErrorActionPreference = 'Stop'
           $actual = (& git rev-parse HEAD).Trim()
@@ -73,7 +73,7 @@ jobs:
         id: live
         shell: pwsh
         env:
-          R2_E2E_EXPECTED_SHA: b337f5bed87c765af882aa78910821a1f57a428d
+          R2_E2E_EXPECTED_SHA: 4cf2dd51199962dac90e2ef6821dd37a11506757
           R2_E2E_ACCOUNT_ID: ${{ vars.R2_E2E_ACCOUNT_ID }}
           R2_E2E_BUCKET: ${{ vars.R2_E2E_BUCKET }}
           R2_E2E_ACCESS_KEY_ID: ${{ secrets.R2_E2E_ACCESS_KEY_ID }}
