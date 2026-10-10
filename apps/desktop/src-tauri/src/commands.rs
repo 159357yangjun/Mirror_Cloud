@@ -3849,7 +3849,7 @@ mod r2_private_access_tests {
     }
 
     #[test]
-    fn private_r2_refuses_public_base_and_other_s3_providers() {
+    fn private_r2_refuses_a_public_base() {
         assert!(
             normalize_s3(&input(
                 ObjectAccessMode::PrivateRequested,
@@ -3857,9 +3857,33 @@ mod r2_private_access_tests {
             ))
             .is_err()
         );
-        let mut generic_s3 = input(ObjectAccessMode::PrivateRequested, None);
-        generic_s3.provider_key = "s3".into();
-        assert!(normalize_s3(&generic_s3).is_err());
+    }
+
+    #[test]
+    fn private_s3_supports_no_public_url_and_rejects_a_public_base() {
+        let mut input = input(ObjectAccessMode::PrivateRequested, None);
+        input.provider_key = "s3".into();
+        input.endpoint = Some("http://127.0.0.1:9000".into());
+        let (config, _, key) = normalize_s3(&input).expect("S3 private configuration");
+        assert_eq!(key, "s3");
+        assert_eq!(config.access_mode, ObjectAccessMode::PrivateRequested);
+        assert!(config.public_base_url.is_none());
+        input.public_base_url = Some("https://public.example".into());
+        assert!(normalize_s3(&input).is_err());
+    }
+
+    #[test]
+    fn legacy_s3_payload_stays_public_after_deserialization() {
+        let old: CreateS3StorageInput = serde_json::from_value(json!({
+            "providerKey":"s3", "name":"legacy", "endpoint":"https://s3.example.com",
+            "bucket":"test-bucket", "accessKeyId":"test-key",
+            "secretAccessKey":"not-a-real-secret", "publicBaseUrl":"https://public.example"
+        }))
+        .expect("old S3 payload");
+        assert_eq!(old.access_mode, ObjectAccessMode::Public);
+        let (config, _, key) = normalize_s3(&old).expect("legacy S3 is public");
+        assert_eq!(key, "s3");
+        assert_eq!(config.public_base_url.as_deref(), Some("https://public.example"));
     }
 
     #[test]
@@ -3885,8 +3909,24 @@ mod r2_private_access_tests {
         assert!(validate_group_access_intents(&[private.clone()], 1).is_ok());
         assert!(validate_group_access_intents(&[private.clone(), private.clone()], 2).is_ok());
         assert!(validate_group_access_intents(&[private.clone(), public.clone()], 2).is_err());
-        assert!(validate_group_access_intents(&[private], 2).is_err());
+        assert!(validate_group_access_intents(&[private.clone()], 2).is_err());
         assert!(validate_group_access_intents(&[public], 1).is_ok());
+        let private_s3 = storage("private_requested", "s3");
+        let public_s3 = storage("public", "s3");
+        assert!(validate_group_access_intents(&[private_s3.clone()], 1).is_ok());
+        assert!(validate_group_access_intents(&[private_s3.clone(), private.clone()], 2).is_ok());
+        assert!(validate_group_access_intents(&[private_s3.clone(), public_s3], 2).is_err());
+        assert!(validate_group_access_intents(&[private_s3], 2).is_err());
+    }
+
+    #[test]
+    fn s3_private_storage_view_surfaces_intent_without_public_url() {
+        let record = storage("private_requested", "s3");
+        let view = storage_view(&record);
+        assert_eq!(view.access_mode, "private_requested");
+        assert!(view.public_base_url.is_none());
+        let legacy = storage("public", "s3");
+        assert_eq!(storage_view(&legacy).access_mode, "public");
     }
 
     #[test]
