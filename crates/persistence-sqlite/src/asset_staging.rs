@@ -110,8 +110,8 @@ impl AssetStagingRepository {
     pub async fn list_batches(&self) -> Result<Vec<StagedAssetBatch>, sqlx::Error> {
         let rows = sqlx::query(
             "SELECT b.id,b.source_exported_at,b.created_at,COUNT(i.id) AS item_count, \
-             COALESCE(SUM(CASE WHEN i.review_status='awaiting_verification' THEN 1 ELSE 0 END),0) AS awaiting_verification, \
-             COALESCE(SUM(CASE WHEN i.review_status<>'awaiting_verification' THEN 1 ELSE 0 END),0) AS blocked_count \
+             COALESCE(SUM(CASE WHEN i.review_status='awaiting_verification' AND i.operator_decision='review' THEN 1 ELSE 0 END),0) AS awaiting_verification, \
+             COALESCE(SUM(CASE WHEN i.id IS NOT NULL AND (i.review_status<>'awaiting_verification' OR i.operator_decision<>'review') THEN 1 ELSE 0 END),0) AS blocked_count \
              FROM portable_asset_batches b LEFT JOIN portable_asset_staged_items i ON i.batch_id=b.id \
              GROUP BY b.id ORDER BY b.created_at DESC",
         ).fetch_all(&self.pool).await?;
