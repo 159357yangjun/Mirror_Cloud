@@ -183,3 +183,35 @@ is **not** proof of its presence, ownership, privacy or content integrity.
 The next phase must add a safe staging and revalidation mechanism before
 restoring any active resource-index entry. Provider and Windows end-to-end
 acceptance remain deferred as requested.
+
+## P2 phase 2: durable quarantine (still not active resource restoration)
+
+A new SQLite migration, `0020_portable_asset_staging.sql`, introduces
+`portable_asset_batches` and `portable_asset_staged_items`. They are entirely
+separate from `assets`, `asset_variants`, and `deployments`: ordinary
+resource listing, deletion, repair, sharing and reconciliation have no query
+path to these staging tables. The only batch state is `pending`; the item
+review vocabulary is strictly `blocked_duplicate`, `blocked_path`,
+`needs_rebind` or `awaiting_verification`. No `online` or verified status
+is accepted by the staging schema.
+
+After inspecting a portable resource manifest, the operator may explicitly
+choose **确认隔离暂存**. The backend performs fresh validation and conflict
+previews rather than trusting any client-side flags, then writes a sanitized
+snapshot of the allowlisted entries, source-to-destination ID bindings and
+review labels in a single SQLite transaction. Existing source snapshot
+timestamps are not overwritten or staged twice. Transaction errors roll
+back both the batch header and its item rows.
+
+The **本机待核验批次** section lists saved batches and item review labels
+across application restarts. Each batch can be explicitly discarded;
+foreign-key cascade deletes the quarantine rows only. A staging row is
+*not* an active asset, remote identity proof, remote delete authorization, or
+a claim that a file exists on any Provider. Even `awaiting_verification`
+means only "locally eligible for a future verification pass."
+
+**Not yet implemented:** confirmation-driven repair of individual staged
+bindings, live cloud existence/content verification, copying metadata into
+the active asset index, default publishing integration or any remotely
+authorized delete/share. Those remain separate phases; manual Windows/cloud
+E2E stays deferred to final product acceptance.
