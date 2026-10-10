@@ -1,0 +1,74 @@
+# Privileged real-cloud test; NOT a push / pull_request workflow.
+# Owner must configure the protected r2-private-e2e Environment BEFORE use:
+# mandatory reviewers, deployment branch rules, scoped R2 credentials and CF API token.
+name: R2 Private Live E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type RUN_DISPOSABLE_R2_E2E to authorize one test-object write'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r2-private-live-e2e
+  cancel-in-progress: false
+
+jobs:
+  live-r2:
+    # The environment still MUST restrict branches and require human approval.
+    # Never grant the cloud secrets to an untrusted PR/ref.
+    # Deliberately inert on every ref. The separate, reviewed PR #9 registers the
+    # only runnable copy on the default branch and pins an immutable test SHA.
+    # Do not load environment secrets from mutable feature-branch workflow code.
+    if: ${{ false }}
+    runs-on: windows-latest
+    timeout-minutes: 55
+    environment:
+      name: r2-private-e2e
+    steps:
+      - name: Checkout reviewed commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable, 2026-09-03
+        with:
+          toolchain: '1.98.1'
+
+      - name: Verify exactly one production OpenDAL live test exists
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $name = 'commands::r2_private_live_e2e::real_r2_private_object_e2e'
+          $listing = & cargo test --locked -p image-hosting-platform-desktop --lib $name -- --list 2>&1
+          if ($LASTEXITCODE -ne 0 -or -not (($listing -join "`n").Contains("${name}: test"))) {
+            throw 'Exact production OpenDAL live test is missing or cannot compile; secrets not loaded.'
+          }
+          Write-Host 'PASS: exact production OpenDAL R2 integration test compiled and discovered.'
+
+      - name: Real R2 private object E2E (approved test bucket only)
+        id: live
+        shell: pwsh
+        env:
+          R2_E2E_ACCOUNT_ID: ${{ vars.R2_E2E_ACCOUNT_ID }}
+          R2_E2E_BUCKET: ${{ vars.R2_E2E_BUCKET }}
+          R2_E2E_ACCESS_KEY_ID: ${{ secrets.R2_E2E_ACCESS_KEY_ID }}
+          R2_E2E_SECRET_ACCESS_KEY: ${{ secrets.R2_E2E_SECRET_ACCESS_KEY }}
+          R2_E2E_CLOUDFLARE_API_TOKEN: ${{ secrets.R2_E2E_CLOUDFLARE_API_TOKEN }}
+          R2_E2E_ALLOW_TEST_WRITES: YES_TEST_BUCKET
+        run: ./scripts/ci_r2_private_e2e.ps1
+
+      - name: Upload sanitized E2E evidence only
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: r2-private-e2e-sanitized
+          path: ${{ runner.temp }}/r2-private-e2e-sanitized.txt
+          if-no-files-found: ignore
+          retention-days: 7

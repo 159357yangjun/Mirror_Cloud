@@ -22,8 +22,8 @@ use storage_core::{StorageEntry, StorageError, StorageProvider, UploadRequest};
 use storage_gitee::{GiteeCredentials, GiteeStorage, GiteeStorageConfig};
 use storage_github::{GitHubCredentials, GitHubStorage, GitHubStorageConfig};
 use storage_opendal::{
-    CosCredentials, CosStorageConfig, OpenDalStorage, OssCredentials, OssStorageConfig,
-    S3Credentials, S3StorageConfig, WebDavCredentials, WebDavStorageConfig,
+    CosCredentials, CosStorageConfig, ObjectAccessMode, OpenDalStorage, OssCredentials,
+    OssStorageConfig, S3Credentials, S3StorageConfig, WebDavCredentials, WebDavStorageConfig,
 };
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -34,6 +34,8 @@ use crate::AppState;
 
 pub(crate) mod integrations;
 pub(crate) mod plugins;
+#[cfg(test)]
+mod r2_private_live_e2e;
 pub(crate) mod reconcile;
 pub(crate) mod remote_index;
 pub(crate) mod storage_entries;
@@ -98,6 +100,8 @@ pub struct CreateS3StorageInput {
     pub bucket: String,
     pub root: Option<String>,
     pub public_base_url: Option<String>,
+    #[serde(default)]
+    pub access_mode: ObjectAccessMode,
     pub access_key_id: String,
     pub secret_access_key: String,
 }
@@ -180,6 +184,7 @@ pub struct StorageView {
     pub detail: String,
     pub public_base_url: Option<String>,
     pub public_hint: String,
+    pub access_mode: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -270,7 +275,10 @@ pub struct StorageGroupView {
 #[serde(rename_all = "camelCase")]
 pub struct AssetDeploymentView {
     pub storage: String,
+    pub storage_id: String,
+    pub remote_path: String,
     pub provider_key: String,
+    pub access_mode: String,
     pub role: String,
     pub ok: bool,
     pub error: Option<String>,
@@ -793,7 +801,24 @@ fn normalize_s3(
         return Err("Access Key and Secret Key are required".into());
     }
 
-    let public_base_url = normalize_public_base_url(input.public_base_url.as_deref())?;
+    let public_base_url = match input.access_mode {
+        ObjectAccessMode::Public => {
+            Some(normalize_public_base_url(input.public_base_url.as_deref())?)
+        }
+        ObjectAccessMode::PrivateRequested if provider_key == "r2" => {
+            if input
+                .public_base_url
+                .as_deref()
+                .is_some_and(|url| !url.trim().is_empty())
+            {
+                return Err("私有存储目标不能同时配置公开 URL；请另建公开目标".into());
+            }
+            None
+        }
+        ObjectAccessMode::PrivateRequested => {
+            return Err("当前仅 Cloudflare R2 支持创建私有访问意图的目标".into());
+        }
+    };
 
     let endpoint = if provider_key == "r2" {
         // R2's synthesized URL is https-by-construction below; user endpoints are checked after.
@@ -835,7 +860,8 @@ fn normalize_s3(
             region,
             bucket: input.bucket.trim().into(),
             root: input.root.clone().unwrap_or_default(),
-            public_base_url: Some(public_base_url),
+            public_base_url,
+            access_mode: input.access_mode,
         },
         S3Credentials {
             access_key_id: input.access_key_id.trim().to_string(),
@@ -2704,6 +2730,7 @@ async fn publish_group_bytes(
     };
 
     let mut members = Vec::with_capacity(group.members.len());
+    let mut storage_records = Vec::with_capacity(group.members.len());
     for member in &group.members {
         let role = deployment_role_from_str(&member.role)?;
         let provider = match state
@@ -2712,8 +2739,12 @@ async fn publish_group_bytes(
             .await
             .map_err(|error| error.to_string())?
         {
-            Some(storage) => build_provider(state, &storage)
-                .map_err(|error| format!("Cannot initialize {}: {error}", member.storage_name)),
+            Some(storage) => {
+                let provider = build_provider(state, &storage)
+                    .map_err(|error| format!("Cannot initialize {}: {error}", member.storage_name));
+                storage_records.push(storage);
+                provider
+            }
             None => Err("Storage no longer exists".to_string()),
         };
         members.push(PublishMember {
@@ -2725,6 +2756,8 @@ async fn publish_group_bytes(
         });
     }
 
+    // This second guard also covers direct group calls that did not run UI preflight.
+    validate_group_access_intents(&storage_records, group.members.len())?;
     PublisherCore::publish_group(strategy, members, bytes, remote_path, mime_type)
         .await
         .map_err(|error| error.to_string())
@@ -3228,6 +3261,7 @@ async fn preflight_workflow_target(state: &AppState, workflow: &Workflow) -> Cmd
                 .map_err(|error| error.to_string())?
                 .ok_or("Workflow Storage Group no longer exists")?;
             let mut viable = 0usize;
+            let mut storage_records = Vec::with_capacity(group.members.len());
             for member in &group.members {
                 let Some(storage) = state
                     .storages
@@ -3240,7 +3274,9 @@ async fn preflight_workflow_target(state: &AppState, workflow: &Workflow) -> Cmd
                 if build_provider(state, &storage).is_ok() {
                     viable += 1;
                 }
+                storage_records.push(storage);
             }
+            validate_group_access_intents(&storage_records, group.members.len())?;
             if viable == 0 {
                 return Err("Storage Group has no locally configured publish target".into());
             }
@@ -3358,6 +3394,30 @@ fn storage_group_view(record: StorageGroupRecord) -> StorageGroupView {
     }
 }
 
+fn storage_requests_private(record: &StorageRecord) -> bool {
+    record.provider_key == "r2"
+        && record
+            .config_json
+            .get("access_mode")
+            .and_then(Value::as_str)
+            == Some("private_requested")
+}
+
+// Applies to both setup and later group publishing: a storage intent must never silently
+// cross from a private-requested R2 target into a public replica.
+fn validate_group_access_intents(
+    storages: &[StorageRecord],
+    expected_count: usize,
+) -> CmdResult<()> {
+    if storages.iter().any(storage_requests_private)
+        && (storages.len() != expected_count
+            || storages.iter().any(|s| !storage_requests_private(s)))
+    {
+        return Err("私有 R2 不能与公开、未知或已删除的目标组成同一发布组，请拆分工作流".into());
+    }
+    Ok(())
+}
+
 fn storage_view(record: &StorageRecord) -> StorageView {
     let public_base_url = record
         .config_json
@@ -3412,7 +3472,18 @@ fn storage_view(record: &StorageRecord) -> StorageView {
         enabled: record.enabled,
         detail,
         public_base_url,
-        public_hint,
+        public_hint: if storage_requests_private(record) {
+            "已请求私有 · Bucket 公开策略未验证".into()
+        } else {
+            public_hint
+        },
+        access_mode: if storage_requests_private(record) {
+            "private_requested".into()
+        } else if record.provider_key == "r2" || record.provider_key == "s3" {
+            "public".into()
+        } else {
+            "unknown".into()
+        },
     }
 }
 
@@ -3706,7 +3777,10 @@ fn asset_view(record: PublishedAssetRecord) -> AssetView {
                     domain::confirmation_tier::derive_confirmation(&deployment.timestamps).level();
                 AssetDeploymentView {
                     storage: deployment.storage_name,
+                    storage_id: deployment.storage_id.to_string(),
+                    remote_path: deployment.remote_path,
                     provider_key: deployment.provider_key,
+                    access_mode: deployment.access_mode,
                     role: deployment.role,
                     ok: deployment.status == "online",
                     error: deployment.last_error,
@@ -3726,5 +3800,129 @@ fn asset_view(record: PublishedAssetRecord) -> AssetView {
                 data: output.data_json,
             })
             .collect(),
+    }
+}
+
+#[cfg(test)]
+mod r2_private_access_tests {
+    use super::*;
+
+    fn input(access_mode: ObjectAccessMode, public_base_url: Option<&str>) -> CreateS3StorageInput {
+        CreateS3StorageInput {
+            provider_key: "r2".into(),
+            name: "test-r2".into(),
+            account_id: Some("testaccount".into()),
+            endpoint: None,
+            region: Some("auto".into()),
+            bucket: "test-bucket".into(),
+            root: Some("assets".into()),
+            public_base_url: public_base_url.map(str::to_string),
+            access_mode,
+            access_key_id: "test-key".into(),
+            secret_access_key: "not-a-real-secret".into(),
+        }
+    }
+
+    fn storage(access_mode: &str, provider_key: &str) -> StorageRecord {
+        let now = Utc::now();
+        StorageRecord {
+            id: Uuid::new_v4(),
+            name: "test".into(),
+            provider_key: provider_key.into(),
+            category: "object".into(),
+            credential_ref: None,
+            config_json: json!({"access_mode":access_mode}),
+            capabilities_json: json!({}),
+            enabled: true,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[test]
+    fn private_r2_can_be_configured_without_any_public_url() {
+        let (config, _, key) = normalize_s3(&input(ObjectAccessMode::PrivateRequested, None))
+            .expect("private-requested R2 config should be valid");
+        assert_eq!(key, "r2");
+        assert_eq!(config.access_mode, ObjectAccessMode::PrivateRequested);
+        assert!(config.public_base_url.is_none());
+    }
+
+    #[test]
+    fn private_r2_refuses_public_base_and_other_s3_providers() {
+        assert!(
+            normalize_s3(&input(
+                ObjectAccessMode::PrivateRequested,
+                Some("https://public.example")
+            ))
+            .is_err()
+        );
+        let mut generic_s3 = input(ObjectAccessMode::PrivateRequested, None);
+        generic_s3.provider_key = "s3".into();
+        assert!(normalize_s3(&generic_s3).is_err());
+    }
+
+    #[test]
+    fn legacy_r2_payload_stays_public_after_deserialization() {
+        let old: CreateS3StorageInput = serde_json::from_value(json!({
+            "providerKey":"r2", "name":"legacy", "accountId":"testaccount",
+            "bucket":"test-bucket", "accessKeyId":"test-key",
+            "secretAccessKey":"not-a-real-secret", "publicBaseUrl":"https://public.example"
+        }))
+        .expect("old payload");
+        assert_eq!(old.access_mode, ObjectAccessMode::Public);
+        let (config, _, _) = normalize_s3(&old).expect("old public R2 config");
+        assert_eq!(
+            config.public_base_url.as_deref(),
+            Some("https://public.example")
+        );
+    }
+
+    #[test]
+    fn private_groups_reject_public_and_missing_targets() {
+        let private = storage("private_requested", "r2");
+        let public = storage("public", "r2");
+        assert!(validate_group_access_intents(&[private.clone()], 1).is_ok());
+        assert!(validate_group_access_intents(&[private.clone(), private.clone()], 2).is_ok());
+        assert!(validate_group_access_intents(&[private.clone(), public.clone()], 2).is_err());
+        assert!(validate_group_access_intents(&[private], 2).is_err());
+        assert!(validate_group_access_intents(&[public], 1).is_ok());
+    }
+
+    #[test]
+    fn private_uploaded_deployment_is_online_without_public_url() {
+        let now = Utc::now();
+        let deployment = persistence_sqlite::DeploymentSummaryRecord {
+            deployment_id: Uuid::new_v4(),
+            storage_id: Uuid::new_v4(),
+            storage_name: "private R2".into(),
+            provider_key: "r2".into(),
+            access_mode: "private_requested".into(),
+            role: "primary".into(),
+            status: "online".into(),
+            remote_path: "test/image.png".into(),
+            public_url: None,
+            last_error: None,
+            error_kind: None,
+            timestamps: domain::DeploymentTimestamps::default(),
+        };
+        let record = PublishedAssetRecord {
+            id: Uuid::new_v4(),
+            name: "image.png".into(),
+            variant_id: Uuid::new_v4(),
+            mime_type: "image/png".into(),
+            size_bytes: 4,
+            width: None,
+            height: None,
+            content_hash: "test".into(),
+            created_at: now,
+            deployments: vec![deployment],
+            plugin_outputs: vec![],
+        };
+        let rendered = asset_view(record);
+        assert_eq!(rendered.status, "online");
+        assert!(rendered.public_url.is_empty());
+        assert_eq!(rendered.deployments[0].access_mode, "private_requested");
+        assert!(rendered.deployments[0].ok);
     }
 }

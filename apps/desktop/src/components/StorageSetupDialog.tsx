@@ -46,6 +46,7 @@ const providerGuideSteps: Record<SupportedProviderKey, string[]> = {
   ],
   r2: [
     '在 Cloudflare R2 创建 Bucket，并记下 Account ID。',
+    '选择“公开发布”或“私有存储目标”：私有模式不配置公开域名，但镜云无法仅凭此选项证明 Bucket 未公开。',
     '创建 R2 API Token / Access Key，获得 Access Key ID 与 Secret Access Key。',
     'Region 保持 auto；填写 Bucket、Account ID 和密钥。',
     '填写公开访问域名：它决定图片的公网链接。留空时该云端只能作为镜像 / 备份成员；作为发布目标时发布会失败并回滚。',
@@ -120,6 +121,7 @@ export function StorageSetupDialog({
     accessKeyId: '',
     secretAccessKey: '',
     publicBaseUrl: '',
+    accessMode: 'public',
     accountId: '',
     endpoint: '',
     root: '',
@@ -208,6 +210,7 @@ export function StorageSetupDialog({
     if (blank(s3Form.accessKeyId)) missingFields.push('Access Key ID')
     if (blank(s3Form.secretAccessKey)) missingFields.push('Secret Access Key')
     if (s3Form.providerKey === 'r2' && blank(s3Form.accountId)) missingFields.push('Account ID')
+    if (s3Form.providerKey === 'r2' && s3Form.accessMode === 'private_requested' && !blank(s3Form.publicBaseUrl)) missingFields.push('私有模式必须清空公开访问域名')
     if (s3Form.providerKey === 's3' && (notHttp(s3Form.endpoint) || insecureHttp(s3Form.endpoint))) missingFields.push('Endpoint（需 https，或本机 http://127.0.0.1）')
   } else if (isObject) {
     if (blank(objectForm.name)) missingFields.push('显示名称')
@@ -326,10 +329,22 @@ export function StorageSetupDialog({
             <Field label="Access Key ID" value={s3Form.accessKeyId} onChange={(value) => setS3('accessKeyId', value)} />
             <Field label="Secret Access Key" type="password" value={s3Form.secretAccessKey} onChange={(value) => setS3('secretAccessKey', value)} />
             <Field label="资源目录（可选）" value={s3Form.root || ''} onChange={(value) => setS3('root', value)} placeholder="assets" />
-            <div className="sm:col-span-2">
-              <Field label="公开访问域名（发布到该云端时必填）" value={s3Form.publicBaseUrl || ''} onChange={(value) => setS3('publicBaseUrl', value)} placeholder="https://img.example.com" />
-              <p className="mt-1.5 text-[11px] text-slate-400">用于生成别人可以直接打开的 URL。</p>
-            </div>
+            {provider === 'r2' && (
+              <div className="sm:col-span-2">
+                <div className="mb-2 text-xs font-medium text-slate-600">此 R2 存储的发布用途</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setS3Form((current) => ({ ...current, accessMode: 'public' }))} aria-pressed={s3Form.accessMode !== 'private_requested'} className={`rounded-xl border px-3 py-2.5 text-xs ${s3Form.accessMode !== 'private_requested' ? 'border-indigo-300 bg-indigo-50 text-indigo-900' : 'border-slate-200 text-slate-600'}`}>公开发布</button>
+                  <button type="button" onClick={() => setS3Form((current) => ({ ...current, accessMode: 'private_requested', publicBaseUrl: '' }))} aria-pressed={s3Form.accessMode === 'private_requested'} className={`rounded-xl border px-3 py-2.5 text-xs ${s3Form.accessMode === 'private_requested' ? 'border-indigo-300 bg-indigo-50 text-indigo-900' : 'border-slate-200 text-slate-600'}`}>私有存储目标</button>
+                </div>
+                {s3Form.accessMode === 'private_requested' && <p className="mt-2 text-xs leading-5 text-amber-700">仅请求以不生成公开 URL 的方式上传；并不修改 R2 Bucket、r2.dev、自定义域名或 CDN 的公开设置。请在 Cloudflare 控制台关闭所有公开入口并用匿名请求验证。生成的临时链接属于持有者可访问的敏感凭据。</p>}
+              </div>
+            )}
+            {s3Form.accessMode !== 'private_requested' && (
+              <div className="sm:col-span-2">
+                <Field label="公开访问域名（发布到该云端时必填）" value={s3Form.publicBaseUrl || ''} onChange={(value) => setS3('publicBaseUrl', value)} placeholder="https://img.example.com" />
+                <p className="mt-1.5 text-[11px] text-slate-400">用于生成别人可以直接打开的 URL。</p>
+              </div>
+            )}
           </div>
         )}
 
