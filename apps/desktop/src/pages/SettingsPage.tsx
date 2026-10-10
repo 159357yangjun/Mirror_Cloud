@@ -40,6 +40,9 @@ import {
   exportPortableGroupMapping,
   inspectPortableGroupMapping,
   restorePortableWorkflow,
+  exportPortableAssetManifest,
+  inspectPortableAssetManifest,
+  previewPortableAssetRestore,
   listStorages,
   getReconciliationSettings,
   getUpdateStatus,
@@ -63,7 +66,7 @@ import {
   uninstallWindowsContextMenu,
   saveOutputPreferences,
 } from '../lib/desktop'
-import type { DownloadedUpdateSummary, UpdateCheckResult, PortableStorageManifest, PortableReferenceManifest, PortableReferencePreview, PortableStorageIdMapping, PortableGroupIdMapping } from '../lib/desktop'
+import type { DownloadedUpdateSummary, UpdateCheckResult, PortableStorageManifest, PortableReferenceManifest, PortableReferencePreview, PortableStorageIdMapping, PortableGroupIdMapping, PortableAssetManifest, PortableAssetPreview } from '../lib/desktop'
 import { useAppStore } from '../store/useAppStore'
 import { confirmAction } from '../store/useConfirmStore'
 import { tierDisplay, tierReason } from '../lib/confirmationDisplay'
@@ -227,6 +230,10 @@ export function SettingsPage() {
   const [referencePreview, setReferencePreview] = useState<PortableReferencePreview | null>(null)
   const [restoredGroupIds, setRestoredGroupIds] = useState<Map<string, string>>(() => new Map())
   const [restoredWorkflowIds, setRestoredWorkflowIds] = useState<Map<string, string>>(() => new Map())
+  const [assetMigrationBusy, setAssetMigrationBusy] = useState(false)
+  const [assetMigrationMessage, setAssetMigrationMessage] = useState<string | null>(null)
+  const [assetManifest, setAssetManifest] = useState<PortableAssetManifest | null>(null)
+  const [assetPreview, setAssetPreview] = useState<PortableAssetPreview | null>(null)
   const { data: connectedStorages = [], isLoading: storagesLoading, error: storagesError } = useQuery({
     queryKey: ['storages'],
     queryFn: listStorages,
@@ -604,6 +611,62 @@ export function SettingsPage() {
     }
   }
 
+  async function exportAssetMigrationManifest() {
+    if (assetMigrationBusy) return
+    setAssetMigrationBusy(true)
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog')
+      const destination = await save({
+        defaultPath: 'mirror-cloud-assets.json',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      })
+      if (destination) {
+        const count = await exportPortableAssetManifest(destination)
+        setAssetMigrationMessage(`已导出 ${count} 条资源变体清单。移除了签名 URL、在线状态及验证时间；未包含图片文件。`)
+      }
+    } catch {
+      setAssetMigrationMessage('资源清单导出失败：可能是记录数超限、路径或文件名冲突，不会覆盖原文件。')
+    } finally {
+      setAssetMigrationBusy(false)
+    }
+  }
+
+  async function inspectAssetMigrationManifest() {
+    if (assetMigrationBusy) return
+    setAssetMigrationBusy(true)
+    setAssetManifest(null)
+    setAssetPreview(null)
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const source = await open({ multiple: false, filters: [{ name: 'JSON', extensions: ['json'] }] })
+      if (typeof source === 'string') {
+        const manifest = await inspectPortableAssetManifest(source)
+        const preview = await previewPortableAssetRestore(manifest, currentStorageMappings())
+        setAssetManifest(manifest)
+        setAssetPreview(preview)
+        setAssetMigrationMessage('清单已检查。预览为只读操作，没有写入图片、部署记录或在线状态。')
+      }
+    } catch {
+      setAssetMigrationMessage('资源清单不受支持，包含不安全字段或无法检查本地目标。')
+    } finally {
+      setAssetMigrationBusy(false)
+    }
+  }
+
+  async function refreshAssetMigrationPreview() {
+    if (assetMigrationBusy || !assetManifest) return
+    setAssetMigrationBusy(true)
+    setAssetPreview(null)
+    try {
+      setAssetPreview(await previewPortableAssetRestore(assetManifest, currentStorageMappings()))
+      setAssetMigrationMessage('已用当前 Storage ID 映射重新检查重复内容和对象路径冲突。')
+    } catch {
+      setAssetMigrationMessage('预览检查失败：本地存储不可用或映射已失效。')
+    } finally {
+      setAssetMigrationBusy(false)
+    }
+  }
+
   async function exportReconnectionMap() {
     if (portableBusy || !portablePreview || portablePreview.schemaVersion !== 2) return
     const mappings = currentStorageMappings()
@@ -767,6 +830,43 @@ export function SettingsPage() {
             })}
           </div>
           <p className="mt-2 text-[11px] text-amber-700">仅白名单中的标准重命名模板与处理步骤允许恢复；自定义工作流需人工重建。默认目标、资源索引和云端权限不迁移、不作真实性断言。</p>
+        </div>}
+      </section>
+
+      <section className="mt-8 rounded-[24px] border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800"><Database size={17} />图片资源元数据迁移 · P2</div>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
+              只导出本地图片元数据、内容哈希与安全对象路径。签名 URL、访问密钥、旧在线状态和验证时间不会导出；
+              本阶段仅检查冲突，绝不自动重建可删除或可分享的云端副本。
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" disabled={assetMigrationBusy} onClick={() => void exportAssetMigrationManifest()}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-xs disabled:opacity-40">导出资源清单</button>
+            <button type="button" disabled={assetMigrationBusy} onClick={() => void inspectAssetMigrationManifest()}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-xs disabled:opacity-40">导入并检查资源</button>
+          </div>
+        </div>
+        {assetMigrationMessage && <p role="status" className="mt-3 text-xs text-slate-600">{assetMigrationMessage}</p>}
+        {assetManifest && <div className="mt-3 rounded-xl bg-slate-50 p-3 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <strong>版本 {assetManifest.schemaVersion} · {assetManifest.entries.length} 条资源变体 · 未执行写入</strong>
+            <button type="button" disabled={assetMigrationBusy} onClick={() => void refreshAssetMigrationPreview()}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-40">刷新冲突预览</button>
+          </div>
+          {assetPreview && <p className="mt-2 text-slate-600">
+            重复内容 {assetPreview.duplicateVariants} · 缺失映射 {assetPreview.missingMappings} · 路径冲突 {assetPreview.remotePathConflicts}
+          </p>}
+          {!assetPreview && <p role="alert" className="mt-2 text-amber-700">预览无效，须重新检查。</p>}
+          <div className="mt-2 max-h-64 space-y-2 overflow-auto">
+            {assetPreview?.rows.map((item) => <div key={item.sourceVariantId} className="rounded-lg bg-white p-2">
+              <div className="font-medium text-slate-700">{item.name} · {item.status}</div>
+              <p className="mt-1 text-[11px] text-slate-500">{item.detail} · 已映射路径 {item.resolvedCopies} · 待修复 {item.missingCopies}</p>
+            </div>)}
+          </div>
+          <p className="mt-2 text-[11px] text-amber-700">预览结果不是云端文件存在的证据。资源数据库导入、远端验证、图片内容迁移尚未完成。</p>
         </div>}
       </section>
 
