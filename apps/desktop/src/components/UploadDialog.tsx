@@ -73,7 +73,7 @@ export function UploadDialog() {
   const dialogGenerationRef = useRef(0)
   const [finishedHandled, setFinishedHandled] = useState(false)
 
-  const { data: allTasks = [] } = useQuery({
+  const { data: allTasks = [], error: tasksError, refetch: refetchTasks, isFetching: refreshingTasks } = useQuery({
     queryKey: ['tasks'],
     // A batch can contain more than the default 100 tasks. Leave headroom for
     // unrelated background jobs created after this batch was dispatched.
@@ -112,7 +112,9 @@ export function UploadDialog() {
   )
   const terminal = taskIds.length > 0 && trackedTasks.length === taskIds.length && trackedTasks.every((task) => task && TERMINAL_STATUSES.has(task.status))
   const failedTasks = trackedTasks.filter((task) => task?.status === 'failed')
+  const cancelledTasks = trackedTasks.filter((task) => task?.status === 'cancelled')
   const warningTasks = trackedTasks.filter((task) => task?.status === 'completed' && Boolean(task?.error))
+  const successfulTasks = trackedTasks.filter((task) => task?.status === 'completed' && !task.error)
   // Each task ID is paired with the exact source submitted to Rust (same order).
   // A failed-only retry MUST NOT re-publish successful or completed-with-warning tasks.
   const failedIndexes = submission?.taskIds.flatMap((id, index) =>
@@ -284,6 +286,11 @@ export function UploadDialog() {
     if (chosen.length > 0) setPaths((current) => Array.from(new Set([...current, ...chosen.filter(isImagePath)])))
   }
 
+  function removeSelectedFile(path: string) {
+    if (publishMutation.isPending || publishDispatchRef.current) return
+    setPaths((current) => current.filter((item) => item !== path))
+  }
+
   function resetPublish() {
     dialogGenerationRef.current += 1
     setTaskIds([])
@@ -342,9 +349,27 @@ export function UploadDialog() {
             {mode === 'files' ? (
               <>
                 <button onClick={pickImages} className={`mt-3 grid min-h-[210px] w-full place-items-center rounded-[24px] border border-dashed p-6 text-center transition ${dragging ? 'border-blue-400 bg-blue-50 ring-4 ring-blue-50' : 'border-slate-250 bg-slate-50/70 hover:bg-slate-50'}`}>
-                  <div><div className="mx-auto grid size-12 place-items-center rounded-2xl bg-white shadow-sm"><Upload size={20} /></div><div className="mt-4 text-sm font-medium">{dragging ? '松开即可添加图片' : '把图片拖到这里，或点击选择'}</div><div className="mt-1 text-xs text-slate-400">JPEG / PNG / WebP / GIF / BMP · 选择后先预览，再开始发布。</div><div className="mt-5 inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white"><FolderOpen size={15} />选择文件</div></div>
+                  <div><div className="mx-auto grid size-12 place-items-center rounded-2xl bg-white shadow-sm"><Upload size={20} /></div><div className="mt-4 text-sm font-medium">{dragging ? '松开即可添加图片' : '把图片拖到这里，或点击选择'}</div><div className="mt-1 text-xs text-slate-400">JPEG / PNG / WebP / GIF / BMP · 选择后核对列表，可逐张移除。</div><div className="mt-5 inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white"><FolderOpen size={15} />选择文件</div></div>
                 </button>
-                {paths.length > 0 && <div className="mt-4 max-h-32 overflow-auto rounded-2xl border border-slate-200 p-3"><div className="mb-1 flex items-center justify-between text-[11px] text-slate-400"><span>已选择 {paths.length} 张</span><button onClick={() => setPaths([])} className="hover:text-slate-700">清空</button></div>{paths.map((path) => <div key={path} className="flex items-center gap-2 py-1.5 text-xs text-slate-600"><FileImage size={14} /><span className="truncate">{displayName(path)}</span></div>)}</div>}
+                {paths.length > 0 && (
+                  <div className="mt-4 max-h-44 overflow-auto rounded-2xl border border-slate-200 p-3">
+                    <div className="mb-1 flex items-center justify-between text-[11px] text-slate-400">
+                      <span>已选择 {paths.length} 张</span>
+                      <button disabled={publishMutation.isPending} onClick={() => setPaths([])} className="hover:text-slate-700 disabled:opacity-40">清空</button>
+                    </div>
+                    {paths.map((path) => (
+                      <div key={path} className="flex items-center gap-2 py-1.5 text-xs text-slate-600">
+                        <FileImage size={14} className="shrink-0" />
+                        <span className="min-w-0 flex-1 truncate" title={path}>{displayName(path)}</span>
+                        <button type="button" disabled={publishMutation.isPending} onClick={() => removeSelectedFile(path)}
+                          aria-label={`移除 ${displayName(path)}`} title="从本次上传列表移除，不删除本地文件"
+                          className="shrink-0 rounded-lg p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40">
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </>
             ) : mode === 'urls' ? (
               <div className="mt-3 rounded-[24px] border border-slate-200 bg-slate-50/60 p-4">
@@ -378,26 +403,35 @@ export function UploadDialog() {
           </>
         ) : (
           <div className="mt-4">
-            <div className={`rounded-[22px] border p-5 ${failedTasks.length ? 'border-red-100 bg-red-50/40' : terminal && warningTasks.length ? 'border-amber-100 bg-amber-50/40' : terminal ? 'border-emerald-100 bg-emerald-50/40' : 'border-blue-100 bg-blue-50/40'}`}>
+            <div className={`rounded-[22px] border p-5 ${failedTasks.length ? 'border-red-100 bg-red-50/40' : terminal && (warningTasks.length || cancelledTasks.length) ? 'border-amber-100 bg-amber-50/40' : terminal ? 'border-emerald-100 bg-emerald-50/40' : 'border-blue-100 bg-blue-50/40'}`}>
               <div className="flex items-center gap-3">
-                <div className={`grid size-10 place-items-center rounded-2xl ${failedTasks.length ? 'bg-red-100 text-red-600' : terminal && warningTasks.length ? 'bg-amber-100 text-amber-600' : terminal ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>
-                  {terminal ? (failedTasks.length ? <AlertCircle size={18} /> : warningTasks.length ? <TriangleAlert size={18} /> : <CheckCircle2 size={18} />) : <LoaderCircle size={18} className="animate-spin" />}
+                <div className={`grid size-10 place-items-center rounded-2xl ${failedTasks.length ? 'bg-red-100 text-red-600' : terminal && (warningTasks.length || cancelledTasks.length) ? 'bg-amber-100 text-amber-600' : terminal ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>
+                  {terminal ? (failedTasks.length ? <AlertCircle size={18} /> : warningTasks.length || cancelledTasks.length ? <TriangleAlert size={18} /> : <CheckCircle2 size={18} />) : <LoaderCircle size={18} className="animate-spin" />}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold">{terminal ? (failedTasks.length ? '发布完成，但有失败项' : warningTasks.length ? '发布完成，但有警告' : '发布完成') : '正在上传并执行已启用插件'}</div>
-                  <div className="mt-1 text-xs text-slate-500">{terminal ? `${failedTasks.length} 失败 · ${warningTasks.length} 警告 · ${trackedTasks.length - failedTasks.length - warningTasks.length} 正常` : `处理中 · ${progress}%`}</div>
+                  <div className="text-sm font-semibold">{terminal ? (failedTasks.length ? '发布结束，但有失败项' : cancelledTasks.length ? '发布结束，但有取消项' : warningTasks.length ? '发布完成，但有警告' : '发布完成') : '正在上传并执行已启用插件'}</div>
+                  <div className="mt-1 text-xs text-slate-500">{terminal ? `${successfulTasks.length} 成功 · ${failedTasks.length} 失败 · ${cancelledTasks.length} 取消 · ${warningTasks.length} 警告` : `处理中 · ${progress}%`}</div>
                 </div>
                 <div className="text-lg font-semibold tabular-nums text-slate-700">{progress}%</div>
               </div>
-              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/80"><div className={`h-full rounded-full transition-all duration-300 ${failedTasks.length ? 'bg-red-500' : terminal && warningTasks.length ? 'bg-amber-500' : terminal ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${Math.max(2, progress)}%` }} /></div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/80"><div className={`h-full rounded-full transition-all duration-300 ${failedTasks.length ? 'bg-red-500' : terminal && (warningTasks.length || cancelledTasks.length) ? 'bg-amber-500' : terminal ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${Math.max(2, progress)}%` }} /></div>
             </div>
 
+            {tasksError && (
+              <div role="alert" className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+                <span>任务状态读取失败，进度可能不是最新结果。不要因此重复提交图片。</span>
+                <button type="button" disabled={refreshingTasks} onClick={() => void refetchTasks()}
+                  className="rounded-lg border border-red-200 bg-white px-3 py-1.5 font-medium disabled:opacity-40">
+                  {refreshingTasks ? '刷新中…' : '重新读取任务'}
+                </button>
+              </div>
+            )}
             <div className="mt-4 max-h-56 overflow-auto rounded-2xl border border-slate-200 bg-white">
               {taskIds.map((id, index) => {
                 const task = allTasks.find((item) => item.id === id)
                 return <div key={id} className={`flex items-start gap-3 p-3 ${index ? 'border-t border-slate-100' : ''}`}>
-                  <div className="mt-0.5">{task?.status === 'failed' ? <AlertCircle size={15} className="text-red-500" /> : task?.status === 'completed' && task?.error ? <TriangleAlert size={15} className="text-amber-500" /> : task?.status === 'completed' ? <CheckCircle2 size={15} className="text-emerald-500" /> : <LoaderCircle size={15} className="animate-spin text-blue-500" />}</div>
-                  <div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{task?.title || `任务 ${index + 1}`}</div><div className={`mt-1 text-[11px] leading-5 ${task?.status === 'failed' ? 'text-red-500' : task?.status === 'completed' && task?.error ? 'text-amber-600' : 'text-slate-400'}`}>{task?.error || task?.detail || '等待任务引擎…'}</div></div>
+                  <div className="mt-0.5">{task?.status === 'failed' ? <AlertCircle size={15} className="text-red-500" /> : task?.status === 'cancelled' ? <X size={15} className="text-slate-500" /> : task?.status === 'completed' && task?.error ? <TriangleAlert size={15} className="text-amber-500" /> : task?.status === 'completed' ? <CheckCircle2 size={15} className="text-emerald-500" /> : <LoaderCircle size={15} className="animate-spin text-blue-500" />}</div>
+                  <div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{task?.title || `任务 ${index + 1}`}</div><div className={`mt-1 text-[11px] leading-5 ${task?.status === 'failed' ? 'text-red-500' : task?.status === 'completed' && task?.error ? 'text-amber-600' : 'text-slate-400'}`}>{task?.status === 'cancelled' ? '已取消 · 请核对是否产生部分云端副作用' : task?.error || task?.detail || (tasksError ? '任务状态暂时无法读取' : '等待任务引擎…')}</div></div>
                   <span className="text-[11px] tabular-nums text-slate-400">{task?.progress ?? 0}%</span>
                 </div>
               })}
