@@ -243,3 +243,37 @@ The only supported operation on a staging batch remains local review or discard.
 No remote deletion, sharing, automated verification, promotion, or active
 resource writes are exposed by this phase. Future activation must introduce
 separate provider checks and fail-closed authorization.
+
+## P2 phase 4: fail-closed pre-activation gate (local only)
+
+Each staged resource now offers **检查激活前条件** in Settings. The Tauri
+command reads the exact pending batch+row, source image identity, original
+storage mapping and saved per-row overrides, and looks up **current** enabled
+local destination storages. It recomputes local variant duplication and
+object-key conflicts against active records, independently of the older
+`review_status` stored on staging.
+
+Results distinguish `excluded`, `deferred`, `blocked_local` and
+`awaiting_remote_evidence`. The latter means only that a current local
+preflight found no immediate identity, mapping or object-key conflict.
+Individual copies enumerate future required evidence: remote object
+existence, authenticated readback matching the source content digest,
+and independently verified access policy. R2/S3 targets with
+`private_requested` also require actual anonymous-access refusal
+and expiry behavior of a temporary share. This intent flag is **not** proof
+of private cloud permissions; an object's ETag or unverified metadata is
+also not a substitute for authenticated content verification.
+
+The command deliberately returns `activation_allowed: false` for every
+case. It neither requests cloud credentials nor accesses remote services,
+writes evidence, changes active images/deployments, creates public links
+or grants deletion. There is **no** override button or promotion path.
+This gate is an actionable operator checklist that makes remaining
+verification gaps visible; it does not imply real R2/S3 or Windows
+acceptance has run.
+
+A future phase must introduce authenticated, time-bound proof collection
+bound to the exact destination Storage ID, object key, source digest
+and current row revision; enforce fresh concurrency/ACL checks within an
+atomic promotion transaction; and maintain fail-closed behavior when a
+cloud provider cannot prove the requested policy.
