@@ -48,6 +48,7 @@ import {
   listPortableStagedItems,
   discardPortableAssetStaging,
   updatePortableStagedItemReview,
+  assessPortableAssetActivation,
   listStorages,
   getReconciliationSettings,
   getUpdateStatus,
@@ -71,7 +72,7 @@ import {
   uninstallWindowsContextMenu,
   saveOutputPreferences,
 } from '../lib/desktop'
-import type { DownloadedUpdateSummary, UpdateCheckResult, PortableStorageManifest, PortableReferenceManifest, PortableReferencePreview, PortableStorageIdMapping, PortableGroupIdMapping, PortableAssetManifest, PortableAssetPreview } from '../lib/desktop'
+import type { DownloadedUpdateSummary, UpdateCheckResult, PortableStorageManifest, PortableReferenceManifest, PortableReferencePreview, PortableStorageIdMapping, PortableGroupIdMapping, PortableAssetManifest, PortableAssetPreview, PortableActivationGate } from '../lib/desktop'
 import { useAppStore } from '../store/useAppStore'
 import { confirmAction } from '../store/useConfirmStore'
 import { tierDisplay, tierReason } from '../lib/confirmationDisplay'
@@ -240,6 +241,7 @@ export function SettingsPage() {
   const [assetManifest, setAssetManifest] = useState<PortableAssetManifest | null>(null)
   const [assetPreview, setAssetPreview] = useState<PortableAssetPreview | null>(null)
   const [selectedStagedBatch, setSelectedStagedBatch] = useState<string | null>(null)
+  const [activationGate, setActivationGate] = useState<PortableActivationGate | null>(null)
   const [stagedRebindings, setStagedRebindings] = useState<Record<string, Record<string, string>>>({})
   const { data: stagedAssetBatches = [], error: stagedBatchError } = useQuery({
     queryKey: ['portable-asset-staging'],
@@ -718,7 +720,7 @@ export function SettingsPage() {
     try {
       const removed = await discardPortableAssetStaging(batchId)
       if (!removed) throw new Error('批次已不存在')
-      if (selectedStagedBatch === batchId) setSelectedStagedBatch(null)
+      if (selectedStagedBatch === batchId) { setSelectedStagedBatch(null); setActivationGate(null) }
       await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging'] })
       await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging-items', batchId] })
       setAssetMigrationMessage('暂存批次已清理；正式资源及远端对象均未修改。')
@@ -737,6 +739,7 @@ export function SettingsPage() {
   ) {
     if (assetMigrationBusy || !selectedStagedBatch) return
     setAssetMigrationBusy(true)
+    setActivationGate(null)
     try {
       await updatePortableStagedItemReview(
         selectedStagedBatch, item.id, item.revision, decision, sourceStorageId, newStorageId,
@@ -747,6 +750,21 @@ export function SettingsPage() {
     } catch {
       setAssetMigrationMessage('保存失败：记录可能被另一窗口修改、Provider 不匹配或目标存储失效。请刷新暂存批次后重试。')
       await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging-items', selectedStagedBatch] })
+    } finally {
+      setAssetMigrationBusy(false)
+    }
+  }
+
+  async function inspectActivationGate(itemId: string) {
+    if (assetMigrationBusy || !selectedStagedBatch) return
+    setAssetMigrationBusy(true)
+    setActivationGate(null)
+    try {
+      const gate = await assessPortableAssetActivation(selectedStagedBatch, itemId)
+      setActivationGate(gate)
+      setAssetMigrationMessage('已实时检查本地引用及验证要求。尚未执行远端校验，不允许将资源激活。')
+    } catch {
+      setAssetMigrationMessage('激活前检查失败：暂存记录可能损坏、已丢弃或映射已失效。未允许任何激活。')
     } finally {
       setAssetMigrationBusy(false)
     }
@@ -970,7 +988,7 @@ export function SettingsPage() {
                   <div className="mt-1 text-[11px] text-slate-500">来源快照：{batch.sourceExportedAt}</div>
                 </div>
                 <div className="flex gap-2">
-                  <button type="button" disabled={assetMigrationBusy} onClick={() => setSelectedStagedBatch(batch.id)}
+                  <button type="button" disabled={assetMigrationBusy} onClick={() => { setSelectedStagedBatch(batch.id); setActivationGate(null) }}
                     className="rounded-lg border border-slate-200 px-2 py-1.5 disabled:opacity-40">查看</button>
                   <button type="button" disabled={assetMigrationBusy} onClick={() => void discardAssetMigration(batch.id)}
                     className="rounded-lg border border-red-200 px-2 py-1.5 text-red-700 disabled:opacity-40">丢弃</button>
@@ -987,7 +1005,32 @@ export function SettingsPage() {
                       className="rounded border border-slate-200 bg-white px-2 py-1 disabled:opacity-40">稍后处理</button>
                     <button type="button" disabled={assetMigrationBusy} onClick={() => void reviewStagedItem(item, 'exclude')}
                       className="rounded border border-slate-200 bg-white px-2 py-1 disabled:opacity-40">排除此项</button>
+                    <button type="button" disabled={assetMigrationBusy}
+                      onClick={() => void inspectActivationGate(item.id)}
+                      className="rounded border border-amber-300 bg-white px-2 py-1 text-amber-800 disabled:opacity-40">检查激活前条件</button>
                   </div>
+                  {activationGate?.itemId === item.id && <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2">
+                    <div className="font-semibold text-amber-900">激活未授权 · {activationGate.gateStatus === 'awaiting_remote_evidence'
+                      ? '本地预检完成，缺少远端证据'
+                      : activationGate.gateStatus === 'excluded' ? '已排除'
+                      : activationGate.gateStatus === 'deferred' ? '已延期'
+                      : '存在本地阻断问题'}</div>
+                    <p className="mt-1">当前本地状态：{activationGate.localStatus} · 修订版本 {activationGate.revision} · 激活许可：否</p>
+                    {activationGate.localBlockers.length > 0 && <p className="mt-1 break-words text-red-800">
+                      需要修复：{activationGate.localBlockers.join('、')}
+                    </p>}
+                    {activationGate.copies.map((copy) => <div key={copy.sourceStorageId} className="mt-2 border-t border-amber-200 pt-2">
+                      <p className="font-medium">{copy.providerKey} 副本 · {copy.localBindingValid && copy.hasSafeObjectKey ? '本地引用可检查' : '本地映射或对象路径不完整'}</p>
+                      <p className="mt-1 break-words text-slate-600">仍需真实证据：{copy.requiredEvidence.map((key) => ({
+                        remote_object_exists: '远端对象存在',
+                        authenticated_readback_matches_source_digest: '认证读取并校验内容摘要',
+                        provider_access_policy_verified: '确认访问权限策略',
+                        anonymous_access_denied: '匿名访问被拒绝',
+                        time_limited_share_expiration_verified: '临时分享过期失效',
+                      }[key] ?? key)).join('、')}</p>
+                    </div>)}
+                    <p className="mt-2 text-amber-800">这里不会连接云端，也不包含“跳过验证”“确认在线”或激活按钮。</p>
+                  </div>}
                   {item.sources.map((source) => {
                     const choice = stagedRebindings[item.id]?.[source.sourceStorageId] ?? ''
                     const matches = connectedStorages.filter((storage) => storage.enabled && storage.providerKey === source.providerKey)
