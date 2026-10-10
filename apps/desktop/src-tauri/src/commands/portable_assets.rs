@@ -252,7 +252,7 @@ async fn build_asset_preview(
         .map_err(|_| "无法读取本机存储")?;
     let mut resolved = HashMap::new();
     let mut destinations = HashSet::new();
-    for mapping in &mappings {
+    for mapping in mappings {
         let old = Uuid::parse_str(&mapping.old_storage_id).map_err(|_| "旧存储 ID 无效")?;
         let new = Uuid::parse_str(&mapping.new_storage_id).map_err(|_| "新存储 ID 无效")?;
         if old == new || resolved.contains_key(&old) || !destinations.insert(new) {
