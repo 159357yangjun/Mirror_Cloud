@@ -92,3 +92,33 @@ acceptance and real-cloud testing are deliberately left for the end.
   matching name on a later import. Never apply mappings to groups, workflows,
   deployments or assets until a separate conflict preview and reversible
   database transaction exist.
+
+## P1 reference inventory and confirmed group restoration
+
+A separate `mirror-cloud-relationships.json` (schema version 1) exports the
+existing group names, strategies, old group UUIDs, old member storage UUIDs,
+roles and priorities. It exports non-system workflow **names and publish target
+references only**. No workflow steps/templates, secrets, signed URLs, images,
+deployments, or resource verification statuses leave the machine. This is an
+allowlisted relationship snapshot, **not** a full application backup.
+
+On a new device, import the v2 storage manifest, reconnect each storage with
+fresh credentials, and preserve the old→new ID mapping in the Settings session.
+Import the relationship file and use **重新检查冲突** to view unmapped members,
+existing group names and mixed private/unknown storage intent. Each ready group
+requires its own user confirmation. The app gives the group a new UUID.
+
+The SQLite group header and all members are inserted within one transaction;
+a member failure rolls back the header, and an atomic conditional INSERT
+refuses to overwrite an existing same-name group. The command revalidates
+mappings, enabled storages, Provider identities, group membership and access
+isolation when clicked, so an old browser-side preview is not trusted.
+
+Workflow target references are **read-only previews** because the relationship
+file deliberately excludes processing steps and templates. No workflow is
+auto-created, no default upload target changed, and no old UUID is reused.
+Restored group IDs are shown in the current UI session but are not yet part of
+a durable cross-device workflow mapping. These are explicit remaining gaps.
+
+Run Windows human acceptance and real remote ACL verification only during the
+final consolidated product acceptance stage, per project policy.
