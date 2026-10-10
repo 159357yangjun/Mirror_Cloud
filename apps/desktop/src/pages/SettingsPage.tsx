@@ -703,8 +703,12 @@ export function SettingsPage() {
         </div>}
         {referenceManifest && <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <strong>关系恢复预览 · {referenceManifest.groups.length} 个多云组 · {referenceManifest.workflows.length} 条工作流引用</strong>
-            <button type="button" disabled={portableBusy} onClick={() => void refreshReferencePlan()} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-40">重新检查冲突</button>
+            <strong>关系清单 v{referenceManifest.schemaVersion} · {referenceManifest.groups.length} 个多云组 · {referenceManifest.workflows.length} 条工作流</strong>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" disabled={portableBusy || restoredGroupIds.size === 0} onClick={() => void exportGroupMapReceipt()} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-40">导出 Group ID 映射</button>
+              <button type="button" disabled={portableBusy} onClick={() => void importGroupMapReceipt()} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-40">载入 Group ID 映射</button>
+              <button type="button" disabled={portableBusy} onClick={() => void refreshReferencePlan()} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-40">重新检查冲突</button>
+            </div>
           </div>
           {!referencePreview && <p role="alert" className="mt-2 text-amber-700">当前预览无效。重新检查成功前不允许恢复。</p>}
           <div className="mt-2 space-y-2">
@@ -722,12 +726,23 @@ export function SettingsPage() {
                 </button>
               </div>
             })}
-            {referencePreview?.workflows.map((workflow, index) => <div key={index} className="rounded-lg bg-white p-2">
-              <div className="font-medium">{workflow.name} · 工作流只读预览</div>
-              <p className="mt-1 text-[11px] text-amber-700">{workflow.detail}</p>
-            </div>)}
+            {referencePreview?.workflows.map((workflow) => {
+              const restoredId = restoredWorkflowIds.get(workflow.sourceWorkflowId)
+              return <div key={workflow.sourceWorkflowId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white p-2">
+                <div className="min-w-0">
+                  <div className="font-medium">{workflow.name} · {restoredId ? '已创建工作流' : workflow.status === 'ready' ? '标准工作流可恢复' : '需人工处理'}</div>
+                  <p className="mt-1 text-[11px] text-amber-700">{restoredId ? `新 Workflow ID：${restoredId}` : workflow.detail}</p>
+                </div>
+                <button type="button"
+                  disabled={portableBusy || Boolean(restoredId) || workflow.status !== 'ready'}
+                  onClick={() => void restoreOneWorkflow(workflow.sourceWorkflowId)}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40">
+                  {restoredId ? '已恢复' : '确认恢复标准工作流'}
+                </button>
+              </div>
+            })}
           </div>
-          <p className="mt-2 text-[11px] text-amber-700">不恢复旧 Group ID、完整工作流步骤、默认发布目标或资源记录；远端权限未实测。</p>
+          <p className="mt-2 text-[11px] text-amber-700">仅白名单中的标准重命名模板与处理步骤允许恢复；自定义工作流需人工重建。默认目标、资源索引和云端权限不迁移、不作真实性断言。</p>
         </div>}
       </section>
 
