@@ -32,6 +32,7 @@ import {
   exportPortableStorageManifest,
   inspectPortableStorageManifest,
   exportPortableReconnectMap,
+  inspectPortableReconnectMap,
   exportPortableReferenceManifest,
   inspectPortableReferenceManifest,
   previewPortableReferenceRestore,
@@ -221,6 +222,7 @@ export function SettingsPage() {
   // A new ID only exists after provider creation succeeded. Never reuse a source UUID.
   // This map is deliberately session-local until the user explicitly exports an audit receipt.
   const [reconnectedIds, setReconnectedIds] = useState<Map<number, string>>(() => new Map())
+  const [importedStorageMappings, setImportedStorageMappings] = useState<PortableStorageIdMapping[]>([])
   const [referenceManifest, setReferenceManifest] = useState<PortableReferenceManifest | null>(null)
   const [referencePreview, setReferencePreview] = useState<PortableReferencePreview | null>(null)
   const [restoredGroupIds, setRestoredGroupIds] = useState<Map<string, string>>(() => new Map())
@@ -414,7 +416,9 @@ export function SettingsPage() {
   function currentStorageMappings(): PortableStorageIdMapping[] {
     if (portablePreview?.schemaVersion !== 2) return []
     return portablePreview.profiles.flatMap((profile, index) => {
-      const newStorageId = reconnectedIds.get(index)
+      const imported = importedStorageMappings.find((item) =>
+        item.oldStorageId === profile.sourceStorageId && item.providerKey === profile.providerKey)
+      const newStorageId = reconnectedIds.get(index) ?? imported?.newStorageId
       return profile.sourceStorageId && newStorageId
         ? [{ oldStorageId: profile.sourceStorageId, newStorageId, providerKey: profile.providerKey }]
         : []
@@ -582,13 +586,27 @@ export function SettingsPage() {
     }
   }
 
+  async function importStorageMapReceipt() {
+    if (!portablePreview || portablePreview.schemaVersion !== 2 || portableBusy) return
+    setPortableBusy(true)
+    setReferencePreview(null)
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const source = await open({ multiple: false, filters: [{ name: 'JSON', extensions: ['json'] }] })
+      if (typeof source !== 'string') return
+      const mappings = await inspectPortableReconnectMap(source, portablePreview)
+      setImportedStorageMappings(mappings)
+      setPortableMessage(`已验证并载入 ${mappings.length} 条 Storage ID 映射，请重新检查关系预览。`)
+    } catch {
+      setPortableMessage('存储映射载入失败：来源清单时间、UUID、Provider 或目标状态不匹配。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
   async function exportReconnectionMap() {
     if (portableBusy || !portablePreview || portablePreview.schemaVersion !== 2) return
-    const mappings = portablePreview.profiles.flatMap((profile, index) => {
-      const newStorageId = reconnectedIds.get(index)
-      if (!profile.sourceStorageId || !newStorageId) return []
-      return [{ oldStorageId: profile.sourceStorageId, newStorageId, providerKey: profile.providerKey }]
-    })
+    const mappings = currentStorageMappings()
     if (!mappings.length) return
     setPortableBusy(true)
     try {
@@ -615,6 +633,7 @@ export function SettingsPage() {
     setPortablePreview(null)
     setRestoreIndex(null)
     setReconnectedIds(new Map())
+    setImportedStorageMappings([])
     setReferencePreview(null)
     setRestoredGroupIds(new Map())
     setRestoredWorkflowIds(new Map())
@@ -663,10 +682,15 @@ export function SettingsPage() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-xs font-medium text-slate-700">清单版本 {portablePreview.schemaVersion} · {portablePreview.profiles.length} 个存储 · 已重连 {reconnectedIds.size} 个</div>
             <button type="button"
-              disabled={portableBusy || restoreIndex !== null || portablePreview.schemaVersion !== 2 || reconnectedIds.size === 0}
+              disabled={portableBusy || restoreIndex !== null || portablePreview.schemaVersion !== 2 || currentStorageMappings().length === 0}
               onClick={() => void exportReconnectionMap()}
               className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium disabled:opacity-40">
               导出旧→新 ID 映射
+            </button>
+            <button type="button" disabled={portableBusy || portablePreview.schemaVersion !== 2}
+              onClick={() => void importStorageMapReceipt()}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium disabled:opacity-40">
+              载入 Storage ID 映射
             </button>
           </div>
           {portablePreview.schemaVersion === 1 && <p className="mt-2 text-[11px] text-amber-700">旧版 v1 清单没有原始 Storage ID，可逐项重新连接，但无法生成可靠的 ID 映射；建议从旧设备重新导出 v2 清单。</p>}
