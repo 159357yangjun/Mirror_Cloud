@@ -22,6 +22,7 @@ use tokio::sync::RwLock;
 pub struct AppState {
     pub storages: StorageRepository,
     pub assets: AssetRepository,
+    pub asset_staging: AssetStagingRepository,
     pub settings: SettingsRepository,
     pub groups: StorageGroupRepository,
     pub workflows: WorkflowRepository,
