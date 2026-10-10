@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::{io::Write, path::Path};
 use tauri::State;
 
-use crate::AppState;
 use super::CmdResult;
+use crate::AppState;
 
 const VERSION: u32 = 1;
 const MAX_IMPORT_BYTES: u64 = 1024 * 1024;
@@ -60,7 +60,10 @@ fn make_profile(record: &StorageRecord) -> PortableStorageProfile {
         repo: optional_field(record, "repo"),
         branch: optional_field(record, "branch"),
         access_mode: if supports_intent
-            && record.config_json.get("access_mode").and_then(serde_json::Value::as_str)
+            && record
+                .config_json
+                .get("access_mode")
+                .and_then(serde_json::Value::as_str)
                 == Some("private_requested")
         {
             "private_requested".to_string()
@@ -87,7 +90,10 @@ fn validate_manifest(manifest: &PortableStorageManifest) -> CmdResult<()> {
         ) {
             return Err("清单包含不支持的存储类型".into());
         }
-        if !matches!(profile.access_mode.as_str(), "unknown" | "private_requested") {
+        if !matches!(
+            profile.access_mode.as_str(),
+            "unknown" | "private_requested"
+        ) {
             return Err("清单包含无效的访问意图".into());
         }
         if profile.access_mode == "private_requested"
@@ -130,8 +136,8 @@ pub async fn export_portable_storage_manifest(
         profiles: records.iter().map(make_profile).collect(),
     };
     validate_manifest(&manifest)?;
-    let bytes = serde_json::to_vec_pretty(&manifest)
-        .map_err(|_| "无法序列化存储配置清单".to_string())?;
+    let bytes =
+        serde_json::to_vec_pretty(&manifest).map_err(|_| "无法序列化存储配置清单".to_string())?;
     let destination = ensure_json_path(&destination_path)?;
     // Refuse overwrite: an export can never clobber an existing backup/file.
     let mut file = std::fs::OpenOptions::new()
@@ -146,7 +152,9 @@ pub async fn export_portable_storage_manifest(
 
 /// Import step one: inspect and validate only. NEVER mutate SQLite or secrets.
 #[tauri::command]
-pub async fn inspect_portable_storage_manifest(source_path: String) -> CmdResult<PortableStorageManifest> {
+pub async fn inspect_portable_storage_manifest(
+    source_path: String,
+) -> CmdResult<PortableStorageManifest> {
     let source = ensure_json_path(&source_path)?;
     let meta = std::fs::metadata(source).map_err(|_| "无法读取清单文件".to_string())?;
     if !meta.is_file() || meta.len() > MAX_IMPORT_BYTES {
@@ -189,7 +197,15 @@ mod tests {
         };
         let profile = make_profile(&record);
         let json = serde_json::to_string(&profile).unwrap();
-        for forbidden in ["secret", "hidden", "credential", "endpoint", "password", "token", "publicBaseUrl"] {
+        for forbidden in [
+            "secret",
+            "hidden",
+            "credential",
+            "endpoint",
+            "password",
+            "token",
+            "publicBaseUrl",
+        ] {
             assert!(!json.contains(forbidden), "leaked {forbidden}");
         }
         assert_eq!(profile.access_mode, "private_requested");
@@ -205,15 +221,22 @@ mod tests {
             profiles: vec![PortableStorageProfile {
                 name: "invalid".into(),
                 provider_key: "gitee".into(),
-                bucket: None, region: None, root: None, owner: None,
-                repo: None, branch: None, access_mode: "private_requested".into(),
+                bucket: None,
+                region: None,
+                root: None,
+                owner: None,
+                repo: None,
+                branch: None,
+                access_mode: "private_requested".into(),
             }],
         };
         assert!(validate_manifest(&manifest).is_err());
         manifest.profiles[0].provider_key = "s3".into();
         assert!(validate_manifest(&manifest).is_ok());
         let mut raw = serde_json::to_value(&manifest).unwrap();
-        raw.as_object_mut().unwrap().insert("secretAccessKey".into(), json!("oops"));
+        raw.as_object_mut()
+            .unwrap()
+            .insert("secretAccessKey".into(), json!("oops"));
         assert!(serde_json::from_value::<PortableStorageManifest>(raw).is_err());
     }
 }
