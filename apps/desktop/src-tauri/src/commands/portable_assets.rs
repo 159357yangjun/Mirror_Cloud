@@ -637,10 +637,7 @@ pub struct PortableActivationGate {
     pub activation_allowed: bool,
 }
 
-fn activation_gate_status(
-    decision: &str,
-    local_blockers: &[String],
-) -> &'static str {
+fn activation_gate_status(decision: &str, local_blockers: &[String]) -> &'static str {
     match decision {
         "exclude" => "excluded",
         "defer" => "deferred",
@@ -670,14 +667,20 @@ pub async fn assess_portable_asset_activation(
 ) -> CmdResult<PortableActivationGate> {
     let batch = Uuid::parse_str(&batch_id).map_err(|_| "无效的批次 UUID")?;
     let item = Uuid::parse_str(&item_id).map_err(|_| "无效的资源 UUID")?;
-    let ctx = state.asset_staging.get_review_context(batch, item).await
+    let ctx = state
+        .asset_staging
+        .get_review_context(batch, item)
+        .await
         .map_err(|_| "无法读取暂存检查信息")?
         .ok_or("暂存记录不存在或已被清理")?;
-    if !matches!(ctx.operator_decision.as_str(), "review" | "defer" | "exclude") {
+    if !matches!(
+        ctx.operator_decision.as_str(),
+        "review" | "defer" | "exclude"
+    ) {
         return Err("暂存审核决定无效".into());
     }
-    let entry: PortableAssetEntry = serde_json::from_str(&ctx.entry_json)
-        .map_err(|_| "暂存资源数据损坏")?;
+    let entry: PortableAssetEntry =
+        serde_json::from_str(&ctx.entry_json).map_err(|_| "暂存资源数据损坏")?;
     let sample = PortableAssetManifest {
         schema_version: SCHEMA_VERSION,
         exported_at: Utc::now().to_rfc3339(),
@@ -685,12 +688,14 @@ pub async fn assess_portable_asset_activation(
     };
     validate_manifest(&sample)?;
     let saved: Vec<PortableStorageIdMapping> =
-        serde_json::from_str(&ctx.storage_mappings_json)
-            .map_err(|_| "来源存储映射损坏")?;
+        serde_json::from_str(&ctx.storage_mappings_json).map_err(|_| "来源存储映射损坏")?;
     let overrides: Vec<PortableStorageIdMapping> =
-        serde_json::from_str(&ctx.binding_overrides_json)
-            .map_err(|_| "本地人工映射损坏")?;
-    let storages = state.storages.list().await.map_err(|_| "无法读取存储列表")?;
+        serde_json::from_str(&ctx.binding_overrides_json).map_err(|_| "本地人工映射损坏")?;
+    let storages = state
+        .storages
+        .list()
+        .await
+        .map_err(|_| "无法读取存储列表")?;
     let mut effective = Vec::new();
     let mut destinations = HashSet::new();
     let mut blockers = Vec::new();
@@ -700,25 +705,37 @@ pub async fn assess_portable_asset_activation(
         blockers.push("no_deployment_references".into());
     }
     for deployment in &entry.deployments {
-        let mapping = overrides.iter()
+        let mapping = overrides
+            .iter()
             .find(|m| m.old_storage_id == deployment.source_storage_id)
-            .or_else(|| saved.iter().find(|m| m.old_storage_id == deployment.source_storage_id));
+            .or_else(|| {
+                saved
+                    .iter()
+                    .find(|m| m.old_storage_id == deployment.source_storage_id)
+            });
         let mut accepted = None;
         let mut private_requested = false;
         if let Some(mapping) = mapping {
             let source = Uuid::parse_str(&mapping.old_storage_id).ok();
             let dest = Uuid::parse_str(&mapping.new_storage_id).ok();
             if let (Some(source), Some(dest)) = (source, dest) {
-                if source != dest && mapping.provider_key == deployment.provider_key
+                if source != dest
+                    && mapping.provider_key == deployment.provider_key
                     && mapping.old_storage_id == deployment.source_storage_id
                 {
-                    if let Some(storage) = storages.iter().find(|storage|
-                        storage.id == dest && storage.enabled && storage.provider_key == mapping.provider_key)
-                    {
+                    if let Some(storage) = storages.iter().find(|storage| {
+                        storage.id == dest
+                            && storage.enabled
+                            && storage.provider_key == mapping.provider_key
+                    }) {
                         if destinations.insert(dest) {
-                            private_requested = matches!(storage.provider_key.as_str(), "r2" | "s3")
-                                && storage.config_json.get("access_mode")
-                                    .and_then(serde_json::Value::as_str) == Some("private_requested");
+                            private_requested =
+                                matches!(storage.provider_key.as_str(), "r2" | "s3")
+                                    && storage
+                                        .config_json
+                                        .get("access_mode")
+                                        .and_then(serde_json::Value::as_str)
+                                        == Some("private_requested");
                             effective.push(mapping.clone());
                             accepted = Some(dest.to_string());
                         } else {
@@ -757,7 +774,8 @@ pub async fn assess_portable_asset_activation(
     }
     let gate_status = activation_gate_status(&ctx.operator_decision, &blockers);
     Ok(PortableActivationGate {
-        item_id, revision: ctx.revision,
+        item_id,
+        revision: ctx.revision,
         local_status: row.status.clone(),
         decision: ctx.operator_decision,
         gate_status: gate_status.into(),
@@ -793,11 +811,20 @@ mod tests {
     #[test]
     fn activation_gate_never_approves_only_local_preflight() {
         let empty: Vec<String> = vec![];
-        assert_eq!(activation_gate_status("review", &empty), "awaiting_remote_evidence");
+        assert_eq!(
+            activation_gate_status("review", &empty),
+            "awaiting_remote_evidence"
+        );
         assert_eq!(activation_gate_status("defer", &empty), "deferred");
         assert_eq!(activation_gate_status("exclude", &empty), "excluded");
-        assert_eq!(activation_gate_status("review", &["duplicate".into()]), "blocked_local");
-        assert_eq!(activation_gate_status("unexpected", &empty), "blocked_local");
+        assert_eq!(
+            activation_gate_status("review", &["duplicate".into()]),
+            "blocked_local"
+        );
+        assert_eq!(
+            activation_gate_status("unexpected", &empty),
+            "blocked_local"
+        );
     }
 
     #[test]
