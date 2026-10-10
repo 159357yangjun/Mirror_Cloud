@@ -512,6 +512,76 @@ export function SettingsPage() {
     }
   }
 
+  async function exportGroupMapReceipt() {
+    if (!referenceManifest || portableBusy || restoredGroupIds.size === 0) return
+    setPortableBusy(true)
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog')
+      const destination = await save({
+        defaultPath: 'mirror-cloud-group-id-map.json',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      })
+      if (destination) {
+        const count = await exportPortableGroupMapping(
+          destination, referenceManifest, currentStorageMappings(), currentGroupMappings(),
+        )
+        setPortableMessage(`已导出 ${count} 条经过组成员核对的 Group ID 映射。`)
+      }
+    } catch {
+      setPortableMessage('无法导出组映射：文件重复或目标组的名称、成员关系已变化。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
+  async function importGroupMapReceipt() {
+    if (!referenceManifest || portableBusy) return
+    setPortableBusy(true)
+    setReferencePreview(null)
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const source = await open({ multiple: false, filters: [{ name: 'JSON', extensions: ['json'] }] })
+      if (typeof source !== 'string') return
+      const imported = await inspectPortableGroupMapping(source, referenceManifest.exportedAt)
+      const groups = new Map(imported.map((item) => [item.oldGroupId, item.newGroupId]))
+      await previewReferencePlan(referenceManifest, groups)
+      setRestoredGroupIds(groups)
+      setPortableMessage('组映射已载入并验证成员及角色，可继续恢复安全预设工作流。')
+    } catch {
+      setPortableMessage('组映射和当前关系清单不一致或目标已变化，未启用。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
+  async function restoreOneWorkflow(sourceWorkflowId: string) {
+    if (portableBusy || !referenceManifest || !referencePreview || restoredWorkflowIds.has(sourceWorkflowId)) return
+    const item = referencePreview.workflows.find((w) => w.sourceWorkflowId === sourceWorkflowId)
+    if (!item || item.status !== 'ready') return
+    const accepted = await confirmAction({
+      title: '确认恢复标准工作流',
+      detail: `新建“${item.name}”并重映射发布目标，不复用旧 ID、不覆盖旧工作流，也不会设为默认上传目标。`,
+      confirmLabel: '确认新建工作流',
+      danger: false,
+    })
+    if (!accepted || portableBusy) return
+    setPortableBusy(true)
+    try {
+      const id = await restorePortableWorkflow(
+        referenceManifest, currentStorageMappings(), currentGroupMappings(), sourceWorkflowId,
+      )
+      setRestoredWorkflowIds((current) => new Map(current).set(sourceWorkflowId, id))
+      await queryClient.invalidateQueries({ queryKey: ['workflows'] })
+      await previewReferencePlan(referenceManifest)
+      setPortableMessage('标准工作流已恢复，使用新 ID，原默认上传目标保持不变。')
+    } catch {
+      setReferencePreview(null)
+      setPortableMessage('工作流恢复被阻止：映射、模板安全规则或同名冲突；未覆盖既有工作流。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
   async function exportReconnectionMap() {
     if (portableBusy || !portablePreview || portablePreview.schemaVersion !== 2) return
     const mappings = portablePreview.profiles.flatMap((profile, index) => {
