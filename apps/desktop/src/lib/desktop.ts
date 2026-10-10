@@ -185,6 +185,14 @@ export async function createTemporaryShareLink(
   return invoke('create_temporary_share_link', { storageId, path, expiresInSeconds })
 }
 
+export async function previewPrivateStorageEntry(
+  storageId: string,
+  path: string,
+): Promise<{ mimeType: string; bytes: number[] }> {
+  if (!isTauriRuntime()) throw new Error('私有图片预览仅在桌面应用中可用')
+  return invoke('preview_private_storage_entry', { storageId, path })
+}
+
 export async function syncStorageAssetIndex(storageId?: string): Promise<RemoteIndexSyncResult> {
   return invoke('sync_storage_asset_index', { storageId: storageId || null })
 }
