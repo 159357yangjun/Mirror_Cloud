@@ -318,6 +318,16 @@ export async function listPortableAssetStaging(): Promise<StagedAssetBatch[]> {
 export async function listPortableStagedItems(batchId: string): Promise<StagedAssetRow[]> {
   return invoke('list_portable_staged_items', { batchId })
 }
+export async function updatePortableStagedItemReview(
+  batchId: string, itemId: string, expectedRevision: number,
+  decision: 'review' | 'defer' | 'exclude',
+  sourceStorageId?: string, newStorageId?: string,
+): Promise<void> {
+  return invoke('update_portable_staged_item_review', {
+    batchId, itemId, expectedRevision, decision, sourceStorageId, newStorageId,
+  })
+}
+
 export async function discardPortableAssetStaging(batchId: string): Promise<boolean> {
   return invoke('discard_portable_asset_staging', { batchId })
 }
