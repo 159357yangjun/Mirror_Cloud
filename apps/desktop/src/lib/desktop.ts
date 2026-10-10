@@ -302,6 +302,10 @@ export interface StagedAssetRow {
   reviewStatus: 'blocked_duplicate' | 'blocked_path' | 'needs_rebind' | 'awaiting_verification'
   resolvedCopies: number
   missingCopies: number
+  operatorDecision: 'review' | 'defer' | 'exclude'
+  revision: number
+  sources: Array<{ sourceStorageId: string; providerKey: string; hasSafePath: boolean }>
+  bindings: PortableStorageIdMapping[]
 }
 export async function stagePortableAssetManifest(
   manifest: PortableAssetManifest, mappings: PortableStorageIdMapping[],
