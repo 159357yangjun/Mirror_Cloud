@@ -49,6 +49,7 @@ import {
   discardPortableAssetStaging,
   updatePortableStagedItemReview,
   assessPortableAssetActivation,
+  applyPortableStagedBatchDecision,
   listStorages,
   getReconciliationSettings,
   getUpdateStatus,
@@ -72,7 +73,7 @@ import {
   uninstallWindowsContextMenu,
   saveOutputPreferences,
 } from '../lib/desktop'
-import type { DownloadedUpdateSummary, UpdateCheckResult, PortableStorageManifest, PortableReferenceManifest, PortableReferencePreview, PortableStorageIdMapping, PortableGroupIdMapping, PortableAssetManifest, PortableAssetPreview, PortableActivationGate } from '../lib/desktop'
+import type { DownloadedUpdateSummary, UpdateCheckResult, PortableStorageManifest, PortableReferenceManifest, PortableReferencePreview, PortableStorageIdMapping, PortableGroupIdMapping, PortableAssetManifest, PortableAssetPreview, PortableActivationGate, PortableStagedDecision } from '../lib/desktop'
 import { useAppStore } from '../store/useAppStore'
 import { confirmAction } from '../store/useConfirmStore'
 import { tierDisplay, tierReason } from '../lib/confirmationDisplay'
@@ -250,6 +251,9 @@ export function SettingsPage() {
   const [assetPreview, setAssetPreview] = useState<PortableAssetPreview | null>(null)
   const [selectedStagedBatch, setSelectedStagedBatch] = useState<string | null>(null)
   const [activationGate, setActivationGate] = useState<PortableActivationGate | null>(null)
+  const [stagedFilter, setStagedFilter] = useState('all')
+  const [stagedSearch, setStagedSearch] = useState('')
+  const [selectedStagedIds, setSelectedStagedIds] = useState<string[]>([])
   const [stagedRebindings, setStagedRebindings] = useState<Record<string, Record<string, string>>>({})
   const { data: stagedAssetBatches = [], error: stagedBatchError } = useQuery({
     queryKey: ['portable-asset-staging'],
@@ -260,6 +264,24 @@ export function SettingsPage() {
     queryFn: () => listPortableStagedItems(selectedStagedBatch!),
     enabled: selectedStagedBatch !== null,
   })
+  const visibleStagedItems = selectedStagedItems.filter((item) => {
+    const query = stagedSearch.trim().toLocaleLowerCase()
+    const searchMatch = !query || item.name.toLocaleLowerCase().includes(query)
+      || item.sourceVariantId.toLowerCase().includes(query)
+    const statusMatch = stagedFilter === 'all'
+      || (stagedFilter === 'defer' && item.operatorDecision === 'defer')
+      || (stagedFilter === 'exclude' && item.operatorDecision === 'exclude')
+      || (stagedFilter === 'review' && item.operatorDecision === 'review')
+      || (item.operatorDecision === 'review' && item.reviewStatus === stagedFilter)
+    return searchMatch && statusMatch
+  })
+  const stagedTriage = {
+    needsFix: selectedStagedItems.filter((i) => i.operatorDecision === 'review' && i.reviewStatus !== 'awaiting_verification').length,
+    needsEvidence: selectedStagedItems.filter((i) => i.operatorDecision === 'review' && i.reviewStatus === 'awaiting_verification').length,
+    deferred: selectedStagedItems.filter((i) => i.operatorDecision === 'defer').length,
+    excluded: selectedStagedItems.filter((i) => i.operatorDecision === 'exclude').length,
+  }
+
   const { data: connectedStorages = [], isLoading: storagesLoading, error: storagesError } = useQuery({
     queryKey: ['storages'],
     queryFn: listStorages,
@@ -706,6 +728,9 @@ export function SettingsPage() {
     try {
       const batchId = await stagePortableAssetManifest(assetManifest, currentStorageMappings())
       setSelectedStagedBatch(batchId)
+      setSelectedStagedIds([])
+      setStagedFilter('all')
+      setStagedSearch('')
       await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging'] })
       setAssetMigrationMessage('已保存隔离暂存批次。即使关闭应用也可查看；未写入正式图片或部署表。')
     } catch {
@@ -728,7 +753,7 @@ export function SettingsPage() {
     try {
       const removed = await discardPortableAssetStaging(batchId)
       if (!removed) throw new Error('批次已不存在')
-      if (selectedStagedBatch === batchId) { setSelectedStagedBatch(null); setActivationGate(null) }
+      if (selectedStagedBatch === batchId) { setSelectedStagedBatch(null); setActivationGate(null); setSelectedStagedIds([]) }
       await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging'] })
       await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging-items', batchId] })
       setAssetMigrationMessage('暂存批次已清理；正式资源及远端对象均未修改。')
@@ -748,6 +773,7 @@ export function SettingsPage() {
     if (assetMigrationBusy || !selectedStagedBatch) return
     setAssetMigrationBusy(true)
     setActivationGate(null)
+    setSelectedStagedIds([])
     try {
       await updatePortableStagedItemReview(
         selectedStagedBatch, item.id, item.revision, decision, sourceStorageId, newStorageId,
@@ -758,6 +784,41 @@ export function SettingsPage() {
     } catch {
       setAssetMigrationMessage('保存失败：记录可能被另一窗口修改、Provider 不匹配或目标存储失效。请刷新暂存批次后重试。')
       await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging-items', selectedStagedBatch] })
+    } finally {
+      setAssetMigrationBusy(false)
+    }
+  }
+
+  async function applyStagedBatchDecision(decision: PortableStagedDecision) {
+    if (assetMigrationBusy || !selectedStagedBatch) return
+    const chosen = selectedStagedItems.filter((item) => selectedStagedIds.includes(item.id))
+    if (chosen.length === 0 || chosen.length > 100) {
+      setAssetMigrationMessage('请在当前批次选择 1 至 100 条记录。')
+      return
+    }
+    const accepted = await confirmAction({
+      title: `确认批量${decision === 'defer' ? '稍后处理' : decision === 'exclude' ? '排除' : '恢复审核'}？`,
+      detail: `将仅修改所选 ${chosen.length} 条暂存记录的人工处理决定。不会恢复为在线资源、修改存储映射或访问云端。存在版本冲突则整批回滚。`,
+      confirmLabel: '确认批量更新',
+      danger: decision === 'exclude',
+    })
+    if (!accepted || assetMigrationBusy) return
+    setAssetMigrationBusy(true)
+    setActivationGate(null)
+    try {
+      const count = await applyPortableStagedBatchDecision(
+        selectedStagedBatch,
+        chosen.map((item) => ({ itemId: item.id, expectedRevision: item.revision })),
+        decision,
+      )
+      setSelectedStagedIds([])
+      await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging-items', selectedStagedBatch] })
+      await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging'] })
+      setAssetMigrationMessage(`已批量更新 ${count} 条暂存记录的审核决定；没有变更任何正式资源。`)
+    } catch {
+      setSelectedStagedIds([])
+      await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging-items', selectedStagedBatch] })
+      setAssetMigrationMessage('批量操作被拒绝：记录已更改、批次不存在或版本冲突。所有审核决定保持原状，请刷新后重选。')
     } finally {
       setAssetMigrationBusy(false)
     }
