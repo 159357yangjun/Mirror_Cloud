@@ -136,6 +136,7 @@ pub fn run() {
             commands::inspect_portable_group_mapping,
             commands::restore_portable_workflow,
             commands::export_portable_reconnect_map,
+            commands::inspect_portable_reconnect_map,
             commands::get_default_publish_target,
             commands::set_default_publish_target,
             commands::delete_storage,
