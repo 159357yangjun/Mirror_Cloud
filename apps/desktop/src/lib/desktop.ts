@@ -116,6 +116,33 @@ export async function getBootstrapSnapshot(): Promise<BootstrapSnapshot> {
   return invoke('bootstrap_snapshot')
 }
 
+export interface PortableStorageProfile {
+  name: string
+  providerKey: string
+  bucket?: string | null
+  region?: string | null
+  root?: string | null
+  owner?: string | null
+  repo?: string | null
+  branch?: string | null
+  accessMode: 'unknown' | 'private_requested'
+}
+
+export interface PortableStorageManifest {
+  schemaVersion: 1
+  exportedAt: string
+  credentialRebindRequired: true
+  profiles: PortableStorageProfile[]
+}
+
+export async function exportPortableStorageManifest(destinationPath: string): Promise<number> {
+  return invoke('export_portable_storage_manifest', { destinationPath })
+}
+
+export async function inspectPortableStorageManifest(sourcePath: string): Promise<PortableStorageManifest> {
+  return invoke('inspect_portable_storage_manifest', { sourcePath })
+}
+
 export async function listStorages(): Promise<StorageView[]> {
   if (!isTauriRuntime()) return []
   return invoke('list_storages')
