@@ -31,6 +31,7 @@ import {
   getOutputPreferences,
   exportPortableStorageManifest,
   inspectPortableStorageManifest,
+  exportPortableReconnectMap,
   listStorages,
   getReconciliationSettings,
   getUpdateStatus,
@@ -210,7 +211,9 @@ export function SettingsPage() {
   const [portableMessage, setPortableMessage] = useState<string | null>(null)
   const [portablePreview, setPortablePreview] = useState<PortableStorageManifest | null>(null)
   const [restoreIndex, setRestoreIndex] = useState<number | null>(null)
-  const [restoredIndices, setRestoredIndices] = useState<Set<number>>(() => new Set())
+  // A new ID only exists after provider creation succeeded. Never reuse a source UUID.
+  // This map is deliberately session-local until the user explicitly exports an audit receipt.
+  const [reconnectedIds, setReconnectedIds] = useState<Map<number, string>>(() => new Map())
   const { data: connectedStorages = [], isLoading: storagesLoading, error: storagesError } = useQuery({
     queryKey: ['storages'],
     queryFn: listStorages,
@@ -397,13 +400,39 @@ export function SettingsPage() {
     }
   }
 
+  async function exportReconnectionMap() {
+    if (portableBusy || !portablePreview || portablePreview.schemaVersion !== 2) return
+    const mappings = portablePreview.profiles.flatMap((profile, index) => {
+      const newStorageId = reconnectedIds.get(index)
+      if (!profile.sourceStorageId || !newStorageId) return []
+      return [{ oldStorageId: profile.sourceStorageId, newStorageId, providerKey: profile.providerKey }]
+    })
+    if (!mappings.length) return
+    setPortableBusy(true)
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog')
+      const destination = await save({
+        defaultPath: 'mirror-cloud-reconnect-mapping.json',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      })
+      if (destination) {
+        const count = await exportPortableReconnectMap(destination, portablePreview.exportedAt, mappings)
+        setPortableMessage(`已导出 ${count} 条旧 ID → 新 ID 映射。仅供后续恢复审核使用，不会恢复图片、工作流或多云组。`)
+      }
+    } catch {
+      setPortableMessage('导出映射失败：请检查目标文件名和已重新连接的存储是否仍存在。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
   async function inspectPortablePlan() {
     if (portableBusy) return
     setPortableBusy(true)
     setPortableMessage(null)
     setPortablePreview(null)
     setRestoreIndex(null)
-    setRestoredIndices(new Set())
+    setReconnectedIds(new Map())
     try {
       const { open } = await import('@tauri-apps/plugin-dialog')
       const source = await open({
@@ -444,11 +473,22 @@ export function SettingsPage() {
         </div>
         {portableMessage && <p role="status" className="mt-3 text-xs leading-5 text-slate-600">{portableMessage}</p>}
         {portablePreview && <div className="mt-3 rounded-xl bg-slate-50 p-3">
-          <div className="text-xs font-medium text-slate-700">清单版本 {portablePreview.schemaVersion} · {portablePreview.profiles.length} 个存储需要重新连接凭据</div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs font-medium text-slate-700">清单版本 {portablePreview.schemaVersion} · {portablePreview.profiles.length} 个存储 · 已重连 {reconnectedIds.size} 个</div>
+            <button type="button"
+              disabled={portableBusy || restoreIndex !== null || portablePreview.schemaVersion !== 2 || reconnectedIds.size === 0}
+              onClick={() => void exportReconnectionMap()}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium disabled:opacity-40">
+              导出旧→新 ID 映射
+            </button>
+          </div>
+          {portablePreview.schemaVersion === 1 && <p className="mt-2 text-[11px] text-amber-700">旧版 v1 清单没有原始 Storage ID，可逐项重新连接，但无法生成可靠的 ID 映射；建议从旧设备重新导出 v2 清单。</p>}
+          <p className="mt-2 text-[11px] text-slate-500">恢复前冲突预览：{portablePreview.profiles.filter((profile) => portableReconnectConflict(profile, connectedStorages)).length} 项与现有存储的名称或目标冲突；冲突项禁止新建。此检查不代表云端权限已验证。</p>
           <div className="mt-2 max-h-64 space-y-2 overflow-auto text-xs text-slate-600">
             {portablePreview.profiles.map((profile, index) => {
               const conflict = portableReconnectConflict(profile, connectedStorages)
-              const saved = restoredIndices.has(index)
+              const newStorageId = reconnectedIds.get(index)
+              const saved = Boolean(newStorageId)
               const providerKey = portableProviderKey(profile)
               return <div key={index} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
                 <div className="min-w-0">
@@ -457,18 +497,21 @@ export function SettingsPage() {
                     {profile.bucket || (profile.owner && profile.repo ? `${profile.owner}/${profile.repo}` : '须重新填写目标地址')}
                     {' · '}{profile.accessMode === 'private_requested' ? '私有意图（未验证）' : '访问模式待确认'}
                   </div>
-                  {conflict && <div className="mt-1 text-[11px] text-amber-700">本机已有同名或相同目标：{conflict.name}，禁止自动覆盖/重复建立。</div>}
+                  {profile.sourceStorageId && <div className="mt-1 break-all text-[10px] text-slate-400">旧 Storage ID：{profile.sourceStorageId}</div>}
+                  {newStorageId && <div className="mt-1 break-all text-[10px] text-emerald-700">新 Storage ID：{newStorageId}（仅记录映射，未恢复引用）</div>}
+                  {conflict && !saved && <div className="mt-1 text-[11px] text-amber-700">本机已有同名或相同目标：{conflict.name}，禁止自动覆盖/重复建立。</div>}
                 </div>
                 <button type="button"
                   disabled={!providerKey || portableBusy || storagesLoading || Boolean(storagesError) || Boolean(conflict) || saved || restoreIndex !== null}
                   onClick={() => setRestoreIndex(index)}
                   className="rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-medium text-slate-700 disabled:opacity-40">
-                  {saved ? '已新增连接' : conflict ? '目标冲突' : '逐项重新连接'}
+                  {saved ? '已重连' : conflict ? '目标冲突' : '逐项重新连接'}
                 </button>
               </div>
             })}
           </div>
           {storagesError && <p role="alert" className="mt-2 text-xs text-red-700">无法读取本机已有存储，已停止重连以避免重复配置。</p>}
+          {reconnectedIds.size > 0 && portablePreview.schemaVersion === 2 && <p className="mt-2 text-[11px] text-amber-700">ID 对照仅保存在本次页面会话中，请及时导出映射文件。导出前关闭页面会丢失对照；不会自动恢复工作流和资源记录。</p>}
           <p className="mt-2 text-[11px] leading-5 text-amber-700">每项都要手动复核 Endpoint/公开地址和权限、重新输入凭据、确认新增，并通过原有连接测试才能保存。不会覆盖本机已有配置或自动恢复资源索引、工作流。</p>
         </div>}
       </section>
@@ -482,7 +525,7 @@ export function SettingsPage() {
           key={index}
           provider={provider}
           restoreProfile={profile}
-          onCreated={() => setRestoredIndices((current) => new Set(current).add(index))}
+          onCreated={(created) => setReconnectedIds((current) => new Map(current).set(index, created.id))}
           onClose={() => setRestoreIndex(null)}
         />
       })()}

@@ -126,10 +126,11 @@ export interface PortableStorageProfile {
   repo?: string | null
   branch?: string | null
   accessMode: 'unknown' | 'private_requested'
+  sourceStorageId?: string | null
 }
 
 export interface PortableStorageManifest {
-  schemaVersion: 1
+  schemaVersion: 1 | 2
   exportedAt: string
   credentialRebindRequired: true
   profiles: PortableStorageProfile[]
@@ -141,6 +142,20 @@ export async function exportPortableStorageManifest(destinationPath: string): Pr
 
 export async function inspectPortableStorageManifest(sourcePath: string): Promise<PortableStorageManifest> {
   return invoke('inspect_portable_storage_manifest', { sourcePath })
+}
+
+export interface PortableStorageIdMapping {
+  oldStorageId: string
+  newStorageId: string
+  providerKey: string
+}
+
+export async function exportPortableReconnectMap(
+  destinationPath: string,
+  sourceManifestExportedAt: string,
+  mappings: PortableStorageIdMapping[],
+): Promise<number> {
+  return invoke('export_portable_reconnect_map', { destinationPath, sourceManifestExportedAt, mappings })
 }
 
 export async function listStorages(): Promise<StorageView[]> {
