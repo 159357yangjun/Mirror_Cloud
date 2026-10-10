@@ -236,6 +236,55 @@ export async function restorePortableStorageGroup(
   return invoke('restore_portable_storage_group', { manifest, mappings, sourceGroupId })
 }
 
+export interface PortableAssetDeployment {
+  sourceStorageId: string
+  providerKey: string
+  role: 'primary' | 'mirror' | 'backup'
+  remotePath: string | null
+}
+export interface PortableAssetEntry {
+  sourceAssetId: string
+  sourceVariantId: string
+  name: string
+  mimeType: string
+  sizeBytes: number
+  width: number | null
+  height: number | null
+  contentHash: string
+  deployments: PortableAssetDeployment[]
+}
+export interface PortableAssetManifest {
+  schemaVersion: 1
+  exportedAt: string
+  entries: PortableAssetEntry[]
+}
+export interface PortableAssetPreview {
+  rows: Array<{
+    sourceAssetId: string
+    sourceVariantId: string
+    name: string
+    status: 'duplicate' | 'path_conflict' | 'needs_rebind' | 'unverified'
+    detail: string
+    resolvedCopies: number
+    missingCopies: number
+  }>
+  duplicateVariants: number
+  missingMappings: number
+  remotePathConflicts: number
+  applied: false
+}
+export async function exportPortableAssetManifest(destinationPath: string): Promise<number> {
+  return invoke('export_portable_asset_manifest', { destinationPath })
+}
+export async function inspectPortableAssetManifest(sourcePath: string): Promise<PortableAssetManifest> {
+  return invoke('inspect_portable_asset_manifest', { sourcePath })
+}
+export async function previewPortableAssetRestore(
+  manifest: PortableAssetManifest, mappings: PortableStorageIdMapping[],
+): Promise<PortableAssetPreview> {
+  return invoke('preview_portable_asset_restore', { manifest, mappings })
+}
+
 export async function listStorages(): Promise<StorageView[]> {
   if (!isTauriRuntime()) return []
   return invoke('list_storages')
