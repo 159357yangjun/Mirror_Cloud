@@ -126,7 +126,10 @@ fn valid_workflow_spec(spec: &PortableWorkflowSpec) -> bool {
 
 fn safe_spec(steps: &[WorkflowStep]) -> Option<PortableWorkflowSpec> {
     let (max_width, max_height, rest) = match steps.first()? {
-        WorkflowStep::Resize { max_width, max_height } => (
+        WorkflowStep::Resize {
+            max_width,
+            max_height,
+        } => (
             (*max_width != u32::MAX).then_some(*max_width),
             (*max_height != u32::MAX).then_some(*max_height),
             &steps[1..],
@@ -138,10 +141,13 @@ fn safe_spec(steps: &[WorkflowStep]) -> Option<PortableWorkflowSpec> {
         WorkflowStep::Rename { template },
         WorkflowStep::Publish { .. },
         WorkflowStep::Output { template: output },
-    ] = rest else {
+    ] = rest
+    else {
         return None;
     };
-    if output != "{url}" { return None; }
+    if output != "{url}" {
+        return None;
+    }
     let spec = PortableWorkflowSpec {
         format: format.clone(),
         quality: *quality,
@@ -164,10 +170,18 @@ fn build_workflow(name: &str, spec: &PortableWorkflowSpec, target: PublishTarget
         format: spec.format.clone(),
         quality: spec.quality,
     });
-    steps.push(WorkflowStep::Rename { template: spec.rename_template.clone() });
+    steps.push(WorkflowStep::Rename {
+        template: spec.rename_template.clone(),
+    });
     steps.push(WorkflowStep::Publish { target });
-    steps.push(WorkflowStep::Output { template: "{url}".into() });
-    Workflow { id: Uuid::new_v4(), name: name.to_string(), steps }
+    steps.push(WorkflowStep::Output {
+        template: "{url}".into(),
+    });
+    Workflow {
+        id: Uuid::new_v4(),
+        name: name.to_string(),
+        steps,
+    }
 }
 
 fn parse_id(value: &str) -> CmdResult<Uuid> {
@@ -297,7 +311,11 @@ pub async fn export_portable_reference_manifest(
             name: record.workflow.name,
             target_kind: kind.into(),
             source_target_id: id,
-            spec: if kind == "unsupported" { None } else { safe_spec(&record.workflow.steps) },
+            spec: if kind == "unsupported" {
+                None
+            } else {
+                safe_spec(&record.workflow.steps)
+            },
         });
     }
     let manifest = PortableReferenceManifest {
@@ -389,28 +407,39 @@ fn checked_group_mapping(
 ) -> CmdResult<HashMap<Uuid, Uuid>> {
     let mut result = HashMap::new();
     let mut destination_ids = HashSet::new();
-    if groups.len() > MAX_ITEMS { return Err("组映射数量超限".into()); }
+    if groups.len() > MAX_ITEMS {
+        return Err("组映射数量超限".into());
+    }
     for item in groups {
         let source = parse_id(&item.old_group_id)?;
         let destination = parse_id(&item.new_group_id)?;
-        if source == destination || result.contains_key(&source) || !destination_ids.insert(destination) {
+        if source == destination
+            || result.contains_key(&source)
+            || !destination_ids.insert(destination)
+        {
             return Err("组映射包含重复 ID 或复用了旧 ID".into());
         }
-        let original = manifest.groups.iter()
+        let original = manifest
+            .groups
+            .iter()
             .find(|g| parse_id(&g.source_group_id).ok() == Some(source))
             .ok_or("旧 Group ID 不在关系清单中")?;
-        let existing = local_groups.iter().find(|g| g.id == destination)
+        let existing = local_groups
+            .iter()
+            .find(|g| g.id == destination)
             .ok_or("组映射目标已经不存在")?;
-        if original.name.trim() != existing.name || original.strategy != existing.strategy
-            || original.members.len() != existing.members.len() {
+        if original.name.trim() != existing.name
+            || original.strategy != existing.strategy
+            || original.members.len() != existing.members.len()
+        {
             return Err("组映射目标名称、策略或成员数不符".into());
         }
         for member in &original.members {
             let source_id = parse_id(&member.source_storage_id)?;
             let target = mapped.get(&source_id).ok_or("组映射缺少对应存储映射")?;
-            if !existing.members.iter().any(|m|
+            if !existing.members.iter().any(|m| {
                 m.storage_id == target.id && m.role == member.role && m.priority == member.priority
-            ) {
+            }) {
                 return Err("组映射目标成员不符合原清单".into());
             }
         }
@@ -429,7 +458,10 @@ fn workflow_status(
         return ("conflict".into(), "本机已有同名工作流，不能覆盖".into());
     }
     if workflow.spec.is_none() {
-        return ("manual".into(), "旧版或自定义处理步骤未被安全导出，必须人工重建".into());
+        return (
+            "manual".into(),
+            "旧版或自定义处理步骤未被安全导出，必须人工重建".into(),
+        );
     }
     let Ok(source) = parse_id(&workflow.source_target_id) else {
         return ("unsupported".into(), "发布目标不是可恢复 UUID".into());
@@ -443,7 +475,10 @@ fn workflow_status(
             "ready".into(),
             "多云组已映射，预设处理步骤可恢复；新建后不会自动启用为默认工作流".into(),
         ),
-        _ => ("missing_mapping".into(), "目标尚未建立受验证的新 ID 映射".into()),
+        _ => (
+            "missing_mapping".into(),
+            "目标尚未建立受验证的新 ID 映射".into(),
+        ),
     }
 }
 
@@ -514,16 +549,29 @@ pub async fn preview_portable_reference_restore(
         })
         .collect();
     let verified_groups = checked_group_mapping(&manifest, &mapped, &existing, &group_mappings)?;
-    let local_workflows = state.workflows.list().await.map_err(|_| "无法读取现有工作流")?;
-    let workflow_names: HashSet<String> = local_workflows.iter()
-        .map(|w| w.workflow.name.trim().to_lowercase()).collect();
-    let workflows = manifest.workflows.iter().map(|workflow| {
-        let (status, detail) = workflow_status(workflow, &mapped, &verified_groups, &workflow_names);
-        PortableWorkflowPreview {
-            source_workflow_id: workflow.source_workflow_id.clone(),
-            name: workflow.name.clone(), status, detail,
-        }
-    }).collect();
+    let local_workflows = state
+        .workflows
+        .list()
+        .await
+        .map_err(|_| "无法读取现有工作流")?;
+    let workflow_names: HashSet<String> = local_workflows
+        .iter()
+        .map(|w| w.workflow.name.trim().to_lowercase())
+        .collect();
+    let workflows = manifest
+        .workflows
+        .iter()
+        .map(|workflow| {
+            let (status, detail) =
+                workflow_status(workflow, &mapped, &verified_groups, &workflow_names);
+            PortableWorkflowPreview {
+                source_workflow_id: workflow.source_workflow_id.clone(),
+                name: workflow.name.clone(),
+                status,
+                detail,
+            }
+        })
+        .collect();
     Ok(PortableReferencePreview { groups, workflows })
 }
 
@@ -593,7 +641,9 @@ pub async fn export_portable_group_mapping(
     let mapped = checked_mapping(state.inner(), &mappings).await?;
     let local = state.groups.list().await.map_err(|_| "无法检查多云组")?;
     let checked = checked_group_mapping(&manifest, &mapped, &local, &group_mappings)?;
-    if checked.is_empty() { return Err("没有可导出的组映射".into()); }
+    if checked.is_empty() {
+        return Err("没有可导出的组映射".into());
+    }
     let receipt = PortableGroupMappingReceipt {
         schema_version: 1,
         source_manifest_exported_at: manifest.exported_at,
@@ -611,11 +661,15 @@ pub fn inspect_portable_group_mapping(
 ) -> CmdResult<Vec<PortableGroupIdMapping>> {
     let path = json_path(&source_path)?;
     let metadata = std::fs::metadata(path).map_err(|_| "无法读取组映射")?;
-    if !metadata.is_file() || metadata.len() > MAX_BYTES { return Err("无效的组映射文件".into()); }
+    if !metadata.is_file() || metadata.len() > MAX_BYTES {
+        return Err("无效的组映射文件".into());
+    }
     let bytes = std::fs::read(path).map_err(|_| "无法读取组映射")?;
-    let receipt: PortableGroupMappingReceipt = serde_json::from_slice(&bytes)
-        .map_err(|_| "组映射文件包含不支持的字段")?;
-    if receipt.schema_version != 1 || receipt.source_manifest_exported_at != expected_manifest_exported_at {
+    let receipt: PortableGroupMappingReceipt =
+        serde_json::from_slice(&bytes).map_err(|_| "组映射文件包含不支持的字段")?;
+    if receipt.schema_version != 1
+        || receipt.source_manifest_exported_at != expected_manifest_exported_at
+    {
         return Err("组映射文件和当前关系清单不匹配".into());
     }
     if receipt.mappings.is_empty() || receipt.mappings.len() > MAX_ITEMS {
@@ -636,17 +690,27 @@ pub async fn restore_portable_workflow(
 ) -> CmdResult<String> {
     validate_manifest(&manifest)?;
     let source = parse_id(&source_workflow_id)?;
-    let entry = manifest.workflows.iter()
+    let entry = manifest
+        .workflows
+        .iter()
         .find(|w| parse_id(&w.source_workflow_id).ok() == Some(source))
         .ok_or("工作流不在来源清单中")?;
     let mapped = checked_mapping(state.inner(), &mappings).await?;
-    let groups = state.groups.list().await.map_err(|_| "无法核查本机多云组")?;
+    let groups = state
+        .groups
+        .list()
+        .await
+        .map_err(|_| "无法核查本机多云组")?;
     let group_map = checked_group_mapping(&manifest, &mapped, &groups, &group_mappings)?;
     let current = state.workflows.list().await.map_err(|_| "无法读取工作流")?;
-    let names: HashSet<String> = current.iter()
-        .map(|w| w.workflow.name.trim().to_lowercase()).collect();
+    let names: HashSet<String> = current
+        .iter()
+        .map(|w| w.workflow.name.trim().to_lowercase())
+        .collect();
     let (status, _) = workflow_status(entry, &mapped, &group_map, &names);
-    if status != "ready" { return Err("工作流恢复被拒绝：冲突、未映射或非安全预设".into()); }
+    if status != "ready" {
+        return Err("工作流恢复被拒绝：冲突、未映射或非安全预设".into());
+    }
     let spec = entry.spec.as_ref().ok_or("缺少安全工作流配置")?;
     let old_target = parse_id(&entry.source_target_id)?;
     let target = match entry.target_kind.as_str() {
@@ -659,9 +723,14 @@ pub async fn restore_portable_workflow(
         _ => return Err("无效的目标类型".into()),
     };
     let workflow = build_workflow(entry.name.trim(), spec, target);
-    let inserted = state.workflows.insert_restored_if_name_free(&workflow).await
+    let inserted = state
+        .workflows
+        .insert_restored_if_name_free(&workflow)
+        .await
         .map_err(|_| "工作流插入失败；未更改默认工作流")?;
-    if !inserted { return Err("RESTORE_CONFLICT: 同名工作流刚刚创建".into()); }
+    if !inserted {
+        return Err("RESTORE_CONFLICT: 同名工作流刚刚创建".into());
+    }
     Ok(workflow.id.to_string())
 }
 
@@ -713,10 +782,14 @@ mod tests {
     }
     #[test]
     fn preset_spec_is_strict_and_round_trips() {
-        let target = PublishTarget::Storage { storage_id: Uuid::new_v4() };
+        let target = PublishTarget::Storage {
+            storage_id: Uuid::new_v4(),
+        };
         let spec = PortableWorkflowSpec {
-            format: "webp".into(), quality: 82,
-            max_width: Some(2560), max_height: Some(2560),
+            format: "webp".into(),
+            quality: 82,
+            max_width: Some(2560),
+            max_height: Some(2560),
             rename_template: SAFE_RENAME_TEMPLATES[0].into(),
         };
         let workflow = build_workflow("blog", &spec, target);
@@ -735,15 +808,19 @@ mod tests {
         plan.schema_version = LEGACY_VERSION;
         plan.workflows.push(PortableReferenceWorkflow {
             source_workflow_id: Uuid::new_v4().to_string(),
-            name: "legacy".into(), target_kind: "unsupported".into(),
-            source_target_id: String::new(), spec: None,
+            name: "legacy".into(),
+            target_kind: "unsupported".into(),
+            source_target_id: String::new(),
+            spec: None,
         });
         assert!(validate_manifest(&plan).is_ok());
         plan.workflows[0].spec = Some(PortableWorkflowSpec {
-            format: "webp".into(), quality: 90, max_width: None, max_height: None,
+            format: "webp".into(),
+            quality: 90,
+            max_width: None,
+            max_height: None,
             rename_template: SAFE_RENAME_TEMPLATES[0].into(),
         });
         assert!(validate_manifest(&plan).is_err());
     }
-
 }
