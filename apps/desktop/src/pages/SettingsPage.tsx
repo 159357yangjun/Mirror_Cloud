@@ -17,6 +17,8 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
+import { StorageSetupDialog } from '../components/StorageSetupDialog'
+import { portableProviderKey, portableReconnectConflict } from '../lib/portableReconnect'
 import {
   copyText,
   checkForUpdates,
@@ -29,6 +31,7 @@ import {
   getOutputPreferences,
   exportPortableStorageManifest,
   inspectPortableStorageManifest,
+  listStorages,
   getReconciliationSettings,
   getUpdateStatus,
   getReconciliationHistory,
@@ -206,6 +209,12 @@ export function SettingsPage() {
   const [portableBusy, setPortableBusy] = useState(false)
   const [portableMessage, setPortableMessage] = useState<string | null>(null)
   const [portablePreview, setPortablePreview] = useState<PortableStorageManifest | null>(null)
+  const [restoreIndex, setRestoreIndex] = useState<number | null>(null)
+  const [restoredIndices, setRestoredIndices] = useState<Set<number>>(() => new Set())
+  const { data: connectedStorages = [], isLoading: storagesLoading, error: storagesError } = useQuery({
+    queryKey: ['storages'],
+    queryFn: listStorages,
+  })
 
   useEffect(() => {
     if (data) setForm(data)
@@ -393,6 +402,8 @@ export function SettingsPage() {
     setPortableBusy(true)
     setPortableMessage(null)
     setPortablePreview(null)
+    setRestoreIndex(null)
+    setRestoredIndices(new Set())
     try {
       const { open } = await import('@tauri-apps/plugin-dialog')
       const source = await open({
@@ -402,7 +413,7 @@ export function SettingsPage() {
       if (typeof source === 'string') {
         const plan = await inspectPortableStorageManifest(source)
         setPortablePreview(plan)
-        setPortableMessage('格式检查通过。这里只查看内容，不会创建云存储或覆盖本机数据。恢复时必须重新输入凭据。')
+        setPortableMessage('清单格式检查通过。请选择一项并手动重连，所有密钥必须重新输入；已有存储不会被覆盖。')
       }
     } catch {
       setPortableMessage('无法识别该清单：格式不受支持、包含多余字段或文件超过 1 MB。现有数据未修改。')
@@ -434,14 +445,47 @@ export function SettingsPage() {
         {portableMessage && <p role="status" className="mt-3 text-xs leading-5 text-slate-600">{portableMessage}</p>}
         {portablePreview && <div className="mt-3 rounded-xl bg-slate-50 p-3">
           <div className="text-xs font-medium text-slate-700">清单版本 {portablePreview.schemaVersion} · {portablePreview.profiles.length} 个存储需要重新连接凭据</div>
-          <div className="mt-2 max-h-48 space-y-1 overflow-auto text-xs text-slate-500">
-            {portablePreview.profiles.map((profile, index) => <div key={index}>
-              {profile.name} · {profile.providerKey.toUpperCase()} · {profile.accessMode === 'private_requested' ? '私有意图未验证' : '访问模式需重新确认'}
-            </div>)}
+          <div className="mt-2 max-h-64 space-y-2 overflow-auto text-xs text-slate-600">
+            {portablePreview.profiles.map((profile, index) => {
+              const conflict = portableReconnectConflict(profile, connectedStorages)
+              const saved = restoredIndices.has(index)
+              const providerKey = portableProviderKey(profile)
+              return <div key={index} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{profile.name} · {profile.providerKey.toUpperCase()}</div>
+                  <div className="text-[11px] text-slate-500">
+                    {profile.bucket || (profile.owner && profile.repo ? `${profile.owner}/${profile.repo}` : '须重新填写目标地址')}
+                    {' · '}{profile.accessMode === 'private_requested' ? '私有意图（未验证）' : '访问模式待确认'}
+                  </div>
+                  {conflict && <div className="mt-1 text-[11px] text-amber-700">本机已有同名或相同目标：{conflict.name}，禁止自动覆盖/重复建立。</div>}
+                </div>
+                <button type="button"
+                  disabled={!providerKey || portableBusy || storagesLoading || Boolean(storagesError) || Boolean(conflict) || saved || restoreIndex !== null}
+                  onClick={() => setRestoreIndex(index)}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-medium text-slate-700 disabled:opacity-40">
+                  {saved ? '已新增连接' : conflict ? '目标冲突' : '逐项重新连接'}
+                </button>
+              </div>
+            })}
           </div>
-          <p className="mt-2 text-[11px] text-amber-700">目前仅支持检查清单，不会自动恢复或覆盖已连接存储。重新绑定凭据的向导会在后续阶段单独实现。</p>
+          {storagesError && <p role="alert" className="mt-2 text-xs text-red-700">无法读取本机已有存储，已停止重连以避免重复配置。</p>}
+          <p className="mt-2 text-[11px] leading-5 text-amber-700">每项都要手动复核 Endpoint/公开地址和权限、重新输入凭据、确认新增，并通过原有连接测试才能保存。不会覆盖本机已有配置或自动恢复资源索引、工作流。</p>
         </div>}
       </section>
+
+      {portablePreview && restoreIndex !== null && (() => {
+        const index = restoreIndex
+        const profile = portablePreview.profiles[index]
+        const provider = profile && portableProviderKey(profile)
+        if (!profile || !provider) return null
+        return <StorageSetupDialog
+          key={index}
+          provider={provider}
+          restoreProfile={profile}
+          onCreated={() => setRestoredIndices((current) => new Set(current).add(index))}
+          onClose={() => setRestoreIndex(null)}
+        />
+      })()}
 
       <section className="mt-8 rounded-[24px] border border-indigo-100 bg-gradient-to-br from-indigo-50/80 via-white to-white p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
