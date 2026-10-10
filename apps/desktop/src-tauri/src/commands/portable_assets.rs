@@ -611,6 +611,182 @@ pub async fn discard_portable_asset_staging(
         .map_err(|_| "无法清理暂存批次".into())
 }
 
+/// Read-only, fail-closed activation preflight. The current release has no
+/// trusted cloud evidence collector, so this command NEVER authorizes promotion.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PortableActivationCopyGate {
+    pub source_storage_id: String,
+    pub destination_storage_id: Option<String>,
+    pub provider_key: String,
+    pub local_binding_valid: bool,
+    pub has_safe_object_key: bool,
+    pub required_evidence: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PortableActivationGate {
+    pub item_id: String,
+    pub revision: i64,
+    pub local_status: String,
+    pub decision: String,
+    pub gate_status: String,
+    pub local_blockers: Vec<String>,
+    pub copies: Vec<PortableActivationCopyGate>,
+    pub activation_allowed: bool,
+}
+
+fn activation_gate_status(decision: &str, local_blockers: &[String]) -> &'static str {
+    match decision {
+        "exclude" => "excluded",
+        "defer" => "deferred",
+        "review" if local_blockers.is_empty() => "awaiting_remote_evidence",
+        _ => "blocked_local",
+    }
+}
+
+fn required_copy_evidence(private_intent: bool) -> Vec<String> {
+    let mut requirements = vec![
+        "remote_object_exists".into(),
+        "authenticated_readback_matches_source_digest".into(),
+        "provider_access_policy_verified".into(),
+    ];
+    if private_intent {
+        requirements.push("anonymous_access_denied".into());
+        requirements.push("time_limited_share_expiration_verified".into());
+    }
+    requirements
+}
+
+#[tauri::command]
+pub async fn assess_portable_asset_activation(
+    state: State<'_, AppState>,
+    batch_id: String,
+    item_id: String,
+) -> CmdResult<PortableActivationGate> {
+    let batch = Uuid::parse_str(&batch_id).map_err(|_| "无效的批次 UUID")?;
+    let item = Uuid::parse_str(&item_id).map_err(|_| "无效的资源 UUID")?;
+    let ctx = state
+        .asset_staging
+        .get_review_context(batch, item)
+        .await
+        .map_err(|_| "无法读取暂存检查信息")?
+        .ok_or("暂存记录不存在或已被清理")?;
+    if !matches!(
+        ctx.operator_decision.as_str(),
+        "review" | "defer" | "exclude"
+    ) {
+        return Err("暂存审核决定无效".into());
+    }
+    let entry: PortableAssetEntry =
+        serde_json::from_str(&ctx.entry_json).map_err(|_| "暂存资源数据损坏")?;
+    let sample = PortableAssetManifest {
+        schema_version: SCHEMA_VERSION,
+        exported_at: Utc::now().to_rfc3339(),
+        entries: vec![entry.clone()],
+    };
+    validate_manifest(&sample)?;
+    let saved: Vec<PortableStorageIdMapping> =
+        serde_json::from_str(&ctx.storage_mappings_json).map_err(|_| "来源存储映射损坏")?;
+    let overrides: Vec<PortableStorageIdMapping> =
+        serde_json::from_str(&ctx.binding_overrides_json).map_err(|_| "本地人工映射损坏")?;
+    let storages = state
+        .storages
+        .list()
+        .await
+        .map_err(|_| "无法读取存储列表")?;
+    let mut effective = Vec::new();
+    let mut destinations = HashSet::new();
+    let mut blockers = Vec::new();
+    let mut copies = Vec::new();
+
+    if entry.deployments.is_empty() {
+        blockers.push("no_deployment_references".into());
+    }
+    for deployment in &entry.deployments {
+        let mapping = overrides
+            .iter()
+            .find(|m| m.old_storage_id == deployment.source_storage_id)
+            .or_else(|| {
+                saved
+                    .iter()
+                    .find(|m| m.old_storage_id == deployment.source_storage_id)
+            });
+        let mut accepted = None;
+        let mut private_requested = false;
+        if let Some(mapping) = mapping {
+            let source = Uuid::parse_str(&mapping.old_storage_id).ok();
+            let dest = Uuid::parse_str(&mapping.new_storage_id).ok();
+            if let (Some(source), Some(dest)) = (source, dest) {
+                if source != dest
+                    && mapping.provider_key == deployment.provider_key
+                    && mapping.old_storage_id == deployment.source_storage_id
+                {
+                    if let Some(storage) = storages.iter().find(|storage| {
+                        storage.id == dest
+                            && storage.enabled
+                            && storage.provider_key == mapping.provider_key
+                    }) {
+                        if destinations.insert(dest) {
+                            private_requested =
+                                matches!(storage.provider_key.as_str(), "r2" | "s3")
+                                    && storage
+                                        .config_json
+                                        .get("access_mode")
+                                        .and_then(serde_json::Value::as_str)
+                                        == Some("private_requested");
+                            effective.push(mapping.clone());
+                            accepted = Some(dest.to_string());
+                        } else {
+                            blockers.push("multiple_copies_share_destination".into());
+                        }
+                    }
+                }
+            }
+        }
+        if accepted.is_none() {
+            blockers.push("missing_or_invalid_storage_binding".into());
+        }
+        if deployment.remote_path.is_none() {
+            blockers.push("unsafe_or_missing_object_key".into());
+        }
+        copies.push(PortableActivationCopyGate {
+            source_storage_id: deployment.source_storage_id.clone(),
+            destination_storage_id: accepted.clone(),
+            provider_key: deployment.provider_key.clone(),
+            local_binding_valid: accepted.is_some(),
+            has_safe_object_key: deployment.remote_path.is_some(),
+            required_evidence: required_copy_evidence(private_requested),
+        });
+    }
+
+    // Re-query current local variant index and active deployment locations. Never
+    // trust the review_status stored when this batch was originally staged.
+    let preview = build_asset_preview(state.inner(), &sample, &effective).await?;
+    let row = preview.rows.first().ok_or("无法计算当前本地冲突")?;
+    match row.status.as_str() {
+        "duplicate" => blockers.push("duplicate_content_identity".into()),
+        "path_conflict" => blockers.push("active_remote_key_conflict".into()),
+        "needs_rebind" => blockers.push("unresolved_local_references".into()),
+        "unverified" => {}
+        _ => blockers.push("unknown_local_preflight_status".into()),
+    }
+    let gate_status = activation_gate_status(&ctx.operator_decision, &blockers);
+    Ok(PortableActivationGate {
+        item_id,
+        revision: ctx.revision,
+        local_status: row.status.clone(),
+        decision: ctx.operator_decision,
+        gate_status: gate_status.into(),
+        local_blockers: blockers,
+        copies,
+        // Intentionally hard-coded: remote evidence has not been collected or
+        // cryptographically/operationally bound to this exact source and target.
+        activation_allowed: false,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -632,6 +808,35 @@ mod tests {
             assert_eq!(path_for_export(path), None);
         }
     }
+    #[test]
+    fn activation_gate_never_approves_only_local_preflight() {
+        let empty: Vec<String> = vec![];
+        assert_eq!(
+            activation_gate_status("review", &empty),
+            "awaiting_remote_evidence"
+        );
+        assert_eq!(activation_gate_status("defer", &empty), "deferred");
+        assert_eq!(activation_gate_status("exclude", &empty), "excluded");
+        assert_eq!(
+            activation_gate_status("review", &["duplicate".into()]),
+            "blocked_local"
+        );
+        assert_eq!(
+            activation_gate_status("unexpected", &empty),
+            "blocked_local"
+        );
+    }
+
+    #[test]
+    fn private_intent_requires_additional_proof() {
+        let normal = required_copy_evidence(false);
+        let private = required_copy_evidence(true);
+        assert!(normal.contains(&"authenticated_readback_matches_source_digest".to_string()));
+        assert!(!normal.contains(&"anonymous_access_denied".to_string()));
+        assert!(private.contains(&"anonymous_access_denied".to_string()));
+        assert!(private.contains(&"time_limited_share_expiration_verified".to_string()));
+    }
+
     #[test]
     fn manifest_refuses_status_and_public_url_fields() {
         let base = PortableAssetManifest {
