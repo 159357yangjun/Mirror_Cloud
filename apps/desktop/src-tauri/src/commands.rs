@@ -37,6 +37,8 @@ pub(crate) mod portable_backup;
 pub use portable_backup::*;
 pub(crate) mod portable_references;
 pub use portable_references::*;
+pub(crate) mod portable_assets;
+pub use portable_assets::*;
 pub(crate) mod plugins;
 #[cfg(test)]
 mod r2_private_live_e2e;
