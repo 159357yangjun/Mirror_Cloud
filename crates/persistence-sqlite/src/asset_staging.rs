@@ -169,13 +169,16 @@ impl AssetStagingRepository {
         .bind(batch_id.to_string())
         .fetch_optional(&self.pool)
         .await?;
-        row.map(|row| Ok(StagedAssetReviewContext {
-            entry_json: row.try_get("entry_json")?,
-            storage_mappings_json: row.try_get("storage_mappings_json")?,
-            binding_overrides_json: row.try_get("binding_overrides_json")?,
-            operator_decision: row.try_get("operator_decision")?,
-            revision: row.try_get("revision")?,
-        })).transpose()
+        row.map(|row| {
+            Ok(StagedAssetReviewContext {
+                entry_json: row.try_get("entry_json")?,
+                storage_mappings_json: row.try_get("storage_mappings_json")?,
+                binding_overrides_json: row.try_get("binding_overrides_json")?,
+                operator_decision: row.try_get("operator_decision")?,
+                revision: row.try_get("revision")?,
+            })
+        })
+        .transpose()
     }
 
     /// Compare-and-swap prevents a stale review window from overwriting another edit.
@@ -304,37 +307,96 @@ mod tests {
         Ok(())
     }
     #[sqlx::test]
-    async fn review_decisions_are_local_and_revision_guarded(pool: SqlitePool) -> Result<(), sqlx::Error> {
+    async fn review_decisions_are_local_and_revision_guarded(
+        pool: SqlitePool,
+    ) -> Result<(), sqlx::Error> {
         let repo = AssetStagingRepository::new(pool.clone());
         let batch = Uuid::new_v4();
-        repo.stage(batch, "2026-10-10T08:00:00Z", "[]", &[input("needs mapping","needs_rebind")]).await?;
+        repo.stage(
+            batch,
+            "2026-10-10T08:00:00Z",
+            "[]",
+            &[input("needs mapping", "needs_rebind")],
+        )
+        .await?;
         let item = repo.list_items(batch).await?.pop().unwrap();
         let item_id = Uuid::parse_str(&item.id).unwrap();
         let first = repo.get_review_context(batch, item_id).await?.unwrap();
         assert_eq!(first.revision, 0);
-        assert!(repo.update_review(batch,item_id,0,"needs_rebind","defer","[]",0,1).await?);
-        assert!(!repo.update_review(batch,item_id,0,"awaiting_verification","review","[]",1,0).await?);
+        assert!(
+            repo.update_review(batch, item_id, 0, "needs_rebind", "defer", "[]", 0, 1)
+                .await?
+        );
+        assert!(
+            !repo
+                .update_review(
+                    batch,
+                    item_id,
+                    0,
+                    "awaiting_verification",
+                    "review",
+                    "[]",
+                    1,
+                    0
+                )
+                .await?
+        );
         let updated = repo.list_items(batch).await?.pop().unwrap();
         assert_eq!(updated.operator_decision, "defer");
         assert_eq!(updated.revision, 1);
         assert_eq!(updated.review_status, "needs_rebind");
-        assert!(repo.update_review(batch,item_id,1,"needs_rebind","exclude","[]",0,1).await?);
+        assert!(
+            repo.update_review(batch, item_id, 1, "needs_rebind", "exclude", "[]", 0, 1)
+                .await?
+        );
         assert_eq!(repo.list_batches().await?.len(), 1);
-        let active: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM assets").fetch_one(&pool).await?;
+        let active: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM assets")
+            .fetch_one(&pool)
+            .await?;
         assert_eq!(active, 0);
         Ok(())
     }
 
     #[sqlx::test]
-    async fn illegal_review_status_cannot_promote_to_online(pool: SqlitePool) -> Result<(), sqlx::Error> {
+    async fn illegal_review_status_cannot_promote_to_online(
+        pool: SqlitePool,
+    ) -> Result<(), sqlx::Error> {
         let repo = AssetStagingRepository::new(pool);
         let batch = Uuid::new_v4();
-        repo.stage(batch, "2026-10-10T09:00:00Z", "[]", &[input("photo","awaiting_verification")]).await?;
+        repo.stage(
+            batch,
+            "2026-10-10T09:00:00Z",
+            "[]",
+            &[input("photo", "awaiting_verification")],
+        )
+        .await?;
         let item_id = Uuid::parse_str(&repo.list_items(batch).await?[0].id).unwrap();
-        assert!(repo.update_review(batch,item_id,0,"online","review","[]",1,0).await.is_err());
-        assert!(repo.update_review(batch,item_id,0,"awaiting_verification","verified","[]",1,0).await.is_err());
-        assert_eq!(repo.get_review_context(batch,item_id).await?.unwrap().revision, 0);
+        assert!(
+            repo.update_review(batch, item_id, 0, "online", "review", "[]", 1, 0)
+                .await
+                .is_err()
+        );
+        assert!(
+            repo.update_review(
+                batch,
+                item_id,
+                0,
+                "awaiting_verification",
+                "verified",
+                "[]",
+                1,
+                0
+            )
+            .await
+            .is_err()
+        );
+        assert_eq!(
+            repo.get_review_context(batch, item_id)
+                .await?
+                .unwrap()
+                .revision,
+            0
+        );
         Ok(())
     }
-
 }
