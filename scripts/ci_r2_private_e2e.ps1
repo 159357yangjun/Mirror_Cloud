@@ -39,7 +39,7 @@ if ($missing.Count -gt 0) {
     $lines = @($head) + @('status: BLOCKED - protected R2 test configuration missing')
     $lines | Set-Content -LiteralPath $report -Encoding utf8
     $lines | Add-Content -Path $env:GITHUB_STEP_SUMMARY
-    throw 'Protected test variables or secrets not configured; no cloud request started'
+    throw 'Missing protected R2 E2E configuration; no cloud request was started'
 }
 if ($env:R2_E2E_ALLOW_TEST_WRITES -cne 'YES_TEST_BUCKET') {
     throw 'Explicit disposable test Bucket authorization is missing'
