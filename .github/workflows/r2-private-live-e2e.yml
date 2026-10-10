@@ -22,7 +22,10 @@ jobs:
   live-r2:
     # The environment still MUST restrict branches and require human approval.
     # Never grant the cloud secrets to an untrusted PR/ref.
-    if: ${{ github.repository == '159357yangjun/Mirror_Cloud' && github.event_name == 'workflow_dispatch' && inputs.confirmation == 'RUN_DISPOSABLE_R2_E2E' && (github.ref == 'refs/heads/feature/r2-private-publish-v1' || github.ref == 'refs/heads/main') }}
+    # Deliberately inert on every ref. The separate, reviewed PR #9 registers the
+    # only runnable copy on the default branch and pins an immutable test SHA.
+    # Do not load environment secrets from mutable feature-branch workflow code.
+    if: ${{ false }}
     runs-on: windows-latest
     timeout-minutes: 55
     environment:
