@@ -32,6 +32,19 @@ jobs:
           ref: b337f5bed87c765af882aa78910821a1f57a428d
           persist-credentials: false
 
+      # Explicit fail-closed operator readiness switch. Merely referencing an
+      # Environment can create an unprotected empty environment in GitHub.
+      # This switch must be set only after human review of protection + test Bucket.
+      - name: Verify protected test environment was prepared
+        shell: pwsh
+        env:
+          R2_E2E_ENV_READY: ${{ vars.R2_E2E_ENV_READY }}
+        run: |
+          if ($env:R2_E2E_ENV_READY -cne 'YES_PROTECTED_TEST_BUCKET') {
+            throw 'Protected r2-private-e2e environment is not marked ready; cloud E2E blocked.'
+          }
+          Write-Host 'Readiness flag present. GitHub Environment protection and credentials still require owner review.'
+
       - name: Install pinned Rust toolchain
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable, 2026-09-03
         with:
