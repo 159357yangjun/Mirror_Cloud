@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use super::{CmdResult, PortableStorageIdMapping};
 use crate::AppState;
+use persistence_sqlite::asset_staging::{StagedAssetBatch, StagedAssetInput, StagedAssetRow};
 
 const SCHEMA_VERSION: u32 = 1;
 const MAX_RECORDS: usize = 1000;
@@ -232,7 +233,15 @@ pub async fn preview_portable_asset_restore(
     manifest: PortableAssetManifest,
     mappings: Vec<PortableStorageIdMapping>,
 ) -> CmdResult<PortableAssetPreview> {
-    validate_manifest(&manifest)?;
+    build_asset_preview(state.inner(), &manifest, &mappings).await
+}
+
+async fn build_asset_preview(
+    state: &AppState,
+    manifest: &PortableAssetManifest,
+    mappings: &[PortableStorageIdMapping],
+) -> CmdResult<PortableAssetPreview> {
+    validate_manifest(manifest)?;
     if mappings.len() > MAX_RECORDS {
         return Err("存储映射数量超出上限".into());
     }
@@ -243,7 +252,7 @@ pub async fn preview_portable_asset_restore(
         .map_err(|_| "无法读取本机存储")?;
     let mut resolved = HashMap::new();
     let mut destinations = HashSet::new();
-    for mapping in &mappings {
+    for mapping in mappings {
         let old = Uuid::parse_str(&mapping.old_storage_id).map_err(|_| "旧存储 ID 无效")?;
         let new = Uuid::parse_str(&mapping.new_storage_id).map_err(|_| "新存储 ID 无效")?;
         if old == new || resolved.contains_key(&old) || !destinations.insert(new) {
@@ -330,6 +339,90 @@ pub async fn preview_portable_asset_restore(
         remote_path_conflicts,
         applied: false,
     })
+}
+
+/// Confirm an import into an isolated, non-active review queue.
+/// Never insert into assets, asset_variants or deployments.
+#[tauri::command]
+pub async fn stage_portable_asset_manifest(
+    state: State<'_, AppState>,
+    manifest: PortableAssetManifest,
+    mappings: Vec<PortableStorageIdMapping>,
+) -> CmdResult<String> {
+    let preview = build_asset_preview(state.inner(), &manifest, &mappings).await?;
+    if manifest.entries.is_empty() {
+        return Err("空资源清单无需暂存".into());
+    }
+    let items = manifest
+        .entries
+        .iter()
+        .zip(preview.rows.iter())
+        .map(|(entry, row)| {
+            let review_status = match row.status.as_str() {
+                "duplicate" => "blocked_duplicate",
+                "path_conflict" => "blocked_path",
+                "needs_rebind" => "needs_rebind",
+                _ => "awaiting_verification",
+            };
+            Ok(StagedAssetInput {
+                source_asset_id: entry.source_asset_id.clone(),
+                source_variant_id: entry.source_variant_id.clone(),
+                name: entry.name.clone(),
+                review_status: review_status.into(),
+                entry_json: serde_json::to_string(entry).map_err(|_| "无法序列化安全资源记录")?,
+                resolved_copies: row.resolved_copies as i64,
+                missing_copies: row.missing_copies as i64,
+            })
+        })
+        .collect::<CmdResult<Vec<_>>>()?;
+    let mapping_json = serde_json::to_string(&mappings).map_err(|_| "无法记录源存储映射")?;
+    let id = Uuid::new_v4();
+    let inserted = state
+        .asset_staging
+        .stage(id, &manifest.exported_at, &mapping_json, &items)
+        .await
+        .map_err(|_| "无法写入隔离暂存区；数据库事务已回滚")?;
+    if !inserted {
+        return Err("当前来源清单已存在暂存记录；请在暂存列表中查看或先删除旧批次".into());
+    }
+    Ok(id.to_string())
+}
+
+#[tauri::command]
+pub async fn list_portable_asset_staging(
+    state: State<'_, AppState>,
+) -> CmdResult<Vec<StagedAssetBatch>> {
+    state
+        .asset_staging
+        .list_batches()
+        .await
+        .map_err(|_| "无法读取暂存批次".into())
+}
+
+#[tauri::command]
+pub async fn list_portable_staged_items(
+    state: State<'_, AppState>,
+    batch_id: String,
+) -> CmdResult<Vec<StagedAssetRow>> {
+    let batch_id = Uuid::parse_str(&batch_id).map_err(|_| "批次 UUID 无效")?;
+    state
+        .asset_staging
+        .list_items(batch_id)
+        .await
+        .map_err(|_| "无法读取暂存记录".into())
+}
+
+#[tauri::command]
+pub async fn discard_portable_asset_staging(
+    state: State<'_, AppState>,
+    batch_id: String,
+) -> CmdResult<bool> {
+    let batch_id = Uuid::parse_str(&batch_id).map_err(|_| "批次 UUID 无效")?;
+    state
+        .asset_staging
+        .discard(batch_id)
+        .await
+        .map_err(|_| "无法清理暂存批次".into())
 }
 
 #[cfg(test)]

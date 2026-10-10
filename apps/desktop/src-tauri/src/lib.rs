@@ -9,6 +9,7 @@ use std::{
 };
 
 use credential_store::CredentialStore;
+use persistence_sqlite::asset_staging::AssetStagingRepository;
 use persistence_sqlite::{
     AssetRepository, PluginRepository, SettingsRepository, StorageGroupRepository,
     StorageRepository, TaskRepository, WorkflowRepository, journal::SqliteEventJournal,
@@ -21,6 +22,7 @@ use tokio::sync::RwLock;
 pub struct AppState {
     pub storages: StorageRepository,
     pub assets: AssetRepository,
+    pub asset_staging: AssetStagingRepository,
     pub settings: SettingsRepository,
     pub groups: StorageGroupRepository,
     pub workflows: WorkflowRepository,
@@ -95,6 +97,7 @@ pub fn run() {
             let state = AppState {
                 storages: StorageRepository::new(pool.clone()),
                 assets: AssetRepository::new(pool.clone()),
+                asset_staging: AssetStagingRepository::new(pool.clone()),
                 settings: SettingsRepository::new(pool.clone()),
                 groups: StorageGroupRepository::new(pool.clone()),
                 workflows: WorkflowRepository::new(pool.clone()),
@@ -140,6 +143,10 @@ pub fn run() {
             commands::export_portable_asset_manifest,
             commands::inspect_portable_asset_manifest,
             commands::preview_portable_asset_restore,
+            commands::stage_portable_asset_manifest,
+            commands::list_portable_asset_staging,
+            commands::list_portable_staged_items,
+            commands::discard_portable_asset_staging,
             commands::get_default_publish_target,
             commands::set_default_publish_target,
             commands::delete_storage,

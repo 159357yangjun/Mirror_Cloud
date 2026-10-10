@@ -285,6 +285,39 @@ export async function previewPortableAssetRestore(
   return invoke('preview_portable_asset_restore', { manifest, mappings })
 }
 
+export interface StagedAssetBatch {
+  id: string
+  sourceExportedAt: string
+  createdAt: string
+  itemCount: number
+  awaitingVerification: number
+  blockedCount: number
+}
+export interface StagedAssetRow {
+  id: string
+  batchId: string
+  sourceAssetId: string
+  sourceVariantId: string
+  name: string
+  reviewStatus: 'blocked_duplicate' | 'blocked_path' | 'needs_rebind' | 'awaiting_verification'
+  resolvedCopies: number
+  missingCopies: number
+}
+export async function stagePortableAssetManifest(
+  manifest: PortableAssetManifest, mappings: PortableStorageIdMapping[],
+): Promise<string> {
+  return invoke('stage_portable_asset_manifest', { manifest, mappings })
+}
+export async function listPortableAssetStaging(): Promise<StagedAssetBatch[]> {
+  return invoke('list_portable_asset_staging')
+}
+export async function listPortableStagedItems(batchId: string): Promise<StagedAssetRow[]> {
+  return invoke('list_portable_staged_items', { batchId })
+}
+export async function discardPortableAssetStaging(batchId: string): Promise<boolean> {
+  return invoke('discard_portable_asset_staging', { batchId })
+}
+
 export async function listStorages(): Promise<StorageView[]> {
   if (!isTauriRuntime()) return []
   return invoke('list_storages')

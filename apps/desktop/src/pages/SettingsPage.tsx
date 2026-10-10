@@ -43,6 +43,10 @@ import {
   exportPortableAssetManifest,
   inspectPortableAssetManifest,
   previewPortableAssetRestore,
+  stagePortableAssetManifest,
+  listPortableAssetStaging,
+  listPortableStagedItems,
+  discardPortableAssetStaging,
   listStorages,
   getReconciliationSettings,
   getUpdateStatus,
@@ -234,6 +238,16 @@ export function SettingsPage() {
   const [assetMigrationMessage, setAssetMigrationMessage] = useState<string | null>(null)
   const [assetManifest, setAssetManifest] = useState<PortableAssetManifest | null>(null)
   const [assetPreview, setAssetPreview] = useState<PortableAssetPreview | null>(null)
+  const [selectedStagedBatch, setSelectedStagedBatch] = useState<string | null>(null)
+  const { data: stagedAssetBatches = [], error: stagedBatchError } = useQuery({
+    queryKey: ['portable-asset-staging'],
+    queryFn: listPortableAssetStaging,
+  })
+  const { data: selectedStagedItems = [] } = useQuery({
+    queryKey: ['portable-asset-staging-items', selectedStagedBatch],
+    queryFn: () => listPortableStagedItems(selectedStagedBatch!),
+    enabled: selectedStagedBatch !== null,
+  })
   const { data: connectedStorages = [], isLoading: storagesLoading, error: storagesError } = useQuery({
     queryKey: ['storages'],
     queryFn: listStorages,
@@ -667,6 +681,52 @@ export function SettingsPage() {
     }
   }
 
+  async function stageAssetMigration() {
+    if (assetMigrationBusy || !assetManifest || !assetPreview || assetManifest.entries.length === 0) return
+    const accepted = await confirmAction({
+      title: '确认将资源元数据暂存到本机？',
+      detail: `将保存 ${assetManifest.entries.length} 条元数据到独立待核验表。它们不会进入正式资源列表，也不能分享、删除或修复远端文件。冲突项同样只供人工排查。`,
+      confirmLabel: '确认隔离暂存',
+      danger: false,
+    })
+    if (!accepted || assetMigrationBusy) return
+    setAssetMigrationBusy(true)
+    try {
+      const batchId = await stagePortableAssetManifest(assetManifest, currentStorageMappings())
+      setSelectedStagedBatch(batchId)
+      await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging'] })
+      setAssetMigrationMessage('已保存隔离暂存批次。即使关闭应用也可查看；未写入正式图片或部署表。')
+    } catch {
+      setAssetMigrationMessage('暂存失败：同一来源清单可能已经暂存，或数据库检查失败；未标记暂存成功。')
+    } finally {
+      setAssetMigrationBusy(false)
+    }
+  }
+
+  async function discardAssetMigration(batchId: string) {
+    if (assetMigrationBusy) return
+    const accepted = await confirmAction({
+      title: '丢弃待核验资源批次？',
+      detail: '只删除本机隔离暂存记录，不删除正式图片、云端文件或现有部署。',
+      confirmLabel: '丢弃暂存批次',
+      danger: true,
+    })
+    if (!accepted || assetMigrationBusy) return
+    setAssetMigrationBusy(true)
+    try {
+      const removed = await discardPortableAssetStaging(batchId)
+      if (!removed) throw new Error('批次已不存在')
+      if (selectedStagedBatch === batchId) setSelectedStagedBatch(null)
+      await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging'] })
+      await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging-items', batchId] })
+      setAssetMigrationMessage('暂存批次已清理；正式资源及远端对象均未修改。')
+    } catch {
+      setAssetMigrationMessage('丢弃暂存失败，请核对本地数据库状态。')
+    } finally {
+      setAssetMigrationBusy(false)
+    }
+  }
+
   async function exportReconnectionMap() {
     if (portableBusy || !portablePreview || portablePreview.schemaVersion !== 2) return
     const mappings = currentStorageMappings()
@@ -852,9 +912,14 @@ export function SettingsPage() {
         {assetMigrationMessage && <p role="status" className="mt-3 text-xs text-slate-600">{assetMigrationMessage}</p>}
         {assetManifest && <div className="mt-3 rounded-xl bg-slate-50 p-3 text-xs">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <strong>版本 {assetManifest.schemaVersion} · {assetManifest.entries.length} 条资源变体 · 未执行写入</strong>
-            <button type="button" disabled={assetMigrationBusy} onClick={() => void refreshAssetMigrationPreview()}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-40">刷新冲突预览</button>
+            <strong>版本 {assetManifest.schemaVersion} · {assetManifest.entries.length} 条资源变体 · 尚未激活任何资源</strong>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" disabled={assetMigrationBusy} onClick={() => void refreshAssetMigrationPreview()}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-40">刷新冲突预览</button>
+              <button type="button" disabled={assetMigrationBusy || !assetPreview || assetManifest.entries.length === 0}
+                onClick={() => void stageAssetMigration()}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-40">确认隔离暂存</button>
+            </div>
           </div>
           {assetPreview && <p className="mt-2 text-slate-600">
             重复内容 {assetPreview.duplicateVariants} · 缺失映射 {assetPreview.missingMappings} · 路径冲突 {assetPreview.remotePathConflicts}
@@ -868,6 +933,33 @@ export function SettingsPage() {
           </div>
           <p className="mt-2 text-[11px] text-amber-700">预览结果不是云端文件存在的证据。资源数据库导入、远端验证、图片内容迁移尚未完成。</p>
         </div>}
+        <div className="mt-4 border-t border-slate-200 pt-3">
+          <div className="text-xs font-semibold text-slate-700">本机待核验批次（关闭软件后仍保留）</div>
+          {stagedBatchError && <p role="alert" className="mt-1 text-xs text-red-700">暂存列表无法读取；请检查数据库迁移。</p>}
+          {!stagedBatchError && stagedAssetBatches.length === 0 && <p className="mt-2 text-xs text-slate-500">暂无暂存记录。</p>}
+          <div className="mt-2 space-y-2">
+            {stagedAssetBatches.map((batch) => <div key={batch.id} className="rounded-lg border border-slate-200 p-3 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="font-medium text-slate-700">{batch.itemCount} 条暂存 · {batch.awaitingVerification} 条待核验 · {batch.blockedCount} 条需处理</div>
+                  <div className="mt-1 text-[11px] text-slate-500">来源快照：{batch.sourceExportedAt}</div>
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" disabled={assetMigrationBusy} onClick={() => setSelectedStagedBatch(batch.id)}
+                    className="rounded-lg border border-slate-200 px-2 py-1.5 disabled:opacity-40">查看</button>
+                  <button type="button" disabled={assetMigrationBusy} onClick={() => void discardAssetMigration(batch.id)}
+                    className="rounded-lg border border-red-200 px-2 py-1.5 text-red-700 disabled:opacity-40">丢弃</button>
+                </div>
+              </div>
+              {selectedStagedBatch === batch.id && <div className="mt-2 max-h-52 space-y-1 overflow-auto border-t border-slate-100 pt-2">
+                {selectedStagedItems.map((item) => <div key={item.id} className="rounded bg-slate-50 px-2 py-1 text-[11px]">
+                  {item.name} · {item.reviewStatus} · 已映射 {item.resolvedCopies} / 待处理 {item.missingCopies}
+                </div>)}
+              </div>}
+            </div>)}
+          </div>
+          <p className="mt-2 text-[11px] text-amber-700">这些数据与正式资源库物理隔离；现阶段不提供激活、在线确认、远端删除或分享操作。</p>
+        </div>
       </section>
 
       {portablePreview && restoreIndex !== null && (() => {
