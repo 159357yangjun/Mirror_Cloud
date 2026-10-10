@@ -32,6 +32,9 @@ remaining project features. A green CI result is not proof of remote privacy.
   or unmounting, and ignores stale replies after navigation.
 - File extensions are a UX hint only; the Rust file-signature check remains the
   actual content-type boundary.
+- Private-requested R2 takes priority over any historical `publicUrl` field from
+  legacy records: the viewer uses the authenticated read, and gallery/storage
+  browser hide the public URL copy/open buttons and network thumbnails.
 - No public URL is fabricated for a private object. No S3 signed URL is inserted
   into the DOM for preview. Only clicking Temporary Share creates a signed URL,
   and it is written to the clipboard rather than persisted.
