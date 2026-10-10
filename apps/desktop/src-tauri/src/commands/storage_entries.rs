@@ -137,15 +137,15 @@ pub async fn preview_private_storage_entry(
     if !storage.enabled || !storage_requests_private(&storage) {
         return Err("此入口仅可预览已经配置为私有意图的 R2 文件".into());
     }
-    let provider = build_provider(&state, &storage)
-        .map_err(|_| "无法初始化私有存储连接".to_string())?;
+    let provider =
+        build_provider(&state, &storage).map_err(|_| "无法初始化私有存储连接".to_string())?;
     let bytes = provider
         .download_preview(&path, PRIVATE_PREVIEW_MAX_BYTES)
         .await
         .map_err(|error| safe_share_error(&error).to_string())?
         .ok_or("原图超过 5 MB，请使用“保存原图”下载后查看")?;
-    let mime_type = private_preview_mime(&bytes)
-        .ok_or("只支持 PNG、JPEG、GIF、WebP 或 AVIF 图片预览")?;
+    let mime_type =
+        private_preview_mime(&bytes).ok_or("只支持 PNG、JPEG、GIF、WebP 或 AVIF 图片预览")?;
     Ok(PrivateImagePreview {
         mime_type,
         bytes: bytes.to_vec(),
