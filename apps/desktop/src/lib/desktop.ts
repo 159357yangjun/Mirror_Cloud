@@ -195,7 +195,7 @@ export interface PortableReferenceManifest {
 }
 export interface PortableReferencePreview {
   groups: Array<{ sourceGroupId: string; name: string; status: string; detail: string }>
-  workflows: Array<{ name: string; status: string; detail: string }>
+  workflows: Array<{ sourceWorkflowId: string; name: string; status: string; detail: string }>
 }
 export async function exportPortableReferenceManifest(destinationPath: string): Promise<number> {
   return invoke('export_portable_reference_manifest', { destinationPath })
