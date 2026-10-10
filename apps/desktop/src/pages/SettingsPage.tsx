@@ -474,14 +474,15 @@ export function SettingsPage() {
       </section>
 
       {portablePreview && restoreIndex !== null && (() => {
-        const profile = portablePreview.profiles[restoreIndex]
+        const index = restoreIndex
+        const profile = portablePreview.profiles[index]
         const provider = profile && portableProviderKey(profile)
         if (!profile || !provider) return null
         return <StorageSetupDialog
-          key={restoreIndex}
+          key={index}
           provider={provider}
           restoreProfile={profile}
-          onCreated={() => setRestoredIndices((current) => new Set(current).add(restoreIndex))}
+          onCreated={() => setRestoredIndices((current) => new Set(current).add(index))}
           onClose={() => setRestoreIndex(null)}
         />
       })()}
