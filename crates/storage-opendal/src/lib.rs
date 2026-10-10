@@ -110,10 +110,11 @@ impl OpenDalStorage {
         credentials: &S3Credentials,
     ) -> Result<Self, StorageError> {
         if config.access_mode == ObjectAccessMode::PrivateRequested
-            && (provider_key != "r2" || config.public_base_url.is_some())
+            && (!matches!(provider_key, "r2" | "s3") || config.public_base_url.is_some())
         {
             return Err(StorageError::Provider(
-                "Private-requested storage requires R2 with no configured public URL".into(),
+                "Private-requested S3-compatible storage must not have a configured public URL"
+                    .into(),
             ));
         }
         let mut builder = services::S3::default()
