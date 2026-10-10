@@ -214,6 +214,41 @@ impl AssetStagingRepository {
         Ok(changed.rows_affected() == 1)
     }
 
+    /// All-or-nothing operator-only batch decision. Never modifies bindings,
+    /// local validation labels or anything in the active resource index.
+    /// A concurrent editor changing one row rejects the entire operation.
+    pub async fn update_batch_decisions(
+        &self,
+        batch_id: Uuid,
+        changes: &[(Uuid, i64)],
+        decision: &str,
+    ) -> Result<bool, sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+        let reviewed_at = Utc::now().to_rfc3339();
+        for (item_id, expected_revision) in changes {
+            let result = sqlx::query(
+                "UPDATE portable_asset_staged_items \
+                 SET operator_decision=?, revision=revision+1, reviewed_at=? \
+                 WHERE id=? AND batch_id=? AND revision=? AND \
+                 EXISTS (SELECT 1 FROM portable_asset_batches b \
+                         WHERE b.id=portable_asset_staged_items.batch_id AND b.state='pending')",
+            )
+            .bind(decision)
+            .bind(&reviewed_at)
+            .bind(item_id.to_string())
+            .bind(batch_id.to_string())
+            .bind(expected_revision)
+            .execute(&mut *tx)
+            .await?;
+            if result.rows_affected() != 1 {
+                // Dropping the open transaction rolls back already-updated rows.
+                return Ok(false);
+            }
+        }
+        tx.commit().await?;
+        Ok(true)
+    }
+
     /// Discard staging only. ON DELETE CASCADE removes review rows, never active assets.
     pub async fn discard(&self, batch_id: Uuid) -> Result<bool, sqlx::Error> {
         let result = sqlx::query("DELETE FROM portable_asset_batches WHERE id=?")
@@ -397,6 +432,85 @@ mod tests {
                 .revision,
             0
         );
+        Ok(())
+    }
+    #[sqlx::test]
+    async fn batch_decision_update_is_atomic_and_leaves_resource_state_alone(
+        pool: SqlitePool,
+    ) -> Result<(), sqlx::Error> {
+        let repo = AssetStagingRepository::new(pool.clone());
+        let batch = Uuid::new_v4();
+        repo.stage(
+            batch,
+            "2026-10-10T10:00:00Z",
+            "[]",
+            &[
+                input("alpha", "needs_rebind"),
+                input("beta", "blocked_duplicate"),
+            ],
+        )
+        .await?;
+        let items = repo.list_items(batch).await?;
+        let a = Uuid::parse_str(&items[0].id).unwrap();
+        let b = Uuid::parse_str(&items[1].id).unwrap();
+
+        // A stale second revision means the first update must also roll back.
+        assert!(
+            !repo
+                .update_batch_decisions(batch, &[(a, 0), (b, 4)], "exclude")
+                .await?
+        );
+        let unchanged = repo.list_items(batch).await?;
+        assert_eq!(unchanged[0].revision, 0);
+        assert_eq!(unchanged[0].operator_decision, "review");
+        assert_eq!(unchanged[1].revision, 0);
+
+        assert!(
+            repo.update_batch_decisions(batch, &[(a, 0), (b, 0)], "defer")
+                .await?
+        );
+        let deferred = repo.list_items(batch).await?;
+        assert_eq!(
+            deferred.iter().map(|i| i.revision).collect::<Vec<_>>(),
+            vec![1, 1]
+        );
+        assert!(deferred.iter().all(|i| i.operator_decision == "defer"));
+        assert_eq!(deferred[0].review_status, "needs_rebind");
+        assert_eq!(deferred[1].review_status, "blocked_duplicate");
+        assert!(deferred.iter().all(|i| i.binding_overrides_json == "[]"));
+        let active: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM assets")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(active, 0);
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn batch_decisions_reject_cross_batch_rows(pool: SqlitePool) -> Result<(), sqlx::Error> {
+        let repo = AssetStagingRepository::new(pool);
+        let own = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        repo.stage(
+            own,
+            "2026-10-10T11:00:00Z",
+            "[]",
+            &[input("one", "needs_rebind")],
+        )
+        .await?;
+        repo.stage(
+            other,
+            "2026-10-10T12:00:00Z",
+            "[]",
+            &[input("two", "needs_rebind")],
+        )
+        .await?;
+        let foreign = Uuid::parse_str(&repo.list_items(other).await?[0].id).unwrap();
+        assert!(
+            !repo
+                .update_batch_decisions(own, &[(foreign, 0)], "exclude")
+                .await?
+        );
+        assert_eq!(repo.list_items(other).await?[0].operator_decision, "review");
         Ok(())
     }
 }

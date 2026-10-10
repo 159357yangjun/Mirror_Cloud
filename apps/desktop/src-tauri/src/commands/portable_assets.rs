@@ -611,6 +611,50 @@ pub async fn discard_portable_asset_staging(
         .map_err(|_| "无法清理暂存批次".into())
 }
 
+/// An explicit batch operation changes review decisions only; it never
+/// rechecks cloud truth, modifies object bindings or activates assets.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PortableBatchDecisionItem {
+    pub item_id: String,
+    pub expected_revision: i64,
+}
+
+#[tauri::command]
+pub async fn apply_portable_staged_batch_decision(
+    state: State<'_, AppState>,
+    batch_id: String,
+    items: Vec<PortableBatchDecisionItem>,
+    decision: String,
+) -> CmdResult<usize> {
+    const MAX_BATCH_UPDATE: usize = 100;
+    if !matches!(decision.as_str(), "review" | "defer" | "exclude") {
+        return Err("只允许继续审核、稍后处理或排除".into());
+    }
+    if items.is_empty() || items.len() > MAX_BATCH_UPDATE {
+        return Err("一次仅可处理 1 至 100 项暂存资源".into());
+    }
+    let batch = Uuid::parse_str(&batch_id).map_err(|_| "批次 UUID 无效")?;
+    let mut seen = HashSet::new();
+    let mut changes = Vec::with_capacity(items.len());
+    for item in &items {
+        let id = Uuid::parse_str(&item.item_id).map_err(|_| "暂存记录 UUID 无效")?;
+        if item.expected_revision < 0 || !seen.insert(id) {
+            return Err("提交包含重复记录或无效版本".into());
+        }
+        changes.push((id, item.expected_revision));
+    }
+    let success = state
+        .asset_staging
+        .update_batch_decisions(batch, &changes, &decision)
+        .await
+        .map_err(|_| "批量审核保存失败；未修改任何正式资源")?;
+    if !success {
+        return Err("批量审核版本冲突或条目已变化；全部回滚，请刷新后重新选择".into());
+    }
+    Ok(changes.len())
+}
+
 /// Read-only, fail-closed activation preflight. The current release has no
 /// trusted cloud evidence collector, so this command NEVER authorizes promotion.
 #[derive(Debug, Serialize)]

@@ -49,6 +49,7 @@ import {
   discardPortableAssetStaging,
   updatePortableStagedItemReview,
   assessPortableAssetActivation,
+  applyPortableStagedBatchDecision,
   listStorages,
   getReconciliationSettings,
   getUpdateStatus,
@@ -72,7 +73,7 @@ import {
   uninstallWindowsContextMenu,
   saveOutputPreferences,
 } from '../lib/desktop'
-import type { DownloadedUpdateSummary, UpdateCheckResult, PortableStorageManifest, PortableReferenceManifest, PortableReferencePreview, PortableStorageIdMapping, PortableGroupIdMapping, PortableAssetManifest, PortableAssetPreview, PortableActivationGate } from '../lib/desktop'
+import type { DownloadedUpdateSummary, UpdateCheckResult, PortableStorageManifest, PortableReferenceManifest, PortableReferencePreview, PortableStorageIdMapping, PortableGroupIdMapping, PortableAssetManifest, PortableAssetPreview, PortableActivationGate, PortableStagedDecision } from '../lib/desktop'
 import { useAppStore } from '../store/useAppStore'
 import { confirmAction } from '../store/useConfirmStore'
 import { tierDisplay, tierReason } from '../lib/confirmationDisplay'
@@ -250,6 +251,9 @@ export function SettingsPage() {
   const [assetPreview, setAssetPreview] = useState<PortableAssetPreview | null>(null)
   const [selectedStagedBatch, setSelectedStagedBatch] = useState<string | null>(null)
   const [activationGate, setActivationGate] = useState<PortableActivationGate | null>(null)
+  const [stagedFilter, setStagedFilter] = useState('all')
+  const [stagedSearch, setStagedSearch] = useState('')
+  const [selectedStagedIds, setSelectedStagedIds] = useState<string[]>([])
   const [stagedRebindings, setStagedRebindings] = useState<Record<string, Record<string, string>>>({})
   const { data: stagedAssetBatches = [], error: stagedBatchError } = useQuery({
     queryKey: ['portable-asset-staging'],
@@ -260,6 +264,24 @@ export function SettingsPage() {
     queryFn: () => listPortableStagedItems(selectedStagedBatch!),
     enabled: selectedStagedBatch !== null,
   })
+  const visibleStagedItems = selectedStagedItems.filter((item) => {
+    const query = stagedSearch.trim().toLocaleLowerCase()
+    const searchMatch = !query || item.name.toLocaleLowerCase().includes(query)
+      || item.sourceVariantId.toLowerCase().includes(query)
+    const statusMatch = stagedFilter === 'all'
+      || (stagedFilter === 'defer' && item.operatorDecision === 'defer')
+      || (stagedFilter === 'exclude' && item.operatorDecision === 'exclude')
+      || (stagedFilter === 'review' && item.operatorDecision === 'review')
+      || (item.operatorDecision === 'review' && item.reviewStatus === stagedFilter)
+    return searchMatch && statusMatch
+  })
+  const stagedTriage = {
+    needsFix: selectedStagedItems.filter((i) => i.operatorDecision === 'review' && i.reviewStatus !== 'awaiting_verification').length,
+    needsEvidence: selectedStagedItems.filter((i) => i.operatorDecision === 'review' && i.reviewStatus === 'awaiting_verification').length,
+    deferred: selectedStagedItems.filter((i) => i.operatorDecision === 'defer').length,
+    excluded: selectedStagedItems.filter((i) => i.operatorDecision === 'exclude').length,
+  }
+
   const { data: connectedStorages = [], isLoading: storagesLoading, error: storagesError } = useQuery({
     queryKey: ['storages'],
     queryFn: listStorages,
@@ -706,6 +728,9 @@ export function SettingsPage() {
     try {
       const batchId = await stagePortableAssetManifest(assetManifest, currentStorageMappings())
       setSelectedStagedBatch(batchId)
+      setSelectedStagedIds([])
+      setStagedFilter('all')
+      setStagedSearch('')
       await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging'] })
       setAssetMigrationMessage('已保存隔离暂存批次。即使关闭应用也可查看；未写入正式图片或部署表。')
     } catch {
@@ -728,7 +753,7 @@ export function SettingsPage() {
     try {
       const removed = await discardPortableAssetStaging(batchId)
       if (!removed) throw new Error('批次已不存在')
-      if (selectedStagedBatch === batchId) { setSelectedStagedBatch(null); setActivationGate(null) }
+      if (selectedStagedBatch === batchId) { setSelectedStagedBatch(null); setActivationGate(null); setSelectedStagedIds([]) }
       await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging'] })
       await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging-items', batchId] })
       setAssetMigrationMessage('暂存批次已清理；正式资源及远端对象均未修改。')
@@ -748,6 +773,7 @@ export function SettingsPage() {
     if (assetMigrationBusy || !selectedStagedBatch) return
     setAssetMigrationBusy(true)
     setActivationGate(null)
+    setSelectedStagedIds([])
     try {
       await updatePortableStagedItemReview(
         selectedStagedBatch, item.id, item.revision, decision, sourceStorageId, newStorageId,
@@ -758,6 +784,41 @@ export function SettingsPage() {
     } catch {
       setAssetMigrationMessage('保存失败：记录可能被另一窗口修改、Provider 不匹配或目标存储失效。请刷新暂存批次后重试。')
       await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging-items', selectedStagedBatch] })
+    } finally {
+      setAssetMigrationBusy(false)
+    }
+  }
+
+  async function applyStagedBatchDecision(decision: PortableStagedDecision) {
+    if (assetMigrationBusy || !selectedStagedBatch) return
+    const chosen = selectedStagedItems.filter((item) => selectedStagedIds.includes(item.id))
+    if (chosen.length === 0 || chosen.length > 100) {
+      setAssetMigrationMessage('请在当前批次选择 1 至 100 条记录。')
+      return
+    }
+    const accepted = await confirmAction({
+      title: `确认批量${decision === 'defer' ? '稍后处理' : decision === 'exclude' ? '排除' : '恢复审核'}？`,
+      detail: `将仅修改所选 ${chosen.length} 条暂存记录的人工处理决定。不会恢复为在线资源、修改存储映射或访问云端。存在版本冲突则整批回滚。`,
+      confirmLabel: '确认批量更新',
+      danger: decision === 'exclude',
+    })
+    if (!accepted || assetMigrationBusy) return
+    setAssetMigrationBusy(true)
+    setActivationGate(null)
+    try {
+      const count = await applyPortableStagedBatchDecision(
+        selectedStagedBatch,
+        chosen.map((item) => ({ itemId: item.id, expectedRevision: item.revision })),
+        decision,
+      )
+      setSelectedStagedIds([])
+      await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging-items', selectedStagedBatch] })
+      await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging'] })
+      setAssetMigrationMessage(`已批量更新 ${count} 条暂存记录的审核决定；没有变更任何正式资源。`)
+    } catch {
+      setSelectedStagedIds([])
+      await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging-items', selectedStagedBatch] })
+      setAssetMigrationMessage('批量操作被拒绝：记录已更改、批次不存在或版本冲突。所有审核决定保持原状，请刷新后重选。')
     } finally {
       setAssetMigrationBusy(false)
     }
@@ -996,15 +1057,71 @@ export function SettingsPage() {
                   <div className="mt-1 text-[11px] text-slate-500">来源快照：{batch.sourceExportedAt}</div>
                 </div>
                 <div className="flex gap-2">
-                  <button type="button" disabled={assetMigrationBusy} onClick={() => { setSelectedStagedBatch(batch.id); setActivationGate(null) }}
+                  <button type="button" disabled={assetMigrationBusy} onClick={() => { setSelectedStagedBatch(batch.id); setActivationGate(null); setSelectedStagedIds([]); setStagedSearch(''); setStagedFilter('all') }}
                     className="rounded-lg border border-slate-200 px-2 py-1.5 disabled:opacity-40">查看</button>
                   <button type="button" disabled={assetMigrationBusy} onClick={() => void discardAssetMigration(batch.id)}
                     className="rounded-lg border border-red-200 px-2 py-1.5 text-red-700 disabled:opacity-40">丢弃</button>
                 </div>
               </div>
-              {selectedStagedBatch === batch.id && <div className="mt-2 max-h-52 space-y-1 overflow-auto border-t border-slate-100 pt-2">
-                {selectedStagedItems.map((item) => <div key={item.id} className="rounded bg-slate-50 px-2 py-2 text-[11px]">
-                  <div className="font-medium">{item.name} · {item.reviewStatus} · {item.operatorDecision === 'exclude' ? '已排除' : item.operatorDecision === 'defer' ? '稍后处理' : '待审核'}</div>
+              {selectedStagedBatch === batch.id && <div className="mt-2 max-h-72 space-y-2 overflow-auto border-t border-slate-100 pt-2">
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <div className="flex flex-wrap justify-between gap-2 font-medium">
+                    <span>本地分流概览（不是迁移成功率）</span>
+                    <span>{batch.itemCount ? Math.round(
+                      (stagedTriage.needsEvidence + stagedTriage.deferred + stagedTriage.excluded) / batch.itemCount * 100,
+                    ) : 0}%</span>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
+                    <div className="h-full bg-slate-500" style={{ width: `${batch.itemCount ? Math.round(
+                      (stagedTriage.needsEvidence + stagedTriage.deferred + stagedTriage.excluded) / batch.itemCount * 100,
+                    ) : 0}%` }} />
+                  </div>
+                  <p className="mt-2 text-slate-600">需本地修复 {stagedTriage.needsFix} · 待远端证据 {stagedTriage.needsEvidence} · 延后 {stagedTriage.deferred} · 排除 {stagedTriage.excluded}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input type="search" aria-label="搜索暂存图片" placeholder="搜索图片或变体 ID"
+                    value={stagedSearch} onChange={(e) => { setStagedSearch(e.target.value); setSelectedStagedIds([]) }}
+                    className="min-w-36 flex-1 rounded-lg border border-slate-200 px-3 py-2" />
+                  <select aria-label="筛选暂存状态" value={stagedFilter}
+                    onChange={(e) => { setStagedFilter(e.target.value); setSelectedStagedIds([]) }}
+                    className="rounded-lg border border-slate-200 px-3 py-2">
+                    <option value="all">全部</option>
+                    <option value="review">需要审核</option>
+                    <option value="needs_rebind">缺失映射</option>
+                    <option value="blocked_duplicate">重复图片</option>
+                    <option value="blocked_path">路径冲突</option>
+                    <option value="awaiting_verification">等待远端证据</option>
+                    <option value="defer">稍后处理</option>
+                    <option value="exclude">已排除</option>
+                  </select>
+                  <span className="text-slate-500">显示 {visibleStagedItems.length}/{selectedStagedItems.length}</span>
+                </div>
+                <div className="flex flex-wrap gap-2 rounded-lg border border-slate-200 p-2">
+                  <button type="button" disabled={assetMigrationBusy || visibleStagedItems.length === 0}
+                    onClick={() => setSelectedStagedIds(visibleStagedItems.slice(0, 100).map((item) => item.id))}
+                    className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">选中筛选前 100 项</button>
+                  <button type="button" disabled={assetMigrationBusy || selectedStagedIds.length === 0}
+                    onClick={() => setSelectedStagedIds([])}
+                    className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">取消选择</button>
+                  <span className="text-slate-500">已选 {selectedStagedIds.length} 项</span>
+                  {(['review', 'defer', 'exclude'] as const).map((decision) =>
+                    <button type="button" key={decision} disabled={assetMigrationBusy || selectedStagedIds.length === 0}
+                      onClick={() => void applyStagedBatchDecision(decision)}
+                      className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">
+                      {decision === 'review' ? '批量继续审核' : decision === 'defer' ? '批量稍后处理' : '批量排除'}
+                    </button>)}
+                </div>
+                {visibleStagedItems.length === 0 && <p className="rounded bg-slate-50 p-2">没有符合筛选条件的暂存资源。</p>}
+                {visibleStagedItems.map((item) => <div key={item.id} className="rounded bg-slate-50 px-2 py-2 text-[11px]">
+                  <label className="flex items-center gap-2 font-medium">
+                    <input type="checkbox" checked={selectedStagedIds.includes(item.id)}
+                      disabled={assetMigrationBusy || (!selectedStagedIds.includes(item.id) && selectedStagedIds.length >= 100)}
+                      onChange={(event) => setSelectedStagedIds((current) => event.target.checked
+                        ? [...current.filter((id) => id !== item.id), item.id]
+                        : current.filter((id) => id !== item.id))}
+                      className="size-4 accent-slate-700" />
+                    <span>{item.name} · {item.reviewStatus} · {item.operatorDecision === 'exclude' ? '已排除' : item.operatorDecision === 'defer' ? '稍后处理' : '待审核'}</span>
+                  </label>
                   <p className="mt-1 text-slate-500">已映射 {item.resolvedCopies} / 待处理 {item.missingCopies} · 修订版本 {item.revision}</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button type="button" disabled={assetMigrationBusy} onClick={() => void reviewStagedItem(item, 'review')}
