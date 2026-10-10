@@ -9,6 +9,7 @@ use std::{
 };
 
 use credential_store::CredentialStore;
+use persistence_sqlite::asset_staging::AssetStagingRepository;
 use persistence_sqlite::{
     AssetRepository, PluginRepository, SettingsRepository, StorageGroupRepository,
     StorageRepository, TaskRepository, WorkflowRepository, journal::SqliteEventJournal,
