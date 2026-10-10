@@ -328,6 +328,29 @@ export async function updatePortableStagedItemReview(
   })
 }
 
+export interface PortableActivationGate {
+  itemId: string
+  revision: number
+  localStatus: string
+  decision: 'review' | 'defer' | 'exclude'
+  gateStatus: 'excluded' | 'deferred' | 'blocked_local' | 'awaiting_remote_evidence'
+  localBlockers: string[]
+  copies: Array<{
+    sourceStorageId: string
+    destinationStorageId: string | null
+    providerKey: string
+    localBindingValid: boolean
+    hasSafeObjectKey: boolean
+    requiredEvidence: string[]
+  }>
+  activationAllowed: false
+}
+export async function assessPortableAssetActivation(
+  batchId: string, itemId: string,
+): Promise<PortableActivationGate> {
+  return invoke('assess_portable_asset_activation', { batchId, itemId })
+}
+
 export async function discardPortableAssetStaging(batchId: string): Promise<boolean> {
   return invoke('discard_portable_asset_staging', { batchId })
 }
