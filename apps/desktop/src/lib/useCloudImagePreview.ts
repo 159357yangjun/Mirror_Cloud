@@ -20,7 +20,12 @@ export function isPrivateR2Storage(storage?: StorageView): boolean {
 export function canPreviewCloudImage(entry: StorageEntryView, storage?: StorageView): boolean {
   if (entry.isDir) return false
   // Do not attempt private reads for BMP (unsupported by the Rust signature allowlist).
-  if (entry.publicUrl) return PUBLIC_IMAGE_EXTENSION.test(entry.name)
+  // Preserve the existing public-gallery behavior for extensionless object names:
+  // public URLs may carry the image suffix even when the displayed name does not.
+  if (entry.publicUrl) {
+    return PUBLIC_IMAGE_EXTENSION.test(entry.name) ||
+      PUBLIC_IMAGE_EXTENSION.test(entry.publicUrl.split(/[?#]/, 1)[0])
+  }
   return isPrivateR2Storage(storage) && PRIVATE_IMAGE_EXTENSION.test(entry.name)
 }
 
