@@ -156,3 +156,30 @@ The group mapping receipt is a separate allowlisted JSON file. It must be
 saved explicitly after group recovery; the app does not silently persist old
 UUID mappings as authoritative. Full arbitrary custom workflow backup, user
 secrets and real Windows/cloud acceptance remain **unimplemented**.
+
+## P2: image/asset metadata catalogue (read-only first phase)
+
+Settings now exports `mirror-cloud-assets.json`, schema v1, with up to
+1,000 image/variant rows and the non-secret **source** Storage UUID, Provider,
+role and object key for each deployment. A non-relative key, query or fragment,
+percent-escaped key, protocol URL, traversal path, or backslash-containing key
+is **omitted** (null) rather than copied, because these might contain a
+signed URL or unsafe path. No public URL, credentials, error/log messages,
+deployment status, online claim, verification or observation timestamps,
+plugin output, local image bytes or user database is exported. Export
+fails rather than silently truncate more than 1,000 resource variants or
+a JSON file larger than 4 MiB. Existing destination files are not overwritten.
+
+The new **导入并检查资源** button performs strict JSON and schema validation,
+then compares variant content hash + MIME + size against the **entire**
+local variant index and checks current Storage-ID rebindings and remote object
+path collisions. Results classify a row as duplicate, path conflict,
+needs manual rebinding, or unverified, always marked `applied: false`.
+
+**Important:** this phase is read-only by design. No source Asset/Variant/
+Deployment ID is copied into SQLite, and no guessed status becomes
+`online`, `degraded` or `last_verified_at`. An apparently mapped object
+is **not** proof of its presence, ownership, privacy or content integrity.
+The next phase must add a safe staging and revalidation mechanism before
+restoring any active resource-index entry. Provider and Windows end-to-end
+acceptance remain deferred as requested.
