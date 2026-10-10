@@ -354,6 +354,30 @@ impl StorageProvider for OpenDalStorage {
         Ok(buffer.to_bytes())
     }
 
+    async fn download_preview(
+        &self,
+        path: &str,
+        max_bytes: u64,
+    ) -> Result<Option<bytes::Bytes>, StorageError> {
+        // Check remote metadata before reading; never eagerly fetch a large original
+        // into the desktop app just to show a thumbnail.
+        let metadata = self.operator.stat(path).await.map_err(map_error)?;
+        if !metadata.is_file() {
+            return Err(StorageError::MissingObject(path.to_string()));
+        }
+        if metadata.content_length() > max_bytes {
+            return Ok(None);
+        }
+        let buffer = self.operator.read(path).await.map_err(map_error)?;
+        let data = buffer.to_bytes();
+        // An object might change between the stat and the read. Never forward a
+        // response that exceeds the declared UI cap even under that race.
+        if data.len() as u64 > max_bytes {
+            return Ok(None);
+        }
+        Ok(Some(data))
+    }
+
     async fn temporary_read_url(
         &self,
         path: &str,
