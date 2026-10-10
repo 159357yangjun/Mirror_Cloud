@@ -1,12 +1,16 @@
 //! Explicit, non-secret relationship migration. No workflow JSON, credentials or assets.
-use std::{collections::{HashMap, HashSet}, io::Write, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    io::Write,
+    path::Path,
+};
 
 use chrono::Utc;
+use domain::{PublishTarget, WorkflowStep};
 use persistence_sqlite::{NewStorageGroupMember, StorageRecord};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use uuid::Uuid;
-use domain::{PublishTarget, WorkflowStep};
 
 use super::{CmdResult, PortableStorageIdMapping};
 use crate::AppState;
@@ -91,7 +95,10 @@ fn validate_manifest(manifest: &PortableReferenceManifest) -> CmdResult<()> {
         if !group_ids.insert(id)
             || group.name.trim().is_empty()
             || group.name.len() > 256
-            || !matches!(group.strategy.as_str(), "mirror_all" | "primary_with_backups")
+            || !matches!(
+                group.strategy.as_str(),
+                "mirror_all" | "primary_with_backups"
+            )
             || !(2..=100).contains(&group.members.len())
         {
             return Err("关系清单包含无效或重复的多云组".into());
@@ -118,7 +125,10 @@ fn validate_manifest(manifest: &PortableReferenceManifest) -> CmdResult<()> {
         if !workflow_ids.insert(parse_id(&workflow.source_workflow_id)?)
             || workflow.name.trim().is_empty()
             || workflow.name.len() > 256
-            || !matches!(workflow.target_kind.as_str(), "storage" | "group" | "unsupported")
+            || !matches!(
+                workflow.target_kind.as_str(),
+                "storage" | "group" | "unsupported"
+            )
         {
             return Err("关系清单包含无效工作流引用".into());
         }
@@ -149,7 +159,8 @@ fn write_new_json<T: Serialize>(path: &str, value: &T) -> CmdResult<()> {
         .create_new(true)
         .open(json_path(path)?)
         .map_err(|_| "无法创建文件；禁止覆盖同名文件")?;
-    file.write_all(&bytes).map_err(|_| "写入关系清单失败".into())
+    file.write_all(&bytes)
+        .map_err(|_| "写入关系清单失败".into())
 }
 
 #[tauri::command]
@@ -165,15 +176,20 @@ pub async fn export_portable_reference_manifest(
         if record.source_recipe.as_deref() == Some("__system_default__") {
             continue;
         }
-        let targets: Vec<_> = record.workflow.steps.iter().filter_map(|step| {
-            match step {
+        let targets: Vec<_> = record
+            .workflow
+            .steps
+            .iter()
+            .filter_map(|step| match step {
                 WorkflowStep::Publish { target } => Some(target),
                 _ => None,
-            }
-        }).collect();
+            })
+            .collect();
         let (kind, id) = match targets.as_slice() {
             [PublishTarget::Storage { storage_id }] => ("storage", storage_id.to_string()),
-            [PublishTarget::StorageGroup { storage_group_id }] => ("group", storage_group_id.to_string()),
+            [PublishTarget::StorageGroup { storage_group_id }] => {
+                ("group", storage_group_id.to_string())
+            }
             _ => ("unsupported", String::new()),
         };
         workflows.push(PortableReferenceWorkflow {
@@ -186,16 +202,23 @@ pub async fn export_portable_reference_manifest(
     let manifest = PortableReferenceManifest {
         schema_version: FORMAT_VERSION,
         exported_at: Utc::now().to_rfc3339(),
-        groups: groups.into_iter().map(|group| PortableReferenceGroup {
-            source_group_id: group.id.to_string(),
-            name: group.name,
-            strategy: group.strategy,
-            members: group.members.into_iter().map(|member| PortableReferenceMember {
-                source_storage_id: member.storage_id.to_string(),
-                role: member.role,
-                priority: member.priority,
-            }).collect(),
-        }).collect(),
+        groups: groups
+            .into_iter()
+            .map(|group| PortableReferenceGroup {
+                source_group_id: group.id.to_string(),
+                name: group.name,
+                strategy: group.strategy,
+                members: group
+                    .members
+                    .into_iter()
+                    .map(|member| PortableReferenceMember {
+                        source_storage_id: member.storage_id.to_string(),
+                        role: member.role,
+                        priority: member.priority,
+                    })
+                    .collect(),
+            })
+            .collect(),
         workflows,
     };
     validate_manifest(&manifest)?;
@@ -234,7 +257,11 @@ async fn checked_mapping(
         if old_id == new_id || !new_ids.insert(new_id) || old.contains_key(&old_id) {
             return Err("重复的映射或新旧 ID 相同".into());
         }
-        let record = state.storages.get(new_id).await.map_err(|_| "无法检查本机存储")?
+        let record = state
+            .storages
+            .get(new_id)
+            .await
+            .map_err(|_| "无法检查本机存储")?
             .ok_or("映射的新存储已不存在")?;
         if record.provider_key != mapping.provider_key || !record.enabled {
             return Err("映射 Provider 不一致或存储已禁用".into());
@@ -246,7 +273,10 @@ async fn checked_mapping(
 
 fn private_intent(storage: &StorageRecord) -> bool {
     matches!(storage.provider_key.as_str(), "r2" | "s3")
-        && storage.config_json.get("access_mode").and_then(serde_json::Value::as_str)
+        && storage
+            .config_json
+            .get("access_mode")
+            .and_then(serde_json::Value::as_str)
             == Some("private_requested")
 }
 
@@ -264,16 +294,25 @@ fn group_status(
             return ("invalid".into(), "原存储 UUID 无效".into());
         };
         let Some(record) = mapped.get(&id) else {
-            return ("missing_mapping".into(), "至少一个成员尚未重连并建立 ID 映射".into());
+            return (
+                "missing_mapping".into(),
+                "至少一个成员尚未重连并建立 ID 映射".into(),
+            );
         };
         records.push(record);
     }
     if records.iter().any(|record| private_intent(record))
         && records.iter().any(|record| !private_intent(record))
     {
-        return ("private_mix".into(), "私有 R2/S3 目标不能与公开或未知目标混合".into());
+        return (
+            "private_mix".into(),
+            "私有 R2/S3 目标不能与公开或未知目标混合".into(),
+        );
     }
-    ("ready".into(), "所有成员映射有效；可手动确认新建（云端权限尚未实测）".into())
+    (
+        "ready".into(),
+        "所有成员映射有效；可手动确认新建（云端权限尚未实测）".into(),
+    )
 }
 
 #[tauri::command]
@@ -284,30 +323,54 @@ pub async fn preview_portable_reference_restore(
 ) -> CmdResult<PortableReferencePreview> {
     validate_manifest(&manifest)?;
     let mapped = checked_mapping(state.inner(), &mappings).await?;
-    let existing = state.groups.list().await.map_err(|_| "无法读取本机多云组")?;
-    let names: HashSet<String> = existing.iter()
-        .map(|group| group.name.trim().to_lowercase()).collect();
-    let groups = manifest.groups.iter().map(|group| {
-        let (status, detail) = group_status(group, &mapped, &names);
-        PortableGroupPreview {
-            source_group_id: group.source_group_id.clone(),
-            name: group.name.clone(),
-            status,
-            detail,
-        }
-    }).collect();
-    let workflows = manifest.workflows.iter().map(|workflow| {
-        let (status, detail) = match workflow.target_kind.as_str() {
-            "storage" if parse_id(&workflow.source_target_id).ok().is_some_and(|id| mapped.contains_key(&id)) =>
-                ("manual", "目标存储已映射；处理步骤未导出，必须人工重新建立工作流"),
-            "storage" => ("missing_mapping", "目标存储尚未映射"),
-            "group" => ("manual", "目标是旧多云组，待恢复组后人工重新建立工作流"),
-            _ => ("unsupported", "原工作流发布目标不唯一或无法安全识别"),
-        };
-        PortableWorkflowPreview {
-            name: workflow.name.clone(), status: status.into(), detail: detail.into()
-        }
-    }).collect();
+    let existing = state
+        .groups
+        .list()
+        .await
+        .map_err(|_| "无法读取本机多云组")?;
+    let names: HashSet<String> = existing
+        .iter()
+        .map(|group| group.name.trim().to_lowercase())
+        .collect();
+    let groups = manifest
+        .groups
+        .iter()
+        .map(|group| {
+            let (status, detail) = group_status(group, &mapped, &names);
+            PortableGroupPreview {
+                source_group_id: group.source_group_id.clone(),
+                name: group.name.clone(),
+                status,
+                detail,
+            }
+        })
+        .collect();
+    let workflows = manifest
+        .workflows
+        .iter()
+        .map(|workflow| {
+            let (status, detail) = match workflow.target_kind.as_str() {
+                "storage"
+                    if parse_id(&workflow.source_target_id)
+                        .ok()
+                        .is_some_and(|id| mapped.contains_key(&id)) =>
+                {
+                    (
+                        "manual",
+                        "目标存储已映射；处理步骤未导出，必须人工重新建立工作流",
+                    )
+                }
+                "storage" => ("missing_mapping", "目标存储尚未映射"),
+                "group" => ("manual", "目标是旧多云组，待恢复组后人工重新建立工作流"),
+                _ => ("unsupported", "原工作流发布目标不唯一或无法安全识别"),
+            };
+            PortableWorkflowPreview {
+                name: workflow.name.clone(),
+                status: status.into(),
+                detail: detail.into(),
+            }
+        })
+        .collect();
     Ok(PortableReferencePreview { groups, workflows })
 }
 
@@ -320,30 +383,44 @@ pub async fn restore_portable_storage_group(
 ) -> CmdResult<String> {
     validate_manifest(&manifest)?;
     let source = parse_id(&source_group_id)?;
-    let group = manifest.groups.iter()
+    let group = manifest
+        .groups
+        .iter()
         .find(|group| parse_id(&group.source_group_id).ok() == Some(source))
         .ok_or("未找到旧多云组")?;
     let mapped = checked_mapping(state.inner(), &mappings).await?;
-    let existing = state.groups.list().await.map_err(|_| "无法读取本机多云组")?;
-    let names: HashSet<String> = existing.iter()
-        .map(|value| value.name.trim().to_lowercase()).collect();
+    let existing = state
+        .groups
+        .list()
+        .await
+        .map_err(|_| "无法读取本机多云组")?;
+    let names: HashSet<String> = existing
+        .iter()
+        .map(|value| value.name.trim().to_lowercase())
+        .collect();
     let (status, _) = group_status(group, &mapped, &names);
     if status != "ready" {
         return Err("恢复前检查未通过：成员映射、隐私隔离或目标重名冲突".into());
     }
-    let members = group.members.iter().map(|member| {
-        let source_id = parse_id(&member.source_storage_id)?;
-        let storage = mapped.get(&source_id).ok_or("缺少成员映射")?;
-        Ok(NewStorageGroupMember {
-            storage_id: storage.id,
-            role: member.role.clone(),
-            priority: member.priority,
+    let members = group
+        .members
+        .iter()
+        .map(|member| {
+            let source_id = parse_id(&member.source_storage_id)?;
+            let storage = mapped.get(&source_id).ok_or("缺少成员映射")?;
+            Ok(NewStorageGroupMember {
+                storage_id: storage.id,
+                role: member.role.clone(),
+                priority: member.priority,
+            })
         })
-    }).collect::<CmdResult<Vec<_>>>()?;
+        .collect::<CmdResult<Vec<_>>>()?;
     let new_id = Uuid::new_v4();
-    let inserted = state.groups.insert_restored_if_name_free(
-        new_id, group.name.trim(), &group.strategy, &members,
-    ).await.map_err(|_| "多云组恢复写入失败；未提交部分成员")?;
+    let inserted = state
+        .groups
+        .insert_restored_if_name_free(new_id, group.name.trim(), &group.strategy, &members)
+        .await
+        .map_err(|_| "多云组恢复写入失败；未提交部分成员")?;
     if !inserted {
         return Err("RESTORE_CONFLICT: 本机刚刚新增同名多云组".into());
     }
@@ -362,8 +439,16 @@ mod tests {
                 name: "Example group".into(),
                 strategy: "mirror_all".into(),
                 members: vec![
-                    PortableReferenceMember { source_storage_id: Uuid::new_v4().to_string(), role: "primary".into(), priority: 0 },
-                    PortableReferenceMember { source_storage_id: Uuid::new_v4().to_string(), role: "backup".into(), priority: 1 },
+                    PortableReferenceMember {
+                        source_storage_id: Uuid::new_v4().to_string(),
+                        role: "primary".into(),
+                        priority: 0,
+                    },
+                    PortableReferenceMember {
+                        source_storage_id: Uuid::new_v4().to_string(),
+                        role: "backup".into(),
+                        priority: 1,
+                    },
                 ],
             }],
             workflows: vec![],
@@ -374,7 +459,8 @@ mod tests {
     fn validates_group_cardinality_and_unique_members() {
         let mut plan = sample();
         assert!(validate_manifest(&plan).is_ok());
-        plan.groups[0].members[1].source_storage_id = plan.groups[0].members[0].source_storage_id.clone();
+        plan.groups[0].members[1].source_storage_id =
+            plan.groups[0].members[0].source_storage_id.clone();
         assert!(validate_manifest(&plan).is_err());
         plan = sample();
         plan.groups[0].members[1].role = "primary".into();
