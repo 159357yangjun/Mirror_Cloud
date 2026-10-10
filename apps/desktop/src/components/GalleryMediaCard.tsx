@@ -7,6 +7,7 @@ import {
   File,
   Folder,
   Image as ImageIcon,
+  Link2,
   MoreHorizontal,
   Move,
   Pencil,
@@ -34,6 +35,9 @@ export function GalleryMediaCard({
   copied,
   busy,
   operationBusy,
+  previewable,
+  previewing,
+  onShare,
   onSelect,
   onOpen,
   onCopy,
@@ -48,6 +52,9 @@ export function GalleryMediaCard({
   copied: boolean
   busy: boolean
   operationBusy: boolean
+  previewable: boolean
+  previewing?: boolean
+  onShare?: () => void
   onSelect: () => void
   onOpen: () => void
   onCopy: () => void
@@ -96,7 +103,7 @@ export function GalleryMediaCard({
           />
         </label>
 
-        <button onClick={onOpen} className="relative block w-full overflow-hidden text-left">
+        <button onClick={onOpen} disabled={!previewable} title={previewable ? '预览图片' : '此文件暂不支持直接预览，可下载原图'} className="relative block w-full overflow-hidden text-left disabled:cursor-default">
           <div className="relative aspect-[4/3] overflow-hidden bg-[var(--surface-soft)]">
             {image && entry.publicUrl ? (
               <>
@@ -124,7 +131,7 @@ export function GalleryMediaCard({
 
             <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-t from-slate-950/70 via-slate-950/20 to-transparent opacity-0 transition duration-200 group-hover:opacity-100 group-focus-within:opacity-100" />
             <div className="pointer-events-none absolute inset-x-3 bottom-3 z-20 translate-y-2 text-[10px] font-medium text-white/90 opacity-0 transition duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100">
-              点击图片预览
+              {previewing ? '正在读取私有图片…' : previewable ? '点击图片预览' : '可下载原图'}
             </div>
           </div>
         </button>
@@ -136,6 +143,7 @@ export function GalleryMediaCard({
             </OverlayButton>
           )}
           {entry.publicUrl && <OverlayButton title="浏览器打开" onClick={onOpenExternal}><ExternalLink size={14} /></OverlayButton>}
+          {onShare && <OverlayButton title="复制限时分享链接" onClick={onShare} disabled={busy}><Link2 size={14} /></OverlayButton>}
           <OverlayButton title="下载到本地" onClick={onDownload} disabled={busy}><Download size={14} /></OverlayButton>
           <OverlayButton title="更多操作" onClick={() => setShowMore((value) => !value)} active={showMore}><MoreHorizontal size={15} /></OverlayButton>
         </div>
