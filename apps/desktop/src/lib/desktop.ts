@@ -204,9 +204,26 @@ export async function inspectPortableReferenceManifest(sourcePath: string): Prom
   return invoke('inspect_portable_reference_manifest', { sourcePath })
 }
 export async function previewPortableReferenceRestore(
-  manifest: PortableReferenceManifest, mappings: PortableStorageIdMapping[],
+  manifest: PortableReferenceManifest, mappings: PortableStorageIdMapping[], groupMappings: PortableGroupIdMapping[],
 ): Promise<PortableReferencePreview> {
-  return invoke('preview_portable_reference_restore', { manifest, mappings })
+  return invoke('preview_portable_reference_restore', { manifest, mappings, groupMappings })
+}
+export async function exportPortableGroupMapping(
+  destinationPath: string, manifest: PortableReferenceManifest,
+  mappings: PortableStorageIdMapping[], groupMappings: PortableGroupIdMapping[],
+): Promise<number> {
+  return invoke('export_portable_group_mapping', { destinationPath, manifest, mappings, groupMappings })
+}
+export async function inspectPortableGroupMapping(
+  sourcePath: string, expectedManifestExportedAt: string,
+): Promise<PortableGroupIdMapping[]> {
+  return invoke('inspect_portable_group_mapping', { sourcePath, expectedManifestExportedAt })
+}
+export async function restorePortableWorkflow(
+  manifest: PortableReferenceManifest, mappings: PortableStorageIdMapping[],
+  groupMappings: PortableGroupIdMapping[], sourceWorkflowId: string,
+): Promise<string> {
+  return invoke('restore_portable_workflow', { manifest, mappings, groupMappings, sourceWorkflowId })
 }
 export async function restorePortableStorageGroup(
   manifest: PortableReferenceManifest, mappings: PortableStorageIdMapping[], sourceGroupId: string,
