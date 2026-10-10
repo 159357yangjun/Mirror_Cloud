@@ -112,7 +112,9 @@ export function UploadDialog() {
   )
   const terminal = taskIds.length > 0 && trackedTasks.length === taskIds.length && trackedTasks.every((task) => task && TERMINAL_STATUSES.has(task.status))
   const failedTasks = trackedTasks.filter((task) => task?.status === 'failed')
+  const cancelledTasks = trackedTasks.filter((task) => task?.status === 'cancelled')
   const warningTasks = trackedTasks.filter((task) => task?.status === 'completed' && Boolean(task?.error))
+  const successfulTasks = trackedTasks.filter((task) => task?.status === 'completed' && !task.error)
   // Each task ID is paired with the exact source submitted to Rust (same order).
   // A failed-only retry MUST NOT re-publish successful or completed-with-warning tasks.
   const failedIndexes = submission?.taskIds.flatMap((id, index) =>
@@ -401,18 +403,18 @@ export function UploadDialog() {
           </>
         ) : (
           <div className="mt-4">
-            <div className={`rounded-[22px] border p-5 ${failedTasks.length ? 'border-red-100 bg-red-50/40' : terminal && warningTasks.length ? 'border-amber-100 bg-amber-50/40' : terminal ? 'border-emerald-100 bg-emerald-50/40' : 'border-blue-100 bg-blue-50/40'}`}>
+            <div className={`rounded-[22px] border p-5 ${failedTasks.length ? 'border-red-100 bg-red-50/40' : terminal && (warningTasks.length || cancelledTasks.length) ? 'border-amber-100 bg-amber-50/40' : terminal ? 'border-emerald-100 bg-emerald-50/40' : 'border-blue-100 bg-blue-50/40'}`}>
               <div className="flex items-center gap-3">
-                <div className={`grid size-10 place-items-center rounded-2xl ${failedTasks.length ? 'bg-red-100 text-red-600' : terminal && warningTasks.length ? 'bg-amber-100 text-amber-600' : terminal ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>
-                  {terminal ? (failedTasks.length ? <AlertCircle size={18} /> : warningTasks.length ? <TriangleAlert size={18} /> : <CheckCircle2 size={18} />) : <LoaderCircle size={18} className="animate-spin" />}
+                <div className={`grid size-10 place-items-center rounded-2xl ${failedTasks.length ? 'bg-red-100 text-red-600' : terminal && (warningTasks.length || cancelledTasks.length) ? 'bg-amber-100 text-amber-600' : terminal ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>
+                  {terminal ? (failedTasks.length ? <AlertCircle size={18} /> : warningTasks.length || cancelledTasks.length ? <TriangleAlert size={18} /> : <CheckCircle2 size={18} />) : <LoaderCircle size={18} className="animate-spin" />}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold">{terminal ? (failedTasks.length ? '发布完成，但有失败项' : warningTasks.length ? '发布完成，但有警告' : '发布完成') : '正在上传并执行已启用插件'}</div>
-                  <div className="mt-1 text-xs text-slate-500">{terminal ? `${failedTasks.length} 失败 · ${warningTasks.length} 警告 · ${trackedTasks.length - failedTasks.length - warningTasks.length} 正常` : `处理中 · ${progress}%`}</div>
+                  <div className="text-sm font-semibold">{terminal ? (failedTasks.length ? '发布结束，但有失败项' : cancelledTasks.length ? '发布结束，但有取消项' : warningTasks.length ? '发布完成，但有警告' : '发布完成') : '正在上传并执行已启用插件'}</div>
+                  <div className="mt-1 text-xs text-slate-500">{terminal ? `${successfulTasks.length} 成功 · ${failedTasks.length} 失败 · ${cancelledTasks.length} 取消 · ${warningTasks.length} 警告` : `处理中 · ${progress}%`}</div>
                 </div>
                 <div className="text-lg font-semibold tabular-nums text-slate-700">{progress}%</div>
               </div>
-              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/80"><div className={`h-full rounded-full transition-all duration-300 ${failedTasks.length ? 'bg-red-500' : terminal && warningTasks.length ? 'bg-amber-500' : terminal ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${Math.max(2, progress)}%` }} /></div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/80"><div className={`h-full rounded-full transition-all duration-300 ${failedTasks.length ? 'bg-red-500' : terminal && (warningTasks.length || cancelledTasks.length) ? 'bg-amber-500' : terminal ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${Math.max(2, progress)}%` }} /></div>
             </div>
 
             {tasksError && (
@@ -428,8 +430,8 @@ export function UploadDialog() {
               {taskIds.map((id, index) => {
                 const task = allTasks.find((item) => item.id === id)
                 return <div key={id} className={`flex items-start gap-3 p-3 ${index ? 'border-t border-slate-100' : ''}`}>
-                  <div className="mt-0.5">{task?.status === 'failed' ? <AlertCircle size={15} className="text-red-500" /> : task?.status === 'completed' && task?.error ? <TriangleAlert size={15} className="text-amber-500" /> : task?.status === 'completed' ? <CheckCircle2 size={15} className="text-emerald-500" /> : <LoaderCircle size={15} className="animate-spin text-blue-500" />}</div>
-                  <div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{task?.title || `任务 ${index + 1}`}</div><div className={`mt-1 text-[11px] leading-5 ${task?.status === 'failed' ? 'text-red-500' : task?.status === 'completed' && task?.error ? 'text-amber-600' : 'text-slate-400'}`}>{task?.error || task?.detail || '等待任务引擎…'}</div></div>
+                  <div className="mt-0.5">{task?.status === 'failed' ? <AlertCircle size={15} className="text-red-500" /> : task?.status === 'cancelled' ? <X size={15} className="text-slate-500" /> : task?.status === 'completed' && task?.error ? <TriangleAlert size={15} className="text-amber-500" /> : task?.status === 'completed' ? <CheckCircle2 size={15} className="text-emerald-500" /> : <LoaderCircle size={15} className="animate-spin text-blue-500" />}</div>
+                  <div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{task?.title || `任务 ${index + 1}`}</div><div className={`mt-1 text-[11px] leading-5 ${task?.status === 'failed' ? 'text-red-500' : task?.status === 'completed' && task?.error ? 'text-amber-600' : 'text-slate-400'}`}>{task?.status === 'cancelled' ? '已取消 · 请核对是否产生部分云端副作用' : task?.error || task?.detail || (tasksError ? '任务状态暂时无法读取' : '等待任务引擎…')}</div></div>
                   <span className="text-[11px] tabular-nums text-slate-400">{task?.progress ?? 0}%</span>
                 </div>
               })}
