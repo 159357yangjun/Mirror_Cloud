@@ -1718,14 +1718,21 @@ mod restored_workflow_tests {
             id: Uuid::new_v4(),
             name: name.to_string(),
             steps: vec![
-                WorkflowStep::Convert { format: "webp".into(), quality: 82 },
+                WorkflowStep::Convert {
+                    format: "webp".into(),
+                    quality: 82,
+                },
                 WorkflowStep::Rename {
                     template: "images/{year}/{month}/{hash:12}-u{uuid}-{stem}.{ext}".into(),
                 },
                 WorkflowStep::Publish {
-                    target: PublishTarget::Storage { storage_id: Uuid::new_v4() },
+                    target: PublishTarget::Storage {
+                        storage_id: Uuid::new_v4(),
+                    },
                 },
-                WorkflowStep::Output { template: "{url}".into() },
+                WorkflowStep::Output {
+                    template: "{url}".into(),
+                },
             ],
         }
     }
@@ -1740,7 +1747,11 @@ mod restored_workflow_tests {
 
         let restored = workflow("Blog Upload");
         assert!(repo.insert_restored_if_name_free(&restored).await?);
-        assert!(!repo.insert_restored_if_name_free(&workflow(" BLOG UPLOAD ")).await?);
+        assert!(
+            !repo
+                .insert_restored_if_name_free(&workflow(" BLOG UPLOAD "))
+                .await?
+        );
 
         let list = repo.list().await?;
         assert_eq!(list.len(), 2);
