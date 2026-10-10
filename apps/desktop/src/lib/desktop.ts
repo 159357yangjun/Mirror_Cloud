@@ -351,6 +351,17 @@ export async function assessPortableAssetActivation(
   return invoke('assess_portable_asset_activation', { batchId, itemId })
 }
 
+export type PortableStagedDecision = 'review' | 'defer' | 'exclude'
+export interface PortableBatchDecisionItem {
+  itemId: string
+  expectedRevision: number
+}
+export async function applyPortableStagedBatchDecision(
+  batchId: string, items: PortableBatchDecisionItem[], decision: PortableStagedDecision,
+): Promise<number> {
+  return invoke('apply_portable_staged_batch_decision', { batchId, items, decision })
+}
+
 export async function discardPortableAssetStaging(batchId: string): Promise<boolean> {
   return invoke('discard_portable_asset_staging', { batchId })
 }
