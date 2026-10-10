@@ -63,6 +63,7 @@ export function UploadDialog() {
   const [dragging, setDragging] = useState(false)
   const [taskIds, setTaskIds] = useState<string[]>([])
   const [finishedHandled, setFinishedHandled] = useState(false)
+  const [retryReviewRequired, setRetryReviewRequired] = useState(false)
 
   const { data: allTasks = [] } = useQuery({
     queryKey: ['tasks'],
@@ -162,6 +163,7 @@ export function UploadDialog() {
       return publishFilesWithWorkflow(defaultWorkflow.id, paths)
     },
     onMutate: () => {
+      setRetryReviewRequired(false)
       setTaskIds([])
       setFinishedHandled(false)
     },
@@ -184,8 +186,16 @@ export function UploadDialog() {
     publishMutation.reset()
   }
 
+  function reviewFailedPublish() {
+    // Task IDs cannot safely be matched to individual original inputs.
+    // Return to the editable form instead of automatically replaying successes.
+    resetPublish()
+    setRetryReviewRequired(true)
+  }
+
   function closeDialog() {
     if (publishing && !terminal) return
+    setRetryReviewRequired(false)
     resetPublish()
     setPaths([])
     setUrlsText('')
@@ -194,12 +204,14 @@ export function UploadDialog() {
   }
 
   function startAnother() {
+    setRetryReviewRequired(false)
     setPaths([])
     setUrlsText('')
     resetPublish()
   }
 
   function leaveDialog(nextPage: PageKey) {
+    setRetryReviewRequired(false)
     resetPublish()
     setPaths([])
     setUrlsText('')
@@ -264,6 +276,12 @@ export function UploadDialog() {
               {!storages.length && <div className="mt-2 text-xs text-amber-600">请先到“云端”连接至少一个存储。</div>}
             </div>
 
+            {retryReviewRequired && <div role="alert" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">
+              <div className="font-semibold">请检查要重新发布的内容</div>
+              <p className="mt-1">上次部分任务可能已经成功。原始图片或 URL 仍保留在输入区；请手动移除已成功项目，避免重新发布整个批次产生重复资源。</p>
+              {mode === 'clipboard' && <p className="mt-1">剪贴板内容无法和先前任务可靠对应，请先确认图片内容。</p>}
+              <p className="mt-1">系统没有自动重新提交；再次点击发布按钮才会创建新任务。</p>
+            </div>}
             {publishMutation.error && <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs leading-5 text-red-600"><div className="font-medium">发布前检查没有通过</div><div className="mt-1">{String(publishMutation.error)}</div><div className="mt-1 text-red-700">不会创建“假成功”任务；修复云端凭据后再重试。</div></div>}
             <div className="mt-5 flex justify-end"><button disabled={!canPublish || publishMutation.isPending} onClick={() => publishMutation.mutate()} className="flex items-center gap-2 rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-30">{publishMutation.isPending && <LoaderCircle size={15} className="animate-spin" />}{publishMutation.isPending ? '检查目标…' : mode === 'urls' ? `发布 ${urls.length || ''} 个 URL` : mode === 'clipboard' ? '发布剪贴板图片' : '开始发布'}</button></div>
           </>
@@ -296,7 +314,7 @@ export function UploadDialog() {
 
             {!terminal && <div className="mt-3 text-center text-[11px] text-slate-400">窗口会保持打开。你也可以切到“任务”页面查看后台状态。</div>}
             {terminal && <div className="mt-5 flex flex-wrap justify-end gap-2">
-              {failedTasks.length > 0 && <button onClick={() => { resetPublish(); publishMutation.mutate() }} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium">重试</button>}
+              {failedTasks.length > 0 && <button onClick={reviewFailedPublish} className="rounded-xl border border-amber-200 bg-white px-4 py-2.5 text-sm font-medium text-amber-800">检查后重试</button>}
               <button onClick={startAnother} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium">继续发布</button>
               <button onClick={() => leaveDialog('tasks')} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium">查看任务</button>
               <button onClick={() => leaveDialog('assets')} className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white">查看资源</button>
