@@ -1,0 +1,79 @@
+# Registration-only workflow. Does not merge private-publishing code into main.
+# Security: manual dispatch on the protected DEFAULT branch; checkout immutable reviewed
+# feature-branch test SHA, not the mutable dispatch ref or any user-controlled input.
+name: R2 Private Live E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type RUN_DISPOSABLE_R2_E2E to allow writing one object to the test Bucket'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r2-private-live-e2e
+  cancel-in-progress: false
+
+jobs:
+  live-r2:
+    if: ${{ github.repository == '159357yangjun/Mirror_Cloud' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.confirmation == 'RUN_DISPOSABLE_R2_E2E' }}
+    runs-on: windows-latest
+    timeout-minutes: 55
+    environment:
+      name: r2-private-e2e
+    steps:
+      - name: Checkout explicitly reviewed immutable test code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: e7070e8640342860030ada1c8c1c9e7730aa36ff
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable, 2026-09-03
+        with:
+          toolchain: '1.98.1'
+
+      - name: Check reviewed commit and compile exact OpenDAL test without secrets
+        shell: pwsh
+        env:
+          R2_E2E_EXPECTED_SHA: e7070e8640342860030ada1c8c1c9e7730aa36ff
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $actual = (& git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $actual -cne $env:R2_E2E_EXPECTED_SHA) {
+            throw 'The checked-out test code is not the explicitly approved commit.'
+          }
+          $name = 'commands::r2_private_live_e2e::real_r2_private_object_e2e'
+          # Build and verify discovery BEFORE secrets are loaded; don't print untrusted errors
+          # from a live cloud client (this step makes no cloud requests).
+          $listing = & cargo test --locked -p image-hosting-platform-desktop --lib $name -- --list 2>&1
+          if ($LASTEXITCODE -ne 0 -or -not (($listing -join "`n").Contains("${name}: test"))) {
+            throw 'Exact OpenDAL R2 live test could not be compiled/discovered.'
+          }
+          Write-Host 'PASS: pinned test commit and exact Rust test entrypoint verified.'
+
+      - name: Real R2 private object E2E (protected test Bucket only)
+        id: live
+        shell: pwsh
+        env:
+          R2_E2E_EXPECTED_SHA: e7070e8640342860030ada1c8c1c9e7730aa36ff
+          R2_E2E_ACCOUNT_ID: ${{ vars.R2_E2E_ACCOUNT_ID }}
+          R2_E2E_BUCKET: ${{ vars.R2_E2E_BUCKET }}
+          R2_E2E_ACCESS_KEY_ID: ${{ secrets.R2_E2E_ACCESS_KEY_ID }}
+          R2_E2E_SECRET_ACCESS_KEY: ${{ secrets.R2_E2E_SECRET_ACCESS_KEY }}
+          R2_E2E_CLOUDFLARE_API_TOKEN: ${{ secrets.R2_E2E_CLOUDFLARE_API_TOKEN }}
+          R2_E2E_ALLOW_TEST_WRITES: YES_TEST_BUCKET
+        run: ./scripts/ci_r2_private_e2e.ps1
+
+      - name: Upload sanitized evidence, never raw process output
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: r2-private-e2e-sanitized
+          path: ${{ runner.temp }}/r2-private-e2e-sanitized.txt
+          if-no-files-found: ignore
+          retention-days: 7
