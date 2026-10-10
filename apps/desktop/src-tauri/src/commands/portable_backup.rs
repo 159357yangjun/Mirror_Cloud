@@ -256,32 +256,41 @@ pub async fn inspect_portable_reconnect_map(
         return Err("ID 映射文件无效或超过 1 MB".into());
     }
     let bytes = std::fs::read(source).map_err(|_| "无法读取存储 ID 映射")?;
-    let receipt: PortableReconnectMapReceipt = serde_json::from_slice(&bytes)
-        .map_err(|_| "ID 映射文件包含多余字段或格式错误")?;
-    if receipt.schema_version != 1 || receipt.source_manifest_exported_at != manifest.exported_at
-        || receipt.mappings.is_empty() || receipt.mappings.len() > MAX_PROFILES {
+    let receipt: PortableReconnectMapReceipt =
+        serde_json::from_slice(&bytes).map_err(|_| "ID 映射文件包含多余字段或格式错误")?;
+    if receipt.schema_version != 1
+        || receipt.source_manifest_exported_at != manifest.exported_at
+        || receipt.mappings.is_empty()
+        || receipt.mappings.len() > MAX_PROFILES
+    {
         return Err("ID 映射文件与当前存储清单不匹配".into());
     }
-    let local = state.storages.list().await.map_err(|_| "无法核实本机存储")?;
+    let local = state
+        .storages
+        .list()
+        .await
+        .map_err(|_| "无法核实本机存储")?;
     let mut old_ids = HashSet::new();
     let mut new_ids = HashSet::new();
     for item in &receipt.mappings {
-        let old = uuid::Uuid::parse_str(&item.old_storage_id)
-            .map_err(|_| "旧 Storage ID 无效")?;
-        let new = uuid::Uuid::parse_str(&item.new_storage_id)
-            .map_err(|_| "新 Storage ID 无效")?;
+        let old = uuid::Uuid::parse_str(&item.old_storage_id).map_err(|_| "旧 Storage ID 无效")?;
+        let new = uuid::Uuid::parse_str(&item.new_storage_id).map_err(|_| "新 Storage ID 无效")?;
         if old == new || !old_ids.insert(old) || !new_ids.insert(new) {
             return Err("ID 映射包含重复或相同的旧新 UUID".into());
         }
-        if !manifest.profiles.iter().any(|profile|
-            profile.source_storage_id.as_deref().and_then(|id| uuid::Uuid::parse_str(id).ok()) == Some(old)
+        if !manifest.profiles.iter().any(|profile| {
+            profile
+                .source_storage_id
+                .as_deref()
+                .and_then(|id| uuid::Uuid::parse_str(id).ok())
+                == Some(old)
                 && profile.provider_key == item.provider_key
-        ) {
+        }) {
             return Err("旧 Storage ID 不属于当前清单或 Provider 不匹配".into());
         }
-        if !local.iter().any(|record|
+        if !local.iter().any(|record| {
             record.id == new && record.provider_key == item.provider_key && record.enabled
-        ) {
+        }) {
             return Err("新存储不存在、已禁用或 Provider 不匹配".into());
         }
     }
