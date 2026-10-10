@@ -81,6 +81,14 @@ import type { ProbeFailureKindName } from '../lib/desktop'
 import type { ConfirmationTierName } from '../lib/desktop'
 import type { OutputFormat, OutputPreferences } from '../types'
 
+const activationEvidenceLabels: Record<string, string> = {
+  remote_object_exists: '远端对象存在',
+  authenticated_readback_matches_source_digest: '认证读取并校验内容摘要',
+  provider_access_policy_verified: '确认访问权限策略',
+  anonymous_access_denied: '匿名访问被拒绝',
+  time_limited_share_expiration_verified: '临时分享过期失效',
+}
+
 // The colour comes from `tierDisplay`, never inline here: the same ladder is shown on the asset rows
 // and a divergence between the two would mean one of them is lying about how much to trust a copy.
 function TierChip({ tier }: { tier: ConfirmationTierName | null }) {
@@ -1021,13 +1029,7 @@ export function SettingsPage() {
                     </p>}
                     {activationGate.copies.map((copy) => <div key={copy.sourceStorageId} className="mt-2 border-t border-amber-200 pt-2">
                       <p className="font-medium">{copy.providerKey} 副本 · {copy.localBindingValid && copy.hasSafeObjectKey ? '本地引用可检查' : '本地映射或对象路径不完整'}</p>
-                      <p className="mt-1 break-words text-slate-600">仍需真实证据：{copy.requiredEvidence.map((key) => ({
-                        remote_object_exists: '远端对象存在',
-                        authenticated_readback_matches_source_digest: '认证读取并校验内容摘要',
-                        provider_access_policy_verified: '确认访问权限策略',
-                        anonymous_access_denied: '匿名访问被拒绝',
-                        time_limited_share_expiration_verified: '临时分享过期失效',
-                      }[key] ?? key)).join('、')}</p>
+                      <p className="mt-1 break-words text-slate-600">仍需真实证据：{copy.requiredEvidence.map((key) => activationEvidenceLabels[key] ?? key).join('、')}</p>
                     </div>)}
                     <p className="mt-2 text-amber-800">这里不会连接云端，也不包含“跳过验证”“确认在线”或激活按钮。</p>
                   </div>}
