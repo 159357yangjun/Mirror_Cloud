@@ -44,6 +44,39 @@ impl TaskEngine {
         Ok(task)
     }
 
+    /// Queue every source in one SQLite transaction, preserving input order.
+    /// Do not launch work unless the entire batch has been committed.
+    pub async fn create_batch(
+        &self,
+        kind: impl Into<String>,
+        payloads: Vec<Value>,
+    ) -> Result<Vec<Task>, TaskEngineError> {
+        let kind = kind.into();
+        let entries = payloads
+            .into_iter()
+            .map(|payload| {
+                let task = Task {
+                    id: Uuid::new_v4(),
+                    kind: kind.clone(),
+                    status: TaskStatus::Queued,
+                    progress: 0,
+                    attempt: 0,
+                    max_attempts: 3,
+                    error: None,
+                    created_at: chrono::Utc::now(),
+                    started_at: None,
+                    finished_at: None,
+                };
+                (task, payload)
+            })
+            .collect::<Vec<_>>();
+        self.repository
+            .insert_many(&entries)
+            .await
+            .map_err(|error| TaskEngineError::Persistence(error.to_string()))?;
+        Ok(entries.into_iter().map(|(task, _)| task).collect())
+    }
+
     pub async fn mark_preparing(&self, id: Uuid, progress: u8) -> Result<(), TaskEngineError> {
         self.repository
             .update_status(id, TaskStatus::Preparing, progress, None)

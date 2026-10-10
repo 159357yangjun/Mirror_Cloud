@@ -247,6 +247,33 @@ impl TaskRepository {
         Ok(())
     }
 
+    /// Persist a whole publish batch before starting any workers.
+    /// If one insert fails, SQLite rolls back all earlier items in this batch.
+    pub async fn insert_many(&self, entries: &[(Task, Value)]) -> Result<(), sqlx::Error> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        let mut tx = self.pool.begin().await?;
+        for (task, payload) in entries {
+            sqlx::query("INSERT INTO tasks (id,kind,status,progress,payload_json,attempt,max_attempts,error,created_at,started_at,finished_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+                .bind(task.id.to_string())
+                .bind(&task.kind)
+                .bind(task_status_str(&task.status))
+                .bind(task.progress as i64)
+                .bind(payload.to_string())
+                .bind(task.attempt as i64)
+                .bind(task.max_attempts as i64)
+                .bind(&task.error)
+                .bind(task.created_at.to_rfc3339())
+                .bind(task.started_at.map(|value| value.to_rfc3339()))
+                .bind(task.finished_at.map(|value| value.to_rfc3339()))
+                .execute(&mut *tx)
+                .await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
     pub async fn update_status(
         &self,
         id: Uuid,
@@ -1777,6 +1804,70 @@ mod restored_workflow_tests {
         assert_eq!(list.len(), 2);
         assert!(repo.get(original.id).await?.unwrap().is_default);
         assert!(!repo.get(restored.id).await?.unwrap().is_default);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod task_batch_transaction_tests {
+    use super::TaskRepository;
+    use chrono::Utc;
+    use domain::{Task, TaskStatus};
+    use serde_json::json;
+    use sqlx::SqlitePool;
+    use uuid::Uuid;
+
+    fn queued_task(id: Uuid) -> Task {
+        Task {
+            id,
+            kind: "workflow_publish".into(),
+            status: TaskStatus::Queued,
+            progress: 0,
+            attempt: 0,
+            max_attempts: 3,
+            error: None,
+            created_at: Utc::now(),
+            started_at: None,
+            finished_at: None,
+        }
+    }
+
+    #[sqlx::test]
+    async fn batch_insert_persists_all_sources(pool: SqlitePool) -> Result<(), sqlx::Error> {
+        let repository = TaskRepository::new(pool);
+        let entries = vec![
+            (queued_task(Uuid::new_v4()), json!({"path": "first.png"})),
+            (queued_task(Uuid::new_v4()), json!({"path": "second.png"})),
+        ];
+
+        repository.insert_many(&entries).await?;
+        for (task, payload) in &entries {
+            let recorded = repository.get(task.id).await?.expect("task persisted");
+            assert_eq!(recorded.status, "queued");
+            assert_eq!(&recorded.payload_json, payload);
+        }
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn duplicate_task_in_batch_rolls_back_all_sources(
+        pool: SqlitePool,
+    ) -> Result<(), sqlx::Error> {
+        let repository = TaskRepository::new(pool.clone());
+        let id = Uuid::new_v4();
+        let entries = vec![
+            (queued_task(id), json!({"path": "first.png"})),
+            (queued_task(id), json!({"path": "second.png"})),
+        ];
+
+        assert!(repository.insert_many(&entries).await.is_err());
+        let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tasks")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(
+            total, 0,
+            "a failed batch must leave no partial queued tasks"
+        );
         Ok(())
     }
 }

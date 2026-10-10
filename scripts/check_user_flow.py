@@ -419,7 +419,10 @@ url_publish = commands[commands.find('pub async fn publish_urls_with_workflow'):
 
 require('.test_connection().await' not in preflight_desktop and 'build_provider' in preflight_desktop, 'desktop preflight does not block runtime failover on primary network health')
 require('.test_connection().await' not in preflight_cli and 'build_provider' in preflight_cli, 'Typora preflight does not block runtime failover on primary network health')
-require(url_publish.find('for url in &urls') < url_publish.find('let mut task_ids'), 'URL batch validates every URL before creating tasks')
+require('for url in &urls' in url_publish and url_publish.find('for url in &urls') < url_publish.find('let payloads = urls') and 'create_batch("workflow_url_publish", payloads)' in url_publish, 'URL batch validates every URL before creating tasks')
+file_publish = commands[commands.find('pub async fn publish_files_with_workflow'):commands.find('pub async fn publish_urls_with_workflow')]
+require('create_batch("workflow_publish", payloads)' in file_publish and file_publish.find('create_batch("workflow_publish"') < file_publish.find('tauri::async_runtime::spawn'), 'file batch transaction commits before uploading workers spawn')
+require(url_publish.find('create_batch("workflow_url_publish"') < url_publish.find('tauri::async_runtime::spawn'), 'URL batch transaction commits before uploading workers spawn')
 require('for path in paths {' in cli[:cli.find('std::fs::create_dir_all')] and 'path.is_file()' in cli[:cli.find('std::fs::create_dir_all')], 'Typora validates full local batch before first task/upload')
 require('{uuid}' in commands and '{uuid}' in cli and '{uuid}' in workflow_engine, 'new automatic remote paths include UUID uniqueness')
 require('active_deployment_reference_count' in persistence and 'reference_count > 1' in commands, 'asset deletion protects shared legacy remote paths')

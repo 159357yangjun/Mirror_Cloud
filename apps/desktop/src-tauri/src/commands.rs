@@ -1626,21 +1626,31 @@ pub async fn publish_files_with_workflow(
         return Err("No files selected".into());
     }
 
-    let mut task_ids = Vec::with_capacity(paths.len());
-    for raw in paths {
-        let task = state
-            .tasks
-            .create(
-                "workflow_publish",
-                json!({
-                    "path": raw.clone(),
-                    "workflowId": record.workflow.id.to_string(),
-                    "workflowName": record.workflow.name.clone()
-                }),
-            )
-            .await
-            .map_err(|error| error.to_string())?;
-        task_ids.push(task.id.to_string());
+    // Persist every queued task in one transaction before starting *any* upload.
+    // A failure in the middle must not leave earlier files running without IDs.
+    let payloads = paths
+        .iter()
+        .map(|raw| {
+            json!({
+                "path": raw,
+                "workflowId": record.workflow.id.to_string(),
+                "workflowName": record.workflow.name.clone()
+            })
+        })
+        .collect::<Vec<_>>();
+    let tasks = state
+        .tasks
+        .create_batch("workflow_publish", payloads)
+        .await
+        .map_err(|error| error.to_string())?;
+    let task_ids = tasks
+        .iter()
+        .map(|task| task.id.to_string())
+        .collect::<Vec<_>>();
+
+    // create_batch preserves the order of paths, so task_ids[index] is the
+    // persistent task for paths[index]. No worker starts before commit.
+    for (raw, task) in paths.into_iter().zip(tasks) {
         let app = app.clone();
         let app_state = state.inner().clone();
         let workflow = record.workflow.clone();
@@ -1685,9 +1695,7 @@ pub async fn publish_urls_with_workflow(
         return Err("一次最多发布 50 个 URL".into());
     }
 
-    // Validate the complete batch before creating any task. Otherwise a later
-    // invalid URL could make the command return Err after earlier uploads have
-    // already started, leaving the UI unaware of those background tasks.
+    // Validate the complete batch before inserting or spawning any tasks.
     for url in &urls {
         let parsed =
             reqwest::Url::parse(url).map_err(|error| format!("无效 URL {url}: {error}"))?;
@@ -1696,21 +1704,27 @@ pub async fn publish_urls_with_workflow(
         }
     }
 
-    let mut task_ids = Vec::with_capacity(urls.len());
-    for url in urls {
-        let task = state
-            .tasks
-            .create(
-                "workflow_url_publish",
-                json!({
-                    "url": url.clone(),
-                    "workflowId": record.workflow.id.to_string(),
-                    "workflowName": record.workflow.name.clone()
-                }),
-            )
-            .await
-            .map_err(|error| error.to_string())?;
-        task_ids.push(task.id.to_string());
+    let payloads = urls
+        .iter()
+        .map(|url| {
+            json!({
+                "url": url,
+                "workflowId": record.workflow.id.to_string(),
+                "workflowName": record.workflow.name.clone()
+            })
+        })
+        .collect::<Vec<_>>();
+    let tasks = state
+        .tasks
+        .create_batch("workflow_url_publish", payloads)
+        .await
+        .map_err(|error| error.to_string())?;
+    let task_ids = tasks
+        .iter()
+        .map(|task| task.id.to_string())
+        .collect::<Vec<_>>();
+
+    for (url, task) in urls.into_iter().zip(tasks) {
         let app = app.clone();
         let app_state = state.inner().clone();
         let workflow = record.workflow.clone();
