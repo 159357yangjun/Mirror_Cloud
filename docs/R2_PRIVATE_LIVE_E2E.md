@@ -50,6 +50,19 @@ This runner currently targets the **default R2 account endpoint** only; EU/US/Fe
 References: https://developers.cloudflare.com/api/resources/r2/subresources/buckets/subresources/domains/ and https://developers.cloudflare.com/r2/api/s3/presigned-urls/ and https://developers.cloudflare.com/r2/api/tokens/
 
 
+## Current workflow registration and branch safety
+
+The copy of `.github/workflows/r2-private-live-e2e.yml` in **PR #8 is deliberately
+disabled** (the live job has `if: ${{ false }}`) so selecting this mutable
+feature branch from GitHub's manual workflow menu can never load environment
+secrets or write objects. **PR #9** contains the separate activation version for
+default-branch `main`, with an exact SHA-pinned OpenDAL test checkout, an
+environment-ready switch and operator approval requirements.
+
+Do not remove the disabled feature-branch guard when merging PR #8. The actual
+cloud test is triggered only from the reviewed and approved default-branch
+activation workflow once the protected test Environment has been configured.
+
 ## GitHub Actions: manual, approval-gated real R2 E2E
 
 The new workflow is `.github/workflows/r2-private-live-e2e.yml`. It has **only**
