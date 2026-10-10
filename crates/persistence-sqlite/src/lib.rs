@@ -414,6 +414,31 @@ impl WorkflowRepository {
         Ok(())
     }
 
+    /// Restore only as a non-default workflow and refuse any existing name.
+    /// A single conditional INSERT is atomic under concurrent restore windows.
+    pub async fn insert_restored_if_name_free(
+        &self,
+        workflow: &Workflow,
+    ) -> Result<bool, sqlx::Error> {
+        let now = Utc::now().to_rfc3339();
+        let steps = serde_json::to_string(&workflow.steps)
+            .map_err(|error| sqlx::Error::Decode(Box::new(error)))?;
+        let result = sqlx::query(
+            "INSERT INTO workflows (id,name,steps_json,is_default,created_at,updated_at,description,source_recipe) \
+             SELECT ?,?,?,0,?,?,?,NULL WHERE NOT EXISTS (SELECT 1 FROM workflows WHERE lower(trim(name))=lower(trim(?)))",
+        )
+        .bind(workflow.id.to_string())
+        .bind(&workflow.name)
+        .bind(&steps)
+        .bind(&now)
+        .bind(&now)
+        .bind("")
+        .bind(&workflow.name)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
     pub async fn upsert_system_default(
         &self,
         workflow: &Workflow,
@@ -1677,6 +1702,61 @@ mod restored_group_transaction_tests {
                 .await?
         );
         assert_eq!(repository.list().await?.len(), 1);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod restored_workflow_tests {
+    use super::WorkflowRepository;
+    use domain::{PublishTarget, Workflow, WorkflowStep};
+    use sqlx::SqlitePool;
+    use uuid::Uuid;
+
+    fn workflow(name: &str) -> Workflow {
+        Workflow {
+            id: Uuid::new_v4(),
+            name: name.to_string(),
+            steps: vec![
+                WorkflowStep::Convert {
+                    format: "webp".into(),
+                    quality: 82,
+                },
+                WorkflowStep::Rename {
+                    template: "images/{year}/{month}/{hash:12}-u{uuid}-{stem}.{ext}".into(),
+                },
+                WorkflowStep::Publish {
+                    target: PublishTarget::Storage {
+                        storage_id: Uuid::new_v4(),
+                    },
+                },
+                WorkflowStep::Output {
+                    template: "{url}".into(),
+                },
+            ],
+        }
+    }
+
+    #[sqlx::test]
+    async fn recovered_workflow_preserves_default_and_rejects_duplicate_names(
+        pool: SqlitePool,
+    ) -> Result<(), sqlx::Error> {
+        let repo = WorkflowRepository::new(pool);
+        let original = workflow("Current Default");
+        repo.insert(&original, "", None, true).await?;
+
+        let restored = workflow("Blog Upload");
+        assert!(repo.insert_restored_if_name_free(&restored).await?);
+        assert!(
+            !repo
+                .insert_restored_if_name_free(&workflow(" BLOG UPLOAD "))
+                .await?
+        );
+
+        let list = repo.list().await?;
+        assert_eq!(list.len(), 2);
+        assert!(repo.get(original.id).await?.unwrap().is_default);
+        assert!(!repo.get(restored.id).await?.unwrap().is_default);
         Ok(())
     }
 }

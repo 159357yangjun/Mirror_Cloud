@@ -122,3 +122,37 @@ a durable cross-device workflow mapping. These are explicit remaining gaps.
 
 Run Windows human acceptance and real remote ACL verification only during the
 final consolidated product acceptance stage, per project policy.
+
+## P1 workflow restore (strict relationship manifest v2)
+
+Relationship inventory version **2** allows `spec` only for workflows whose
+entire step sequence is the standard generated format: optional Resize,
+Convert, Rename, Publish and Output(`{url}`). The rename path must match one
+of four approved built-in templates, and format/quality/dimensions are checked.
+Unrecognized, modified or potentially sensitive templates are **not exported**
+and cannot be automatically restored. Version-1 relationship files remain
+readable as target-only previews, not silently upgraded to executable workflows.
+
+With source Storage IDs mapped to new enabled local storages, restore each
+compatible workflow explicitly. For old group targets, first restore the group
+and export or load the **Group ID mapping receipt** tied to the selected
+relationship manifest. Backend validation checks the mapped group still has
+the expected name, strategy, member storages, roles and priorities, not merely
+matching names or a copied UUID.
+
+The UI can now also reload the earlier Storage ID mapping receipt, provided
+the selected v2 source manifest, UUIDs, Providers and destination enabled state
+match. Receipts contain no credentials. No original Storage/Group/Workflow
+primary key is reused.
+
+New workflows use fresh UUIDs, exact reconstructed standard steps and a
+single atomic conditional SQLite insert that refuses duplicate names. They
+are deliberately created **non-default**, without modifying source recipes,
+default upload settings, cloud permissions, group content, images, deployment
+records or remote objects. Source snapshots and mapping files are untrusted
+imports; manual acceptance must still examine the resulting publication target.
+
+The group mapping receipt is a separate allowlisted JSON file. It must be
+saved explicitly after group recovery; the app does not silently persist old
+UUID mappings as authoritative. Full arbitrary custom workflow backup, user
+secrets and real Windows/cloud acceptance remain **unimplemented**.

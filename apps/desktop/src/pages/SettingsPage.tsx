@@ -32,10 +32,14 @@ import {
   exportPortableStorageManifest,
   inspectPortableStorageManifest,
   exportPortableReconnectMap,
+  inspectPortableReconnectMap,
   exportPortableReferenceManifest,
   inspectPortableReferenceManifest,
   previewPortableReferenceRestore,
   restorePortableStorageGroup,
+  exportPortableGroupMapping,
+  inspectPortableGroupMapping,
+  restorePortableWorkflow,
   listStorages,
   getReconciliationSettings,
   getUpdateStatus,
@@ -59,7 +63,7 @@ import {
   uninstallWindowsContextMenu,
   saveOutputPreferences,
 } from '../lib/desktop'
-import type { DownloadedUpdateSummary, UpdateCheckResult, PortableStorageManifest, PortableReferenceManifest, PortableReferencePreview, PortableStorageIdMapping } from '../lib/desktop'
+import type { DownloadedUpdateSummary, UpdateCheckResult, PortableStorageManifest, PortableReferenceManifest, PortableReferencePreview, PortableStorageIdMapping, PortableGroupIdMapping } from '../lib/desktop'
 import { useAppStore } from '../store/useAppStore'
 import { confirmAction } from '../store/useConfirmStore'
 import { tierDisplay, tierReason } from '../lib/confirmationDisplay'
@@ -218,9 +222,11 @@ export function SettingsPage() {
   // A new ID only exists after provider creation succeeded. Never reuse a source UUID.
   // This map is deliberately session-local until the user explicitly exports an audit receipt.
   const [reconnectedIds, setReconnectedIds] = useState<Map<number, string>>(() => new Map())
+  const [importedStorageMappings, setImportedStorageMappings] = useState<PortableStorageIdMapping[]>([])
   const [referenceManifest, setReferenceManifest] = useState<PortableReferenceManifest | null>(null)
   const [referencePreview, setReferencePreview] = useState<PortableReferencePreview | null>(null)
   const [restoredGroupIds, setRestoredGroupIds] = useState<Map<string, string>>(() => new Map())
+  const [restoredWorkflowIds, setRestoredWorkflowIds] = useState<Map<string, string>>(() => new Map())
   const { data: connectedStorages = [], isLoading: storagesLoading, error: storagesError } = useQuery({
     queryKey: ['storages'],
     queryFn: listStorages,
@@ -410,7 +416,9 @@ export function SettingsPage() {
   function currentStorageMappings(): PortableStorageIdMapping[] {
     if (portablePreview?.schemaVersion !== 2) return []
     return portablePreview.profiles.flatMap((profile, index) => {
-      const newStorageId = reconnectedIds.get(index)
+      const imported = importedStorageMappings.find((item) =>
+        item.oldStorageId === profile.sourceStorageId && item.providerKey === profile.providerKey)
+      const newStorageId = reconnectedIds.get(index) ?? imported?.newStorageId
       return profile.sourceStorageId && newStorageId
         ? [{ oldStorageId: profile.sourceStorageId, newStorageId, providerKey: profile.providerKey }]
         : []
@@ -437,8 +445,12 @@ export function SettingsPage() {
     }
   }
 
-  async function previewReferencePlan(manifest: PortableReferenceManifest) {
-    const preview = await previewPortableReferenceRestore(manifest, currentStorageMappings())
+  function currentGroupMappings(groups = restoredGroupIds): PortableGroupIdMapping[] {
+    return [...groups].map(([oldGroupId, newGroupId]) => ({ oldGroupId, newGroupId }))
+  }
+
+  async function previewReferencePlan(manifest: PortableReferenceManifest, groups = restoredGroupIds) {
+    const preview = await previewPortableReferenceRestore(manifest, currentStorageMappings(), currentGroupMappings(groups))
     setReferencePreview(preview)
   }
 
@@ -448,13 +460,14 @@ export function SettingsPage() {
     setReferenceManifest(null)
     setReferencePreview(null)
     setRestoredGroupIds(new Map())
+    setRestoredWorkflowIds(new Map())
     try {
       const { open } = await import('@tauri-apps/plugin-dialog')
       const source = await open({ multiple: false, filters: [{ name: 'JSON', extensions: ['json'] }] })
       if (typeof source === 'string') {
         const manifest = await inspectPortableReferenceManifest(source)
         setReferenceManifest(manifest)
-        await previewReferencePlan(manifest)
+        await previewReferencePlan(manifest, new Map())
         setPortableMessage('关系清单检查完成：需要先完成对应存储 ID 映射，才能逐项恢复多云组。')
       }
     } catch {
@@ -493,8 +506,8 @@ export function SettingsPage() {
       const id = await restorePortableStorageGroup(referenceManifest, currentStorageMappings(), sourceGroupId)
       setRestoredGroupIds((current) => new Map(current).set(sourceGroupId, id))
       await queryClient.invalidateQueries({ queryKey: ['storage-groups'] })
-      await previewReferencePlan(referenceManifest)
-      setPortableMessage('多云组已新建，成员写入具有事务保护；工作流仍须单独重建。')
+      await previewReferencePlan(referenceManifest, new Map(restoredGroupIds).set(sourceGroupId, id))
+      setPortableMessage('多云组已新建。可导出 Group ID 映射并继续恢复标准工作流。')
     } catch {
       setReferencePreview(null)
       setPortableMessage('多云组恢复失败：可能存在目标冲突、缺失映射或权限意图冲突。未标记成功。')
@@ -503,13 +516,97 @@ export function SettingsPage() {
     }
   }
 
+  async function exportGroupMapReceipt() {
+    if (!referenceManifest || portableBusy || restoredGroupIds.size === 0) return
+    setPortableBusy(true)
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog')
+      const destination = await save({
+        defaultPath: 'mirror-cloud-group-id-map.json',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      })
+      if (destination) {
+        const count = await exportPortableGroupMapping(
+          destination, referenceManifest, currentStorageMappings(), currentGroupMappings(),
+        )
+        setPortableMessage(`已导出 ${count} 条经过组成员核对的 Group ID 映射。`)
+      }
+    } catch {
+      setPortableMessage('无法导出组映射：文件重复或目标组的名称、成员关系已变化。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
+  async function importGroupMapReceipt() {
+    if (!referenceManifest || portableBusy) return
+    setPortableBusy(true)
+    setReferencePreview(null)
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const source = await open({ multiple: false, filters: [{ name: 'JSON', extensions: ['json'] }] })
+      if (typeof source !== 'string') return
+      const imported = await inspectPortableGroupMapping(source, referenceManifest.exportedAt)
+      const groups = new Map(imported.map((item) => [item.oldGroupId, item.newGroupId]))
+      await previewReferencePlan(referenceManifest, groups)
+      setRestoredGroupIds(groups)
+      setPortableMessage('组映射已载入并验证成员及角色，可继续恢复安全预设工作流。')
+    } catch {
+      setPortableMessage('组映射和当前关系清单不一致或目标已变化，未启用。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
+  async function restoreOneWorkflow(sourceWorkflowId: string) {
+    if (portableBusy || !referenceManifest || !referencePreview || restoredWorkflowIds.has(sourceWorkflowId)) return
+    const item = referencePreview.workflows.find((w) => w.sourceWorkflowId === sourceWorkflowId)
+    if (!item || item.status !== 'ready') return
+    const accepted = await confirmAction({
+      title: '确认恢复标准工作流',
+      detail: `新建“${item.name}”并重映射发布目标，不复用旧 ID、不覆盖旧工作流，也不会设为默认上传目标。`,
+      confirmLabel: '确认新建工作流',
+      danger: false,
+    })
+    if (!accepted || portableBusy) return
+    setPortableBusy(true)
+    try {
+      const id = await restorePortableWorkflow(
+        referenceManifest, currentStorageMappings(), currentGroupMappings(), sourceWorkflowId,
+      )
+      setRestoredWorkflowIds((current) => new Map(current).set(sourceWorkflowId, id))
+      await queryClient.invalidateQueries({ queryKey: ['workflows'] })
+      await previewReferencePlan(referenceManifest)
+      setPortableMessage('标准工作流已恢复，使用新 ID，原默认上传目标保持不变。')
+    } catch {
+      setReferencePreview(null)
+      setPortableMessage('工作流恢复被阻止：映射、模板安全规则或同名冲突；未覆盖既有工作流。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
+  async function importStorageMapReceipt() {
+    if (!portablePreview || portablePreview.schemaVersion !== 2 || portableBusy) return
+    setPortableBusy(true)
+    setReferencePreview(null)
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const source = await open({ multiple: false, filters: [{ name: 'JSON', extensions: ['json'] }] })
+      if (typeof source !== 'string') return
+      const mappings = await inspectPortableReconnectMap(source, portablePreview)
+      setImportedStorageMappings(mappings)
+      setPortableMessage(`已验证并载入 ${mappings.length} 条 Storage ID 映射，请重新检查关系预览。`)
+    } catch {
+      setPortableMessage('存储映射载入失败：来源清单时间、UUID、Provider 或目标状态不匹配。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
   async function exportReconnectionMap() {
     if (portableBusy || !portablePreview || portablePreview.schemaVersion !== 2) return
-    const mappings = portablePreview.profiles.flatMap((profile, index) => {
-      const newStorageId = reconnectedIds.get(index)
-      if (!profile.sourceStorageId || !newStorageId) return []
-      return [{ oldStorageId: profile.sourceStorageId, newStorageId, providerKey: profile.providerKey }]
-    })
+    const mappings = currentStorageMappings()
     if (!mappings.length) return
     setPortableBusy(true)
     try {
@@ -536,8 +633,10 @@ export function SettingsPage() {
     setPortablePreview(null)
     setRestoreIndex(null)
     setReconnectedIds(new Map())
+    setImportedStorageMappings([])
     setReferencePreview(null)
     setRestoredGroupIds(new Map())
+    setRestoredWorkflowIds(new Map())
     try {
       const { open } = await import('@tauri-apps/plugin-dialog')
       const source = await open({
@@ -583,10 +682,15 @@ export function SettingsPage() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-xs font-medium text-slate-700">清单版本 {portablePreview.schemaVersion} · {portablePreview.profiles.length} 个存储 · 已重连 {reconnectedIds.size} 个</div>
             <button type="button"
-              disabled={portableBusy || restoreIndex !== null || portablePreview.schemaVersion !== 2 || reconnectedIds.size === 0}
+              disabled={portableBusy || restoreIndex !== null || portablePreview.schemaVersion !== 2 || currentStorageMappings().length === 0}
               onClick={() => void exportReconnectionMap()}
               className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium disabled:opacity-40">
               导出旧→新 ID 映射
+            </button>
+            <button type="button" disabled={portableBusy || portablePreview.schemaVersion !== 2}
+              onClick={() => void importStorageMapReceipt()}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium disabled:opacity-40">
+              载入 Storage ID 映射
             </button>
           </div>
           {portablePreview.schemaVersion === 1 && <p className="mt-2 text-[11px] text-amber-700">旧版 v1 清单没有原始 Storage ID，可逐项重新连接，但无法生成可靠的 ID 映射；建议从旧设备重新导出 v2 清单。</p>}
@@ -623,8 +727,12 @@ export function SettingsPage() {
         </div>}
         {referenceManifest && <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <strong>关系恢复预览 · {referenceManifest.groups.length} 个多云组 · {referenceManifest.workflows.length} 条工作流引用</strong>
-            <button type="button" disabled={portableBusy} onClick={() => void refreshReferencePlan()} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-40">重新检查冲突</button>
+            <strong>关系清单 v{referenceManifest.schemaVersion} · {referenceManifest.groups.length} 个多云组 · {referenceManifest.workflows.length} 条工作流</strong>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" disabled={portableBusy || restoredGroupIds.size === 0} onClick={() => void exportGroupMapReceipt()} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-40">导出 Group ID 映射</button>
+              <button type="button" disabled={portableBusy} onClick={() => void importGroupMapReceipt()} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-40">载入 Group ID 映射</button>
+              <button type="button" disabled={portableBusy} onClick={() => void refreshReferencePlan()} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-40">重新检查冲突</button>
+            </div>
           </div>
           {!referencePreview && <p role="alert" className="mt-2 text-amber-700">当前预览无效。重新检查成功前不允许恢复。</p>}
           <div className="mt-2 space-y-2">
@@ -642,12 +750,23 @@ export function SettingsPage() {
                 </button>
               </div>
             })}
-            {referencePreview?.workflows.map((workflow, index) => <div key={index} className="rounded-lg bg-white p-2">
-              <div className="font-medium">{workflow.name} · 工作流只读预览</div>
-              <p className="mt-1 text-[11px] text-amber-700">{workflow.detail}</p>
-            </div>)}
+            {referencePreview?.workflows.map((workflow) => {
+              const restoredId = restoredWorkflowIds.get(workflow.sourceWorkflowId)
+              return <div key={workflow.sourceWorkflowId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white p-2">
+                <div className="min-w-0">
+                  <div className="font-medium">{workflow.name} · {restoredId ? '已创建工作流' : workflow.status === 'ready' ? '标准工作流可恢复' : '需人工处理'}</div>
+                  <p className="mt-1 text-[11px] text-amber-700">{restoredId ? `新 Workflow ID：${restoredId}` : workflow.detail}</p>
+                </div>
+                <button type="button"
+                  disabled={portableBusy || Boolean(restoredId) || workflow.status !== 'ready'}
+                  onClick={() => void restoreOneWorkflow(workflow.sourceWorkflowId)}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40">
+                  {restoredId ? '已恢复' : '确认恢复标准工作流'}
+                </button>
+              </div>
+            })}
           </div>
-          <p className="mt-2 text-[11px] text-amber-700">不恢复旧 Group ID、完整工作流步骤、默认发布目标或资源记录；远端权限未实测。</p>
+          <p className="mt-2 text-[11px] text-amber-700">仅白名单中的标准重命名模板与处理步骤允许恢复；自定义工作流需人工重建。默认目标、资源索引和云端权限不迁移、不作真实性断言。</p>
         </div>}
       </section>
 

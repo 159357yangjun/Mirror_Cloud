@@ -50,8 +50,8 @@ pub struct PortableStorageIdMapping {
     pub provider_key: String,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct PortableReconnectMapReceipt {
     schema_version: u32,
     source_manifest_exported_at: String,
@@ -236,6 +236,65 @@ pub async fn export_portable_reconnect_map(
         .map_err(|_| "无法创建映射文件；同名文件不会覆盖")?;
     output.write_all(&bytes).map_err(|_| "写入映射文件失败")?;
     Ok(receipt.mappings.len())
+}
+
+/// Read a previously exported v2 Storage ID receipt, validating old IDs against
+/// the selected source manifest and new IDs against current local storages.
+#[tauri::command]
+pub async fn inspect_portable_reconnect_map(
+    state: State<'_, AppState>,
+    source_path: String,
+    manifest: PortableStorageManifest,
+) -> CmdResult<Vec<PortableStorageIdMapping>> {
+    validate_manifest(&manifest)?;
+    if manifest.schema_version != VERSION {
+        return Err("v1 清单没有原存储 UUID，无法使用 ID 映射".into());
+    }
+    let source = ensure_json_path(&source_path)?;
+    let meta = std::fs::metadata(source).map_err(|_| "无法读取存储 ID 映射")?;
+    if !meta.is_file() || meta.len() > MAX_IMPORT_BYTES {
+        return Err("ID 映射文件无效或超过 1 MB".into());
+    }
+    let bytes = std::fs::read(source).map_err(|_| "无法读取存储 ID 映射")?;
+    let receipt: PortableReconnectMapReceipt =
+        serde_json::from_slice(&bytes).map_err(|_| "ID 映射文件包含多余字段或格式错误")?;
+    if receipt.schema_version != 1
+        || receipt.source_manifest_exported_at != manifest.exported_at
+        || receipt.mappings.is_empty()
+        || receipt.mappings.len() > MAX_PROFILES
+    {
+        return Err("ID 映射文件与当前存储清单不匹配".into());
+    }
+    let local = state
+        .storages
+        .list()
+        .await
+        .map_err(|_| "无法核实本机存储")?;
+    let mut old_ids = HashSet::new();
+    let mut new_ids = HashSet::new();
+    for item in &receipt.mappings {
+        let old = uuid::Uuid::parse_str(&item.old_storage_id).map_err(|_| "旧 Storage ID 无效")?;
+        let new = uuid::Uuid::parse_str(&item.new_storage_id).map_err(|_| "新 Storage ID 无效")?;
+        if old == new || !old_ids.insert(old) || !new_ids.insert(new) {
+            return Err("ID 映射包含重复或相同的旧新 UUID".into());
+        }
+        if !manifest.profiles.iter().any(|profile| {
+            profile
+                .source_storage_id
+                .as_deref()
+                .and_then(|id| uuid::Uuid::parse_str(id).ok())
+                == Some(old)
+                && profile.provider_key == item.provider_key
+        }) {
+            return Err("旧 Storage ID 不属于当前清单或 Provider 不匹配".into());
+        }
+        if !local.iter().any(|record| {
+            record.id == new && record.provider_key == item.provider_key && record.enabled
+        }) {
+            return Err("新存储不存在、已禁用或 Provider 不匹配".into());
+        }
+    }
+    Ok(receipt.mappings)
 }
 
 /// Import step one: inspect and validate only. NEVER mutate SQLite or secrets.
