@@ -24,12 +24,16 @@ import {
   publishUrlsWithWorkflow,
 } from '../lib/desktop'
 import { useAppStore } from '../store/useAppStore'
+import { confirmAction } from '../store/useConfirmStore'
 import type { PageKey, TaskView, UploadMode } from '../types'
 
 const IMAGE_EXTENSIONS = new Set(['bmp', 'gif', 'jpeg', 'jpg', 'png', 'webp'])
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
 
 type TaskProgressEvent = { id: string; status: TaskView['status']; progress: number; error?: string | null }
+type PublishRequest = { workflowId: string; mode: UploadMode; sources: string[] }
+type PublishSubmission = { request: PublishRequest; taskIds: string[] }
+type FailedRetryRequest = { submission: PublishSubmission; failedIndexes: number[] }
 
 
 function isImagePath(path: string) {
@@ -62,6 +66,7 @@ export function UploadDialog() {
   const [mode, setMode] = useState<UploadMode>('files')
   const [dragging, setDragging] = useState(false)
   const [taskIds, setTaskIds] = useState<string[]>([])
+  const [submission, setSubmission] = useState<PublishSubmission | null>(null)
   const [finishedHandled, setFinishedHandled] = useState(false)
 
   const { data: allTasks = [] } = useQuery({
@@ -102,6 +107,15 @@ export function UploadDialog() {
   const terminal = taskIds.length > 0 && trackedTasks.length === taskIds.length && trackedTasks.every((task) => task && TERMINAL_STATUSES.has(task.status))
   const failedTasks = trackedTasks.filter((task) => task?.status === 'failed')
   const warningTasks = trackedTasks.filter((task) => task?.status === 'completed' && Boolean(task?.error))
+  // Each task ID is paired with the exact source submitted to Rust (same order).
+  // A failed-only retry MUST NOT re-publish successful or completed-with-warning tasks.
+  const failedIndexes = submission?.taskIds.flatMap((id, index) =>
+    allTasks.find((task) => task.id === id)?.status === 'failed' ? [index] : [],
+  ) ?? []
+  const failedOnlyAvailable = terminal && Boolean(submission)
+    && submission?.request.mode !== 'clipboard'
+    && submission?.request.sources.length === submission?.taskIds.length
+    && failedIndexes.length > 0
   const progress = taskIds.length > 0
     ? Math.round(taskIds.reduce((sum, id) => sum + (allTasks.find((task) => task.id === id)?.progress ?? 0), 0) / taskIds.length)
     : 0
@@ -155,21 +169,70 @@ export function UploadDialog() {
   const urls = useMemo(() => parseUrls(urlsText), [urlsText])
 
   const publishMutation = useMutation({
-    mutationFn: async () => {
-      if (!defaultWorkflow) throw new Error('还没有可用的默认上传链；请先到“云端”连接一个存储并设为默认上传目标。')
-      if (mode === 'urls') return publishUrlsWithWorkflow(defaultWorkflow.id, urls)
-      if (mode === 'clipboard') return [await publishClipboardImageWithWorkflow(defaultWorkflow.id)]
-      return publishFilesWithWorkflow(defaultWorkflow.id, paths)
+    // Pin the chosen workflow, mode and source order at the moment of submission.
+    // Later UI changes cannot silently change the contents of a retry.
+    mutationFn: async (request: PublishRequest) => {
+      if (request.mode === 'urls') return publishUrlsWithWorkflow(request.workflowId, request.sources)
+      if (request.mode === 'clipboard') return [await publishClipboardImageWithWorkflow(request.workflowId)]
+      return publishFilesWithWorkflow(request.workflowId, request.sources)
     },
     onMutate: () => {
+      setSubmission(null)
       setTaskIds([])
       setFinishedHandled(false)
     },
-    onSuccess: async (ids) => {
+    onSuccess: async (ids, request) => {
+      setSubmission({ request, taskIds: ids })
       setTaskIds(ids)
       await queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
   })
+
+  const retryFailedMutation = useMutation({
+    mutationFn: async ({ submission: previous, failedIndexes }: FailedRetryRequest) => {
+      const { workflowId, mode, sources } = previous.request
+      const failedSources = failedIndexes.map((index) => sources[index])
+      if (mode === 'files') return publishFilesWithWorkflow(workflowId, failedSources)
+      if (mode === 'urls') return publishUrlsWithWorkflow(workflowId, failedSources)
+      throw new Error('剪贴板图片无法保证与之前的内容相同，不能自动重试')
+    },
+    onSuccess: async (ids, { submission: previous, failedIndexes }) => {
+      if (ids.length !== failedIndexes.length) {
+        // Never guess which source belongs to a task if the backend violates its
+        // one-source/one-task contract. The task center still shows queued jobs.
+        setSubmission(null)
+        setTaskIds([])
+        return
+      }
+      const updated = [...previous.taskIds]
+      failedIndexes.forEach((index, i) => { updated[index] = ids[i] })
+      setSubmission({ request: previous.request, taskIds: updated })
+      setTaskIds(updated)
+      setFinishedHandled(false)
+      await queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    },
+  })
+
+  async function retryFailedOnly() {
+    if (!failedOnlyAvailable || !submission || retryFailedMutation.isPending || publishMutation.isPending) return
+    const accepted = await confirmAction({
+      title: `仅重新发布 ${failedIndexes.length} 个失败项？`,
+      detail: '已成功项目和已完成但有警告的项目不会重新上传。失败任务也可能已向部分云端写入文件；重新发布可能产生重复对象或副本，请先检查任务和资源记录。此操作不会复用旧任务状态。',
+      confirmLabel: `确认重新发布 ${failedIndexes.length} 项`,
+      danger: true,
+    })
+    if (!accepted || retryFailedMutation.isPending) return
+    retryFailedMutation.mutate({ submission, failedIndexes: [...failedIndexes] })
+  }
+
+  function startPublish() {
+    if (!defaultWorkflow || !canPublish || publishMutation.isPending) return
+    publishMutation.mutate({
+      workflowId: defaultWorkflow.id,
+      mode,
+      sources: mode === 'files' ? [...paths] : mode === 'urls' ? [...urls] : [],
+    })
+  }
 
   if (!uploadOpen) return null
 
@@ -180,12 +243,14 @@ export function UploadDialog() {
 
   function resetPublish() {
     setTaskIds([])
+    setSubmission(null)
     setFinishedHandled(false)
     publishMutation.reset()
+    retryFailedMutation.reset()
   }
 
   function closeDialog() {
-    if (publishing && !terminal) return
+    if ((publishing && !terminal) || publishMutation.isPending || retryFailedMutation.isPending) return
     resetPublish()
     setPaths([])
     setUrlsText('')
@@ -219,7 +284,7 @@ export function UploadDialog() {
       <section className="max-h-[92vh] w-full max-w-[720px] overflow-auto rounded-[28px] border border-white bg-white p-5 shadow-[0_30px_80px_rgba(15,23,42,.18)]" onMouseDown={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between p-2">
           <div><h2 className="text-xl font-semibold">发布资源</h2><p className="mt-1 text-sm text-slate-400">提交后不会直接消失；这里会持续显示处理、上传和最终结果。</p></div>
-          <button disabled={publishing && !terminal} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 disabled:opacity-25" onClick={closeDialog} aria-label="关闭"><X size={18} /></button>
+          <button disabled={(publishing && !terminal) || publishMutation.isPending || retryFailedMutation.isPending} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 disabled:opacity-25" onClick={closeDialog} aria-label="关闭"><X size={18} /></button>
         </div>
 
         {taskIds.length === 0 ? (
@@ -265,7 +330,7 @@ export function UploadDialog() {
             </div>
 
             {publishMutation.error && <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs leading-5 text-red-600"><div className="font-medium">发布前检查没有通过</div><div className="mt-1">{String(publishMutation.error)}</div><div className="mt-1 text-red-700">不会创建“假成功”任务；修复云端凭据后再重试。</div></div>}
-            <div className="mt-5 flex justify-end"><button disabled={!canPublish || publishMutation.isPending} onClick={() => publishMutation.mutate()} className="flex items-center gap-2 rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-30">{publishMutation.isPending && <LoaderCircle size={15} className="animate-spin" />}{publishMutation.isPending ? '检查目标…' : mode === 'urls' ? `发布 ${urls.length || ''} 个 URL` : mode === 'clipboard' ? '发布剪贴板图片' : '开始发布'}</button></div>
+            <div className="mt-5 flex justify-end"><button disabled={!canPublish || publishMutation.isPending} onClick={startPublish} className="flex items-center gap-2 rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-30">{publishMutation.isPending && <LoaderCircle size={15} className="animate-spin" />}{publishMutation.isPending ? '检查目标…' : mode === 'urls' ? `发布 ${urls.length || ''} 个 URL` : mode === 'clipboard' ? '发布剪贴板图片' : '开始发布'}</button></div>
           </>
         ) : (
           <div className="mt-4">
@@ -295,11 +360,23 @@ export function UploadDialog() {
             </div>
 
             {!terminal && <div className="mt-3 text-center text-[11px] text-slate-400">窗口会保持打开。你也可以切到“任务”页面查看后台状态。</div>}
+            {terminal && failedTasks.length > 0 && <div role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+              只允许重新发布失败项；成功项和完成但有警告的项不会再次提交。部分云端可能已经收到失败任务的数据，重新发布前请确认重复对象风险。
+            </div>}
+            {retryFailedMutation.error && <div role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">
+              失败项重新提交未成功。请到任务中心确认是否已有新任务开始运行，避免重复操作。
+            </div>}
             {terminal && <div className="mt-5 flex flex-wrap justify-end gap-2">
-              {failedTasks.length > 0 && <button onClick={() => { resetPublish(); publishMutation.mutate() }} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium">重试</button>}
-              <button onClick={startAnother} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium">继续发布</button>
-              <button onClick={() => leaveDialog('tasks')} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium">查看任务</button>
-              <button onClick={() => leaveDialog('assets')} className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white">查看资源</button>
+              {failedOnlyAvailable && <button disabled={retryFailedMutation.isPending}
+                onClick={() => void retryFailedOnly()}
+                className="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-700 disabled:opacity-40">
+                {retryFailedMutation.isPending ? '重新提交失败项…' : `仅重试失败的 ${failedIndexes.length} 项`}
+              </button>}
+              {failedTasks.length > 0 && submission?.request.mode === 'clipboard' &&
+                <p className="w-full text-right text-xs text-amber-700">剪贴板内容可能已变化，请使用“继续发布”手动重新提交。</p>}
+              <button disabled={retryFailedMutation.isPending} onClick={startAnother} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium">继续发布</button>
+              <button disabled={retryFailedMutation.isPending} onClick={() => leaveDialog('tasks')} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium">查看任务</button>
+              <button disabled={retryFailedMutation.isPending} onClick={() => leaveDialog('assets')} className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white">查看资源</button>
             </div>}
           </div>
         )}
