@@ -106,6 +106,8 @@ pub struct CreateS3StorageInput {
     pub access_mode: ObjectAccessMode,
     pub access_key_id: String,
     pub secret_access_key: String,
+    #[serde(default)]
+    pub restore_guard: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -119,6 +121,8 @@ pub struct CreateObjectStorageInput {
     pub public_base_url: Option<String>,
     pub access_key_id: String,
     pub secret_access_key: String,
+    #[serde(default)]
+    pub restore_guard: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -130,6 +134,8 @@ pub struct CreateWebDavStorageInput {
     pub public_base_url: Option<String>,
     pub username: String,
     pub password: String,
+    #[serde(default)]
+    pub restore_guard: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -143,6 +149,8 @@ pub struct CreateRepositoryStorageInput {
     pub root: Option<String>,
     pub public_base_url: Option<String>,
     pub token: String,
+    #[serde(default)]
+    pub restore_guard: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -657,12 +665,30 @@ async fn ensure_default_pipeline_after_storage(
     Ok(())
 }
 
-async fn persist_new_storage(state: &AppState, record: &StorageRecord) -> CmdResult<()> {
-    if let Err(error) = state.storages.insert(record).await {
-        if let Some(key) = record.credential_ref.as_deref() {
-            let _ = state.credentials.delete(key);
+async fn persist_new_storage(
+    state: &AppState,
+    record: &StorageRecord,
+    restore_guard: bool,
+) -> CmdResult<()> {
+    let insertion = if restore_guard {
+        state.storages.insert_if_no_conflict(record).await
+    } else {
+        state.storages.insert(record).await.map(|_| true)
+    };
+    match insertion {
+        Ok(true) => {}
+        Ok(false) => {
+            if let Some(key) = record.credential_ref.as_deref() {
+                let _ = state.credentials.delete(key);
+            }
+            return Err("RESTORE_CONFLICT".into());
         }
-        return Err(error.to_string());
+        Err(error) => {
+            if let Some(key) = record.credential_ref.as_deref() {
+                let _ = state.credentials.delete(key);
+            }
+            return Err(error.to_string());
+        }
     }
     if let Err(error) = ensure_default_pipeline_after_storage(state, record.id).await {
         let storage_rollback = state
@@ -996,7 +1022,7 @@ pub async fn create_object_storage(
         created_at: now,
         updated_at: now,
     };
-    persist_new_storage(state.inner(), &record).await?;
+    persist_new_storage(state.inner(), &record, input.restore_guard).await?;
     Ok(storage_view(&record))
 }
 
@@ -1051,7 +1077,7 @@ pub async fn create_webdav_storage(
         created_at: now,
         updated_at: now,
     };
-    persist_new_storage(state.inner(), &record).await?;
+    persist_new_storage(state.inner(), &record, input.restore_guard).await?;
     Ok(storage_view(&record))
 }
 
@@ -1127,7 +1153,7 @@ pub async fn create_s3_storage(
         created_at: now,
         updated_at: now,
     };
-    persist_new_storage(state.inner(), &record).await?;
+    persist_new_storage(state.inner(), &record, input.restore_guard).await?;
     Ok(storage_view(&record))
 }
 
@@ -1214,7 +1240,7 @@ pub async fn create_repository_storage(
         created_at: now,
         updated_at: now,
     };
-    persist_new_storage(state.inner(), &record).await?;
+    persist_new_storage(state.inner(), &record, input.restore_guard).await?;
     Ok(storage_view(&record))
 }
 
@@ -3822,6 +3848,7 @@ mod r2_private_access_tests {
             access_mode,
             access_key_id: "test-key".into(),
             secret_access_key: "not-a-real-secret".into(),
+            restore_guard: false,
         }
     }
 

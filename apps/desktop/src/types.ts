@@ -72,6 +72,8 @@ export interface CreateS3StorageInput {
   publicBaseUrl?: string
   accessKeyId: string
   secretAccessKey: string
+  /** Enforce atomic target conflict checks for an imported configuration. */
+  restoreGuard?: boolean
 }
 
 export interface CreateObjectStorageInput {
@@ -83,6 +85,8 @@ export interface CreateObjectStorageInput {
   publicBaseUrl?: string
   accessKeyId: string
   secretAccessKey: string
+  /** Enforce atomic target conflict checks for an imported configuration. */
+  restoreGuard?: boolean
 }
 
 export interface CreateWebDavStorageInput {
@@ -92,6 +96,8 @@ export interface CreateWebDavStorageInput {
   publicBaseUrl?: string
   username: string
   password: string
+  /** Enforce atomic target conflict checks for an imported configuration. */
+  restoreGuard?: boolean
 }
 
 export interface CreateRepositoryStorageInput {
@@ -103,6 +109,8 @@ export interface CreateRepositoryStorageInput {
   root?: string
   publicBaseUrl?: string
   token: string
+  /** Enforce atomic target conflict checks for an imported configuration. */
+  restoreGuard?: boolean
 }
 
 export interface CreateStorageGroupInput {
