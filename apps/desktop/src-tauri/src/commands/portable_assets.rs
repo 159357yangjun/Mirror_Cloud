@@ -421,21 +421,34 @@ pub async fn list_portable_staged_items(
     batch_id: String,
 ) -> CmdResult<Vec<StagedAssetReviewView>> {
     let batch_id = Uuid::parse_str(&batch_id).map_err(|_| "批次 UUID 无效")?;
-    state.asset_staging.list_items(batch_id).await
+    state
+        .asset_staging
+        .list_items(batch_id)
+        .await
         .map_err(|_| "无法读取暂存记录")?
-        .into_iter().map(|row| {
-            let entry: PortableAssetEntry = serde_json::from_str(&row.entry_json)
-                .map_err(|_| "暂存记录内容损坏")?;
+        .into_iter()
+        .map(|row| {
+            let entry: PortableAssetEntry =
+                serde_json::from_str(&row.entry_json).map_err(|_| "暂存记录内容损坏")?;
             let bindings: Vec<PortableStorageIdMapping> =
                 serde_json::from_str(&row.binding_overrides_json)
                     .map_err(|_| "暂存存储映射内容损坏")?;
-            let sources = entry.deployments.iter().map(|d| StagedSourceStorage {
-                source_storage_id: d.source_storage_id.clone(),
-                provider_key: d.provider_key.clone(),
-                has_safe_path: d.remote_path.is_some(),
-            }).collect();
-            Ok(StagedAssetReviewView { row, sources, bindings })
-        }).collect()
+            let sources = entry
+                .deployments
+                .iter()
+                .map(|d| StagedSourceStorage {
+                    source_storage_id: d.source_storage_id.clone(),
+                    provider_key: d.provider_key.clone(),
+                    has_safe_path: d.remote_path.is_some(),
+                })
+                .collect();
+            Ok(StagedAssetReviewView {
+                row,
+                sources,
+                bindings,
+            })
+        })
+        .collect()
 }
 
 /// Persist a deliberate local repair decision. A new destination must be enabled
@@ -456,13 +469,17 @@ pub async fn update_portable_staged_item_review(
     }
     let batch = Uuid::parse_str(&batch_id).map_err(|_| "批次 UUID 无效")?;
     let item = Uuid::parse_str(&item_id).map_err(|_| "暂存记录 UUID 无效")?;
-    let context = state.asset_staging.get_review_context(batch, item).await
-        .map_err(|_| "无法核实暂存记录")?.ok_or("暂存记录不存在")?;
+    let context = state
+        .asset_staging
+        .get_review_context(batch, item)
+        .await
+        .map_err(|_| "无法核实暂存记录")?
+        .ok_or("暂存记录不存在")?;
     if context.revision != expected_revision {
         return Err("记录已被其他操作修改，请刷新后重试".into());
     }
-    let entry: PortableAssetEntry = serde_json::from_str(&context.entry_json)
-        .map_err(|_| "暂存元数据损坏")?;
+    let entry: PortableAssetEntry =
+        serde_json::from_str(&context.entry_json).map_err(|_| "暂存元数据损坏")?;
     let source_manifest = PortableAssetManifest {
         schema_version: SCHEMA_VERSION,
         exported_at: Utc::now().to_rfc3339(),
@@ -470,8 +487,8 @@ pub async fn update_portable_staged_item_review(
     };
     validate_manifest(&source_manifest)?;
 
-    let saved: Vec<PortableStorageIdMapping> = serde_json::from_str(&context.storage_mappings_json)
-        .map_err(|_| "来源映射格式损坏")?;
+    let saved: Vec<PortableStorageIdMapping> =
+        serde_json::from_str(&context.storage_mappings_json).map_err(|_| "来源映射格式损坏")?;
     let mut overrides: Vec<PortableStorageIdMapping> =
         serde_json::from_str(&context.binding_overrides_json).map_err(|_| "人工映射格式损坏")?;
 
@@ -480,12 +497,20 @@ pub async fn update_portable_staged_item_review(
         (Some(old_id), Some(new_id)) => {
             let old = Uuid::parse_str(old_id).map_err(|_| "旧 Storage UUID 无效")?;
             let dest = Uuid::parse_str(new_id).map_err(|_| "目标 Storage UUID 无效")?;
-            if old == dest { return Err("不可复用旧 Storage UUID".into()); }
-            let source = entry.deployments.iter()
+            if old == dest {
+                return Err("不可复用旧 Storage UUID".into());
+            }
+            let source = entry
+                .deployments
+                .iter()
                 .find(|d| Uuid::parse_str(&d.source_storage_id).ok() == Some(old))
                 .ok_or("当前资源不包含该来源存储")?;
-            let local = state.storages.get(dest).await
-                .map_err(|_| "无法查找目标存储")?.ok_or("目标存储不存在")?;
+            let local = state
+                .storages
+                .get(dest)
+                .await
+                .map_err(|_| "无法查找目标存储")?
+                .ok_or("目标存储不存在")?;
             if !local.enabled || local.provider_key != source.provider_key {
                 return Err("目标存储已禁用或 Provider 不匹配".into());
             }
@@ -498,7 +523,11 @@ pub async fn update_portable_staged_item_review(
         }
         (Some(old_id), None) => {
             let old = Uuid::parse_str(old_id).map_err(|_| "旧 Storage UUID 无效")?;
-            if !entry.deployments.iter().any(|d| Uuid::parse_str(&d.source_storage_id).ok() == Some(old)) {
+            if !entry
+                .deployments
+                .iter()
+                .any(|d| Uuid::parse_str(&d.source_storage_id).ok() == Some(old))
+            {
                 return Err("当前资源不包含该来源存储".into());
             }
             overrides.retain(|m| m.old_storage_id != old_id);
@@ -506,18 +535,32 @@ pub async fn update_portable_staged_item_review(
         (None, Some(_)) => return Err("必须指定要修复的来源存储".into()),
     }
 
-    let local = state.storages.list().await.map_err(|_| "无法读取本机存储")?;
+    let local = state
+        .storages
+        .list()
+        .await
+        .map_err(|_| "无法读取本机存储")?;
     let mut effective = Vec::new();
     let mut targets = HashSet::new();
     for deployment in &entry.deployments {
-        let candidate = overrides.iter().find(|m| m.old_storage_id == deployment.source_storage_id)
-            .or_else(|| saved.iter().find(|m| m.old_storage_id == deployment.source_storage_id));
+        let candidate = overrides
+            .iter()
+            .find(|m| m.old_storage_id == deployment.source_storage_id)
+            .or_else(|| {
+                saved
+                    .iter()
+                    .find(|m| m.old_storage_id == deployment.source_storage_id)
+            });
         if let Some(mapping) = candidate {
             if mapping.provider_key != deployment.provider_key {
                 continue;
             }
-            let new_id = Uuid::parse_str(&mapping.new_storage_id).map_err(|_| "目标存储 UUID 损坏")?;
-            if !local.iter().any(|s| s.id == new_id && s.enabled && s.provider_key == mapping.provider_key) {
+            let new_id =
+                Uuid::parse_str(&mapping.new_storage_id).map_err(|_| "目标存储 UUID 损坏")?;
+            if !local
+                .iter()
+                .any(|s| s.id == new_id && s.enabled && s.provider_key == mapping.provider_key)
+            {
                 continue;
             }
             if !targets.insert(new_id) {
@@ -535,11 +578,23 @@ pub async fn update_portable_staged_item_review(
         _ => "awaiting_verification",
     };
     let serialized = serde_json::to_string(&overrides).map_err(|_| "无法保存人工存储映射")?;
-    let updated = state.asset_staging.update_review(
-        batch, item, expected_revision, status, &decision, &serialized,
-        row.resolved_copies as i64, row.missing_copies as i64,
-    ).await.map_err(|_| "暂存修复保存失败")?;
-    if !updated { return Err("记录被其他操作修改，请刷新后重试".into()); }
+    let updated = state
+        .asset_staging
+        .update_review(
+            batch,
+            item,
+            expected_revision,
+            status,
+            &decision,
+            &serialized,
+            row.resolved_copies as i64,
+            row.missing_copies as i64,
+        )
+        .await
+        .map_err(|_| "暂存修复保存失败")?;
+    if !updated {
+        return Err("记录被其他操作修改，请刷新后重试".into());
+    }
     Ok(())
 }
 
