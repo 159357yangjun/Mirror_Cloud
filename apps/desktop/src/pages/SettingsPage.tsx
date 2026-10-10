@@ -27,6 +27,8 @@ import {
   getGlobalShortcutInfo,
   getWindowsContextMenuInfo,
   getOutputPreferences,
+  exportPortableStorageManifest,
+  inspectPortableStorageManifest,
   getReconciliationSettings,
   getUpdateStatus,
   getReconciliationHistory,
@@ -49,7 +51,7 @@ import {
   uninstallWindowsContextMenu,
   saveOutputPreferences,
 } from '../lib/desktop'
-import type { DownloadedUpdateSummary, UpdateCheckResult } from '../lib/desktop'
+import type { DownloadedUpdateSummary, UpdateCheckResult, PortableStorageManifest } from '../lib/desktop'
 import { useAppStore } from '../store/useAppStore'
 import { confirmAction } from '../store/useConfirmStore'
 import { tierDisplay, tierReason } from '../lib/confirmationDisplay'
@@ -201,6 +203,9 @@ export function SettingsPage() {
   const [copiedApiToken, setCopiedApiToken] = useState(false)
   const [copiedApiExample, setCopiedApiExample] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [portableBusy, setPortableBusy] = useState(false)
+  const [portableMessage, setPortableMessage] = useState<string | null>(null)
+  const [portablePreview, setPortablePreview] = useState<PortableStorageManifest | null>(null)
 
   useEffect(() => {
     if (data) setForm(data)
@@ -362,11 +367,81 @@ export function SettingsPage() {
     }
   }
 
+  async function exportPortablePlan() {
+    if (portableBusy) return
+    setPortableBusy(true)
+    setPortableMessage(null)
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog')
+      const destination = await save({
+        defaultPath: 'mirror-cloud-storage-manifest.json',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      })
+      if (destination) {
+        const count = await exportPortableStorageManifest(destination)
+        setPortableMessage(`已导出 ${count} 个存储配置的无密钥重连清单。它不包含图片、数据库、工作流或访问密钥。`)
+      }
+    } catch {
+      setPortableMessage('导出失败；请检查文件位置或更换文件名（不会覆盖已有文件）。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
+  async function inspectPortablePlan() {
+    if (portableBusy) return
+    setPortableBusy(true)
+    setPortableMessage(null)
+    setPortablePreview(null)
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const source = await open({
+        multiple: false,
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      })
+      if (typeof source === 'string') {
+        const plan = await inspectPortableStorageManifest(source)
+        setPortablePreview(plan)
+        setPortableMessage('格式检查通过。这里只查看内容，不会创建云存储或覆盖本机数据。恢复时必须重新输入凭据。')
+      }
+    } catch {
+      setPortableMessage('无法识别该清单：格式不受支持、包含多余字段或文件超过 1 MB。现有数据未修改。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
   return (
     <div className="mx-auto max-w-[1040px] px-10 py-9">
       <PageHeader title="设置" description="只保留真正可操作的应用设置；云端账号和密钥继续归属于对应 Storage。" />
 
       {actionError && <div className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{actionError}</div>}
+
+      <section className="mt-8 rounded-[24px] border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800"><Database size={17} /> 存储配置迁移清单</div>
+            <p className="mt-1 max-w-2xl text-xs leading-6 text-slate-500">
+              导出云存储名称、Bucket、资源目录和私有意图，方便换电脑时照着重新连接。
+              <strong>不是完整备份</strong>：不包含图片、资源索引、工作流、Endpoint、访问密钥或插件密钥。
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button disabled={portableBusy} onClick={() => void exportPortablePlan()} className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-medium text-white disabled:opacity-40">{portableBusy ? '处理中…' : '导出无密钥清单'}</button>
+            <button disabled={portableBusy} onClick={() => void inspectPortablePlan()} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 disabled:opacity-40">导入前检查</button>
+          </div>
+        </div>
+        {portableMessage && <p role="status" className="mt-3 text-xs leading-5 text-slate-600">{portableMessage}</p>}
+        {portablePreview && <div className="mt-3 rounded-xl bg-slate-50 p-3">
+          <div className="text-xs font-medium text-slate-700">清单版本 {portablePreview.schemaVersion} · {portablePreview.profiles.length} 个存储需要重新连接凭据</div>
+          <div className="mt-2 max-h-48 space-y-1 overflow-auto text-xs text-slate-500">
+            {portablePreview.profiles.map((profile, index) => <div key={index}>
+              {profile.name} · {profile.providerKey.toUpperCase()} · {profile.accessMode === 'private_requested' ? '私有意图未验证' : '访问模式需重新确认'}
+            </div>)}
+          </div>
+          <p className="mt-2 text-[11px] text-amber-700">目前仅支持检查清单，不会自动恢复或覆盖已连接存储。重新绑定凭据的向导会在后续阶段单独实现。</p>
+        </div>}
+      </section>
 
       <section className="mt-8 rounded-[24px] border border-indigo-100 bg-gradient-to-br from-indigo-50/80 via-white to-white p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
