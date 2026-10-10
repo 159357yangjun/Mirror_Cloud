@@ -188,7 +188,7 @@ export interface PortableGroupIdMapping {
   newGroupId: string
 }
 export interface PortableReferenceManifest {
-  schemaVersion: 1
+  schemaVersion: 1 | 2
   exportedAt: string
   groups: PortableReferenceGroup[]
   workflows: PortableReferenceWorkflow[]
