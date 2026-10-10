@@ -143,6 +143,11 @@ export async function exportPortableStorageManifest(destinationPath: string): Pr
 export async function inspectPortableStorageManifest(sourcePath: string): Promise<PortableStorageManifest> {
   return invoke('inspect_portable_storage_manifest', { sourcePath })
 }
+export async function inspectPortableReconnectMap(
+  sourcePath: string, manifest: PortableStorageManifest,
+): Promise<PortableStorageIdMapping[]> {
+  return invoke('inspect_portable_reconnect_map', { sourcePath, manifest })
+}
 
 export interface PortableStorageIdMapping {
   oldStorageId: string
