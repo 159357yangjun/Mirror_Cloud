@@ -616,6 +616,47 @@ impl StorageGroupRepository {
         Ok(())
     }
 
+    /// Restore one group without overwriting existing names or leaving half its members.
+    /// The name check is inside INSERT; the group and members share a transaction.
+    pub async fn insert_restored_if_name_free(
+        &self,
+        id: Uuid,
+        name: &str,
+        strategy: &str,
+        members: &[NewStorageGroupMember],
+    ) -> Result<bool, sqlx::Error> {
+        let now = Utc::now().to_rfc3339();
+        let mut tx = self.pool.begin().await?;
+        let result = sqlx::query(
+            "INSERT INTO storage_groups (id,name,strategy,created_at,updated_at) \
+             SELECT ?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM storage_groups WHERE lower(trim(name))=lower(trim(?)))",
+        )
+        .bind(id.to_string())
+        .bind(name)
+        .bind(strategy)
+        .bind(&now)
+        .bind(&now)
+        .bind(name)
+        .execute(&mut *tx)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Ok(false);
+        }
+        for member in members {
+            sqlx::query(
+                "INSERT INTO storage_group_members (group_id,storage_id,role,priority) VALUES (?,?,?,?)",
+            )
+            .bind(id.to_string())
+            .bind(member.storage_id.to_string())
+            .bind(&member.role)
+            .bind(member.priority)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(true)
+    }
+
     pub async fn get(&self, id: Uuid) -> Result<Option<StorageGroupRecord>, sqlx::Error> {
         let row = sqlx::query(
             "SELECT id,name,strategy,created_at,updated_at FROM storage_groups WHERE id=?",
