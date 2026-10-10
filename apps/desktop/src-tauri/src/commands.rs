@@ -805,7 +805,7 @@ fn normalize_s3(
         ObjectAccessMode::Public => {
             Some(normalize_public_base_url(input.public_base_url.as_deref())?)
         }
-        ObjectAccessMode::PrivateRequested if provider_key == "r2" => {
+        ObjectAccessMode::PrivateRequested if matches!(provider_key, "r2" | "s3") => {
             if input
                 .public_base_url
                 .as_deref()
@@ -816,7 +816,7 @@ fn normalize_s3(
             None
         }
         ObjectAccessMode::PrivateRequested => {
-            return Err("当前仅 Cloudflare R2 支持创建私有访问意图的目标".into());
+            return Err("当前仅 R2/S3 支持创建私有访问意图的目标".into());
         }
     };
 
@@ -3395,7 +3395,7 @@ fn storage_group_view(record: StorageGroupRecord) -> StorageGroupView {
 }
 
 fn storage_requests_private(record: &StorageRecord) -> bool {
-    record.provider_key == "r2"
+    matches!(record.provider_key.as_str(), "r2" | "s3")
         && record
             .config_json
             .get("access_mode")
@@ -3404,7 +3404,7 @@ fn storage_requests_private(record: &StorageRecord) -> bool {
 }
 
 // Applies to both setup and later group publishing: a storage intent must never silently
-// cross from a private-requested R2 target into a public replica.
+// cross from a private-requested S3-family target into a public replica.
 fn validate_group_access_intents(
     storages: &[StorageRecord],
     expected_count: usize,
@@ -3413,7 +3413,7 @@ fn validate_group_access_intents(
         && (storages.len() != expected_count
             || storages.iter().any(|s| !storage_requests_private(s)))
     {
-        return Err("私有 R2 不能与公开、未知或已删除的目标组成同一发布组，请拆分工作流".into());
+        return Err("私有 R2/S3 不能与公开、未知或已删除的目标组成同一发布组，请拆分工作流".into());
     }
     Ok(())
 }
