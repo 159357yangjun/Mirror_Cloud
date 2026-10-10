@@ -7,6 +7,7 @@ triggers, unscoped permissions, missing environment approval or unsafe artifacts
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 workflow = (ROOT / ".github/workflows/r2-private-live-e2e.yml").read_text(encoding="utf-8")
@@ -68,15 +69,15 @@ checks = {
         token in rust_test
         for token in (
             'OpenDalStorage::s3("r2",',
-            "storage.upload(",
             "is_anonymous_read_denied(status)",
-            "storage.temporary_read_url(",
             "signed_status != 200",
             "is_expired_signature_rejected(expired_status)",
             "storage.delete(&path).await",
             "#[ignore = ",
         )
-    ),
+    )
+    and bool(re.search(r"storage\s*\.\s*upload\s*\(", rust_test))
+    and bool(re.search(r"storage\s*\.\s*temporary_read_url\s*\(", rust_test)),
     "runner refuses missing secrets or zero-test success": all(
         token in runner
         for token in (
