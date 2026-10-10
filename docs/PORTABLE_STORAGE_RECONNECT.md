@@ -215,3 +215,31 @@ bindings, live cloud existence/content verification, copying metadata into
 the active asset index, default publishing integration or any remotely
 authorized delete/share. Those remain separate phases; manual Windows/cloud
 E2E stays deferred to final product acceptance.
+
+## P2 phase 3: persistent per-item review and local rebinding
+
+SQLite migration `0021_portable_asset_item_review.sql` adds a per-row
+operator decision (`review`, `defer`, `exclude`), a strictly local
+`binding_overrides_json` array, a monotonic revision and an audit timestamp.
+Previously staged batches default to review; the migration does not copy rows
+into the active `assets`, `asset_variants` or `deployments` tables.
+
+In the staging batch details, each row can be rechecked against **current**
+local duplicate content and path collisions, deferred, or excluded. A source
+storage ID appearing in that row can be mapped to an enabled destination of
+the same Provider. The backend revalidates the source UUID and Provider,
+rejects duplicate destinations, omits stale source bindings, recalculates
+the local review status, and commits the decision plus overrides in a
+compare-and-swap update using the expected row revision. Stale windows must
+refresh instead of silently overwriting another decision. Rebinding is
+per-row and never alters the global StorageRecord, original manifest, remote
+objects or any workflow.
+
+`awaiting_verification` means only that a local identity/path conflict was
+not detected in this review. It is **not** remote existence, ownership,
+accessibility, private ACL or content hash verification. The user may mark
+rows excluded or deferred; they are excluded from the review-ready batch count.
+The only supported operation on a staging batch remains local review or discard.
+No remote deletion, sharing, automated verification, promotion, or active
+resource writes are exposed by this phase. Future activation must introduce
+separate provider checks and fail-closed authorization.

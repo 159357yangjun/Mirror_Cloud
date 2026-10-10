@@ -302,6 +302,10 @@ export interface StagedAssetRow {
   reviewStatus: 'blocked_duplicate' | 'blocked_path' | 'needs_rebind' | 'awaiting_verification'
   resolvedCopies: number
   missingCopies: number
+  operatorDecision: 'review' | 'defer' | 'exclude'
+  revision: number
+  sources: Array<{ sourceStorageId: string; providerKey: string; hasSafePath: boolean }>
+  bindings: PortableStorageIdMapping[]
 }
 export async function stagePortableAssetManifest(
   manifest: PortableAssetManifest, mappings: PortableStorageIdMapping[],
@@ -314,6 +318,16 @@ export async function listPortableAssetStaging(): Promise<StagedAssetBatch[]> {
 export async function listPortableStagedItems(batchId: string): Promise<StagedAssetRow[]> {
   return invoke('list_portable_staged_items', { batchId })
 }
+export async function updatePortableStagedItemReview(
+  batchId: string, itemId: string, expectedRevision: number,
+  decision: 'review' | 'defer' | 'exclude',
+  sourceStorageId?: string, newStorageId?: string,
+): Promise<void> {
+  return invoke('update_portable_staged_item_review', {
+    batchId, itemId, expectedRevision, decision, sourceStorageId, newStorageId,
+  })
+}
+
 export async function discardPortableAssetStaging(batchId: string): Promise<boolean> {
   return invoke('discard_portable_asset_staging', { batchId })
 }

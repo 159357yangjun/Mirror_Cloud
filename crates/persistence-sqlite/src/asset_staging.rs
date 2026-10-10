@@ -38,6 +38,21 @@ pub struct StagedAssetRow {
     pub review_status: String,
     pub resolved_copies: i64,
     pub missing_copies: i64,
+    pub operator_decision: String,
+    pub revision: i64,
+    #[serde(skip_serializing)]
+    pub entry_json: String,
+    #[serde(skip_serializing)]
+    pub binding_overrides_json: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct StagedAssetReviewContext {
+    pub entry_json: String,
+    pub storage_mappings_json: String,
+    pub binding_overrides_json: String,
+    pub operator_decision: String,
+    pub revision: i64,
 }
 
 #[derive(Clone)]
@@ -95,8 +110,8 @@ impl AssetStagingRepository {
     pub async fn list_batches(&self) -> Result<Vec<StagedAssetBatch>, sqlx::Error> {
         let rows = sqlx::query(
             "SELECT b.id,b.source_exported_at,b.created_at,COUNT(i.id) AS item_count, \
-             COALESCE(SUM(CASE WHEN i.review_status='awaiting_verification' THEN 1 ELSE 0 END),0) AS awaiting_verification, \
-             COALESCE(SUM(CASE WHEN i.review_status<>'awaiting_verification' THEN 1 ELSE 0 END),0) AS blocked_count \
+             COALESCE(SUM(CASE WHEN i.review_status='awaiting_verification' AND i.operator_decision='review' THEN 1 ELSE 0 END),0) AS awaiting_verification, \
+             COALESCE(SUM(CASE WHEN i.id IS NOT NULL AND (i.review_status<>'awaiting_verification' OR i.operator_decision<>'review') THEN 1 ELSE 0 END),0) AS blocked_count \
              FROM portable_asset_batches b LEFT JOIN portable_asset_staged_items i ON i.batch_id=b.id \
              GROUP BY b.id ORDER BY b.created_at DESC",
         ).fetch_all(&self.pool).await?;
@@ -116,7 +131,7 @@ impl AssetStagingRepository {
 
     pub async fn list_items(&self, batch_id: Uuid) -> Result<Vec<StagedAssetRow>, sqlx::Error> {
         let rows = sqlx::query(
-            "SELECT id,batch_id,source_asset_id,source_variant_id,name,review_status,resolved_copies,missing_copies \
+            "SELECT id,batch_id,source_asset_id,source_variant_id,name,review_status,resolved_copies,missing_copies,operator_decision,revision,entry_json,binding_overrides_json \
              FROM portable_asset_staged_items WHERE batch_id=? ORDER BY rowid",
         ).bind(batch_id.to_string()).fetch_all(&self.pool).await?;
         rows.into_iter()
@@ -130,9 +145,73 @@ impl AssetStagingRepository {
                     review_status: row.try_get("review_status")?,
                     resolved_copies: row.try_get("resolved_copies")?,
                     missing_copies: row.try_get("missing_copies")?,
+                    operator_decision: row.try_get("operator_decision")?,
+                    revision: row.try_get("revision")?,
+                    entry_json: row.try_get("entry_json")?,
+                    binding_overrides_json: row.try_get("binding_overrides_json")?,
                 })
             })
             .collect()
+    }
+
+    pub async fn get_review_context(
+        &self,
+        batch_id: Uuid,
+        item_id: Uuid,
+    ) -> Result<Option<StagedAssetReviewContext>, sqlx::Error> {
+        let row = sqlx::query(
+            "SELECT i.entry_json,b.storage_mappings_json,i.binding_overrides_json,i.operator_decision,i.revision \
+             FROM portable_asset_staged_items i \
+             INNER JOIN portable_asset_batches b ON b.id=i.batch_id \
+             WHERE i.id=? AND i.batch_id=? AND b.state='pending'",
+        )
+        .bind(item_id.to_string())
+        .bind(batch_id.to_string())
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(|row| {
+            Ok(StagedAssetReviewContext {
+                entry_json: row.try_get("entry_json")?,
+                storage_mappings_json: row.try_get("storage_mappings_json")?,
+                binding_overrides_json: row.try_get("binding_overrides_json")?,
+                operator_decision: row.try_get("operator_decision")?,
+                revision: row.try_get("revision")?,
+            })
+        })
+        .transpose()
+    }
+
+    /// Compare-and-swap prevents a stale review window from overwriting another edit.
+    /// The status vocabulary and decision vocabulary are enforced by SQL CHECK.
+    pub async fn update_review(
+        &self,
+        batch_id: Uuid,
+        item_id: Uuid,
+        expected_revision: i64,
+        review_status: &str,
+        decision: &str,
+        overrides_json: &str,
+        resolved: i64,
+        missing: i64,
+    ) -> Result<bool, sqlx::Error> {
+        let changed = sqlx::query(
+            "UPDATE portable_asset_staged_items \
+             SET review_status=?,operator_decision=?,binding_overrides_json=?,resolved_copies=?,missing_copies=?, \
+                 revision=revision+1,reviewed_at=? \
+             WHERE id=? AND batch_id=? AND revision=?",
+        )
+        .bind(review_status)
+        .bind(decision)
+        .bind(overrides_json)
+        .bind(resolved)
+        .bind(missing)
+        .bind(Utc::now().to_rfc3339())
+        .bind(item_id.to_string())
+        .bind(batch_id.to_string())
+        .bind(expected_revision)
+        .execute(&self.pool)
+        .await?;
+        Ok(changed.rows_affected() == 1)
     }
 
     /// Discard staging only. ON DELETE CASCADE removes review rows, never active assets.
@@ -225,6 +304,99 @@ mod tests {
             .is_err()
         );
         assert!(repo.list_batches().await?.is_empty());
+        Ok(())
+    }
+    #[sqlx::test]
+    async fn review_decisions_are_local_and_revision_guarded(
+        pool: SqlitePool,
+    ) -> Result<(), sqlx::Error> {
+        let repo = AssetStagingRepository::new(pool.clone());
+        let batch = Uuid::new_v4();
+        repo.stage(
+            batch,
+            "2026-10-10T08:00:00Z",
+            "[]",
+            &[input("needs mapping", "needs_rebind")],
+        )
+        .await?;
+        let item = repo.list_items(batch).await?.pop().unwrap();
+        let item_id = Uuid::parse_str(&item.id).unwrap();
+        let first = repo.get_review_context(batch, item_id).await?.unwrap();
+        assert_eq!(first.revision, 0);
+        assert!(
+            repo.update_review(batch, item_id, 0, "needs_rebind", "defer", "[]", 0, 1)
+                .await?
+        );
+        assert!(
+            !repo
+                .update_review(
+                    batch,
+                    item_id,
+                    0,
+                    "awaiting_verification",
+                    "review",
+                    "[]",
+                    1,
+                    0
+                )
+                .await?
+        );
+        let updated = repo.list_items(batch).await?.pop().unwrap();
+        assert_eq!(updated.operator_decision, "defer");
+        assert_eq!(updated.revision, 1);
+        assert_eq!(updated.review_status, "needs_rebind");
+        assert!(
+            repo.update_review(batch, item_id, 1, "needs_rebind", "exclude", "[]", 0, 1)
+                .await?
+        );
+        assert_eq!(repo.list_batches().await?.len(), 1);
+        let active: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM assets")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(active, 0);
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn illegal_review_status_cannot_promote_to_online(
+        pool: SqlitePool,
+    ) -> Result<(), sqlx::Error> {
+        let repo = AssetStagingRepository::new(pool);
+        let batch = Uuid::new_v4();
+        repo.stage(
+            batch,
+            "2026-10-10T09:00:00Z",
+            "[]",
+            &[input("photo", "awaiting_verification")],
+        )
+        .await?;
+        let item_id = Uuid::parse_str(&repo.list_items(batch).await?[0].id).unwrap();
+        assert!(
+            repo.update_review(batch, item_id, 0, "online", "review", "[]", 1, 0)
+                .await
+                .is_err()
+        );
+        assert!(
+            repo.update_review(
+                batch,
+                item_id,
+                0,
+                "awaiting_verification",
+                "verified",
+                "[]",
+                1,
+                0
+            )
+            .await
+            .is_err()
+        );
+        assert_eq!(
+            repo.get_review_context(batch, item_id)
+                .await?
+                .unwrap()
+                .revision,
+            0
+        );
         Ok(())
     }
 }

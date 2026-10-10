@@ -47,6 +47,7 @@ import {
   listPortableAssetStaging,
   listPortableStagedItems,
   discardPortableAssetStaging,
+  updatePortableStagedItemReview,
   listStorages,
   getReconciliationSettings,
   getUpdateStatus,
@@ -239,6 +240,7 @@ export function SettingsPage() {
   const [assetManifest, setAssetManifest] = useState<PortableAssetManifest | null>(null)
   const [assetPreview, setAssetPreview] = useState<PortableAssetPreview | null>(null)
   const [selectedStagedBatch, setSelectedStagedBatch] = useState<string | null>(null)
+  const [stagedRebindings, setStagedRebindings] = useState<Record<string, Record<string, string>>>({})
   const { data: stagedAssetBatches = [], error: stagedBatchError } = useQuery({
     queryKey: ['portable-asset-staging'],
     queryFn: listPortableAssetStaging,
@@ -727,6 +729,29 @@ export function SettingsPage() {
     }
   }
 
+  async function reviewStagedItem(
+    item: (typeof selectedStagedItems)[number],
+    decision: 'review' | 'defer' | 'exclude',
+    sourceStorageId?: string,
+    newStorageId?: string,
+  ) {
+    if (assetMigrationBusy || !selectedStagedBatch) return
+    setAssetMigrationBusy(true)
+    try {
+      await updatePortableStagedItemReview(
+        selectedStagedBatch, item.id, item.revision, decision, sourceStorageId, newStorageId,
+      )
+      await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging-items', selectedStagedBatch] })
+      await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging'] })
+      setAssetMigrationMessage('已保存逐项审核或本地存储重绑，未进行云端访问或图片激活。')
+    } catch {
+      setAssetMigrationMessage('保存失败：记录可能被另一窗口修改、Provider 不匹配或目标存储失效。请刷新暂存批次后重试。')
+      await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging-items', selectedStagedBatch] })
+    } finally {
+      setAssetMigrationBusy(false)
+    }
+  }
+
   async function exportReconnectionMap() {
     if (portableBusy || !portablePreview || portablePreview.schemaVersion !== 2) return
     const mappings = currentStorageMappings()
@@ -952,13 +977,49 @@ export function SettingsPage() {
                 </div>
               </div>
               {selectedStagedBatch === batch.id && <div className="mt-2 max-h-52 space-y-1 overflow-auto border-t border-slate-100 pt-2">
-                {selectedStagedItems.map((item) => <div key={item.id} className="rounded bg-slate-50 px-2 py-1 text-[11px]">
-                  {item.name} · {item.reviewStatus} · 已映射 {item.resolvedCopies} / 待处理 {item.missingCopies}
+                {selectedStagedItems.map((item) => <div key={item.id} className="rounded bg-slate-50 px-2 py-2 text-[11px]">
+                  <div className="font-medium">{item.name} · {item.reviewStatus} · {item.operatorDecision === 'exclude' ? '已排除' : item.operatorDecision === 'defer' ? '稍后处理' : '待审核'}</div>
+                  <p className="mt-1 text-slate-500">已映射 {item.resolvedCopies} / 待处理 {item.missingCopies} · 修订版本 {item.revision}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button type="button" disabled={assetMigrationBusy} onClick={() => void reviewStagedItem(item, 'review')}
+                      className="rounded border border-slate-200 bg-white px-2 py-1 disabled:opacity-40">重新检查</button>
+                    <button type="button" disabled={assetMigrationBusy} onClick={() => void reviewStagedItem(item, 'defer')}
+                      className="rounded border border-slate-200 bg-white px-2 py-1 disabled:opacity-40">稍后处理</button>
+                    <button type="button" disabled={assetMigrationBusy} onClick={() => void reviewStagedItem(item, 'exclude')}
+                      className="rounded border border-slate-200 bg-white px-2 py-1 disabled:opacity-40">排除此项</button>
+                  </div>
+                  {item.sources.map((source) => {
+                    const choice = stagedRebindings[item.id]?.[source.sourceStorageId] ?? ''
+                    const matches = connectedStorages.filter((storage) => storage.enabled && storage.providerKey === source.providerKey)
+                    const existing = item.bindings.find((binding) => binding.oldStorageId === source.sourceStorageId)
+                    return <div key={source.sourceStorageId} className="mt-2 rounded border border-slate-200 bg-white p-2">
+                      <div className="break-all text-slate-600">来源 {source.providerKey} · {source.sourceStorageId} {source.hasSafePath ? '' : '· 原路径不可安全迁移'}</div>
+                      {existing && <div className="mt-1 break-all text-emerald-700">当前人工绑定：{existing.newStorageId}</div>}
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <select value={choice} disabled={assetMigrationBusy}
+                          onChange={(event) => setStagedRebindings((current) => ({
+                            ...current,
+                            [item.id]: { ...current[item.id], [source.sourceStorageId]: event.target.value },
+                          }))}
+                          aria-label={`为 ${item.name} 选择目标存储`}
+                          className="min-w-40 rounded border border-slate-200 bg-white px-2 py-1">
+                          <option value="">选择本机目标存储</option>
+                          {matches.map((storage) => <option key={storage.id} value={storage.id}>{storage.name} ({storage.providerKey})</option>)}
+                        </select>
+                        <button type="button" disabled={assetMigrationBusy || !choice}
+                          onClick={() => void reviewStagedItem(item, 'review', source.sourceStorageId, choice)}
+                          className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">保存此项重绑</button>
+                        {existing && <button type="button" disabled={assetMigrationBusy}
+                          onClick={() => void reviewStagedItem(item, 'review', source.sourceStorageId)}
+                          className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">撤销重绑</button>}
+                      </div>
+                    </div>
+                  })}
                 </div>)}
               </div>}
             </div>)}
           </div>
-          <p className="mt-2 text-[11px] text-amber-700">这些数据与正式资源库物理隔离；现阶段不提供激活、在线确认、远端删除或分享操作。</p>
+          <p className="mt-2 text-[11px] text-amber-700">人工重绑只会更新隔离暂存中的本地审核信息；“awaiting_verification”不证明对象存在或权限安全。此阶段没有激活、远端删除或分享入口。</p>
         </div>
       </section>
 
