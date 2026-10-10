@@ -1,5 +1,6 @@
 use std::path::Path;
 
+pub mod asset_staging;
 pub mod journal;
 pub mod remote_scan;
 
