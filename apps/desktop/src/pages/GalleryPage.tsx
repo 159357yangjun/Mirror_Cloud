@@ -8,6 +8,7 @@ import {
   Grid2X2,
   Image as ImageIcon,
   List,
+  Link2,
   LoaderCircle,
   RefreshCw,
   Search,
@@ -20,7 +21,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { GalleryMediaCard } from '../components/GalleryMediaCard'
-import { browseStorage, chooseDownloadPath, copyText, createStorageDirectory, deleteStorageEntry, downloadStorageEntry, listStorages, moveStorageEntry, openExternalUrlOrReport, queueBatchDeleteStorageEntries, queueBatchMoveStorageEntries, queueBatchRenameStorageEntries } from '../lib/desktop'
+import { canPreviewCloudImage, isPrivateR2Storage, useCloudImagePreview } from '../lib/useCloudImagePreview'
+import { browseStorage, chooseDownloadPath, copyText, createStorageDirectory, createTemporaryShareLink, deleteStorageEntry, downloadStorageEntry, listStorages, moveStorageEntry, openExternalUrlOrReport, queueBatchDeleteStorageEntries, queueBatchMoveStorageEntries, queueBatchRenameStorageEntries } from '../lib/desktop'
 import type { StorageEntryView } from '../types'
 
 function parentPath(path: string) {
@@ -62,7 +64,8 @@ export function GalleryPage() {
   const [search, setSearch] = useState('')
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [visibleCount, setVisibleCount] = useState(GALLERY_PAGE_SIZE)
-  const [preview, setPreview] = useState<StorageEntryView | null>(null)
+  const { preview, previewingPath, previewError, openPreview, closePreview } = useCloudImagePreview()
+  const [shareExpiry, setShareExpiry] = useState<600 | 3600 | 86400>(600)
   const [copied, setCopied] = useState<string | null>(null)
   const [busyPath, setBusyPath] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -80,9 +83,11 @@ export function GalleryPage() {
 
   useEffect(() => {
     setSelectedPaths(new Set())
-  }, [storageId, path])
+    closePreview()
+  }, [storageId, path, closePreview])
 
   const storage = storages.find((item) => item.id === storageId)
+  const privateR2 = isPrivateR2Storage(storage)
   const { data: entries = [], isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['gallery-storage', storageId, path],
     queryFn: () => browseStorage(storageId, path),
@@ -116,6 +121,22 @@ export function GalleryPage() {
     window.setTimeout(() => setCopied((current) => current === entry.path ? null : current), 1200)
   }
 
+  async function shareEntry(entry: StorageEntryView) {
+    if (!privateR2 || !storageId || entry.isDir || busyPath !== null) return
+    setActionError(null)
+    setBusyPath(entry.path)
+    try {
+      const url = await createTemporaryShareLink(storageId, entry.path, shareExpiry)
+      await copyText(url)
+      notifySuccess('限时只读链接已复制。持有链接者在有效期内可以访问，请勿公开粘贴。')
+    } catch {
+      // Never echo SDK error text or signed URL to notifications.
+      setActionError('临时分享失败，请检查签名权限与存储连接。')
+    } finally {
+      setBusyPath(null)
+    }
+  }
+
   async function downloadEntry(entry: StorageEntryView) {
     if (!storageId || entry.isDir) return
     const destination = await chooseDownloadPath(entry.name)
@@ -125,7 +146,7 @@ export function GalleryPage() {
     try {
       await downloadStorageEntry(storageId, entry.path, destination)
     } catch (error) {
-      setActionError(`下载失败：${String(error)}`)
+      setActionError(privateR2 ? '私有文件下载失败，请检查存储连接或目标路径。' : `下载失败：${String(error)}`)
     } finally {
       setBusyPath(null)
     }
@@ -138,14 +159,14 @@ export function GalleryPage() {
     setActionError(null)
     try {
       await deleteStorageEntry(storageId, entry.path)
-      if (preview?.path === entry.path) setPreview(null)
+      if (preview?.entry.path === entry.path) closePreview()
       await Promise.all([
         refetch(),
         queryClient.invalidateQueries({ queryKey: ['assets'] }),
         queryClient.invalidateQueries({ queryKey: ['assets', 'publish-recent'] }),
       ])
     } catch (error) {
-      setActionError(`删除失败：${String(error)}`)
+      setActionError(privateR2 ? '私有文件删除失败，请检查存储权限。' : `删除失败：${String(error)}`)
     } finally {
       setBusyPath(null)
     }
@@ -205,7 +226,7 @@ export function GalleryPage() {
           next.delete(entry.path)
           return next
         })
-        if (preview?.path === entry.path) setPreview(null)
+        if (preview?.entry.path === entry.path) closePreview()
       }
       setPathDialog(null)
       await refreshAfterRemoteMutation()
@@ -226,7 +247,7 @@ export function GalleryPage() {
     try {
       const taskId = await queueBatchDeleteStorageEntries(storageId, paths)
       setSelectedPaths(new Set())
-      if (preview && paths.includes(preview.path)) setPreview(null)
+      if (preview && paths.includes(preview.entry.path)) closePreview()
       notifySuccess(`批量删除已进入任务中心：${taskId.slice(0, 8)}…`)
       void queryClient.invalidateQueries({ queryKey: ['tasks'] })
     } catch (error) {
@@ -276,6 +297,14 @@ export function GalleryPage() {
               <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索远端文件…" className="min-w-0 flex-1 bg-transparent text-xs outline-none" />
             </div>
             <button disabled={!storageId || operationBusy || storage?.category === 'repository'} onClick={() => setPathDialog({ mode: 'create', value: '' })} title={storage?.category === 'repository' ? 'GitHub/Gitee 不存在真正的空目录；上传文件时会自动出现目录' : '新建远端目录'} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 disabled:opacity-30"><Folder size={13} className="mr-1 inline" />新建目录</button>
+            {privateR2 && <label className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2 text-xs text-slate-600">
+              <Link2 size={13} />限时分享
+              <select aria-label="图库限时链接有效期" value={shareExpiry} onChange={(event) => setShareExpiry(Number(event.target.value) as 600 | 3600 | 86400)} className="bg-transparent outline-none">
+                <option value={600}>10 分钟</option>
+                <option value={3600}>1 小时</option>
+                <option value={86400}>24 小时</option>
+              </select>
+            </label>}
             <div className="flex rounded-lg bg-slate-100 p-1">
               <button onClick={() => setView('grid')} className={`rounded-md p-1.5 ${view === 'grid' ? 'bg-white shadow-sm' : 'text-slate-400'}`} title="网格"><Grid2X2 size={14} /></button>
               <button onClick={() => setView('list')} className={`rounded-md p-1.5 ${view === 'list' ? 'bg-white shadow-sm' : 'text-slate-400'}`} title="列表"><List size={14} /></button>
@@ -299,7 +328,8 @@ export function GalleryPage() {
           <div className="min-h-[520px] p-4">
             {isLoading && <div className="grid min-h-[480px] place-items-center text-slate-400"><LoaderCircle size={22} className="animate-spin" /></div>}
             {error && <div className="rounded-2xl bg-red-50 p-4 text-xs leading-6 text-red-600">读取远端失败：{String(error)}</div>}
-            {actionError && <div className="mb-3 rounded-2xl bg-red-50 p-4 text-xs leading-6 text-red-600">{actionError}</div>}
+            {actionError && <div role="alert" className="mb-3 rounded-2xl bg-red-50 p-4 text-xs leading-6 text-red-600">{actionError}</div>}
+            {previewError && <div role="alert" className="mb-3 rounded-2xl bg-amber-50 p-4 text-xs leading-6 text-amber-700">{previewError}</div>}
             {!isLoading && !error && !filtered.length && <div className="grid min-h-[480px] place-items-center text-sm text-slate-400">当前目录没有匹配文件</div>}
 
             {!isLoading && !error && view === 'grid' && visibleEntries.length > 0 && (
@@ -312,10 +342,13 @@ export function GalleryPage() {
           copied={copied === entry.path}
           busy={busyPath === entry.path}
           operationBusy={operationBusy}
+          previewable={canPreviewCloudImage(entry, storage)}
+          previewing={previewingPath === entry.path}
+          onShare={privateR2 ? () => void shareEntry(entry) : undefined}
           onSelect={() => toggleSelected(entry)}
           onOpen={() => {
             if (entry.isDir) setPath(entry.path)
-            else if (isImage(entry) && entry.publicUrl) setPreview(entry)
+            else void openPreview(entry, storage)
           }}
           onCopy={() => void copyUrl(entry)}
           onOpenExternal={() => entry.publicUrl && openExternalUrlOrReport(entry.publicUrl)}
@@ -333,13 +366,15 @@ export function GalleryPage() {
                 <div className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-xl bg-slate-100 text-slate-500">
                   {entry.isDir ? <Folder size={17} /> : isImage(entry) && entry.publicUrl ? <img src={entry.publicUrl} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" /> : <File size={17} />}
                 </div>
-                <button disabled={!entry.isDir && !(isImage(entry) && entry.publicUrl)} onClick={() => entry.isDir ? setPath(entry.path) : setPreview(entry)} className="min-w-0 flex-1 text-left disabled:cursor-default">
+                <button disabled={!entry.isDir && !canPreviewCloudImage(entry, storage)} onClick={() => entry.isDir ? setPath(entry.path) : void openPreview(entry, storage)} className="min-w-0 flex-1 text-left disabled:cursor-default">
+                  {previewingPath === entry.path && <span className="text-[10px] text-amber-700">读取私有预览中…</span>}
                   <div className="truncate text-sm font-medium">{entry.name}</div>
                   <div className="mt-0.5 truncate text-[11px] text-slate-400">{entry.isDir ? '目录' : `${sizeLabel(entry.sizeBytes)} · ${entry.path}`}</div>
                 </button>
                 {!entry.isDir && <>
                   {entry.publicUrl && <button onClick={() => void copyUrl(entry)} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700" title="复制公开链接"><Copy size={14} /></button>}
                   {entry.publicUrl && <button onClick={() => openExternalUrlOrReport(entry.publicUrl || '')} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700" title="浏览器打开"><ExternalLink size={14} /></button>}
+                  {privateR2 && <button disabled={busyPath !== null} onClick={() => void shareEntry(entry)} className="rounded-lg p-2 text-indigo-600 hover:bg-indigo-50 disabled:opacity-30" title="复制限时分享链接"><Link2 size={14} /></button>}
                   <button disabled={operationBusy} onClick={() => setPathDialog({ mode: 'rename', entry, value: entry.name })} className="rounded-lg px-2 py-1.5 text-[11px] text-slate-400 hover:bg-white hover:text-slate-700" title="重命名">改名</button>
                   <button disabled={operationBusy} onClick={() => setPathDialog({ mode: 'move', entry, value: parentPath(entry.path) })} className="rounded-lg px-2 py-1.5 text-[11px] text-slate-400 hover:bg-white hover:text-slate-700" title="移动">移动</button>
                   <button disabled={busyPath === entry.path} onClick={() => void downloadEntry(entry)} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700 disabled:opacity-30" title="下载"><Download size={14} /></button>
@@ -377,17 +412,19 @@ export function GalleryPage() {
         </div>
       )}
 
-      {preview?.publicUrl && (
-        <div className="fixed inset-0 z-[90] grid place-items-center bg-slate-950/75 p-8" onMouseDown={() => setPreview(null)}>
-          <div className="relative max-h-full max-w-full" onMouseDown={(event) => event.stopPropagation()}>
-            <button onClick={() => setPreview(null)} className="absolute -right-3 -top-3 z-10 grid size-9 place-items-center rounded-full bg-white text-slate-500 shadow-lg"><X size={16} /></button>
-            <img src={preview.publicUrl} alt={preview.name} decoding="async" className="max-h-[80vh] max-w-[88vw] rounded-2xl bg-white object-contain shadow-2xl" />
+      {preview && (
+        <div className="fixed inset-0 z-[90] grid place-items-center bg-slate-950/75 p-8" onMouseDown={closePreview}>
+          <div role="dialog" aria-modal="true" aria-label={`图片预览：${preview.entry.name}`} className="relative max-h-full max-w-full" onMouseDown={(event) => event.stopPropagation()}>
+            <button onClick={closePreview} className="absolute -right-3 -top-3 z-10 grid size-9 place-items-center rounded-full bg-white text-slate-500 shadow-lg" title="关闭预览"><X size={16} /></button>
+            <img src={preview.src} alt={preview.entry.name} decoding="async" className="max-h-[80vh] max-w-[88vw] rounded-2xl bg-white object-contain shadow-2xl" />
             <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-              <div className="max-w-[46vw] truncate rounded-xl bg-white/95 px-3 py-2 text-xs font-medium">{preview.name}</div>
-              <button onClick={() => void copyUrl(preview)} className="rounded-xl bg-white px-4 py-2 text-xs font-medium"><Copy size={13} className="mr-1 inline" />复制链接</button>
-              <button onClick={() => openExternalUrlOrReport(preview.publicUrl || '')} className="rounded-xl bg-white px-4 py-2 text-xs font-medium"><ExternalLink size={13} className="mr-1 inline" />浏览器打开</button>
-              <button onClick={() => void downloadEntry(preview)} className="rounded-xl bg-white px-4 py-2 text-xs font-medium"><Download size={13} className="mr-1 inline" />下载</button>
-              <button onClick={() => void deleteEntry(preview)} className="rounded-xl bg-red-50 px-4 py-2 text-xs font-medium text-red-600"><Trash2 size={13} className="mr-1 inline" />删除</button>
+              <div className="max-w-[46vw] truncate rounded-xl bg-white/95 px-3 py-2 text-xs font-medium">{preview.entry.name}</div>
+              {preview.privateMode && <div className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">凭据预览 · 无公开链接</div>}
+              {!preview.privateMode && <button onClick={() => void copyUrl(preview.entry)} className="rounded-xl bg-white px-4 py-2 text-xs font-medium"><Copy size={13} className="mr-1 inline" />复制链接</button>}
+              {!preview.privateMode && <button onClick={() => preview.entry.publicUrl && openExternalUrlOrReport(preview.entry.publicUrl)} className="rounded-xl bg-white px-4 py-2 text-xs font-medium"><ExternalLink size={13} className="mr-1 inline" />浏览器打开</button>}
+              {preview.privateMode && <button onClick={() => void shareEntry(preview.entry)} className="rounded-xl bg-amber-50 px-4 py-2 text-xs font-medium text-amber-700"><Link2 size={13} className="mr-1 inline" />临时分享</button>}
+              <button onClick={() => void downloadEntry(preview.entry)} className="rounded-xl bg-white px-4 py-2 text-xs font-medium"><Download size={13} className="mr-1 inline" />保存原图</button>
+              <button onClick={() => void deleteEntry(preview.entry)} className="rounded-xl bg-red-50 px-4 py-2 text-xs font-medium text-red-600"><Trash2 size={13} className="mr-1 inline" />删除</button>
             </div>
           </div>
         </div>
