@@ -67,3 +67,12 @@ acceptance and real-cloud testing are deliberately left for the end.
 - Missing/bad credentials fail and do not mark a row as reconnected.
 - Importing one profile never automatically creates another.
 - Cancelling and selecting a different JSON resets per-file wizard progress.
+
+## Atomic reconnect guard (phase-2 hardening)
+
+- Restoration requests set `restoreGuard: true` for all seven supported providers; ordinary new-storage creation keeps its previous behavior.
+- The SQLite repository performs conflict checking and insertion in **one INSERT ... SELECT WHERE NOT EXISTS statement**, avoiding a read-then-insert race between reconnection windows. Conflict returns `RESTORE_CONFLICT` and the credential reference created by this attempt is deleted.
+- Matches are scoped to provider and normalized display name; object storages also compare Bucket, and repository storages compare complete Owner/Repo/Branch identity. WebDAV uses the display name only, consistent with the current manifest's missing Endpoint.
+- This is deliberately conservative: an existing Bucket with a different root still conflicts. No existing IDs are reused or overwritten.
+- This guard does **not** establish global uniqueness for ordinary create commands, and it does not make remote connection tests or the default-workflow bootstrap transactional. Review rollback failures separately before treating recovery as fully atomic.
+- Rust repository tests cover name/Bucket/Provider and repository identity cases; Windows interactive and real-cloud acceptance remain deferred.

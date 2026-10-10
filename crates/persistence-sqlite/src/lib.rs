@@ -79,6 +79,66 @@ impl StorageRepository {
         Ok(())
     }
 
+    /// Insert a reconnect target atomically. A plain SELECT followed by INSERT is unsafe:
+    /// another window may create the same target between those operations.
+    ///
+    /// The single SQLite statement makes the conflict decision and insertion indivisible.
+    /// Existing duplicates are tolerated; only new reconnections are guarded.
+    pub async fn insert_if_no_conflict(&self, record: &StorageRecord) -> Result<bool, sqlx::Error> {
+        let field = |name| {
+            record
+                .config_json
+                .get(name)
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim()
+                .to_string()
+        };
+        let bucket = field("bucket");
+        let owner = field("owner");
+        let repo = field("repo");
+        let branch = field("branch");
+        let repo_identity_complete = !owner.is_empty() && !repo.is_empty() && !branch.is_empty();
+        let result = sqlx::query(
+            r#"INSERT INTO storages
+               (id,name,provider_key,category,credential_ref,config_json,capabilities_json,enabled,created_at,updated_at)
+               SELECT ?,?,?,?,?,?,?,?,?,?
+               WHERE NOT EXISTS (
+                 SELECT 1 FROM storages AS existing
+                 WHERE existing.provider_key = ?
+                 AND (
+                   lower(trim(existing.name)) = lower(trim(?))
+                   OR (? <> '' AND lower(trim(coalesce(json_extract(existing.config_json,'$.bucket'),''))) = lower(trim(?)))
+                   OR (? = 1
+                       AND lower(trim(coalesce(json_extract(existing.config_json,'$.owner'),''))) = lower(trim(?))
+                       AND lower(trim(coalesce(json_extract(existing.config_json,'$.repo'),''))) = lower(trim(?))
+                       AND lower(trim(coalesce(json_extract(existing.config_json,'$.branch'),''))) = lower(trim(?)))
+                 )
+               )"#,
+        )
+        .bind(record.id.to_string())
+        .bind(&record.name)
+        .bind(&record.provider_key)
+        .bind(&record.category)
+        .bind(&record.credential_ref)
+        .bind(record.config_json.to_string())
+        .bind(record.capabilities_json.to_string())
+        .bind(if record.enabled { 1 } else { 0 })
+        .bind(record.created_at.to_rfc3339())
+        .bind(record.updated_at.to_rfc3339())
+        .bind(&record.provider_key)
+        .bind(&record.name)
+        .bind(&bucket)
+        .bind(&bucket)
+        .bind(repo_identity_complete)
+        .bind(&owner)
+        .bind(&repo)
+        .bind(&branch)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
     pub async fn get(&self, id: Uuid) -> Result<Option<StorageRecord>, sqlx::Error> {
         let row = sqlx::query("SELECT id,name,provider_key,category,credential_ref,config_json,capabilities_json,enabled,created_at,updated_at FROM storages WHERE id = ?")
             .bind(id.to_string())
@@ -1415,5 +1475,58 @@ impl PluginRepository {
                 })
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod reconnect_conflict_tests {
+    use super::{StorageRecord, StorageRepository};
+    use chrono::Utc;
+    use serde_json::{json, Value};
+    use sqlx::SqlitePool;
+    use uuid::Uuid;
+
+    fn storage(name: &str, provider: &str, config_json: Value) -> StorageRecord {
+        let now = Utc::now();
+        StorageRecord {
+            id: Uuid::new_v4(),
+            name: name.into(),
+            provider_key: provider.into(),
+            category: "object".into(),
+            credential_ref: None,
+            config_json,
+            capabilities_json: json!({}),
+            enabled: true,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[sqlx::test]
+    async fn reconnect_insert_prevents_duplicate_name_and_bucket(pool: SqlitePool) -> Result<(), sqlx::Error> {
+        sqlx::query("CREATE TABLE storages (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, provider_key TEXT NOT NULL, category TEXT NOT NULL, credential_ref TEXT, config_json TEXT NOT NULL, capabilities_json TEXT NOT NULL, enabled INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)")
+            .execute(&pool)
+            .await?;
+        let repository = StorageRepository::new(pool);
+        assert!(repository.insert_if_no_conflict(&storage("Photos", "r2", json!({"bucket":"my-pics"}))).await?);
+        assert!(!repository.insert_if_no_conflict(&storage(" PHOTOS ", "r2", json!({"bucket":"other"}))).await?);
+        assert!(!repository.insert_if_no_conflict(&storage("New name", "r2", json!({"bucket":"MY-PICS"}))).await?);
+        assert!(repository.insert_if_no_conflict(&storage("Photos", "s3", json!({"bucket":"my-pics"}))).await?);
+        assert!(repository.insert_if_no_conflict(&storage("Other target", "r2", json!({"bucket":"different"}))).await?);
+        assert_eq!(repository.list().await?.len(), 3);
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn reconnect_insert_checks_repo_identity_and_allows_different_branches(pool: SqlitePool) -> Result<(), sqlx::Error> {
+        sqlx::query("CREATE TABLE storages (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, provider_key TEXT NOT NULL, category TEXT NOT NULL, credential_ref TEXT, config_json TEXT NOT NULL, capabilities_json TEXT NOT NULL, enabled INTEGER NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)")
+            .execute(&pool)
+            .await?;
+        let repository = StorageRepository::new(pool);
+        assert!(repository.insert_if_no_conflict(&storage("Git A", "github", json!({"owner":"Alice","repo":"pics","branch":"main"}))).await?);
+        assert!(!repository.insert_if_no_conflict(&storage("Git B", "github", json!({"owner":"ALICE","repo":"PICS","branch":"MAIN"}))).await?);
+        assert!(repository.insert_if_no_conflict(&storage("Git C", "github", json!({"owner":"Alice","repo":"pics","branch":"archive"}))).await?);
+        assert_eq!(repository.list().await?.len(), 2);
+        Ok(())
     }
 }

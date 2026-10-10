@@ -188,10 +188,10 @@ export function StorageSetupDialog({
         }
         if (portableReconnectConflict(candidate, current)) throw new Error('RESTORE_CONFLICT')
       }
-      if (isRepository) return createRepositoryStorage(repoForm)
-      if (isGenericS3) return createS3Storage(s3Form)
-      if (isObject) return createObjectStorage(objectForm)
-      if (isWebDav) return createWebDavStorage(webdavForm)
+      if (isRepository) return createRepositoryStorage({ ...repoForm, restoreGuard: Boolean(restoreProfile) })
+      if (isGenericS3) return createS3Storage({ ...s3Form, restoreGuard: Boolean(restoreProfile) })
+      if (isObject) return createObjectStorage({ ...objectForm, restoreGuard: Boolean(restoreProfile) })
+      if (isWebDav) return createWebDavStorage({ ...webdavForm, restoreGuard: Boolean(restoreProfile) })
       throw new Error('不支持的 Provider')
     },
     onSuccess: async (created) => {
