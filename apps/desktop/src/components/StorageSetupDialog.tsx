@@ -243,6 +243,7 @@ export function StorageSetupDialog({
     if (blank(s3Form.secretAccessKey)) missingFields.push('Secret Access Key')
     if (s3Form.providerKey === 'r2' && blank(s3Form.accountId)) missingFields.push('Account ID')
     if (s3Form.accessMode === 'private_requested' && !blank(s3Form.publicBaseUrl)) missingFields.push('私有模式必须清空公开访问域名')
+    if (restoreProfile && s3Form.accessMode === 'public' && blank(s3Form.publicBaseUrl)) missingFields.push('公开模式必须重新填写公开访问域名')
     if (s3Form.providerKey === 's3' && (notHttp(s3Form.endpoint) || insecureHttp(s3Form.endpoint))) missingFields.push('Endpoint（需 https，或本机 http://127.0.0.1）')
   } else if (isObject) {
     if (blank(objectForm.name)) missingFields.push('显示名称')
@@ -250,9 +251,13 @@ export function StorageSetupDialog({
     if (blank(objectForm.accessKeyId)) missingFields.push('Access Key ID')
     if (blank(objectForm.secretAccessKey)) missingFields.push('Secret Access Key')
     if (notHttp(objectForm.endpoint) || insecureHttp(objectForm.endpoint)) missingFields.push('Endpoint（需 https，或本机 http://127.0.0.1）')
+    if (restoreProfile && blank(objectForm.publicBaseUrl)) missingFields.push('重新确认公开访问域名')
   } else if (isWebDav) {
     if (blank(webdavForm.name)) missingFields.push('显示名称')
     if (notHttp(webdavForm.endpoint) || insecureHttp(webdavForm.endpoint)) missingFields.push('WebDAV Endpoint（需 https，或本机 http://127.0.0.1）')
+    if (restoreProfile && blank(webdavForm.username)) missingFields.push('重新填写 WebDAV 用户名')
+    if (restoreProfile && blank(webdavForm.password)) missingFields.push('重新填写 WebDAV 密码')
+    if (restoreProfile && blank(webdavForm.publicBaseUrl)) missingFields.push('重新确认公开访问域名')
   }
 
   async function submitStorage() {
