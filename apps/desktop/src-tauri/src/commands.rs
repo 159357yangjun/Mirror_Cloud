@@ -3848,6 +3848,7 @@ mod r2_private_access_tests {
             access_mode,
             access_key_id: "test-key".into(),
             secret_access_key: "not-a-real-secret".into(),
+            restore_guard: false,
         }
     }
 
