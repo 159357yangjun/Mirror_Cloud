@@ -44,7 +44,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $name = 'commands::r2_private_live_e2e::real_r2_private_object_e2e'
           $listing = & cargo test --locked -p image-hosting-platform-desktop --lib $name -- --list 2>&1
-          if ($LASTEXITCODE -ne 0 -or -not (($listing -join "`n").Contains("$name: test"))) {
+          if ($LASTEXITCODE -ne 0 -or -not (($listing -join "`n").Contains("${name}: test"))) {
             throw 'Exact production OpenDAL live test is missing or cannot compile; secrets not loaded.'
           }
           Write-Host 'PASS: exact production OpenDAL R2 integration test compiled and discovered.'
