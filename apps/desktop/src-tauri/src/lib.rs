@@ -126,6 +126,8 @@ pub fn run() {
             commands::create_webdav_storage,
             commands::create_repository_storage,
             commands::list_storages,
+            commands::export_portable_storage_manifest,
+            commands::inspect_portable_storage_manifest,
             commands::get_default_publish_target,
             commands::set_default_publish_target,
             commands::delete_storage,
