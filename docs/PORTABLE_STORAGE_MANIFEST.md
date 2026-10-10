@@ -51,3 +51,22 @@ The Rust test asserts an injected credential reference, arbitrary password,
 token, public URL and signed Endpoint are absent from exported fields, and
 rejects an extra `secretAccessKey` field on inspection. It also refuses
 a `private_requested` declaration on unsupported non-S3 provider types.
+
+## v2 mapping-aware export (phase P1)
+
+New exports are schema version **2** and add `sourceStorageId` (UUID) for each storage
+to allow explicit source-to-destination mapping. This is a local record identifier,
+**not** an access token or permission proof. The source UUID must never be inserted as
+the new database primary key.
+
+The inspector also accepts version **1** manifests without IDs. v1 cannot produce an
+auditable old-to-new mapping; upgrade by re-exporting from the old machine. v2
+requires a parseable and unique UUID per profile. Extra fields remain forbidden.
+
+A separate manual **ID mapping receipt** (schema version 1) records only
+`sourceManifestExportedAt`, `generatedAt`, and the
+`{oldStorageId,newStorageId,providerKey}` pairs collected after successful
+reconnections. The backend checks the new ID exists and belongs to the claimed
+Provider before writing, and never overwrites an existing file. Mappings live
+only in the Settings page session until explicitly exported; this receipt is an
+audit input for future reference-restoration work, not a completed restore.

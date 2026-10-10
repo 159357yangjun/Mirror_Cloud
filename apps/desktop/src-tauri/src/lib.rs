@@ -128,6 +128,7 @@ pub fn run() {
             commands::list_storages,
             commands::export_portable_storage_manifest,
             commands::inspect_portable_storage_manifest,
+            commands::export_portable_reconnect_map,
             commands::get_default_publish_target,
             commands::set_default_publish_target,
             commands::delete_storage,

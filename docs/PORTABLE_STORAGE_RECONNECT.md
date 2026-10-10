@@ -76,3 +76,19 @@ acceptance and real-cloud testing are deliberately left for the end.
 - This is deliberately conservative: an existing Bucket with a different root still conflicts. No existing IDs are reused or overwritten.
 - This guard does **not** establish global uniqueness for ordinary create commands, and it does not make remote connection tests or the default-workflow bootstrap transactional. Review rollback failures separately before treating recovery as fully atomic.
 - Rust repository tests cover name/Bucket/Provider and repository identity cases; Windows interactive and real-cloud acceptance remain deferred.
+
+## P1: Source-to-destination Storage ID mapping
+
+- v2 manifests now include `sourceStorageId`. v1 imports remain valid but
+  cannot reconstruct old IDs.
+- Every successful reconnection records `sourceStorageId → created.id` in the
+  current Settings session. The preview displays both IDs and local conflicts.
+- Export **旧→新 ID 映射** explicitly to a new JSON file after reconnection.
+  The backend rechecks every destination UUID exists and belongs to the same
+  Provider. A mapping receipt is not an automatic database remap or proof of
+  remote ownership. No old UUID is assigned to a newly created record.
+- Mapping state is currently session-local. If the page is closed before
+  export, the association is not durable. Do not silently infer it from a
+  matching name on a later import. Never apply mappings to groups, workflows,
+  deployments or assets until a separate conflict preview and reversible
+  database transaction exist.
