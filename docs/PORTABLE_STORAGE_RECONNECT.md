@@ -277,3 +277,26 @@ bound to the exact destination Storage ID, object key, source digest
 and current row revision; enforce fresh concurrency/ACL checks within an
 atomic promotion transaction; and maintain fail-closed behavior when a
 cloud provider cannot prove the requested policy.
+
+## P2 phase 5: usable staged-resource triage and atomic bulk decisions
+
+The Settings staging panel now includes name/variant search, persisted review
+status filters, per-batch counts, an explicitly **local-only classification**
+progress indicator and at-most-100 item selection from the current filtered
+result set. This is not remote verification or import completion progress.
+
+A user must explicitly confirm bulk `review`, `defer` or `exclude` decisions.
+The backend accepts a bounded batch of item IDs with their expected row
+revisions. It rejects invalid/duplicate IDs and writes all operator decisions
+in a single SQLite transaction guarded by batch ownership, pending state and
+revision checks. Any concurrent edit or missing item rolls back **every**
+decision in that request, and the UI refreshes the batch. Bulk actions never
+alter object bindings, content hashes, remote paths, stored local collision
+labels, active assets, deployments, verification clocks or provider secrets.
+They do not perform a remote request and cannot mark a staged record online.
+
+Choosing a batch, changing the active search/status filter, discarding a batch
+or making an individual update clears selection to minimize accidental
+cross-context operations. A stale selected item will be rejected at the
+database revision gate, not silently overwritten. Operator decisions remain
+editable, with re-check and per-item rebind available for manual recovery.
