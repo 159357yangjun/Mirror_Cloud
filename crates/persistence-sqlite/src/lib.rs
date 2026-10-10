@@ -1518,7 +1518,11 @@ mod reconnect_conflict_tests {
         assert!(repository.insert_if_no_conflict(&first).await?);
         assert!(!repository.insert_if_no_conflict(&same_name).await?);
         assert!(!repository.insert_if_no_conflict(&same_bucket).await?);
-        assert!(repository.insert_if_no_conflict(&different_provider).await?);
+        assert!(
+            repository
+                .insert_if_no_conflict(&different_provider)
+                .await?
+        );
         assert!(repository.insert_if_no_conflict(&different_target).await?);
         assert_eq!(repository.list().await?.len(), 3);
         Ok(())
