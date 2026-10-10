@@ -169,11 +169,23 @@ export interface PortableReferenceGroup {
   strategy: 'mirror_all' | 'primary_with_backups'
   members: PortableReferenceMember[]
 }
+export interface PortableWorkflowSpec {
+  format: 'original' | 'jpeg' | 'png' | 'webp'
+  quality: number
+  maxWidth?: number | null
+  maxHeight?: number | null
+  renameTemplate: string
+}
 export interface PortableReferenceWorkflow {
   sourceWorkflowId: string
   name: string
   targetKind: 'storage' | 'group' | 'unsupported'
   sourceTargetId: string
+  spec?: PortableWorkflowSpec | null
+}
+export interface PortableGroupIdMapping {
+  oldGroupId: string
+  newGroupId: string
 }
 export interface PortableReferenceManifest {
   schemaVersion: 1
