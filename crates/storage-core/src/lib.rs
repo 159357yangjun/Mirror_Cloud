@@ -173,6 +173,16 @@ pub trait StorageProvider: Send + Sync {
     async fn download(&self, _path: &str) -> Result<Bytes, StorageError> {
         Err(StorageError::Unsupported)
     }
+    /// On-demand preview of a small private object. None means the object is too large.
+    /// Adapters must check its remote size BEFORE downloading and check returned bytes again.
+    /// Never return a permanent public URL or cache the result in the asset database.
+    async fn download_preview(
+        &self,
+        _path: &str,
+        _max_bytes: u64,
+    ) -> Result<Option<Bytes>, StorageError> {
+        Err(StorageError::Unsupported)
+    }
     /// Sign a temporary, read-only, browser-ready URL without exposing storage credentials.
     ///
     /// Implementations must reject URLs that require non-Host headers, since recipients receive

@@ -90,6 +90,68 @@ pub async fn create_temporary_share_link(
         .map_err(|error| safe_share_error(&error).to_string())
 }
 
+const PRIVATE_PREVIEW_MAX_BYTES: u64 = 5 * 1024 * 1024;
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrivateImagePreview {
+    pub mime_type: &'static str,
+    pub bytes: Vec<u8>,
+}
+
+fn private_preview_mime(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("image/png")
+    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        Some("image/jpeg")
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        Some("image/gif")
+    } else if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
+        Some("image/webp")
+    } else if bytes.len() >= 12
+        && &bytes[4..8] == b"ftyp"
+        && (&bytes[8..12] == b"avif" || &bytes[8..12] == b"avis")
+    {
+        Some("image/avif")
+    } else {
+        None
+    }
+}
+
+/// Load a small private R2 image into memory only when the user requests a
+/// preview. No signed URL is exposed to the renderer, stored in SQLite or logged.
+#[tauri::command]
+pub async fn preview_private_storage_entry(
+    state: State<'_, AppState>,
+    storage_id: String,
+    path: String,
+) -> CmdResult<PrivateImagePreview> {
+    validated_share_expiry(&path, 600)?;
+    let id = Uuid::parse_str(&storage_id).map_err(|_| "存储 ID 无效".to_string())?;
+    let storage = state
+        .storages
+        .get(id)
+        .await
+        .map_err(|_| "无法读取存储信息".to_string())?
+        .ok_or("该云端存储已不存在")?;
+    if !storage.enabled || !storage_requests_private(&storage) {
+        return Err("此入口仅可预览已经配置为私有意图的 R2 文件".into());
+    }
+    let provider =
+        build_provider(&state, &storage).map_err(|_| "无法初始化私有存储连接".to_string())?;
+    let bytes = provider
+        .download_preview(&path, PRIVATE_PREVIEW_MAX_BYTES)
+        .await
+        .map_err(|error| safe_share_error(&error).to_string())?
+        .ok_or("原图超过 5 MB，请使用“保存原图”下载后查看")?;
+    let mime_type =
+        private_preview_mime(&bytes).ok_or("只支持 PNG、JPEG、GIF、WebP 或 AVIF 图片预览")?;
+    Ok(PrivateImagePreview {
+        mime_type,
+        bytes: bytes.to_vec(),
+    })
+}
+
 #[cfg(test)]
 mod temporary_share_tests {
     use super::{StorageError, safe_share_error, validated_share_expiry};
