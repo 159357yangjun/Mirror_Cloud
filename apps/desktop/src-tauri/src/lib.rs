@@ -97,6 +97,7 @@ pub fn run() {
             let state = AppState {
                 storages: StorageRepository::new(pool.clone()),
                 assets: AssetRepository::new(pool.clone()),
+                asset_staging: AssetStagingRepository::new(pool.clone()),
                 settings: SettingsRepository::new(pool.clone()),
                 groups: StorageGroupRepository::new(pool.clone()),
                 workflows: WorkflowRepository::new(pool.clone()),
