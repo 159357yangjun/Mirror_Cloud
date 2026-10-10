@@ -840,6 +840,25 @@ impl AssetRepository {
         Self { pool }
     }
 
+    /// Read-only identity check for a portable catalogue preview.
+    /// Unlike a bounded asset list, this cannot miss older duplicates.
+    pub async fn has_variant_identity(
+        &self,
+        content_hash: &str,
+        mime_type: &str,
+        size_bytes: u64,
+    ) -> Result<bool, sqlx::Error> {
+        let exists: i64 = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM asset_variants WHERE content_hash=? AND mime_type=? AND size_bytes=?)",
+        )
+        .bind(content_hash)
+        .bind(mime_type)
+        .bind(size_bytes as i64)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(exists != 0)
+    }
+
     pub async fn insert_published(
         &self,
         asset: &Asset,
