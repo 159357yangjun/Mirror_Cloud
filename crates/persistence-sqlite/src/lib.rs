@@ -1705,3 +1705,47 @@ mod restored_group_transaction_tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod restored_workflow_tests {
+    use super::WorkflowRepository;
+    use domain::{PublishTarget, Workflow, WorkflowStep};
+    use sqlx::SqlitePool;
+    use uuid::Uuid;
+
+    fn workflow(name: &str) -> Workflow {
+        Workflow {
+            id: Uuid::new_v4(),
+            name: name.to_string(),
+            steps: vec![
+                WorkflowStep::Convert { format: "webp".into(), quality: 82 },
+                WorkflowStep::Rename {
+                    template: "images/{year}/{month}/{hash:12}-u{uuid}-{stem}.{ext}".into(),
+                },
+                WorkflowStep::Publish {
+                    target: PublishTarget::Storage { storage_id: Uuid::new_v4() },
+                },
+                WorkflowStep::Output { template: "{url}".into() },
+            ],
+        }
+    }
+
+    #[sqlx::test]
+    async fn recovered_workflow_preserves_default_and_rejects_duplicate_names(
+        pool: SqlitePool,
+    ) -> Result<(), sqlx::Error> {
+        let repo = WorkflowRepository::new(pool);
+        let original = workflow("Current Default");
+        repo.insert(&original, "", None, true).await?;
+
+        let restored = workflow("Blog Upload");
+        assert!(repo.insert_restored_if_name_free(&restored).await?);
+        assert!(!repo.insert_restored_if_name_free(&workflow(" BLOG UPLOAD ")).await?);
+
+        let list = repo.list().await?;
+        assert_eq!(list.len(), 2);
+        assert!(repo.get(original.id).await?.unwrap().is_default);
+        assert!(!repo.get(restored.id).await?.unwrap().is_default);
+        Ok(())
+    }
+}
