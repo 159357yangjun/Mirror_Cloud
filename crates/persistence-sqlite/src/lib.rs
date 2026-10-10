@@ -1864,7 +1864,10 @@ mod task_batch_transaction_tests {
         let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tasks")
             .fetch_one(&pool)
             .await?;
-        assert_eq!(total, 0, "a failed batch must leave no partial queued tasks");
+        assert_eq!(
+            total, 0,
+            "a failed batch must leave no partial queued tasks"
+        );
         Ok(())
     }
 }
