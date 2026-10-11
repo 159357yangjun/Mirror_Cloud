@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
   AlertCircle,
   CheckCircle2,
@@ -80,7 +80,19 @@ export function UploadDialog() {
   const publishDispatchRef = useRef(false)
   const retryDispatchRef = useRef(false)
   const dialogGenerationRef = useRef(0)
+  const dialogRef = useRef<HTMLElement>(null)
   const [finishedHandled, setFinishedHandled] = useState(false)
+
+  // A dialog is a keyboard boundary: focus starts inside it and returns to
+  // the invoking control on close. The existing confirm dialog owns its own focus.
+  useEffect(() => {
+    if (!uploadOpen) return
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    dialogRef.current?.focus({ preventScroll: true })
+    return () => {
+      if (previouslyFocused?.isConnected) previouslyFocused.focus({ preventScroll: true })
+    }
+  }, [uploadOpen])
 
   const { data: allTasks = [], error: tasksError, refetch: refetchTasks, isFetching: refreshingTasks } = useQuery({
     queryKey: ['tasks'],
@@ -191,10 +203,14 @@ export function UploadDialog() {
   }, [finishedHandled, queryClient, terminal])
 
   const urls = useMemo(() => parseUrls(urlsText), [urlsText])
-  const urlInputError = urls.length > 50
-    ? '一次最多发布 50 个 URL，请分批上传。'
-    : urls.some((url) => !isHttpImageSource(url))
-      ? '存在无效 URL；每行应是有效的 http:// 或 https:// 图片地址。'
+  const invalidUrlLines = useMemo(() => urlsText.split(/\r?\n/).flatMap((line, index) => {
+    const value = line.trim()
+    return value && !isHttpImageSource(value) ? [index + 1] : []
+  }), [urlsText])
+  const urlInputError = invalidUrlLines.length > 0
+    ? `第 ${invalidUrlLines.slice(0, 5).join('、')}${invalidUrlLines.length > 5 ? ' 等' : ''} 行不是有效的 HTTP/HTTPS 链接，请修改后再提交。`
+    : urls.length > 50
+      ? '一次最多发布 50 个 URL，请分批上传。'
       : null
 
   const publishMutation = useMutation({
@@ -330,6 +346,33 @@ export function UploadDialog() {
     setUploadOpen(false)
   }
 
+  function onDialogKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      closeDialog()
+      return
+    }
+    if (event.key !== 'Tab' || !dialogRef.current) return
+    const buttons = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), textarea:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+    )).filter((element) => element.getClientRects().length > 0)
+    if (buttons.length === 0) {
+      event.preventDefault()
+      dialogRef.current.focus()
+      return
+    }
+    const first = buttons[0]
+    const last = buttons[buttons.length - 1]
+    if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first.focus()
+    }
+  }
+
   function startAnother() {
     setPaths([])
     setUrlsText('')
@@ -349,11 +392,20 @@ export function UploadDialog() {
   const selectedStorage = selectedWorkflow?.targetKind === 'storage'
     ? storages.find((storage) => storage.id === selectedWorkflow.targetId)
     : undefined
-  const canPublish = Boolean(defaultWorkflow) && (mode === 'files' ? paths.length > 0 : mode === 'urls' ? urls.length > 0 && !urlInputError : true)
+  const publishDisabledReason = !defaultWorkflow
+    ? workflowError ? '上传目标读取失败，请先到“云端”检查连接和默认目标。' : '尚无默认上传目标，请先到“云端”连接并设置。'
+    : mode === 'files' && paths.length === 0
+      ? '请先选择至少一张图片。'
+      : mode === 'urls' && urls.length === 0
+        ? '请先输入图片链接，每行一个。'
+        : mode === 'urls' && urlInputError
+          ? urlInputError
+          : null
+  const canPublish = publishDisabledReason === null
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/20 p-4 backdrop-blur-sm" onMouseDown={closeDialog}>
-      <section role="dialog" aria-modal="true" aria-labelledby="upload-dialog-title" className="max-h-[92vh] w-full max-w-[720px] overflow-auto rounded-[28px] border border-white bg-white p-5 shadow-[0_30px_80px_rgba(15,23,42,.18)]" onMouseDown={(event) => event.stopPropagation()}>
+      <section ref={dialogRef} tabIndex={-1} onKeyDown={onDialogKeyDown} role="dialog" aria-modal="true" aria-labelledby="upload-dialog-title" className="max-h-[92vh] w-full max-w-[720px] overflow-auto rounded-[28px] border border-white bg-white p-5 shadow-[0_30px_80px_rgba(15,23,42,.18)]" onMouseDown={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between p-2">
           <div><h2 id="upload-dialog-title" className="text-xl font-semibold">发布图片</h2><p className="mt-1 text-sm text-slate-500">选择图片并确认上传目标；提交后这里会显示任务进度，结果也可在“任务”中查看。</p></div>
           <button disabled={(publishing && !terminal) || publishMutation.isPending || retryFailedMutation.isPending} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 disabled:opacity-25" onClick={closeDialog} aria-label="关闭"><X size={18} /></button>
@@ -395,10 +447,10 @@ export function UploadDialog() {
             ) : mode === 'urls' ? (
               <div className="mt-3 rounded-[24px] border border-slate-200 bg-slate-50/60 p-4">
                 <div className="flex items-center gap-2 text-sm font-medium"><Link2 size={16} />从 URL 发布</div>
-                <p className="mt-1 text-xs leading-5 text-slate-400">每行一个 http/https 图片地址。下载后仍执行内部处理链和已启用插件。</p>
-                <textarea aria-label="待发布的图片链接，每行一个" value={urlsText} onChange={(event) => setUrlsText(event.target.value)} placeholder={'https://example.com/a.png\nhttps://example.com/b.jpg'} className="mt-3 min-h-36 w-full resize-y rounded-2xl border border-slate-200 bg-white p-3 font-mono text-xs leading-6 outline-none focus:border-slate-400" />
+                <p id="upload-url-help" className="mt-1 text-xs leading-5 text-slate-500">每行一个 HTTP/HTTPS 图片链接；提交后会验证下载内容并执行上传处理。</p>
+                <textarea aria-label="待发布的图片链接，每行一个" aria-invalid={Boolean(urlInputError)} aria-describedby={urlInputError ? 'upload-url-error' : 'upload-url-help'} value={urlsText} onChange={(event) => setUrlsText(event.target.value)} placeholder={'https://example.com/a.png\nhttps://example.com/b.jpg'} className="mt-3 min-h-36 w-full resize-y rounded-2xl border border-slate-200 bg-white p-3 font-mono text-xs leading-6 outline-none focus:border-slate-400" />
                 <div className="mt-2 text-[11px] text-slate-400">已识别 {urls.length} 个 URL · 单批最多 50 个</div>
-                {urlInputError && <p role="alert" className="mt-2 text-xs leading-5 text-red-600">{urlInputError}</p>}
+                {urlInputError && <p id="upload-url-error" role="alert" className="mt-2 text-xs leading-5 text-red-700">{urlInputError}</p>}
               </div>
             ) : (
               <div className="mt-3 grid min-h-[210px] place-items-center rounded-[24px] border border-slate-200 bg-slate-50/60 p-6 text-center">
@@ -421,7 +473,9 @@ export function UploadDialog() {
             </div>
 
             {publishMutation.error && <div role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs leading-5 text-red-600"><div className="font-medium">提交失败，部分任务状态可能不确定</div><div className="mt-1">{String(publishMutation.error)}</div><div className="mt-1 text-red-700">请先在任务中心检查是否已有任务开始运行。再次点击发布会要求确认，不能假设之前没有上传。</div></div>}
-            <div className="mt-5 flex justify-end"><button disabled={!canPublish || publishMutation.isPending} onClick={startPublish} className="flex items-center gap-2 rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-30">{publishMutation.isPending && <LoaderCircle size={15} className="animate-spin" />}{publishMutation.isPending ? '正在提交任务…' : mode === 'urls' ? `发布 ${urls.length || ''} 个 URL` : mode === 'clipboard' ? '发布剪贴板图片' : '开始发布'}</button></div>
+            {publishDisabledReason && !publishMutation.isPending && <p id="publish-disabled-reason" role="status" className="mt-3 text-xs leading-5 text-amber-700">{publishDisabledReason}</p>}
+            {publishMutation.isPending && <p role="status" className="mt-3 text-xs leading-5 text-blue-700">正在创建任务，请勿重复提交或关闭窗口。</p>}
+            <div className="mt-5 flex justify-end"><button aria-describedby={publishDisabledReason ? 'publish-disabled-reason' : undefined} disabled={!canPublish || publishMutation.isPending} onClick={startPublish} className="flex items-center gap-2 rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-30">{publishMutation.isPending && <LoaderCircle size={15} className="animate-spin" />}{publishMutation.isPending ? '正在提交任务…' : mode === 'urls' ? `发布 ${urls.length || ''} 个 URL` : mode === 'clipboard' ? '发布剪贴板图片' : '开始发布'}</button></div>
           </>
         ) : (
           <div className="mt-4">
@@ -460,6 +514,13 @@ export function UploadDialog() {
             </div>
 
             {!terminal && <div className="mt-3 text-center text-[11px] text-slate-400">窗口会保持打开。你也可以切到“任务”页面查看后台状态。</div>}
+            {terminal && <p role="status" className="mt-3 text-xs leading-5 text-slate-600">
+              {failedTasks.length > 0
+                ? '下一步：先到“任务”核对失败原因和远端对象，再决定是否重试；成功项不会再次提交。'
+                : warningTasks.length > 0 || cancelledTasks.length > 0
+                  ? '下一步：到“任务”查看警告与取消项，并检查云端是否产生部分文件。'
+                  : '下一步：到“资源”核对图片与访问链接；私有图片请按需生成限时分享。'}
+            </p>}
             {terminal && failedTasks.length > 0 && <div role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
               只允许重新发布失败项；成功项和完成但有警告的项不会再次提交。部分云端可能已经收到失败任务的数据，重新发布前请确认重复对象风险。
             </div>}
