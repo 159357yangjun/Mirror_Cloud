@@ -11,7 +11,6 @@ import {
   Link2,
   ListTodo,
   LoaderCircle,
-  ShieldCheck,
   UploadCloud,
   Zap,
 } from 'lucide-react'
@@ -133,10 +132,10 @@ export function PublishPage() {
     <div className="mx-auto max-w-[1320px] px-10 py-9">
       <PageHeader
         title="发布"
-        description="把上传变成创作流程的一部分。文件、剪贴板、URL 和 Typora 共用同一个 Publisher Core、默认目标和插件链。"
+        description="上传本地图片、截图或图片链接；Typora 也使用相同的默认云端和插件处理设置。"
         action={
-          <div className="flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
-            <ShieldCheck size={14} /> 多云发布链已统一
+          <div className="flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-medium text-slate-600">
+            <UploadCloud size={14} /> 多种来源，统一发布流程
           </div>
         }
       />
@@ -146,7 +145,7 @@ export function PublishPage() {
           <div>
             <h2 className="text-sm font-semibold text-indigo-950">先连接一个云端，再发布第一张图片</h2>
             <p className="mt-1 text-xs leading-5 text-indigo-800">
-              在“云端”选择 R2、S3、GitHub 等存储，测试并保存后镜云会配置默认上传链。首次上传完成后，可在资源页核对图片和外链。
+              在“云端”添加并测试存储连接，设为默认目标后上传测试图片。上传成功后，请在“资源”或“图库”核对图片及访问方式。
             </p>
           </div>
           <button onClick={() => setPage('storages')} className="rounded-xl bg-indigo-950 px-4 py-2.5 text-xs font-semibold text-white">
@@ -222,7 +221,7 @@ export function PublishPage() {
         <aside className="space-y-5">
           <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,.03)]">
             <div className="flex items-center gap-2 text-sm font-semibold"><Zap size={15} className="text-amber-500" />输出与复制</div>
-            <p className="mt-1 text-xs leading-5 text-slate-400">上传结束后直接得到可粘贴内容，不必再去资源页找链接。</p>
+            <p className="mt-1 text-xs leading-5 text-slate-400">公开图片上传后可复制链接或 Markdown；私有图片请到“资源”生成限时分享。</p>
             {preferences && (
               <>
                 <div className="mt-4 grid grid-cols-2 gap-2">
@@ -256,8 +255,8 @@ export function PublishPage() {
               {assets.slice(0, 4).map((asset) => (
                 <div key={asset.id} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-slate-50">
                   <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-400"><FileImage size={15} /></div>
-                  <div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{asset.name}</div><div className="mt-0.5 text-[10px] text-slate-400">{asset.status === 'online' ? '在线' : asset.status === 'partial' ? '部分副本异常' : '失败'}</div></div>
-                  <button disabled={!asset.publicUrl || !preferences} onClick={() => void copyAsset(asset.id)} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700 disabled:opacity-20" title="按当前格式复制"><Copy size={13} /></button>
+                  <div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{asset.name}</div><div className="mt-0.5 text-[10px] text-slate-400">{asset.status === 'online' ? '已上传（访问待核对）' : asset.status === 'partial' ? '部分副本异常' : '失败'}</div></div>
+                  <button disabled={!asset.publicUrl || !preferences} onClick={() => void copyAsset(asset.id)} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700 disabled:opacity-20" title={asset.publicUrl ? "按当前格式复制公开链接" : "无公开链接，请到资源页查看分享方式"} aria-label={asset.publicUrl ? `复制 ${asset.name} 的公开链接` : `${asset.name} 没有公开链接`}><Copy size={13} /></button>
                   {copied === asset.id && <span className="text-[10px] text-emerald-600">已复制</span>}
                 </div>
               ))}

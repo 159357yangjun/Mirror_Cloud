@@ -1906,6 +1906,15 @@ require(re.search(r'<h2[^>]*\bbreak-words\b[^>]*>', confirm_dialog) is not None,
 require(re.search(r'<p[^>]*\bbreak-words\b[^>]*>', confirm_dialog) is not None, 'the confirm dialog detail wraps unbreakable filenames')
 require("event.key === 'Escape'" in confirm_dialog and 'settle(false)' in confirm_dialog, 'Escape cancels the confirm request')
 require('cancelRef.current?.focus()' in confirm_dialog, 'the dialog focuses Cancel, so Enter cannot fire the destructive action')
+require('ref={dialogRef}' in confirm_dialog
+        and 'event.key !== \'Tab\'' in confirm_dialog
+        and 'dialogRef.current.contains(active)' in confirm_dialog
+        and 'last.focus()' in confirm_dialog and 'first.focus()' in confirm_dialog,
+        'the confirm dialog traps keyboard focus instead of exposing underlying controls')
+require('previouslyFocused?.isConnected' in confirm_dialog
+        and 'previouslyFocused.focus({ preventScroll: true })' in confirm_dialog
+        and 'window.removeEventListener(\'keydown\', onKeyDown)' in confirm_dialog,
+        'dismissing confirmation safely restores keyboard focus and cleans its listener')
 
 # docs/VISUAL_BASELINE.md measured six defects in the onboarding dialog. These are the four that
 # hold without a browser; the runtime half (contrast below 4.5:1, size utilities discarded on
@@ -2431,6 +2440,66 @@ require("PROJECT_STATE_VERIFY facts=(\\d+) problems=(\\d+)" in text('scripts/ver
         'verify_all runs project_state --verify as a stage, so drift cannot pass an aggregate green')
 require('本文件不再手写事实' in text('.ai/STATE.md'),
         'STATE.md states that it holds narrative only, pointing at the generated JSON for facts')
+
+# UX text / interaction guards (2026-10-11). Keep the copy honest about what
+# checks, uploads and updates have actually verified, and expose UI states to AT.
+shell_copy = text('apps/desktop/src/components/AppShell.tsx')
+settings_copy = text('apps/desktop/src/pages/SettingsPage.tsx')
+guide_copy = text('apps/desktop/src/components/HelpCenterDialog.tsx')
+publish_copy = text('apps/desktop/src/pages/PublishPage.tsx')
+upload_copy = text('apps/desktop/src/components/UploadDialog.tsx')
+require('UX / Sync / Theme 开发中' not in shell_copy
+        and '检查更新仅提示；下载和安装需手动确认' in shell_copy,
+        'the sidebar explains the update interaction instead of showing an internal dev-status light')
+require('不会自动下载或安装' in settings_copy
+        and '升级前请备份本地数据' in settings_copy
+        and '更新不会触碰' not in settings_copy,
+        'Settings describes candidate exclusion and backup advice without a blanket data promise')
+require('任务成功意味着远端 Provider 已确认文件存在' not in guide_copy
+        and '上传成功后' not in guide_copy
+        and '私有图片不应直接公开' in guide_copy,
+        'the onboarding guide does not mistake upload completion for validated access')
+require('Publisher Core' not in publish_copy
+        and '公开图片上传后可复制链接' in publish_copy
+        and '已上传（访问待核对）' in publish_copy,
+        'publish copy is user-facing and labels access as unverified')
+require('role="dialog" aria-modal="true" aria-labelledby="upload-dialog-title"' in upload_copy
+        and all(f"aria-pressed={{mode === '{m}'}}" in upload_copy for m in ('files', 'urls', 'clipboard'))
+        and 'aria-label="待发布的图片链接，每行一个"' in upload_copy,
+        'the upload dialog and its source buttons expose interaction semantics')
+require('正在提交任务…' in upload_copy and '检查目标…' not in upload_copy,
+        'pending submit tells users that work is being queued, not that cloud upload already succeeded')
+# Later micro-interactions: keyboard stays inside the upload modal; disabled actions
+# explain the missing prerequisite; validation points to a specific URL input line.
+require('dialogRef.current?.focus({ preventScroll: true })' in upload_copy
+        and 'if (previouslyFocused?.isConnected) previouslyFocused.focus({ preventScroll: true })' in upload_copy
+        and 'if (!uploadOpen) return' in upload_copy,
+        'upload modal moves focus into the dialog and restores the invoking control')
+require("event.key === 'Escape'" in upload_copy
+        and 'event.stopPropagation()' in upload_copy
+        and 'closeDialog()' in upload_copy
+        and 'if (event.key !== \'Tab\'' in upload_copy
+        and 'last.focus()' in upload_copy and 'first.focus()' in upload_copy,
+        'upload modal Escape uses the existing safe-close guard and Tab wraps focus')
+require('invalidUrlLines' in upload_copy
+        and 'line.trim()' in upload_copy
+        and 'index + 1' in upload_copy
+        and 'aria-invalid={Boolean(urlInputError)}' in upload_copy
+        and "aria-describedby={urlInputError ? 'upload-url-error' : 'upload-url-help'}" in upload_copy,
+        'URL validation reports original source lines with accessible field errors')
+require("const publishDisabledReason = !defaultWorkflow" in upload_copy
+        and 'const canPublish = publishDisabledReason === null' in upload_copy
+        and 'aria-describedby={publishDisabledReason' in upload_copy
+        and '请先选择至少一张图片' in upload_copy,
+        'disabled publish actions explain their prerequisite without bypassing guards')
+require('terminal && <p role="status"' in upload_copy
+        and '下一步：先到“任务”' in upload_copy
+        and '下一步：到“任务”' in upload_copy
+        and '下一步：到“资源”' in upload_copy,
+        'all terminal outcomes have an actionable next step')
+require('if ((publishing && !terminal) || publishMutation.isPending || retryFailedMutation.isPending) return' in upload_copy
+        and '正在创建任务，请勿重复提交或关闭窗口' in upload_copy,
+        'Escape and disabled close still refuse dismissal of active work')
 
 failed = [label for ok, label in checks if not ok]
 # Print every failure, then a short tail of passing checks for context. Printing only the last 20
