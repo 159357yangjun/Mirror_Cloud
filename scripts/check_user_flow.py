@@ -2460,6 +2460,37 @@ require('role="dialog" aria-modal="true" aria-labelledby="upload-dialog-title"' 
         'the upload dialog and its source buttons expose interaction semantics')
 require('正在提交任务…' in upload_copy and '检查目标…' not in upload_copy,
         'pending submit tells users that work is being queued, not that cloud upload already succeeded')
+# Later micro-interactions: keyboard stays inside the upload modal; disabled actions
+# explain the missing prerequisite; validation points to a specific URL input line.
+require('dialogRef.current?.focus({ preventScroll: true })' in upload_copy
+        and 'previouslyFocused?.focus({ preventScroll: true })' in upload_copy
+        and 'if (!uploadOpen) return' in upload_copy,
+        'upload modal moves focus into the dialog and restores the invoking control')
+require("event.key === 'Escape'" in upload_copy
+        and 'event.stopPropagation()' in upload_copy
+        and 'closeDialog()' in upload_copy
+        and 'if (event.key !== \'Tab\'' in upload_copy
+        and 'last.focus()' in upload_copy and 'first.focus()' in upload_copy,
+        'upload modal Escape uses the existing safe-close guard and Tab wraps focus')
+require('invalidUrlLines' in upload_copy
+        and 'line.trim()' in upload_copy
+        and 'index + 1' in upload_copy
+        and 'aria-invalid={Boolean(urlInputError)}' in upload_copy
+        and "aria-describedby={urlInputError ? 'upload-url-error' : 'upload-url-help'}" in upload_copy,
+        'URL validation reports original source lines with accessible field errors')
+require("const publishDisabledReason = !defaultWorkflow" in upload_copy
+        and 'const canPublish = publishDisabledReason === null' in upload_copy
+        and 'aria-describedby={publishDisabledReason' in upload_copy
+        and '请先选择至少一张图片' in upload_copy,
+        'disabled publish actions explain their prerequisite without bypassing guards')
+require('terminal && <p role="status"' in upload_copy
+        and '下一步：先到“任务”' in upload_copy
+        and '下一步：到“任务”' in upload_copy
+        and '下一步：到“资源”' in upload_copy,
+        'all terminal outcomes have an actionable next step')
+require('if ((publishing && !terminal) || publishMutation.isPending || retryFailedMutation.isPending) return' in upload_copy
+        and '正在创建任务，请勿重复提交或关闭窗口' in upload_copy,
+        'Escape and disabled close still refuse dismissal of active work')
 
 failed = [label for ok, label in checks if not ok]
 # Print every failure, then a short tail of passing checks for context. Printing only the last 20
