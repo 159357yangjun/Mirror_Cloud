@@ -225,7 +225,9 @@ export function StorageSetupDialog({
   const invalidPublicBaseUrl = (value: string | undefined | null) => {
     try {
       const url = new URL((value ?? '').trim())
-      return !['http:', 'https:'].includes(url.protocol) || !url.hostname || Boolean(url.search || url.hash)
+      // URL.search/hash are empty for bare '?' and '#', while Rust rejects
+      // even those empty markers (query().is_some()/fragment().is_some()).
+      return !['http:', 'https:'].includes(url.protocol) || !url.hostname || url.href.includes('?') || url.href.includes('#')
     } catch {
       return true
     }
