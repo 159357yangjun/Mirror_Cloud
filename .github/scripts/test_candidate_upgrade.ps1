@@ -98,7 +98,10 @@ with sqlite3.connect(dbfile, timeout=10) as c:
     assert c.execute("PRAGMA integrity_check").fetchone()[0]=="ok", "integrity_check"
     tables=sorted(x[0] for x in c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))
     assert len(tables)>=5, f"Real application schema did not initialize: {tables}"
-    if stage=='baseline':
+    if stage=='ready':
+        completed=c.execute('SELECT COUNT(*) FROM _sqlx_migrations WHERE success=1').fetchone()[0]
+        assert completed>=10, f'Migrations not finished yet: completed={completed}'
+    elif stage=='baseline':
         c.execute("CREATE TABLE IF NOT EXISTS qa_upgrade_compat(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
         c.execute("INSERT OR REPLACE INTO qa_upgrade_compat VALUES('sentinel','baseline-official-v1.4.9')")
         c.commit()
@@ -112,11 +115,30 @@ with sqlite3.connect(dbfile, timeout=10) as c:
 print(f"SQLITE_COMPAT_{stage.upper()}_PASS base_tables={len(tables)} integrity=ok")
 '@ | Set-Content -LiteralPath $py -Encoding utf8
 $tablesFile=Join-Path $logDir 'baseline-schema.json'
+# The WebView window can exist before .setup has finished applying embedded
+# SQLx migrations. Never kill the baseline merely because publisher.sqlite3
+# exists: a half-initialized database would be a false "upgrade" fixture.
+function WaitForSchema([string]$stage, $process) {
+  $statusLog=Join-Path $logDir "schema-wait-$stage.log"
+  for ($i=0; $i -lt 90; $i++) {
+    if (-not (Get-Process -Id $process.Id -ErrorAction SilentlyContinue)) {
+      throw "$stage process exited while initializing SQLx schema"
+    }
+    & python $py $db 'ready' $tablesFile *> $statusLog
+    if ($LASTEXITCODE -eq 0) {
+      Note "SCHEMA_READY_$($stage): pass"
+      return
+    }
+    Start-Sleep -Milliseconds 500
+  }
+  throw "$stage schema remained incomplete after 45 seconds (see schema-wait-$stage.log)"
+}
 try {
   RunInstaller $official 'OFFICIAL'
   $installed=GetInstall
   $baselineHash=(Get-FileHash -LiteralPath $installed.Executable -Algorithm SHA256).Hash
   $first=Launch $installed.Executable 'OFFICIAL' $db
+  WaitForSchema 'OFFICIAL' $first
   StopNative $first
   & python $py $db 'baseline' $tablesFile 2>&1 | Tee-Object -FilePath (Join-Path $logDir 'baseline-sqlite.log')
   Assert ($LASTEXITCODE -eq 0) 'Failed to create baseline SQLite fixture'
@@ -128,6 +150,7 @@ try {
   Assert ($replacedHash -ne $baselineHash) 'Installed binary unchanged: same-version NSIS installation was a no-op'
   Note 'BINARY_REPLACED: pass (installed exe SHA changed)'
   $second=Launch $replaced.Executable 'CANDIDATE' $db
+  WaitForSchema 'CANDIDATE' $second
   StopNative $second
   & python $py $db 'candidate' $tablesFile 2>&1 | Tee-Object -FilePath (Join-Path $logDir 'candidate-sqlite.log')
   Assert ($LASTEXITCODE -eq 0) 'Candidate did not retain baseline SQLite schema or test data'
