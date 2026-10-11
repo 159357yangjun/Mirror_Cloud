@@ -56,6 +56,15 @@ function parseUrls(value: string) {
   ))
 }
 
+function isHttpImageSource(value: string) {
+  try {
+    const parsed = new URL(value)
+    return ['http:', 'https:'].includes(parsed.protocol) && Boolean(parsed.hostname)
+  } catch {
+    return false
+  }
+}
+
 export function UploadDialog() {
   const { uploadOpen, setUploadOpen, setPage, requestedUploadMode, queuedUploadPaths, clearQueuedUploadPaths } = useAppStore()
   const queryClient = useQueryClient()
@@ -87,6 +96,7 @@ export function UploadDialog() {
   useEffect(() => {
     if (!uploadOpen || taskIds.length === 0 || !isTauriRuntime()) return
     let unlisten: (() => void) | undefined
+    let disposed = false
     void import('@tauri-apps/api/event').then(({ listen }) =>
       listen<TaskProgressEvent>('task://updated', (event) => {
         const payload = event.payload
@@ -96,9 +106,15 @@ export function UploadDialog() {
             ? { ...task, status: payload.status, progress: payload.progress, error: payload.error ?? task.error }
             : task),
         )
-      }).then((cleanup) => { unlisten = cleanup }),
+      }).then((cleanup) => {
+        if (disposed) cleanup()
+        else unlisten = cleanup
+      }),
     )
-    return () => unlisten?.()
+    return () => {
+      disposed = true
+      unlisten?.()
+    }
   }, [uploadOpen, taskIds, queryClient])
 
   const defaultWorkflow = useMemo(
@@ -175,6 +191,11 @@ export function UploadDialog() {
   }, [finishedHandled, queryClient, terminal])
 
   const urls = useMemo(() => parseUrls(urlsText), [urlsText])
+  const urlInputError = urls.length > 50
+    ? '一次最多发布 50 个 URL，请分批上传。'
+    : urls.some((url) => !isHttpImageSource(url))
+      ? '存在无效 URL；每行应是有效的 http:// 或 https:// 图片地址。'
+      : null
 
   const publishMutation = useMutation({
     // Pin the chosen workflow, mode and source order at the moment of submission.
@@ -328,7 +349,7 @@ export function UploadDialog() {
   const selectedStorage = selectedWorkflow?.targetKind === 'storage'
     ? storages.find((storage) => storage.id === selectedWorkflow.targetId)
     : undefined
-  const canPublish = Boolean(defaultWorkflow) && (mode === 'files' ? paths.length > 0 : mode === 'urls' ? urls.length > 0 : true)
+  const canPublish = Boolean(defaultWorkflow) && (mode === 'files' ? paths.length > 0 : mode === 'urls' ? urls.length > 0 && !urlInputError : true)
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/20 p-4 backdrop-blur-sm" onMouseDown={closeDialog}>
@@ -376,7 +397,8 @@ export function UploadDialog() {
                 <div className="flex items-center gap-2 text-sm font-medium"><Link2 size={16} />从 URL 发布</div>
                 <p className="mt-1 text-xs leading-5 text-slate-400">每行一个 http/https 图片地址。下载后仍执行内部处理链和已启用插件。</p>
                 <textarea value={urlsText} onChange={(event) => setUrlsText(event.target.value)} placeholder={'https://example.com/a.png\nhttps://example.com/b.jpg'} className="mt-3 min-h-36 w-full resize-y rounded-2xl border border-slate-200 bg-white p-3 font-mono text-xs leading-6 outline-none focus:border-slate-400" />
-                <div className="mt-2 text-[11px] text-slate-400">已识别 {urls.length} 个 URL</div>
+                <div className="mt-2 text-[11px] text-slate-400">已识别 {urls.length} 个 URL · 单批最多 50 个</div>
+                {urlInputError && <p role="alert" className="mt-2 text-xs leading-5 text-red-600">{urlInputError}</p>}
               </div>
             ) : (
               <div className="mt-3 grid min-h-[210px] place-items-center rounded-[24px] border border-slate-200 bg-slate-50/60 p-6 text-center">
