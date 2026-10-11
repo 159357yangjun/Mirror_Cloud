@@ -43,7 +43,7 @@ export function HelpCenterDialog({
           <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[var(--accent-soft)] text-[var(--accent)]"><BookOpen size={18} /></span>
           <div className="min-w-0 flex-1">
             <h2 className="text-lg font-semibold">新手教程 · 镜云</h2>
-            <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">先完成第一次真实云端上传，再按需配置 Typora、插件和多云策略。这里的教程始终随应用提供，不依赖外部网站。</p>
+            <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">先连接一个云端，上传测试图片，再核对任务与访问结果。Typora、插件和多云备份可以以后再设置；这份教程离线也能查看。</p>
           </div>
           {onlineDocsUrl && <button onClick={() => openExternalUrl(onlineDocsUrl)} className="shrink-0 rounded-xl border border-[var(--border)] px-3 py-2 text-[12px]! font-medium! text-[var(--text-secondary)] hover:bg-[var(--surface-soft)]"><ExternalLink size={13} className="mr-1 inline" />在线文档</button>}
           <button onClick={onClose} className="shrink-0 rounded-xl p-2 text-[var(--text-secondary)] hover:bg-[var(--surface-soft)]" aria-label="关闭教程"><X size={18} /></button>
@@ -51,13 +51,13 @@ export function HelpCenterDialog({
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6">
           <div className="grid grid-cols-2 gap-4 max-md:grid-cols-1">
-            <GuideCard tint="info" icon={Cloud} step="1" title="连接一个真实云端" description="建议第一次先用 GitHub。填写 Owner、仓库、分支和 Token，点击“测试并保存”。Provider 配置窗口右上角还有对应平台的内置教程。" action="去云端" onClick={() => go('storages')} />
-            <GuideCard tint="accent" icon={Upload} step="2" title="上传第一张图片" description="点击左侧“快速发布”，上传一张测试图片。任务成功意味着远端 Provider 已确认文件存在，而不是只写入了本地记录。" action="开始发布" onClick={() => go('publish')} />
-            <GuideCard tint="info" icon={Images} step="3" title="用“图库”检查远端" description="图库直接浏览 GitHub / R2 / OSS 等真实云端文件。以前就存在于云端的图片也应该从这里查看；它不依赖本机上传历史。" action="打开图库" onClick={() => go('gallery')} />
-            <GuideCard tint="success" icon={Boxes} step="4" title="理解“资源”页面" description="资源是镜云维护的发布索引：记录名称、URL、部署状态和插件结果。图片本体仍在云端。旧的云端文件不会因为连接云端就自动变成本地发布记录。" action="查看资源" onClick={() => go('assets')} />
-            <GuideCard tint="success" icon={Copy} step="5" title="“复制”到底复制什么" description="资源页会按当前格式复制 URL、Markdown、HTML、BBCode 或自定义模板；设置页还能改上传时的图片格式（WebP / JPEG / PNG / 保留原图）。图库里的“复制”表示复制该远端文件的公开 URL。" action="查看设置" onClick={() => go('settings')} />
-            <GuideCard tint="warning" icon={Workflow} step="6" title="Typora 不是只能用 PicGo" description="镜云通过 Typora 的“自定义命令”接入。配置向导会复制命令并打开 Typora；你需要在 Typora → 偏好设置 → 图像中把上传服务改成“自定义命令”，粘贴后验证。" action="Typora 配置" onClick={() => go('settings')} />
-            <GuideCard tint="warning" icon={Settings2} step="7" title="进阶入口" description="界面不用开着也能上传：全局快捷键把剪贴板图片直接变成 URL、Windows 右键菜单发布选中文件、本机 HTTP API 供 ShareX 与脚本调用；多云策略让一张图同时进 Primary 与镜像副本。" action="全部设置" onClick={() => go('settings')} />
+            <GuideCard tint="info" icon={Cloud} step="1" title="连接一个云端存储" description="首次可从 GitHub 开始：填写仓库信息和访问令牌，先测试连接再保存。连接成功不等于公开地址可用或私有权限已验证。" action="去云端" onClick={() => go('storages')} />
+            <GuideCard tint="accent" icon={Upload} step="2" title="上传第一张测试图片" description="点击“快速发布”选择图片，确认默认云端后提交。任务成功代表本次上传已完成；请再核对资源记录、访问链接或私有权限。" action="开始发布" onClick={() => go('publish')} />
+            <GuideCard tint="info" icon={Images} step="3" title="在“图库”查看云端文件" description="图库浏览已连接云端的文件，也能查看非镜云上传的旧图片；它与记录本机发布结果的“资源”页不同。" action="打开图库" onClick={() => go('gallery')} />
+            <GuideCard tint="success" icon={Boxes} step="4" title="理解“资源”记录" description="“资源”记录图片名称、可用地址、部署和插件结果，图片本体仍在云端。连接已有云端不会自动把旧文件加入发布记录。" action="查看资源" onClick={() => go('assets')} />
+            <GuideCard tint="success" icon={Copy} step="5" title="复制链接与私有分享" description="有公开地址时，可以复制 URL、Markdown 或 HTML 等格式。私有图片不应直接公开：请到“资源”按权限生成限时分享链接。" action="查看设置" onClick={() => go('settings')} />
+            <GuideCard tint="warning" icon={Workflow} step="6" title="将镜云连接到 Typora" description="在设置页复制 Typora 自定义上传命令，然后到 Typora → 偏好设置 → 图像中粘贴并验证。不需要同时安装其他图床工具。" action="Typora 配置" onClick={() => go('settings')} />
+            <GuideCard tint="warning" icon={Settings2} step="7" title="按需开启进阶功能" description="熟悉基本上传后，再配置快捷键、右键菜单、ShareX 本机接口或多云备份；首次使用不需要一次全部设置。" action="全部设置" onClick={() => go('settings')} />
           </div>
         </div>
       </section>

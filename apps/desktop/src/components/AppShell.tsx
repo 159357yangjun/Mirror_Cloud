@@ -135,8 +135,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                   />
                 )}
               </div>
-              <div className="mt-1 text-[11px] leading-5 text-[var(--text-muted)]">托管 · 管理 · 发布 · 多云可靠性</div>
-              <div className="mt-3 flex items-center gap-2 text-[11px] text-emerald-600"><span className="size-1.5 rounded-full bg-emerald-500" /> UX / Sync / Theme 开发中</div>
+              <div className="mt-1 text-[11px] leading-5 text-[var(--text-muted)]">图片上传 · 云端管理 · 任务追踪</div>
+              <div className="mt-3 text-[11px] leading-5 text-[var(--text-muted)]">检查更新仅提示；下载和安装需手动确认</div>
             </div>
           </div>
         </div>

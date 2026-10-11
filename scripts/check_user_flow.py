@@ -2432,6 +2432,35 @@ require("PROJECT_STATE_VERIFY facts=(\\d+) problems=(\\d+)" in text('scripts/ver
 require('本文件不再手写事实' in text('.ai/STATE.md'),
         'STATE.md states that it holds narrative only, pointing at the generated JSON for facts')
 
+# UX text / interaction guards (2026-10-11). Keep the copy honest about what
+# checks, uploads and updates have actually verified, and expose UI states to AT.
+shell_copy = text('apps/desktop/src/components/AppShell.tsx')
+settings_copy = text('apps/desktop/src/pages/SettingsPage.tsx')
+guide_copy = text('apps/desktop/src/components/HelpCenterDialog.tsx')
+publish_copy = text('apps/desktop/src/pages/PublishPage.tsx')
+upload_copy = text('apps/desktop/src/components/UploadDialog.tsx')
+require('UX / Sync / Theme 开发中' not in shell_copy
+        and '检查更新仅提示；下载和安装需手动确认' in shell_copy,
+        'the sidebar explains the update interaction instead of showing an internal dev-status light')
+require('不会自动下载或安装' in settings_copy
+        and '升级前请备份本地数据' in settings_copy
+        and '更新不会触碰' not in settings_copy,
+        'Settings describes candidate exclusion and backup advice without a blanket data promise')
+require('任务成功意味着远端 Provider 已确认文件存在' not in guide_copy
+        and '上传成功后' not in guide_copy
+        and '私有图片不应直接公开' in guide_copy,
+        'the onboarding guide does not mistake upload completion for validated access')
+require('Publisher Core' not in publish_copy
+        and '公开图片上传后可复制链接' in publish_copy
+        and '已上传（访问待核对）' in publish_copy,
+        'publish copy is user-facing and labels access as unverified')
+require('role="dialog" aria-modal="true" aria-labelledby="upload-dialog-title"' in upload_copy
+        and all(f"aria-pressed={{mode === '{m}'}}" in upload_copy for m in ('files', 'urls', 'clipboard'))
+        and 'aria-label="待发布的图片链接，每行一个"' in upload_copy,
+        'the upload dialog and its source buttons expose interaction semantics')
+require('正在提交任务…' in upload_copy and '检查目标…' not in upload_copy,
+        'pending submit tells users that work is being queued, not that cloud upload already succeeded')
+
 failed = [label for ok, label in checks if not ok]
 # Print every failure, then a short tail of passing checks for context. Printing only the last 20
 # checks meant a failing assertion outside that window exited 1 without ever naming itself, which the
