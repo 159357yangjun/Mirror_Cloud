@@ -220,6 +220,16 @@ export function StorageSetupDialog({
   }
   const blank = (value: string | undefined | null) => !value || !value.trim()
   const notHttp = (value: string | undefined | null) => !/^https?:\/\//i.test((value ?? '').trim())
+  // Match Rust normalize_public_base_url for both first-time setup and restore.
+  // This checks URL shape only, not whether the bucket/CDN is actually public.
+  const invalidPublicBaseUrl = (value: string | undefined | null) => {
+    try {
+      const url = new URL((value ?? '').trim())
+      return !['http:', 'https:'].includes(url.protocol) || !url.hostname || Boolean(url.search || url.hash)
+    } catch {
+      return true
+    }
+  }
   // Mirrors the backend's final gate (plugin_runtime::require_https_or_loopback):
   // plain HTTP only for localhost/127.0.0.1/[::1]; anything else must be https.
   const insecureHttp = (value: string | undefined | null) => {
@@ -239,6 +249,9 @@ export function StorageSetupDialog({
     if (blank(repoForm.repo)) missingFields.push('仓库名')
     if (blank(repoForm.branch)) missingFields.push('分支')
     if (blank(repoForm.token)) missingFields.push('访问令牌')
+    if (!blank(repoForm.publicBaseUrl) && invalidPublicBaseUrl(repoForm.publicBaseUrl)) {
+      missingFields.push('自定义公开域名必须是 http/https URL，不能包含查询参数或片段')
+    }
   } else if (isGenericS3) {
     if (blank(s3Form.name)) missingFields.push('显示名称')
     if (blank(s3Form.bucket)) missingFields.push('Bucket')
@@ -246,7 +259,10 @@ export function StorageSetupDialog({
     if (blank(s3Form.secretAccessKey)) missingFields.push('Secret Access Key')
     if (s3Form.providerKey === 'r2' && blank(s3Form.accountId)) missingFields.push('Account ID')
     if (s3Form.accessMode === 'private_requested' && !blank(s3Form.publicBaseUrl)) missingFields.push('私有模式必须清空公开访问域名')
-    if (restoreProfile && s3Form.accessMode === 'public' && blank(s3Form.publicBaseUrl)) missingFields.push('公开模式必须重新填写公开访问域名')
+    if (s3Form.accessMode !== 'private_requested') {
+      if (blank(s3Form.publicBaseUrl)) missingFields.push('公开模式必须填写公开访问域名')
+      else if (invalidPublicBaseUrl(s3Form.publicBaseUrl)) missingFields.push('公开访问域名必须是 http/https URL，不能包含查询参数或片段')
+    }
     if (s3Form.providerKey === 's3' && (notHttp(s3Form.endpoint) || insecureHttp(s3Form.endpoint))) missingFields.push('Endpoint（需 https，或本机 http://127.0.0.1）')
   } else if (isObject) {
     if (blank(objectForm.name)) missingFields.push('显示名称')
@@ -254,13 +270,15 @@ export function StorageSetupDialog({
     if (blank(objectForm.accessKeyId)) missingFields.push('Access Key ID')
     if (blank(objectForm.secretAccessKey)) missingFields.push('Secret Access Key')
     if (notHttp(objectForm.endpoint) || insecureHttp(objectForm.endpoint)) missingFields.push('Endpoint（需 https，或本机 http://127.0.0.1）')
-    if (restoreProfile && blank(objectForm.publicBaseUrl)) missingFields.push('重新确认公开访问域名')
+    if (blank(objectForm.publicBaseUrl)) missingFields.push('公开访问域名')
+    else if (invalidPublicBaseUrl(objectForm.publicBaseUrl)) missingFields.push('公开访问域名必须是 http/https URL，不能包含查询参数或片段')
   } else if (isWebDav) {
     if (blank(webdavForm.name)) missingFields.push('显示名称')
     if (notHttp(webdavForm.endpoint) || insecureHttp(webdavForm.endpoint)) missingFields.push('WebDAV Endpoint（需 https，或本机 http://127.0.0.1）')
     if (restoreProfile && blank(webdavForm.username)) missingFields.push('重新填写 WebDAV 用户名')
     if (restoreProfile && blank(webdavForm.password)) missingFields.push('重新填写 WebDAV 密码')
-    if (restoreProfile && blank(webdavForm.publicBaseUrl)) missingFields.push('重新确认公开访问域名')
+    if (blank(webdavForm.publicBaseUrl)) missingFields.push('公开访问域名')
+    else if (invalidPublicBaseUrl(webdavForm.publicBaseUrl)) missingFields.push('公开访问域名必须是 http/https URL，不能包含查询参数或片段')
   }
 
   function requestClose() {
