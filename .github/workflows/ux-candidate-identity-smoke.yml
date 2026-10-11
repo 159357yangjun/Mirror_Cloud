@@ -1,0 +1,60 @@
+name: Candidate Build Identity Acceptance (isolated)
+
+on:
+  push:
+    branches:
+      - ci/ux-candidate-identity-v2-20261011
+
+permissions:
+  contents: read
+
+jobs:
+  build-identity:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Guard frozen #34 source and test-only workflow
+        shell: pwsh
+        run: |
+          $expected = 'e6c2e0e4e78d6677bbcd3bc98c6aba2ceb7e25df'
+          git merge-base --is-ancestor $expected HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot verify #34 parent' }
+          $changed = @(git diff --name-only $expected HEAD)
+          if ($LASTEXITCODE -ne 0 -or $changed.Count -ne 1 -or $changed[0] -ne '.github/workflows/ux-candidate-identity-smoke.yml') {
+            throw "Product code not frozen: $($changed -join ',')"
+          }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Install exact desktop dependencies
+        working-directory: apps/desktop
+        run: npm ci
+      - name: Prove release-default build has no candidate commit label
+        shell: pwsh
+        working-directory: apps/desktop
+        run: |
+          Remove-Item Env:MIRROR_CANDIDATE_SOURCE_SHA -ErrorAction SilentlyContinue
+          npm run build
+          if ($LASTEXITCODE -ne 0) { throw 'Default desktop build failed' }
+          $short = 'e6c2e0e4e78d'
+          $js = (Get-ChildItem dist/assets -File -Filter '*.js' | ForEach-Object { [System.IO.File]::ReadAllText($_.FullName) }) -join "`n"
+          if ($js.Contains($short)) { throw 'Default build accidentally exposes a candidate SHA' }
+          Write-Host 'BUILD_ID_DEFAULT_GATE candidate_sha_absent=1 failed=0'
+      - name: Prove explicit candidate SHA is visible without changing semantic version
+        shell: pwsh
+        working-directory: apps/desktop
+        run: |
+          $env:MIRROR_CANDIDATE_SOURCE_SHA = 'e6c2e0e4e78d6677bbcd3bc98c6aba2ceb7e25df'
+          npm run build
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate desktop build failed' }
+          $js = (Get-ChildItem dist/assets -File -Filter '*.js' | ForEach-Object { [System.IO.File]::ReadAllText($_.FullName) }) -join "`n"
+          if (-not $js.Contains('e6c2e0e4e78d')) { throw 'Candidate source SHA was not injected into compiled UI' }
+          $package = Get-Content package.json -Raw | ConvertFrom-Json
+          if ($package.version -ne '1.4.9') { throw 'Candidate label unexpectedly changed release version' }
+          Write-Host 'BUILD_ID_CANDIDATE_GATE sha_present=1 version_unchanged=1 failed=0'
