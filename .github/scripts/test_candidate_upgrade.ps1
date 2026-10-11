@@ -57,6 +57,49 @@ function StopNative($p) {
     Wait-Process -Id $p.Id -Timeout 15 -ErrorAction SilentlyContinue
   }
 }
+# Read only the app-created Windows Generic credential. Never print or export it.
+# keyring windows-native uses the target-name convention user.service.
+Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+public static class MirrorCloudCredentialProbe {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  public struct Credential {
+    public UInt32 Flags;
+    public UInt32 Type;
+    [MarshalAs(UnmanagedType.LPWStr)] public string TargetName;
+    [MarshalAs(UnmanagedType.LPWStr)] public string Comment;
+    public Int64 LastWritten;
+    public UInt32 CredentialBlobSize;
+    public IntPtr CredentialBlob;
+    public UInt32 Persist;
+    public UInt32 AttributeCount;
+    public IntPtr Attributes;
+    [MarshalAs(UnmanagedType.LPWStr)] public string TargetAlias;
+    [MarshalAs(UnmanagedType.LPWStr)] public string UserName;
+  }
+  [DllImport("advapi32.dll", EntryPoint = "CredReadW", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern bool CredRead(string target, UInt32 type, UInt32 flags, out IntPtr ptr);
+  [DllImport("advapi32.dll", EntryPoint = "CredFree")]
+  static extern void CredFree(IntPtr ptr);
+  public static byte[] Read(string target) {
+    IntPtr ptr;
+    if (!CredRead(target, 1, 0, out ptr))
+      throw new Win32Exception(Marshal.GetLastWin32Error(), "Windows app credential missing");
+    try {
+      var c = (Credential)Marshal.PtrToStructure(ptr, typeof(Credential));
+      if (c.CredentialBlobSize < 32 || c.CredentialBlobSize > 8192 || c.CredentialBlob == IntPtr.Zero)
+        throw new InvalidOperationException("Unexpected Windows Credential Manager data size");
+      var bytes = new byte[c.CredentialBlobSize];
+      Marshal.Copy(c.CredentialBlob, bytes, 0, bytes.Length);
+      return bytes;
+    } finally { CredFree(ptr); }
+  }
+}
+'@
+$localApiTarget = 'integration:local-api-token.com.multicloud.publisher'
+
 $processes = @()
 $profileDir=Join-Path $env:APPDATA 'dev.multicloud.publisher'
 $db=Join-Path $profileDir 'publisher.sqlite3'
@@ -104,13 +147,40 @@ with sqlite3.connect(dbfile, timeout=10) as c:
     elif stage=='baseline':
         c.execute("CREATE TABLE IF NOT EXISTS qa_upgrade_compat(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
         c.execute("INSERT OR REPLACE INTO qa_upgrade_compat VALUES('sentinel','baseline-official-v1.4.9')")
+        pref={"defaultFormat":"markdown","customTemplate":"![{name}]({url})",
+              "autoCopyAfterPublish":False,"imageFormat":"png"}
+        c.execute("INSERT OR REPLACE INTO app_settings(key,value_json,updated_at) VALUES(?,?,?)",
+                  ("output.preferences",json.dumps(pref),"2026-10-11T00:00:00Z"))
+        # Synthetic but schema-valid storage config; disabled means no network access.
+        sid="8fc4298a-a5d4-4c7a-a2f2-07addb2d37b8"
+        config={"owner":"offline-example","repo":"not-a-real-repository",
+                "branch":"main","root":"qa-test","public_base_url":None}
+        c.execute("""INSERT INTO storages
+                   (id,name,provider_key,category,credential_ref,config_json,capabilities_json,
+                    enabled,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                  (sid,"Offline QA Storage","github","repository","storage:"+sid,
+                   json.dumps(config),"{}",0,"2026-10-11T00:00:00Z","2026-10-11T00:00:00Z"))
         c.commit()
-        json.dump(tables, open(jsonfile,'w',encoding='utf-8'))
+        json.dump(tables,open(jsonfile,'w',encoding='utf-8'))
     elif stage=='candidate':
         row=c.execute("SELECT value FROM qa_upgrade_compat WHERE key='sentinel'").fetchone()
         assert row == ('baseline-official-v1.4.9',), f"sentinel missing: {row}"
         prior=json.load(open(jsonfile,encoding='utf-8'))
         assert set(prior).issubset(set(tables)), f"Tables lost: {sorted(set(prior)-set(tables))}"
+        prefrow=c.execute("SELECT value_json FROM app_settings WHERE key='output.preferences'").fetchone()
+        assert prefrow is not None,"output preference row missing"
+        expected={"defaultFormat":"markdown","customTemplate":"![{name}]({url})",
+                  "autoCopyAfterPublish":False,"imageFormat":"png"}
+        assert json.loads(prefrow[0]) == expected,"output preference JSON changed"
+        storage=c.execute("""SELECT provider_key,category,credential_ref,config_json,enabled
+                           FROM storages WHERE name='Offline QA Storage'""").fetchone()
+        assert storage and storage[:3]==("github","repository",
+          "storage:8fc4298a-a5d4-4c7a-a2f2-07addb2d37b8"),"storage/ref changed"
+        config={"owner":"offline-example","repo":"not-a-real-repository",
+                "branch":"main","root":"qa-test","public_base_url":None}
+        assert json.loads(storage[3])==config and storage[4]==0,"storage config changed"
+        print("APP_SETTINGS_COMPAT_PASS preferences=retained")
+        print("STORAGE_CONFIG_COMPAT_PASS record_and_reference=retained")
     else: raise AssertionError('unknown stage')
 print(f"SQLITE_COMPAT_{stage.upper()}_PASS base_tables={len(tables)} integrity=ok")
 '@ | Set-Content -LiteralPath $py -Encoding utf8
@@ -139,6 +209,9 @@ try {
   $baselineHash=(Get-FileHash -LiteralPath $installed.Executable -Algorithm SHA256).Hash
   $first=Launch $installed.Executable 'OFFICIAL' $db
   WaitForSchema 'OFFICIAL' $first
+  $apiTokenBefore = [MirrorCloudCredentialProbe]::Read($localApiTarget)
+  Assert ($apiTokenBefore.Length -ge 32) 'The official app did not create its Windows credential'
+  Note 'WINDOWS_CREDENTIAL_BASELINE: app token exists, secret withheld'
   StopNative $first
   & python $py $db 'baseline' $tablesFile 2>&1 | Tee-Object -FilePath (Join-Path $logDir 'baseline-sqlite.log')
   Assert ($LASTEXITCODE -eq 0) 'Failed to create baseline SQLite fixture'
@@ -151,10 +224,14 @@ try {
   Note 'BINARY_REPLACED: pass (installed exe SHA changed)'
   $second=Launch $replaced.Executable 'CANDIDATE' $db
   WaitForSchema 'CANDIDATE' $second
+  $apiTokenAfter = [MirrorCloudCredentialProbe]::Read($localApiTarget)
+  Assert ($apiTokenAfter.Length -eq $apiTokenBefore.Length) 'Windows API token length changed during upgrade'
+  Assert ([System.Security.Cryptography.CryptographicOperations]::FixedTimeEquals($apiTokenBefore,$apiTokenAfter)) 'Windows API token changed during upgrade'
+  Note 'WINDOWS_CREDENTIAL_COMPAT_PASS value preserved, not printed'
   StopNative $second
   & python $py $db 'candidate' $tablesFile 2>&1 | Tee-Object -FilePath (Join-Path $logDir 'candidate-sqlite.log')
   Assert ($LASTEXITCODE -eq 0) 'Candidate did not retain baseline SQLite schema or test data'
-  Note 'UPGRADE_COMPAT_GATE baseline=1 replaced=1 native=2 sqlite=1 failed=0'
+  Note 'UPGRADE_COMPAT_GATE baseline=1 replaced=1 native=2 sqlite=1 settings=1 storage=1 keyring=1 failed=0'
 } catch {
   Note "UPGRADE_COMPAT_FAILURE: $($_.Exception.Message)"
   throw
