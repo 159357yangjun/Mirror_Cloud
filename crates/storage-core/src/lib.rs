@@ -173,6 +173,27 @@ pub trait StorageProvider: Send + Sync {
     async fn download(&self, _path: &str) -> Result<Bytes, StorageError> {
         Err(StorageError::Unsupported)
     }
+    /// On-demand preview of a small private object. None means the object is too large.
+    /// Adapters must check its remote size BEFORE downloading and check returned bytes again.
+    /// Never return a permanent public URL or cache the result in the asset database.
+    async fn download_preview(
+        &self,
+        _path: &str,
+        _max_bytes: u64,
+    ) -> Result<Option<Bytes>, StorageError> {
+        Err(StorageError::Unsupported)
+    }
+    /// Sign a temporary, read-only, browser-ready URL without exposing storage credentials.
+    ///
+    /// Implementations must reject URLs that require non-Host headers, since recipients receive
+    /// only a URL. The caller must never persist or log the returned bearer URL.
+    async fn temporary_read_url(
+        &self,
+        _path: &str,
+        _expires: std::time::Duration,
+    ) -> Result<String, StorageError> {
+        Err(StorageError::Unsupported)
+    }
     /// Existence probe for one object path. The default walks the parent listing, which is only
     /// safe when that listing is complete; repository contents APIs truncate directories, so
     /// GitHub and Gitee override this with an exact-path lookup.

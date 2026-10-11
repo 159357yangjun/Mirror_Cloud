@@ -276,15 +276,32 @@ require("key: 'workflows'" not in app_shell, 'no Workflow navigation item')
 require("'workflows'" not in types.split('export type PageKey', 1)[1].split('\n', 1)[0], 'PageKey hides workflows')
 
 # A connected storage creates or repairs the hidden automatic pipeline.
-require(commands.count('persist_new_storage(state.inner(), &record).await?;') >= 4, 'all storage creation paths persist and auto-ensure pipeline')
+require((commands.count('persist_new_storage(state.inner(), &record).await?;') + commands.count('persist_new_storage(state.inner(), &record, input.restore_guard).await?;')) >= 4, 'all storage creation paths persist and auto-ensure pipeline')
 require('sync_system_default_pipeline' in commands and 'SYSTEM_PIPELINE_SOURCE' in commands, 'hidden system pipeline exists')
 require('set_default_publish_target' in commands and 'get_default_publish_target' in commands, 'default cloud target commands exist')
 require('commands::set_default_publish_target' in lib and 'commands::get_default_publish_target' in lib, 'default cloud target commands registered')
 
-# Every desktop input mode uses the same hidden workflow.
-require('publishFilesWithWorkflow(defaultWorkflow.id, paths)' in upload, 'local files use automatic pipeline')
-require('publishUrlsWithWorkflow(defaultWorkflow.id, urls)' in upload, 'URL upload uses automatic pipeline')
-require('publishClipboardImageWithWorkflow(defaultWorkflow.id)' in upload, 'clipboard upload uses automatic pipeline')
+# Each first submission snapshots the same hidden default workflow; the invocation
+# modes use that pinned workflow ID instead of re-reading a potentially changed
+# default during a failed-only republish.
+require('workflowId: defaultWorkflow.id' in upload, 'new publication pins automatic workflow')
+require("if (request.mode === 'urls') return publishUrlsWithWorkflow(request.workflowId, request.sources)" in upload, 'URL upload uses pinned automatic pipeline')
+require("if (request.mode === 'clipboard') return [await publishClipboardImageWithWorkflow(request.workflowId)]" in upload, 'clipboard upload uses pinned automatic pipeline')
+require("return publishFilesWithWorkflow(request.workflowId, request.sources)" in upload, 'local files use pinned automatic pipeline')
+# The failure-only UI cannot silently replay completed tasks.
+require("task.id === id)?.status === 'failed'" in upload, 'retry selection accepts failed tasks only')
+require('failedIndexes.map((index) => sources[index])' in upload, 'retry submits only failed original sources')
+require('failedIndexes.forEach((index, i) => { updated[index] = ids[i] })' in upload, 'retry preserves successful task IDs')
+require("if (mode === 'files') return publishFilesWithWorkflow(workflowId, failedSources)" in upload, 'retry files retains pinned target')
+require("if (mode === 'urls') return publishUrlsWithWorkflow(workflowId, failedSources)" in upload, 'retry URLs retains pinned target')
+require("throw new Error('剪贴板图片无法保证与之前的内容相同" in upload, 'retry refuses changed clipboard data')
+require("accepted = await confirmAction({" in upload and "retryFailedMutation.mutate({ submission" in upload, 'failed-only republish asks for explicit confirmation')
+require("retryFailedMutation.isError" in upload and "retryDispatchRef.current" in upload, 'ambiguous failed retry cannot be replayed in same session')
+require("publishDispatchRef.current" in upload and "上次提交状态不确定" in upload, 'ambiguous initial submission requires explicit confirmation')
+require("listTasks(Math.min(10_000" in upload, 'upload dialog requests more than default 100 task rows')
+require("function removeSelectedFile(path: string)" in upload and "current.filter((item) => item !== path)" in upload and "onClick={() => removeSelectedFile(path)}" in upload, 'file upload selection supports individual removal before submit')
+require("error: tasksError" in upload and "refetch: refetchTasks" in upload and "onClick={() => void refetchTasks()}" in upload, 'upload status read errors have a visible manual recovery action')
+require("cancelledTasks.length" in upload and "successfulTasks.length" in upload and "已取消 · 请核对是否产生部分云端副作用" in upload, 'cancelled upload tasks cannot be reported as successful')
 
 # Typora self-heals the same pipeline.
 require('ensure_default_workflow(&context).await?' in cli, 'Typora auto-ensures default pipeline')
@@ -405,7 +422,10 @@ url_publish = commands[commands.find('pub async fn publish_urls_with_workflow'):
 
 require('.test_connection().await' not in preflight_desktop and 'build_provider' in preflight_desktop, 'desktop preflight does not block runtime failover on primary network health')
 require('.test_connection().await' not in preflight_cli and 'build_provider' in preflight_cli, 'Typora preflight does not block runtime failover on primary network health')
-require(url_publish.find('for url in &urls') < url_publish.find('let mut task_ids'), 'URL batch validates every URL before creating tasks')
+require('for url in &urls' in url_publish and url_publish.find('for url in &urls') < url_publish.find('let payloads = urls') and 'create_batch("workflow_url_publish", payloads)' in url_publish, 'URL batch validates every URL before creating tasks')
+file_publish = commands[commands.find('pub async fn publish_files_with_workflow'):commands.find('pub async fn publish_urls_with_workflow')]
+require('create_batch("workflow_publish", payloads)' in file_publish and file_publish.find('create_batch("workflow_publish"') < file_publish.find('tauri::async_runtime::spawn'), 'file batch transaction commits before uploading workers spawn')
+require(url_publish.find('create_batch("workflow_url_publish"') < url_publish.find('tauri::async_runtime::spawn'), 'URL batch transaction commits before uploading workers spawn')
 require('for path in paths {' in cli[:cli.find('std::fs::create_dir_all')] and 'path.is_file()' in cli[:cli.find('std::fs::create_dir_all')], 'Typora validates full local batch before first task/upload')
 require('{uuid}' in commands and '{uuid}' in cli and '{uuid}' in workflow_engine, 'new automatic remote paths include UUID uniqueness')
 require('active_deployment_reference_count' in persistence and 'reference_count > 1' in commands, 'asset deletion protects shared legacy remote paths')
@@ -919,7 +939,7 @@ _needle('age.num_seconds() >= 0 && age < Duration::hours(UPDATE_CACHE_MAX_AGE_HO
 _needle('setUpdateAvailableVersion(cached.result.latestVersion)',
         'the sidebar dot is driven only by an observed updateAvailable result')
 require('workflows.find((workflow) => workflow.isDefault)' in upload and '?? workflows[0]' not in upload, 'upload UI never falls back to an arbitrary legacy workflow')
-require('async fn persist_new_storage' in commands and commands.count('persist_new_storage(state.inner(), &record).await?;') >= 4, 'storage setup only succeeds after automatic pipeline persistence')
+require('async fn persist_new_storage' in commands and (commands.count('persist_new_storage(state.inner(), &record).await?;') + commands.count('persist_new_storage(state.inner(), &record, input.restore_guard).await?;')) >= 4, 'storage setup only succeeds after automatic pipeline persistence')
 require('sync_system_default_pipeline(state.inner(), None).await?;' in commands, 'automatic pipeline sync errors are surfaced instead of silently ignored')
 require('connection-test-u' in opendal and '.write(&probe_path' in opendal and '.stat(&probe_path)' in opendal and '.delete(&probe_path)' in opendal, 'OpenDAL connection test verifies write/stat/delete permissions')
 

@@ -8,6 +8,15 @@ use storage_core::{
 };
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ObjectAccessMode {
+    #[default]
+    Public,
+    // Requested visibility, not proof of the remote bucket's ACL or CDN configuration.
+    PrivateRequested,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct S3StorageConfig {
     pub endpoint: String,
@@ -16,6 +25,8 @@ pub struct S3StorageConfig {
     #[serde(default)]
     pub root: String,
     pub public_base_url: Option<String>,
+    #[serde(default)]
+    pub access_mode: ObjectAccessMode,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,6 +109,14 @@ impl OpenDalStorage {
         config: &S3StorageConfig,
         credentials: &S3Credentials,
     ) -> Result<Self, StorageError> {
+        if config.access_mode == ObjectAccessMode::PrivateRequested
+            && (!matches!(provider_key, "r2" | "s3") || config.public_base_url.is_some())
+        {
+            return Err(StorageError::Provider(
+                "Private-requested S3-compatible storage must not have a configured public URL"
+                    .into(),
+            ));
+        }
         let mut builder = services::S3::default()
             .bucket(&config.bucket)
             .region(&config.region)
@@ -334,6 +353,67 @@ impl StorageProvider for OpenDalStorage {
     async fn download(&self, path: &str) -> Result<bytes::Bytes, StorageError> {
         let buffer = self.operator.read(path).await.map_err(map_error)?;
         Ok(buffer.to_bytes())
+    }
+
+    async fn download_preview(
+        &self,
+        path: &str,
+        max_bytes: u64,
+    ) -> Result<Option<bytes::Bytes>, StorageError> {
+        // Check remote metadata before reading; never eagerly fetch a large original
+        // into the desktop app just to show a thumbnail.
+        let metadata = self.operator.stat(path).await.map_err(map_error)?;
+        if !metadata.is_file() {
+            return Err(StorageError::MissingObject(path.to_string()));
+        }
+        if metadata.content_length() > max_bytes {
+            return Ok(None);
+        }
+        let buffer = self.operator.read(path).await.map_err(map_error)?;
+        let data = buffer.to_bytes();
+        // An object might change between the stat and the read. Never forward a
+        // response that exceeds the declared UI cap even under that race.
+        if data.len() as u64 > max_bytes {
+            return Ok(None);
+        }
+        Ok(Some(data))
+    }
+
+    async fn temporary_read_url(
+        &self,
+        path: &str,
+        expires: std::time::Duration,
+    ) -> Result<String, StorageError> {
+        // Only the S3-compatible family has a URL-only sharing path in this release.
+        // Other OpenDAL services require their own audited capability + real E2E first.
+        if !matches!(self.provider_key, "r2" | "s3") {
+            return Err(StorageError::Unsupported);
+        }
+        let signed = self
+            .operator
+            .presign_read(path, expires)
+            .await
+            .map_err(map_error)?;
+        // A copied URL cannot supply arbitrary auth headers. Never return a link that appears
+        // shareable but fails outside this app (or requests more privileges than read-only GET).
+        if signed.method().as_str() != "GET"
+            || signed.header().keys().any(|name| name.as_str() != "host")
+        {
+            return Err(StorageError::Unsupported);
+        }
+        let uri = signed.uri();
+        let secure = uri.scheme_str() == Some("https");
+        let loopback = uri.scheme_str() == Some("http")
+            && matches!(
+                uri.host(),
+                Some("localhost" | "127.0.0.1" | "::1" | "[::1]")
+            );
+        if !secure && !loopback {
+            return Err(StorageError::Provider(
+                "temporary sharing requires HTTPS (or localhost for local tests)".into(),
+            ));
+        }
+        Ok(uri.to_string())
     }
 
     /// Exact-path lookup instead of the trait default's directory listing.

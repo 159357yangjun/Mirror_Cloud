@@ -116,6 +116,256 @@ export async function getBootstrapSnapshot(): Promise<BootstrapSnapshot> {
   return invoke('bootstrap_snapshot')
 }
 
+export interface PortableStorageProfile {
+  name: string
+  providerKey: string
+  bucket?: string | null
+  region?: string | null
+  root?: string | null
+  owner?: string | null
+  repo?: string | null
+  branch?: string | null
+  accessMode: 'unknown' | 'private_requested'
+  sourceStorageId?: string | null
+}
+
+export interface PortableStorageManifest {
+  schemaVersion: 1 | 2
+  exportedAt: string
+  credentialRebindRequired: true
+  profiles: PortableStorageProfile[]
+}
+
+export async function exportPortableStorageManifest(destinationPath: string): Promise<number> {
+  return invoke('export_portable_storage_manifest', { destinationPath })
+}
+
+export async function inspectPortableStorageManifest(sourcePath: string): Promise<PortableStorageManifest> {
+  return invoke('inspect_portable_storage_manifest', { sourcePath })
+}
+export async function inspectPortableReconnectMap(
+  sourcePath: string, manifest: PortableStorageManifest,
+): Promise<PortableStorageIdMapping[]> {
+  return invoke('inspect_portable_reconnect_map', { sourcePath, manifest })
+}
+
+export interface PortableStorageIdMapping {
+  oldStorageId: string
+  newStorageId: string
+  providerKey: string
+}
+
+export async function exportPortableReconnectMap(
+  destinationPath: string,
+  sourceManifestExportedAt: string,
+  mappings: PortableStorageIdMapping[],
+): Promise<number> {
+  return invoke('export_portable_reconnect_map', { destinationPath, sourceManifestExportedAt, mappings })
+}
+
+export interface PortableReferenceMember {
+  sourceStorageId: string
+  role: 'primary' | 'mirror' | 'backup'
+  priority: number
+}
+export interface PortableReferenceGroup {
+  sourceGroupId: string
+  name: string
+  strategy: 'mirror_all' | 'primary_with_backups'
+  members: PortableReferenceMember[]
+}
+export interface PortableWorkflowSpec {
+  format: 'original' | 'jpeg' | 'png' | 'webp'
+  quality: number
+  maxWidth?: number | null
+  maxHeight?: number | null
+  renameTemplate: string
+}
+export interface PortableReferenceWorkflow {
+  sourceWorkflowId: string
+  name: string
+  targetKind: 'storage' | 'group' | 'unsupported'
+  sourceTargetId: string
+  spec?: PortableWorkflowSpec | null
+}
+export interface PortableGroupIdMapping {
+  oldGroupId: string
+  newGroupId: string
+}
+export interface PortableReferenceManifest {
+  schemaVersion: 1 | 2
+  exportedAt: string
+  groups: PortableReferenceGroup[]
+  workflows: PortableReferenceWorkflow[]
+}
+export interface PortableReferencePreview {
+  groups: Array<{ sourceGroupId: string; name: string; status: string; detail: string }>
+  workflows: Array<{ sourceWorkflowId: string; name: string; status: string; detail: string }>
+}
+export async function exportPortableReferenceManifest(destinationPath: string): Promise<number> {
+  return invoke('export_portable_reference_manifest', { destinationPath })
+}
+export async function inspectPortableReferenceManifest(sourcePath: string): Promise<PortableReferenceManifest> {
+  return invoke('inspect_portable_reference_manifest', { sourcePath })
+}
+export async function previewPortableReferenceRestore(
+  manifest: PortableReferenceManifest, mappings: PortableStorageIdMapping[], groupMappings: PortableGroupIdMapping[],
+): Promise<PortableReferencePreview> {
+  return invoke('preview_portable_reference_restore', { manifest, mappings, groupMappings })
+}
+export async function exportPortableGroupMapping(
+  destinationPath: string, manifest: PortableReferenceManifest,
+  mappings: PortableStorageIdMapping[], groupMappings: PortableGroupIdMapping[],
+): Promise<number> {
+  return invoke('export_portable_group_mapping', { destinationPath, manifest, mappings, groupMappings })
+}
+export async function inspectPortableGroupMapping(
+  sourcePath: string, expectedManifestExportedAt: string,
+): Promise<PortableGroupIdMapping[]> {
+  return invoke('inspect_portable_group_mapping', { sourcePath, expectedManifestExportedAt })
+}
+export async function restorePortableWorkflow(
+  manifest: PortableReferenceManifest, mappings: PortableStorageIdMapping[],
+  groupMappings: PortableGroupIdMapping[], sourceWorkflowId: string,
+): Promise<string> {
+  return invoke('restore_portable_workflow', { manifest, mappings, groupMappings, sourceWorkflowId })
+}
+export async function restorePortableStorageGroup(
+  manifest: PortableReferenceManifest, mappings: PortableStorageIdMapping[], sourceGroupId: string,
+): Promise<string> {
+  return invoke('restore_portable_storage_group', { manifest, mappings, sourceGroupId })
+}
+
+export interface PortableAssetDeployment {
+  sourceStorageId: string
+  providerKey: string
+  role: 'primary' | 'mirror' | 'backup'
+  remotePath: string | null
+}
+export interface PortableAssetEntry {
+  sourceAssetId: string
+  sourceVariantId: string
+  name: string
+  mimeType: string
+  sizeBytes: number
+  width: number | null
+  height: number | null
+  contentHash: string
+  deployments: PortableAssetDeployment[]
+}
+export interface PortableAssetManifest {
+  schemaVersion: 1
+  exportedAt: string
+  entries: PortableAssetEntry[]
+}
+export interface PortableAssetPreview {
+  rows: Array<{
+    sourceAssetId: string
+    sourceVariantId: string
+    name: string
+    status: 'duplicate' | 'path_conflict' | 'needs_rebind' | 'unverified'
+    detail: string
+    resolvedCopies: number
+    missingCopies: number
+  }>
+  duplicateVariants: number
+  missingMappings: number
+  remotePathConflicts: number
+  applied: false
+}
+export async function exportPortableAssetManifest(destinationPath: string): Promise<number> {
+  return invoke('export_portable_asset_manifest', { destinationPath })
+}
+export async function inspectPortableAssetManifest(sourcePath: string): Promise<PortableAssetManifest> {
+  return invoke('inspect_portable_asset_manifest', { sourcePath })
+}
+export async function previewPortableAssetRestore(
+  manifest: PortableAssetManifest, mappings: PortableStorageIdMapping[],
+): Promise<PortableAssetPreview> {
+  return invoke('preview_portable_asset_restore', { manifest, mappings })
+}
+
+export interface StagedAssetBatch {
+  id: string
+  sourceExportedAt: string
+  createdAt: string
+  itemCount: number
+  awaitingVerification: number
+  blockedCount: number
+}
+export interface StagedAssetRow {
+  id: string
+  batchId: string
+  sourceAssetId: string
+  sourceVariantId: string
+  name: string
+  reviewStatus: 'blocked_duplicate' | 'blocked_path' | 'needs_rebind' | 'awaiting_verification'
+  resolvedCopies: number
+  missingCopies: number
+  operatorDecision: 'review' | 'defer' | 'exclude'
+  revision: number
+  sources: Array<{ sourceStorageId: string; providerKey: string; hasSafePath: boolean }>
+  bindings: PortableStorageIdMapping[]
+}
+export async function stagePortableAssetManifest(
+  manifest: PortableAssetManifest, mappings: PortableStorageIdMapping[],
+): Promise<string> {
+  return invoke('stage_portable_asset_manifest', { manifest, mappings })
+}
+export async function listPortableAssetStaging(): Promise<StagedAssetBatch[]> {
+  return invoke('list_portable_asset_staging')
+}
+export async function listPortableStagedItems(batchId: string): Promise<StagedAssetRow[]> {
+  return invoke('list_portable_staged_items', { batchId })
+}
+export async function updatePortableStagedItemReview(
+  batchId: string, itemId: string, expectedRevision: number,
+  decision: 'review' | 'defer' | 'exclude',
+  sourceStorageId?: string, newStorageId?: string,
+): Promise<void> {
+  return invoke('update_portable_staged_item_review', {
+    batchId, itemId, expectedRevision, decision, sourceStorageId, newStorageId,
+  })
+}
+
+export interface PortableActivationGate {
+  itemId: string
+  revision: number
+  localStatus: string
+  decision: 'review' | 'defer' | 'exclude'
+  gateStatus: 'excluded' | 'deferred' | 'blocked_local' | 'awaiting_remote_evidence'
+  localBlockers: string[]
+  copies: Array<{
+    sourceStorageId: string
+    destinationStorageId: string | null
+    providerKey: string
+    localBindingValid: boolean
+    hasSafeObjectKey: boolean
+    requiredEvidence: string[]
+  }>
+  activationAllowed: false
+}
+export async function assessPortableAssetActivation(
+  batchId: string, itemId: string,
+): Promise<PortableActivationGate> {
+  return invoke('assess_portable_asset_activation', { batchId, itemId })
+}
+
+export type PortableStagedDecision = 'review' | 'defer' | 'exclude'
+export interface PortableBatchDecisionItem {
+  itemId: string
+  expectedRevision: number
+}
+export async function applyPortableStagedBatchDecision(
+  batchId: string, items: PortableBatchDecisionItem[], decision: PortableStagedDecision,
+): Promise<number> {
+  return invoke('apply_portable_staged_batch_decision', { batchId, items, decision })
+}
+
+export async function discardPortableAssetStaging(batchId: string): Promise<boolean> {
+  return invoke('discard_portable_asset_staging', { batchId })
+}
+
 export async function listStorages(): Promise<StorageView[]> {
   if (!isTauriRuntime()) return []
   return invoke('list_storages')
@@ -174,6 +424,23 @@ export async function testStorage(storageId: string): Promise<{ reachable: boole
 
 export async function browseStorage(storageId: string, path: string): Promise<StorageEntryView[]> {
   return invoke('browse_storage', { storageId, path })
+}
+
+export async function createTemporaryShareLink(
+  storageId: string,
+  path: string,
+  expiresInSeconds: 600 | 3600 | 86400,
+): Promise<string> {
+  if (!isTauriRuntime()) throw new Error('临时分享仅在桌面应用中可用')
+  return invoke('create_temporary_share_link', { storageId, path, expiresInSeconds })
+}
+
+export async function previewPrivateStorageEntry(
+  storageId: string,
+  path: string,
+): Promise<{ mimeType: string; bytes: number[] }> {
+  if (!isTauriRuntime()) throw new Error('私有图片预览仅在桌面应用中可用')
+  return invoke('preview_private_storage_entry', { storageId, path })
 }
 
 export async function syncStorageAssetIndex(storageId?: string): Promise<RemoteIndexSyncResult> {

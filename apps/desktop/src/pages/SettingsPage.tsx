@@ -17,6 +17,8 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
+import { StorageSetupDialog } from '../components/StorageSetupDialog'
+import { portableProviderKey, portableReconnectConflict } from '../lib/portableReconnect'
 import {
   copyText,
   checkForUpdates,
@@ -27,6 +29,28 @@ import {
   getGlobalShortcutInfo,
   getWindowsContextMenuInfo,
   getOutputPreferences,
+  exportPortableStorageManifest,
+  inspectPortableStorageManifest,
+  exportPortableReconnectMap,
+  inspectPortableReconnectMap,
+  exportPortableReferenceManifest,
+  inspectPortableReferenceManifest,
+  previewPortableReferenceRestore,
+  restorePortableStorageGroup,
+  exportPortableGroupMapping,
+  inspectPortableGroupMapping,
+  restorePortableWorkflow,
+  exportPortableAssetManifest,
+  inspectPortableAssetManifest,
+  previewPortableAssetRestore,
+  stagePortableAssetManifest,
+  listPortableAssetStaging,
+  listPortableStagedItems,
+  discardPortableAssetStaging,
+  updatePortableStagedItemReview,
+  assessPortableAssetActivation,
+  applyPortableStagedBatchDecision,
+  listStorages,
   getReconciliationSettings,
   getUpdateStatus,
   getReconciliationHistory,
@@ -49,7 +73,7 @@ import {
   uninstallWindowsContextMenu,
   saveOutputPreferences,
 } from '../lib/desktop'
-import type { DownloadedUpdateSummary, UpdateCheckResult } from '../lib/desktop'
+import type { DownloadedUpdateSummary, UpdateCheckResult, PortableStorageManifest, PortableReferenceManifest, PortableReferencePreview, PortableStorageIdMapping, PortableGroupIdMapping, PortableAssetManifest, PortableAssetPreview, PortableActivationGate, PortableStagedDecision } from '../lib/desktop'
 import { useAppStore } from '../store/useAppStore'
 import { confirmAction } from '../store/useConfirmStore'
 import { tierDisplay, tierReason } from '../lib/confirmationDisplay'
@@ -57,6 +81,14 @@ import { probeDisplay } from '../lib/probeDisplay'
 import type { ProbeFailureKindName } from '../lib/desktop'
 import type { ConfirmationTierName } from '../lib/desktop'
 import type { OutputFormat, OutputPreferences } from '../types'
+
+const activationEvidenceLabels: Record<string, string> = {
+  remote_object_exists: '远端对象存在',
+  authenticated_readback_matches_source_digest: '认证读取并校验内容摘要',
+  provider_access_policy_verified: '确认访问权限策略',
+  anonymous_access_denied: '匿名访问被拒绝',
+  time_limited_share_expiration_verified: '临时分享过期失效',
+}
 
 // The colour comes from `tierDisplay`, never inline here: the same ladder is shown on the asset rows
 // and a divergence between the two would mean one of them is lying about how much to trust a copy.
@@ -201,6 +233,59 @@ export function SettingsPage() {
   const [copiedApiToken, setCopiedApiToken] = useState(false)
   const [copiedApiExample, setCopiedApiExample] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [portableBusy, setPortableBusy] = useState(false)
+  const [portableMessage, setPortableMessage] = useState<string | null>(null)
+  const [portablePreview, setPortablePreview] = useState<PortableStorageManifest | null>(null)
+  const [restoreIndex, setRestoreIndex] = useState<number | null>(null)
+  // A new ID only exists after provider creation succeeded. Never reuse a source UUID.
+  // This map is deliberately session-local until the user explicitly exports an audit receipt.
+  const [reconnectedIds, setReconnectedIds] = useState<Map<number, string>>(() => new Map())
+  const [importedStorageMappings, setImportedStorageMappings] = useState<PortableStorageIdMapping[]>([])
+  const [referenceManifest, setReferenceManifest] = useState<PortableReferenceManifest | null>(null)
+  const [referencePreview, setReferencePreview] = useState<PortableReferencePreview | null>(null)
+  const [restoredGroupIds, setRestoredGroupIds] = useState<Map<string, string>>(() => new Map())
+  const [restoredWorkflowIds, setRestoredWorkflowIds] = useState<Map<string, string>>(() => new Map())
+  const [assetMigrationBusy, setAssetMigrationBusy] = useState(false)
+  const [assetMigrationMessage, setAssetMigrationMessage] = useState<string | null>(null)
+  const [assetManifest, setAssetManifest] = useState<PortableAssetManifest | null>(null)
+  const [assetPreview, setAssetPreview] = useState<PortableAssetPreview | null>(null)
+  const [selectedStagedBatch, setSelectedStagedBatch] = useState<string | null>(null)
+  const [activationGate, setActivationGate] = useState<PortableActivationGate | null>(null)
+  const [stagedFilter, setStagedFilter] = useState('all')
+  const [stagedSearch, setStagedSearch] = useState('')
+  const [selectedStagedIds, setSelectedStagedIds] = useState<string[]>([])
+  const [stagedRebindings, setStagedRebindings] = useState<Record<string, Record<string, string>>>({})
+  const { data: stagedAssetBatches = [], error: stagedBatchError } = useQuery({
+    queryKey: ['portable-asset-staging'],
+    queryFn: listPortableAssetStaging,
+  })
+  const { data: selectedStagedItems = [] } = useQuery({
+    queryKey: ['portable-asset-staging-items', selectedStagedBatch],
+    queryFn: () => listPortableStagedItems(selectedStagedBatch!),
+    enabled: selectedStagedBatch !== null,
+  })
+  const visibleStagedItems = selectedStagedItems.filter((item) => {
+    const query = stagedSearch.trim().toLocaleLowerCase()
+    const searchMatch = !query || item.name.toLocaleLowerCase().includes(query)
+      || item.sourceVariantId.toLowerCase().includes(query)
+    const statusMatch = stagedFilter === 'all'
+      || (stagedFilter === 'defer' && item.operatorDecision === 'defer')
+      || (stagedFilter === 'exclude' && item.operatorDecision === 'exclude')
+      || (stagedFilter === 'review' && item.operatorDecision === 'review')
+      || (item.operatorDecision === 'review' && item.reviewStatus === stagedFilter)
+    return searchMatch && statusMatch
+  })
+  const stagedTriage = {
+    needsFix: selectedStagedItems.filter((i) => i.operatorDecision === 'review' && i.reviewStatus !== 'awaiting_verification').length,
+    needsEvidence: selectedStagedItems.filter((i) => i.operatorDecision === 'review' && i.reviewStatus === 'awaiting_verification').length,
+    deferred: selectedStagedItems.filter((i) => i.operatorDecision === 'defer').length,
+    excluded: selectedStagedItems.filter((i) => i.operatorDecision === 'exclude').length,
+  }
+
+  const { data: connectedStorages = [], isLoading: storagesLoading, error: storagesError } = useQuery({
+    queryKey: ['storages'],
+    queryFn: listStorages,
+  })
 
   useEffect(() => {
     if (data) setForm(data)
@@ -362,11 +447,757 @@ export function SettingsPage() {
     }
   }
 
+  async function exportPortablePlan() {
+    if (portableBusy) return
+    setPortableBusy(true)
+    setPortableMessage(null)
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog')
+      const destination = await save({
+        defaultPath: 'mirror-cloud-storage-manifest.json',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      })
+      if (destination) {
+        const count = await exportPortableStorageManifest(destination)
+        setPortableMessage(`已导出 ${count} 个存储配置的无密钥重连清单。它不包含图片、数据库、工作流或访问密钥。`)
+      }
+    } catch {
+      setPortableMessage('导出失败；请检查文件位置或更换文件名（不会覆盖已有文件）。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
+  function currentStorageMappings(): PortableStorageIdMapping[] {
+    if (portablePreview?.schemaVersion !== 2) return []
+    return portablePreview.profiles.flatMap((profile, index) => {
+      const imported = importedStorageMappings.find((item) =>
+        item.oldStorageId === profile.sourceStorageId && item.providerKey === profile.providerKey)
+      const newStorageId = reconnectedIds.get(index) ?? imported?.newStorageId
+      return profile.sourceStorageId && newStorageId
+        ? [{ oldStorageId: profile.sourceStorageId, newStorageId, providerKey: profile.providerKey }]
+        : []
+    })
+  }
+
+  async function exportReferenceManifest() {
+    if (portableBusy) return
+    setPortableBusy(true)
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog')
+      const destination = await save({
+        defaultPath: 'mirror-cloud-relationships.json',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      })
+      if (destination) {
+        const count = await exportPortableReferenceManifest(destination)
+        setPortableMessage(`已导出 ${count} 项多云组或工作流关系引用，未包含凭据或完整工作流步骤。`)
+      }
+    } catch {
+      setPortableMessage('关系清单导出失败；不会覆盖已有文件。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
+  function currentGroupMappings(groups = restoredGroupIds): PortableGroupIdMapping[] {
+    return [...groups].map(([oldGroupId, newGroupId]) => ({ oldGroupId, newGroupId }))
+  }
+
+  async function previewReferencePlan(manifest: PortableReferenceManifest, groups = restoredGroupIds) {
+    const preview = await previewPortableReferenceRestore(manifest, currentStorageMappings(), currentGroupMappings(groups))
+    setReferencePreview(preview)
+  }
+
+  async function inspectReferencePlan() {
+    if (portableBusy) return
+    setPortableBusy(true)
+    setReferenceManifest(null)
+    setReferencePreview(null)
+    setRestoredGroupIds(new Map())
+    setRestoredWorkflowIds(new Map())
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const source = await open({ multiple: false, filters: [{ name: 'JSON', extensions: ['json'] }] })
+      if (typeof source === 'string') {
+        const manifest = await inspectPortableReferenceManifest(source)
+        setReferenceManifest(manifest)
+        await previewReferencePlan(manifest, new Map())
+        setPortableMessage('关系清单检查完成：需要先完成对应存储 ID 映射，才能逐项恢复多云组。')
+      }
+    } catch {
+      setPortableMessage('关系清单检查失败：版本、字段、UUID 或成员约束不符合要求。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
+  async function refreshReferencePlan() {
+    if (portableBusy || !referenceManifest) return
+    setPortableBusy(true)
+    try {
+      await previewReferencePlan(referenceManifest)
+    } catch {
+      setReferencePreview(null)
+      setPortableMessage('映射预览失败：请检查目标存储是否仍存在、已启用且 Provider 匹配。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
+  async function restoreOneGroup(sourceGroupId: string) {
+    if (portableBusy || !referenceManifest || !referencePreview) return
+    const group = referencePreview.groups.find((item) => item.sourceGroupId === sourceGroupId)
+    if (!group || group.status !== 'ready' || restoredGroupIds.has(sourceGroupId)) return
+    const accepted = await confirmAction({
+      title: '确认恢复多云组',
+      detail: `将使用新的 Group ID 新建多云组“${group.name}”，只建立本地成员关系，不覆盖现有组，也不自动创建工作流。`,
+      confirmLabel: '确认新建多云组',
+      danger: false,
+    })
+    if (!accepted || portableBusy) return
+    setPortableBusy(true)
+    try {
+      const id = await restorePortableStorageGroup(referenceManifest, currentStorageMappings(), sourceGroupId)
+      setRestoredGroupIds((current) => new Map(current).set(sourceGroupId, id))
+      await queryClient.invalidateQueries({ queryKey: ['storage-groups'] })
+      await previewReferencePlan(referenceManifest, new Map(restoredGroupIds).set(sourceGroupId, id))
+      setPortableMessage('多云组已新建。可导出 Group ID 映射并继续恢复标准工作流。')
+    } catch {
+      setReferencePreview(null)
+      setPortableMessage('多云组恢复失败：可能存在目标冲突、缺失映射或权限意图冲突。未标记成功。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
+  async function exportGroupMapReceipt() {
+    if (!referenceManifest || portableBusy || restoredGroupIds.size === 0) return
+    setPortableBusy(true)
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog')
+      const destination = await save({
+        defaultPath: 'mirror-cloud-group-id-map.json',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      })
+      if (destination) {
+        const count = await exportPortableGroupMapping(
+          destination, referenceManifest, currentStorageMappings(), currentGroupMappings(),
+        )
+        setPortableMessage(`已导出 ${count} 条经过组成员核对的 Group ID 映射。`)
+      }
+    } catch {
+      setPortableMessage('无法导出组映射：文件重复或目标组的名称、成员关系已变化。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
+  async function importGroupMapReceipt() {
+    if (!referenceManifest || portableBusy) return
+    setPortableBusy(true)
+    setReferencePreview(null)
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const source = await open({ multiple: false, filters: [{ name: 'JSON', extensions: ['json'] }] })
+      if (typeof source !== 'string') return
+      const imported = await inspectPortableGroupMapping(source, referenceManifest.exportedAt)
+      const groups = new Map(imported.map((item) => [item.oldGroupId, item.newGroupId]))
+      await previewReferencePlan(referenceManifest, groups)
+      setRestoredGroupIds(groups)
+      setPortableMessage('组映射已载入并验证成员及角色，可继续恢复安全预设工作流。')
+    } catch {
+      setPortableMessage('组映射和当前关系清单不一致或目标已变化，未启用。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
+  async function restoreOneWorkflow(sourceWorkflowId: string) {
+    if (portableBusy || !referenceManifest || !referencePreview || restoredWorkflowIds.has(sourceWorkflowId)) return
+    const item = referencePreview.workflows.find((w) => w.sourceWorkflowId === sourceWorkflowId)
+    if (!item || item.status !== 'ready') return
+    const accepted = await confirmAction({
+      title: '确认恢复标准工作流',
+      detail: `新建“${item.name}”并重映射发布目标，不复用旧 ID、不覆盖旧工作流，也不会设为默认上传目标。`,
+      confirmLabel: '确认新建工作流',
+      danger: false,
+    })
+    if (!accepted || portableBusy) return
+    setPortableBusy(true)
+    try {
+      const id = await restorePortableWorkflow(
+        referenceManifest, currentStorageMappings(), currentGroupMappings(), sourceWorkflowId,
+      )
+      setRestoredWorkflowIds((current) => new Map(current).set(sourceWorkflowId, id))
+      await queryClient.invalidateQueries({ queryKey: ['workflows'] })
+      await previewReferencePlan(referenceManifest)
+      setPortableMessage('标准工作流已恢复，使用新 ID，原默认上传目标保持不变。')
+    } catch {
+      setReferencePreview(null)
+      setPortableMessage('工作流恢复被阻止：映射、模板安全规则或同名冲突；未覆盖既有工作流。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
+  async function importStorageMapReceipt() {
+    if (!portablePreview || portablePreview.schemaVersion !== 2 || portableBusy) return
+    setPortableBusy(true)
+    setReferencePreview(null)
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const source = await open({ multiple: false, filters: [{ name: 'JSON', extensions: ['json'] }] })
+      if (typeof source !== 'string') return
+      const mappings = await inspectPortableReconnectMap(source, portablePreview)
+      setImportedStorageMappings(mappings)
+      setPortableMessage(`已验证并载入 ${mappings.length} 条 Storage ID 映射，请重新检查关系预览。`)
+    } catch {
+      setPortableMessage('存储映射载入失败：来源清单时间、UUID、Provider 或目标状态不匹配。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
+  async function exportAssetMigrationManifest() {
+    if (assetMigrationBusy) return
+    setAssetMigrationBusy(true)
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog')
+      const destination = await save({
+        defaultPath: 'mirror-cloud-assets.json',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      })
+      if (destination) {
+        const count = await exportPortableAssetManifest(destination)
+        setAssetMigrationMessage(`已导出 ${count} 条资源变体清单。移除了签名 URL、在线状态及验证时间；未包含图片文件。`)
+      }
+    } catch {
+      setAssetMigrationMessage('资源清单导出失败：可能是记录数超限、路径或文件名冲突，不会覆盖原文件。')
+    } finally {
+      setAssetMigrationBusy(false)
+    }
+  }
+
+  async function inspectAssetMigrationManifest() {
+    if (assetMigrationBusy) return
+    setAssetMigrationBusy(true)
+    setAssetManifest(null)
+    setAssetPreview(null)
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const source = await open({ multiple: false, filters: [{ name: 'JSON', extensions: ['json'] }] })
+      if (typeof source === 'string') {
+        const manifest = await inspectPortableAssetManifest(source)
+        const preview = await previewPortableAssetRestore(manifest, currentStorageMappings())
+        setAssetManifest(manifest)
+        setAssetPreview(preview)
+        setAssetMigrationMessage('清单已检查。预览为只读操作，没有写入图片、部署记录或在线状态。')
+      }
+    } catch {
+      setAssetMigrationMessage('资源清单不受支持，包含不安全字段或无法检查本地目标。')
+    } finally {
+      setAssetMigrationBusy(false)
+    }
+  }
+
+  async function refreshAssetMigrationPreview() {
+    if (assetMigrationBusy || !assetManifest) return
+    setAssetMigrationBusy(true)
+    setAssetPreview(null)
+    try {
+      setAssetPreview(await previewPortableAssetRestore(assetManifest, currentStorageMappings()))
+      setAssetMigrationMessage('已用当前 Storage ID 映射重新检查重复内容和对象路径冲突。')
+    } catch {
+      setAssetMigrationMessage('预览检查失败：本地存储不可用或映射已失效。')
+    } finally {
+      setAssetMigrationBusy(false)
+    }
+  }
+
+  async function stageAssetMigration() {
+    if (assetMigrationBusy || !assetManifest || !assetPreview || assetManifest.entries.length === 0) return
+    const accepted = await confirmAction({
+      title: '确认将资源元数据暂存到本机？',
+      detail: `将保存 ${assetManifest.entries.length} 条元数据到独立待核验表。它们不会进入正式资源列表，也不能分享、删除或修复远端文件。冲突项同样只供人工排查。`,
+      confirmLabel: '确认隔离暂存',
+      danger: false,
+    })
+    if (!accepted || assetMigrationBusy) return
+    setAssetMigrationBusy(true)
+    try {
+      const batchId = await stagePortableAssetManifest(assetManifest, currentStorageMappings())
+      setSelectedStagedBatch(batchId)
+      setSelectedStagedIds([])
+      setStagedFilter('all')
+      setStagedSearch('')
+      await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging'] })
+      setAssetMigrationMessage('已保存隔离暂存批次。即使关闭应用也可查看；未写入正式图片或部署表。')
+    } catch {
+      setAssetMigrationMessage('暂存失败：同一来源清单可能已经暂存，或数据库检查失败；未标记暂存成功。')
+    } finally {
+      setAssetMigrationBusy(false)
+    }
+  }
+
+  async function discardAssetMigration(batchId: string) {
+    if (assetMigrationBusy) return
+    const accepted = await confirmAction({
+      title: '丢弃待核验资源批次？',
+      detail: '只删除本机隔离暂存记录，不删除正式图片、云端文件或现有部署。',
+      confirmLabel: '丢弃暂存批次',
+      danger: true,
+    })
+    if (!accepted || assetMigrationBusy) return
+    setAssetMigrationBusy(true)
+    try {
+      const removed = await discardPortableAssetStaging(batchId)
+      if (!removed) throw new Error('批次已不存在')
+      if (selectedStagedBatch === batchId) { setSelectedStagedBatch(null); setActivationGate(null); setSelectedStagedIds([]) }
+      await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging'] })
+      await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging-items', batchId] })
+      setAssetMigrationMessage('暂存批次已清理；正式资源及远端对象均未修改。')
+    } catch {
+      setAssetMigrationMessage('丢弃暂存失败，请核对本地数据库状态。')
+    } finally {
+      setAssetMigrationBusy(false)
+    }
+  }
+
+  async function reviewStagedItem(
+    item: (typeof selectedStagedItems)[number],
+    decision: 'review' | 'defer' | 'exclude',
+    sourceStorageId?: string,
+    newStorageId?: string,
+  ) {
+    if (assetMigrationBusy || !selectedStagedBatch) return
+    setAssetMigrationBusy(true)
+    setActivationGate(null)
+    setSelectedStagedIds([])
+    try {
+      await updatePortableStagedItemReview(
+        selectedStagedBatch, item.id, item.revision, decision, sourceStorageId, newStorageId,
+      )
+      await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging-items', selectedStagedBatch] })
+      await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging'] })
+      setAssetMigrationMessage('已保存逐项审核或本地存储重绑，未进行云端访问或图片激活。')
+    } catch {
+      setAssetMigrationMessage('保存失败：记录可能被另一窗口修改、Provider 不匹配或目标存储失效。请刷新暂存批次后重试。')
+      await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging-items', selectedStagedBatch] })
+    } finally {
+      setAssetMigrationBusy(false)
+    }
+  }
+
+  async function applyStagedBatchDecision(decision: PortableStagedDecision) {
+    if (assetMigrationBusy || !selectedStagedBatch) return
+    const chosen = selectedStagedItems.filter((item) => selectedStagedIds.includes(item.id))
+    if (chosen.length === 0 || chosen.length > 100) {
+      setAssetMigrationMessage('请在当前批次选择 1 至 100 条记录。')
+      return
+    }
+    const accepted = await confirmAction({
+      title: `确认批量${decision === 'defer' ? '稍后处理' : decision === 'exclude' ? '排除' : '恢复审核'}？`,
+      detail: `将仅修改所选 ${chosen.length} 条暂存记录的人工处理决定。不会恢复为在线资源、修改存储映射或访问云端。存在版本冲突则整批回滚。`,
+      confirmLabel: '确认批量更新',
+      danger: decision === 'exclude',
+    })
+    if (!accepted || assetMigrationBusy) return
+    setAssetMigrationBusy(true)
+    setActivationGate(null)
+    try {
+      const count = await applyPortableStagedBatchDecision(
+        selectedStagedBatch,
+        chosen.map((item) => ({ itemId: item.id, expectedRevision: item.revision })),
+        decision,
+      )
+      setSelectedStagedIds([])
+      await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging-items', selectedStagedBatch] })
+      await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging'] })
+      setAssetMigrationMessage(`已批量更新 ${count} 条暂存记录的审核决定；没有变更任何正式资源。`)
+    } catch {
+      setSelectedStagedIds([])
+      await queryClient.invalidateQueries({ queryKey: ['portable-asset-staging-items', selectedStagedBatch] })
+      setAssetMigrationMessage('批量操作被拒绝：记录已更改、批次不存在或版本冲突。所有审核决定保持原状，请刷新后重选。')
+    } finally {
+      setAssetMigrationBusy(false)
+    }
+  }
+
+  async function inspectActivationGate(itemId: string) {
+    if (assetMigrationBusy || !selectedStagedBatch) return
+    setAssetMigrationBusy(true)
+    setActivationGate(null)
+    try {
+      const gate = await assessPortableAssetActivation(selectedStagedBatch, itemId)
+      setActivationGate(gate)
+      setAssetMigrationMessage('已实时检查本地引用及验证要求。尚未执行远端校验，不允许将资源激活。')
+    } catch {
+      setAssetMigrationMessage('激活前检查失败：暂存记录可能损坏、已丢弃或映射已失效。未允许任何激活。')
+    } finally {
+      setAssetMigrationBusy(false)
+    }
+  }
+
+  async function exportReconnectionMap() {
+    if (portableBusy || !portablePreview || portablePreview.schemaVersion !== 2) return
+    const mappings = currentStorageMappings()
+    if (!mappings.length) return
+    setPortableBusy(true)
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog')
+      const destination = await save({
+        defaultPath: 'mirror-cloud-reconnect-mapping.json',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      })
+      if (destination) {
+        const count = await exportPortableReconnectMap(destination, portablePreview.exportedAt, mappings)
+        setPortableMessage(`已导出 ${count} 条旧 ID → 新 ID 映射。仅供后续恢复审核使用，不会恢复图片、工作流或多云组。`)
+      }
+    } catch {
+      setPortableMessage('导出映射失败：请检查目标文件名和已重新连接的存储是否仍存在。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
+  async function inspectPortablePlan() {
+    if (portableBusy) return
+    setPortableBusy(true)
+    setPortableMessage(null)
+    setPortablePreview(null)
+    setRestoreIndex(null)
+    setReconnectedIds(new Map())
+    setImportedStorageMappings([])
+    setReferencePreview(null)
+    setRestoredGroupIds(new Map())
+    setRestoredWorkflowIds(new Map())
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const source = await open({
+        multiple: false,
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      })
+      if (typeof source === 'string') {
+        const plan = await inspectPortableStorageManifest(source)
+        setPortablePreview(plan)
+        setPortableMessage('清单格式检查通过。请选择一项并手动重连，所有密钥必须重新输入；已有存储不会被覆盖。')
+      }
+    } catch {
+      setPortableMessage('无法识别该清单：格式不受支持、包含多余字段或文件超过 1 MB。现有数据未修改。')
+    } finally {
+      setPortableBusy(false)
+    }
+  }
+
   return (
     <div className="mx-auto max-w-[1040px] px-10 py-9">
       <PageHeader title="设置" description="只保留真正可操作的应用设置；云端账号和密钥继续归属于对应 Storage。" />
 
       {actionError && <div className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{actionError}</div>}
+
+      <section className="mt-8 rounded-[24px] border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800"><Database size={17} /> 存储配置迁移清单</div>
+            <p className="mt-1 max-w-2xl text-xs leading-6 text-slate-500">
+              导出云存储名称、Bucket、资源目录和私有意图，方便换电脑时照着重新连接。
+              <strong>不是完整备份</strong>：不包含图片、资源索引、工作流、Endpoint、访问密钥或插件密钥。
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button disabled={portableBusy} onClick={() => void exportReferenceManifest()} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium disabled:opacity-40">导出组/工作流关系</button>
+            <button disabled={portableBusy} onClick={() => void inspectReferencePlan()} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium disabled:opacity-40">导入关系清单</button>
+            <button disabled={portableBusy} onClick={() => void exportPortablePlan()} className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-medium text-white disabled:opacity-40">{portableBusy ? '处理中…' : '导出无密钥清单'}</button>
+            <button disabled={portableBusy} onClick={() => void inspectPortablePlan()} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 disabled:opacity-40">导入前检查</button>
+          </div>
+        </div>
+        {portableMessage && <p role="status" className="mt-3 text-xs leading-5 text-slate-600">{portableMessage}</p>}
+        {portablePreview && <div className="mt-3 rounded-xl bg-slate-50 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs font-medium text-slate-700">清单版本 {portablePreview.schemaVersion} · {portablePreview.profiles.length} 个存储 · 已重连 {reconnectedIds.size} 个</div>
+            <button type="button"
+              disabled={portableBusy || restoreIndex !== null || portablePreview.schemaVersion !== 2 || currentStorageMappings().length === 0}
+              onClick={() => void exportReconnectionMap()}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium disabled:opacity-40">
+              导出旧→新 ID 映射
+            </button>
+            <button type="button" disabled={portableBusy || portablePreview.schemaVersion !== 2}
+              onClick={() => void importStorageMapReceipt()}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium disabled:opacity-40">
+              载入 Storage ID 映射
+            </button>
+          </div>
+          {portablePreview.schemaVersion === 1 && <p className="mt-2 text-[11px] text-amber-700">旧版 v1 清单没有原始 Storage ID，可逐项重新连接，但无法生成可靠的 ID 映射；建议从旧设备重新导出 v2 清单。</p>}
+          <p className="mt-2 text-[11px] text-slate-500">恢复前冲突预览：{portablePreview.profiles.filter((profile) => portableReconnectConflict(profile, connectedStorages)).length} 项与现有存储的名称或目标冲突；冲突项禁止新建。此检查不代表云端权限已验证。</p>
+          <div className="mt-2 max-h-64 space-y-2 overflow-auto text-xs text-slate-600">
+            {portablePreview.profiles.map((profile, index) => {
+              const conflict = portableReconnectConflict(profile, connectedStorages)
+              const newStorageId = reconnectedIds.get(index)
+              const saved = Boolean(newStorageId)
+              const providerKey = portableProviderKey(profile)
+              return <div key={index} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{profile.name} · {profile.providerKey.toUpperCase()}</div>
+                  <div className="text-[11px] text-slate-500">
+                    {profile.bucket || (profile.owner && profile.repo ? `${profile.owner}/${profile.repo}` : '须重新填写目标地址')}
+                    {' · '}{profile.accessMode === 'private_requested' ? '私有意图（未验证）' : '访问模式待确认'}
+                  </div>
+                  {profile.sourceStorageId && <div className="mt-1 break-all text-[10px] text-slate-400">旧 Storage ID：{profile.sourceStorageId}</div>}
+                  {newStorageId && <div className="mt-1 break-all text-[10px] text-emerald-700">新 Storage ID：{newStorageId}（仅记录映射，未恢复引用）</div>}
+                  {conflict && !saved && <div className="mt-1 text-[11px] text-amber-700">本机已有同名或相同目标：{conflict.name}，禁止自动覆盖/重复建立。</div>}
+                </div>
+                <button type="button"
+                  disabled={!providerKey || portableBusy || storagesLoading || Boolean(storagesError) || Boolean(conflict) || saved || restoreIndex !== null}
+                  onClick={() => setRestoreIndex(index)}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-medium text-slate-700 disabled:opacity-40">
+                  {saved ? '已重连' : conflict ? '目标冲突' : '逐项重新连接'}
+                </button>
+              </div>
+            })}
+          </div>
+          {storagesError && <p role="alert" className="mt-2 text-xs text-red-700">无法读取本机已有存储，已停止重连以避免重复配置。</p>}
+          {reconnectedIds.size > 0 && portablePreview.schemaVersion === 2 && <p className="mt-2 text-[11px] text-amber-700">ID 对照仅保存在本次页面会话中，请及时导出映射文件。导出前关闭页面会丢失对照；不会自动恢复工作流和资源记录。</p>}
+          <p className="mt-2 text-[11px] leading-5 text-amber-700">每项都要手动复核 Endpoint/公开地址和权限、重新输入凭据、确认新增，并通过原有连接测试才能保存。不会覆盖本机已有配置或自动恢复资源索引、工作流。</p>
+        </div>}
+        {referenceManifest && <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <strong>关系清单 v{referenceManifest.schemaVersion} · {referenceManifest.groups.length} 个多云组 · {referenceManifest.workflows.length} 条工作流</strong>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" disabled={portableBusy || restoredGroupIds.size === 0} onClick={() => void exportGroupMapReceipt()} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-40">导出 Group ID 映射</button>
+              <button type="button" disabled={portableBusy} onClick={() => void importGroupMapReceipt()} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-40">载入 Group ID 映射</button>
+              <button type="button" disabled={portableBusy} onClick={() => void refreshReferencePlan()} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-40">重新检查冲突</button>
+            </div>
+          </div>
+          {!referencePreview && <p role="alert" className="mt-2 text-amber-700">当前预览无效。重新检查成功前不允许恢复。</p>}
+          <div className="mt-2 space-y-2">
+            {referencePreview?.groups.map((group) => {
+              const restoredId = restoredGroupIds.get(group.sourceGroupId)
+              return <div key={group.sourceGroupId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white p-2">
+                <div className="min-w-0">
+                  <div className="font-medium">{group.name} · {restoredId ? '已恢复' : group.status === 'ready' ? '可恢复' : '无法恢复'}</div>
+                  <p className="text-[11px] text-slate-500">{restoredId ? `新 Group ID：${restoredId}` : group.detail}</p>
+                </div>
+                <button type="button" disabled={portableBusy || Boolean(restoredId) || group.status !== 'ready'}
+                  onClick={() => void restoreOneGroup(group.sourceGroupId)}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40">
+                  {restoredId ? '已创建' : '确认恢复该组'}
+                </button>
+              </div>
+            })}
+            {referencePreview?.workflows.map((workflow) => {
+              const restoredId = restoredWorkflowIds.get(workflow.sourceWorkflowId)
+              return <div key={workflow.sourceWorkflowId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white p-2">
+                <div className="min-w-0">
+                  <div className="font-medium">{workflow.name} · {restoredId ? '已创建工作流' : workflow.status === 'ready' ? '标准工作流可恢复' : '需人工处理'}</div>
+                  <p className="mt-1 text-[11px] text-amber-700">{restoredId ? `新 Workflow ID：${restoredId}` : workflow.detail}</p>
+                </div>
+                <button type="button"
+                  disabled={portableBusy || Boolean(restoredId) || workflow.status !== 'ready'}
+                  onClick={() => void restoreOneWorkflow(workflow.sourceWorkflowId)}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40">
+                  {restoredId ? '已恢复' : '确认恢复标准工作流'}
+                </button>
+              </div>
+            })}
+          </div>
+          <p className="mt-2 text-[11px] text-amber-700">仅白名单中的标准重命名模板与处理步骤允许恢复；自定义工作流需人工重建。默认目标、资源索引和云端权限不迁移、不作真实性断言。</p>
+        </div>}
+      </section>
+
+      <section className="mt-8 rounded-[24px] border border-slate-200 bg-white p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800"><Database size={17} />图片资源元数据迁移 · P2</div>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
+              只导出本地图片元数据、内容哈希与安全对象路径。签名 URL、访问密钥、旧在线状态和验证时间不会导出；
+              本阶段仅检查冲突，绝不自动重建可删除或可分享的云端副本。
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" disabled={assetMigrationBusy} onClick={() => void exportAssetMigrationManifest()}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-xs disabled:opacity-40">导出资源清单</button>
+            <button type="button" disabled={assetMigrationBusy} onClick={() => void inspectAssetMigrationManifest()}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-xs disabled:opacity-40">导入并检查资源</button>
+          </div>
+        </div>
+        {assetMigrationMessage && <p role="status" className="mt-3 text-xs text-slate-600">{assetMigrationMessage}</p>}
+        {assetManifest && <div className="mt-3 rounded-xl bg-slate-50 p-3 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <strong>版本 {assetManifest.schemaVersion} · {assetManifest.entries.length} 条资源变体 · 尚未激活任何资源</strong>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" disabled={assetMigrationBusy} onClick={() => void refreshAssetMigrationPreview()}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-40">刷新冲突预览</button>
+              <button type="button" disabled={assetMigrationBusy || !assetPreview || assetManifest.entries.length === 0}
+                onClick={() => void stageAssetMigration()}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-40">确认隔离暂存</button>
+            </div>
+          </div>
+          {assetPreview && <p className="mt-2 text-slate-600">
+            重复内容 {assetPreview.duplicateVariants} · 缺失映射 {assetPreview.missingMappings} · 路径冲突 {assetPreview.remotePathConflicts}
+          </p>}
+          {!assetPreview && <p role="alert" className="mt-2 text-amber-700">预览无效，须重新检查。</p>}
+          <div className="mt-2 max-h-64 space-y-2 overflow-auto">
+            {assetPreview?.rows.map((item) => <div key={item.sourceVariantId} className="rounded-lg bg-white p-2">
+              <div className="font-medium text-slate-700">{item.name} · {item.status}</div>
+              <p className="mt-1 text-[11px] text-slate-500">{item.detail} · 已映射路径 {item.resolvedCopies} · 待修复 {item.missingCopies}</p>
+            </div>)}
+          </div>
+          <p className="mt-2 text-[11px] text-amber-700">预览结果不是云端文件存在的证据。资源数据库导入、远端验证、图片内容迁移尚未完成。</p>
+        </div>}
+        <div className="mt-4 border-t border-slate-200 pt-3">
+          <div className="text-xs font-semibold text-slate-700">本机待核验批次（关闭软件后仍保留）</div>
+          {stagedBatchError && <p role="alert" className="mt-1 text-xs text-red-700">暂存列表无法读取；请检查数据库迁移。</p>}
+          {!stagedBatchError && stagedAssetBatches.length === 0 && <p className="mt-2 text-xs text-slate-500">暂无暂存记录。</p>}
+          <div className="mt-2 space-y-2">
+            {stagedAssetBatches.map((batch) => <div key={batch.id} className="rounded-lg border border-slate-200 p-3 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="font-medium text-slate-700">{batch.itemCount} 条暂存 · {batch.awaitingVerification} 条待核验 · {batch.blockedCount} 条需处理</div>
+                  <div className="mt-1 text-[11px] text-slate-500">来源快照：{batch.sourceExportedAt}</div>
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" disabled={assetMigrationBusy} onClick={() => { setSelectedStagedBatch(batch.id); setActivationGate(null); setSelectedStagedIds([]); setStagedSearch(''); setStagedFilter('all') }}
+                    className="rounded-lg border border-slate-200 px-2 py-1.5 disabled:opacity-40">查看</button>
+                  <button type="button" disabled={assetMigrationBusy} onClick={() => void discardAssetMigration(batch.id)}
+                    className="rounded-lg border border-red-200 px-2 py-1.5 text-red-700 disabled:opacity-40">丢弃</button>
+                </div>
+              </div>
+              {selectedStagedBatch === batch.id && <div className="mt-2 max-h-72 space-y-2 overflow-auto border-t border-slate-100 pt-2">
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <div className="flex flex-wrap justify-between gap-2 font-medium">
+                    <span>本地分流概览（不是迁移成功率）</span>
+                    <span>{batch.itemCount ? Math.round(
+                      (stagedTriage.needsEvidence + stagedTriage.deferred + stagedTriage.excluded) / batch.itemCount * 100,
+                    ) : 0}%</span>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
+                    <div className="h-full bg-slate-500" style={{ width: `${batch.itemCount ? Math.round(
+                      (stagedTriage.needsEvidence + stagedTriage.deferred + stagedTriage.excluded) / batch.itemCount * 100,
+                    ) : 0}%` }} />
+                  </div>
+                  <p className="mt-2 text-slate-600">需本地修复 {stagedTriage.needsFix} · 待远端证据 {stagedTriage.needsEvidence} · 延后 {stagedTriage.deferred} · 排除 {stagedTriage.excluded}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input type="search" aria-label="搜索暂存图片" placeholder="搜索图片或变体 ID"
+                    value={stagedSearch} onChange={(e) => { setStagedSearch(e.target.value); setSelectedStagedIds([]) }}
+                    className="min-w-36 flex-1 rounded-lg border border-slate-200 px-3 py-2" />
+                  <select aria-label="筛选暂存状态" value={stagedFilter}
+                    onChange={(e) => { setStagedFilter(e.target.value); setSelectedStagedIds([]) }}
+                    className="rounded-lg border border-slate-200 px-3 py-2">
+                    <option value="all">全部</option>
+                    <option value="review">需要审核</option>
+                    <option value="needs_rebind">缺失映射</option>
+                    <option value="blocked_duplicate">重复图片</option>
+                    <option value="blocked_path">路径冲突</option>
+                    <option value="awaiting_verification">等待远端证据</option>
+                    <option value="defer">稍后处理</option>
+                    <option value="exclude">已排除</option>
+                  </select>
+                  <span className="text-slate-500">显示 {visibleStagedItems.length}/{selectedStagedItems.length}</span>
+                </div>
+                <div className="flex flex-wrap gap-2 rounded-lg border border-slate-200 p-2">
+                  <button type="button" disabled={assetMigrationBusy || visibleStagedItems.length === 0}
+                    onClick={() => setSelectedStagedIds(visibleStagedItems.slice(0, 100).map((item) => item.id))}
+                    className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">选中筛选前 100 项</button>
+                  <button type="button" disabled={assetMigrationBusy || selectedStagedIds.length === 0}
+                    onClick={() => setSelectedStagedIds([])}
+                    className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">取消选择</button>
+                  <span className="text-slate-500">已选 {selectedStagedIds.length} 项</span>
+                  {(['review', 'defer', 'exclude'] as const).map((decision) =>
+                    <button type="button" key={decision} disabled={assetMigrationBusy || selectedStagedIds.length === 0}
+                      onClick={() => void applyStagedBatchDecision(decision)}
+                      className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">
+                      {decision === 'review' ? '批量继续审核' : decision === 'defer' ? '批量稍后处理' : '批量排除'}
+                    </button>)}
+                </div>
+                {visibleStagedItems.length === 0 && <p className="rounded bg-slate-50 p-2">没有符合筛选条件的暂存资源。</p>}
+                {visibleStagedItems.map((item) => <div key={item.id} className="rounded bg-slate-50 px-2 py-2 text-[11px]">
+                  <label className="flex items-center gap-2 font-medium">
+                    <input type="checkbox" checked={selectedStagedIds.includes(item.id)}
+                      disabled={assetMigrationBusy || (!selectedStagedIds.includes(item.id) && selectedStagedIds.length >= 100)}
+                      onChange={(event) => setSelectedStagedIds((current) => event.target.checked
+                        ? [...current.filter((id) => id !== item.id), item.id]
+                        : current.filter((id) => id !== item.id))}
+                      className="size-4 accent-slate-700" />
+                    <span>{item.name} · {item.reviewStatus} · {item.operatorDecision === 'exclude' ? '已排除' : item.operatorDecision === 'defer' ? '稍后处理' : '待审核'}</span>
+                  </label>
+                  <p className="mt-1 text-slate-500">已映射 {item.resolvedCopies} / 待处理 {item.missingCopies} · 修订版本 {item.revision}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button type="button" disabled={assetMigrationBusy} onClick={() => void reviewStagedItem(item, 'review')}
+                      className="rounded border border-slate-200 bg-white px-2 py-1 disabled:opacity-40">重新检查</button>
+                    <button type="button" disabled={assetMigrationBusy} onClick={() => void reviewStagedItem(item, 'defer')}
+                      className="rounded border border-slate-200 bg-white px-2 py-1 disabled:opacity-40">稍后处理</button>
+                    <button type="button" disabled={assetMigrationBusy} onClick={() => void reviewStagedItem(item, 'exclude')}
+                      className="rounded border border-slate-200 bg-white px-2 py-1 disabled:opacity-40">排除此项</button>
+                    <button type="button" disabled={assetMigrationBusy}
+                      onClick={() => void inspectActivationGate(item.id)}
+                      className="rounded border border-amber-300 bg-white px-2 py-1 text-amber-800 disabled:opacity-40">检查激活前条件</button>
+                  </div>
+                  {activationGate?.itemId === item.id && <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2">
+                    <div className="font-semibold text-amber-900">激活未授权 · {activationGate.gateStatus === 'awaiting_remote_evidence'
+                      ? '本地预检完成，缺少远端证据'
+                      : activationGate.gateStatus === 'excluded' ? '已排除'
+                      : activationGate.gateStatus === 'deferred' ? '已延期'
+                      : '存在本地阻断问题'}</div>
+                    <p className="mt-1">当前本地状态：{activationGate.localStatus} · 修订版本 {activationGate.revision} · 激活许可：否</p>
+                    {activationGate.localBlockers.length > 0 && <p className="mt-1 break-words text-red-800">
+                      需要修复：{activationGate.localBlockers.join('、')}
+                    </p>}
+                    {activationGate.copies.map((copy) => <div key={copy.sourceStorageId} className="mt-2 border-t border-amber-200 pt-2">
+                      <p className="font-medium">{copy.providerKey} 副本 · {copy.localBindingValid && copy.hasSafeObjectKey ? '本地引用可检查' : '本地映射或对象路径不完整'}</p>
+                      <p className="mt-1 break-words text-slate-600">仍需真实证据：{copy.requiredEvidence.map((key) => activationEvidenceLabels[key] ?? key).join('、')}</p>
+                    </div>)}
+                    <p className="mt-2 text-amber-800">这里不会连接云端，也不包含“跳过验证”“确认在线”或激活按钮。</p>
+                  </div>}
+                  {item.sources.map((source) => {
+                    const choice = stagedRebindings[item.id]?.[source.sourceStorageId] ?? ''
+                    const matches = connectedStorages.filter((storage) => storage.enabled && storage.providerKey === source.providerKey)
+                    const existing = item.bindings.find((binding) => binding.oldStorageId === source.sourceStorageId)
+                    return <div key={source.sourceStorageId} className="mt-2 rounded border border-slate-200 bg-white p-2">
+                      <div className="break-all text-slate-600">来源 {source.providerKey} · {source.sourceStorageId} {source.hasSafePath ? '' : '· 原路径不可安全迁移'}</div>
+                      {existing && <div className="mt-1 break-all text-emerald-700">当前人工绑定：{existing.newStorageId}</div>}
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <select value={choice} disabled={assetMigrationBusy}
+                          onChange={(event) => setStagedRebindings((current) => ({
+                            ...current,
+                            [item.id]: { ...current[item.id], [source.sourceStorageId]: event.target.value },
+                          }))}
+                          aria-label={`为 ${item.name} 选择目标存储`}
+                          className="min-w-40 rounded border border-slate-200 bg-white px-2 py-1">
+                          <option value="">选择本机目标存储</option>
+                          {matches.map((storage) => <option key={storage.id} value={storage.id}>{storage.name} ({storage.providerKey})</option>)}
+                        </select>
+                        <button type="button" disabled={assetMigrationBusy || !choice}
+                          onClick={() => void reviewStagedItem(item, 'review', source.sourceStorageId, choice)}
+                          className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">保存此项重绑</button>
+                        {existing && <button type="button" disabled={assetMigrationBusy}
+                          onClick={() => void reviewStagedItem(item, 'review', source.sourceStorageId)}
+                          className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">撤销重绑</button>}
+                      </div>
+                    </div>
+                  })}
+                </div>)}
+              </div>}
+            </div>)}
+          </div>
+          <p className="mt-2 text-[11px] text-amber-700">人工重绑只会更新隔离暂存中的本地审核信息；“awaiting_verification”不证明对象存在或权限安全。此阶段没有激活、远端删除或分享入口。</p>
+        </div>
+      </section>
+
+      {portablePreview && restoreIndex !== null && (() => {
+        const index = restoreIndex
+        const profile = portablePreview.profiles[index]
+        const provider = profile && portableProviderKey(profile)
+        if (!profile || !provider) return null
+        return <StorageSetupDialog
+          key={index}
+          provider={provider}
+          restoreProfile={profile}
+          onCreated={(created) => { setReconnectedIds((current) => new Map(current).set(index, created.id)); setReferencePreview(null) }}
+          onClose={() => setRestoreIndex(null)}
+        />
+      })()}
 
       <section className="mt-8 rounded-[24px] border border-indigo-100 bg-gradient-to-br from-indigo-50/80 via-white to-white p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">

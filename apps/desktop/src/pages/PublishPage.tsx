@@ -30,6 +30,7 @@ import {
 } from '../lib/desktop'
 import { formatPublishedAsset } from '../lib/output'
 import { useAppStore } from '../store/useAppStore'
+import { notifyError } from '../store/useToastStore'
 import type { OutputFormat } from '../types'
 
 const IMAGE_EXTENSIONS = new Set(['bmp', 'gif', 'jpeg', 'jpg', 'png', 'webp'])
@@ -61,8 +62,8 @@ export function PublishPage() {
   const [dragging, setDragging] = useState(false)
   const [copied, setCopied] = useState<string | null>(null)
 
-  const { data: storages = [] } = useQuery({ queryKey: ['storages'], queryFn: listStorages })
-  const { data: groups = [] } = useQuery({ queryKey: ['storage-groups'], queryFn: listStorageGroups })
+  const { data: storages = [], isLoading: storagesLoading, error: storagesError } = useQuery({ queryKey: ['storages'], queryFn: listStorages })
+  const { data: groups = [], isLoading: groupsLoading, error: groupsError } = useQuery({ queryKey: ['storage-groups'], queryFn: listStorageGroups })
   const { data: target } = useQuery({ queryKey: ['default-publish-target'], queryFn: getDefaultPublishTarget })
   const { data: assets = [], isLoading: assetsLoading } = useQuery({ queryKey: ['assets', 'publish-recent'], queryFn: () => listAssets(6) })
   const { data: tasks = [], error: tasksError, isLoading: tasksLoading } = useQuery({ queryKey: ['tasks', 'publish-recent'], queryFn: () => listTasks(6), refetchInterval: 1500 })
@@ -72,6 +73,8 @@ export function PublishPage() {
     ...storages.filter((storage) => storage.enabled).map((storage) => ({ kind: 'storage' as const, id: storage.id, name: storage.name, hint: storage.providerKey.toUpperCase() })),
     ...groups.map((group) => ({ kind: 'group' as const, id: group.id, name: group.name, hint: group.strategy === 'mirror_all' ? 'Mirror' : 'Failover' })),
   ], [groups, storages])
+
+  const needsFirstStorage = !storagesLoading && !groupsLoading && !storagesError && !groupsError && targets.length === 0
 
   const targetMutation = useMutation({
     mutationFn: ({ kind, id }: { kind: 'storage' | 'group'; id: string }) => setDefaultPublishTarget(kind, id),
@@ -117,9 +120,13 @@ export function PublishPage() {
   async function copyAsset(assetId: string) {
     const asset = assets.find((item) => item.id === assetId)
     if (!asset?.publicUrl || !preferences) return
-    await copyText(formatPublishedAsset(asset.name, asset.publicUrl, preferences))
-    setCopied(assetId)
-    window.setTimeout(() => setCopied((current) => current === assetId ? null : current), 1200)
+    try {
+      await copyText(formatPublishedAsset(asset.name, asset.publicUrl, preferences))
+      setCopied(assetId)
+      window.setTimeout(() => setCopied((current) => current === assetId ? null : current), 1200)
+    } catch (error) {
+      notifyError(`复制失败：${String(error)}`)
+    }
   }
 
   return (
@@ -134,6 +141,19 @@ export function PublishPage() {
         }
       />
 
+      {needsFirstStorage && (
+        <section className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-indigo-200 bg-indigo-50/70 p-5">
+          <div>
+            <h2 className="text-sm font-semibold text-indigo-950">先连接一个云端，再发布第一张图片</h2>
+            <p className="mt-1 text-xs leading-5 text-indigo-800">
+              在“云端”选择 R2、S3、GitHub 等存储，测试并保存后镜云会配置默认上传链。首次上传完成后，可在资源页核对图片和外链。
+            </p>
+          </div>
+          <button onClick={() => setPage('storages')} className="rounded-xl bg-indigo-950 px-4 py-2.5 text-xs font-semibold text-white">
+            去添加存储 →
+          </button>
+        </section>
+      )}
       <div className="mt-8 grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <section className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_10px_40px_rgba(15,23,42,.04)]">
           <div className="border-b border-slate-100 px-6 py-5">
@@ -178,7 +198,7 @@ export function PublishPage() {
                 <UploadCloud size={34} />
               </div>
               <h2 className="mt-7 text-2xl font-semibold tracking-[-0.03em]">{dragging ? '松开即可加入发布队列' : '把图片拖到这里'}</h2>
-              <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-400">或点击选择文件。选择后会先预览，再经过图片处理、多云策略、插件执行和结果确认。</p>
+              <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-400">或点击选择文件。提交前可核对文件列表，再执行图片处理、上传和结果确认。</p>
               <div className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-slate-200"><FileImage size={16} />选择图片</div>
             </div>
           </button>
