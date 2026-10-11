@@ -313,9 +313,20 @@ export function SettingsPage() {
     }
   }, [])
   const [updateDownloaded, setUpdateDownloaded] = useState<DownloadedUpdateSummary | null>(null)
+  // Unlike a cached startup result, this feedback proves that the user's manual
+  // check just completed. A repeated 1.4.9 → 1.4.9 result must not look inert.
+  const [manualUpdateFeedback, setManualUpdateFeedback] = useState<string | null>(null)
   const checkUpdateMutation = useMutation({
     mutationFn: checkForUpdates,
-    onSuccess: (result) => { setUpdateCheck(result); setUpdateDownloaded(null) },
+    onMutate: () => setManualUpdateFeedback(null),
+    onSuccess: (result) => {
+      setUpdateCheck(result)
+      setUpdateDownloaded(null)
+      const checkedAt = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+      setManualUpdateFeedback(result.updateAvailable
+        ? `本次检查成功（${checkedAt}）：GitHub 已发布 v${result.latestVersion}。`
+        : `本次检查成功（${checkedAt}）：GitHub 暂无比 v${result.currentVersion} 更新的正式版。`)
+    },
   })
   const downloadUpdateMutation = useMutation({
     mutationFn: () => { if (!updateCheck) throw new Error('请先检查更新'); return downloadUpdate(updateCheck) },
@@ -324,7 +335,7 @@ export function SettingsPage() {
   const installUpdateMutation = useMutation({
     mutationFn: () => { if (!updateDownloaded) throw new Error('请先下载安装包'); return installUpdate(updateDownloaded.updateId) },
   })
-  const updateError = checkUpdateMutation.error || downloadUpdateMutation.error || installUpdateMutation.error
+  const updateError = downloadUpdateMutation.error || installUpdateMutation.error
 
   const regenerateApiTokenMutation = useMutation({
     mutationFn: regenerateLocalApiToken,
@@ -1556,6 +1567,17 @@ export function SettingsPage() {
           <div><div className="text-sm font-semibold">关于与更新</div><div className="mt-1 text-xs leading-5 text-slate-400">检查 GitHub Releases 的新版本；下载的安装包必须通过 sha256 校验才会被启动。配置、索引和密钥保存在系统目录，更新不会触碰。</div></div>
           <div className="flex shrink-0 flex-col items-end gap-1"><span className="font-mono text-[11px] text-slate-400">v{__APP_VERSION__}</span><button disabled={checkUpdateMutation.isPending} onClick={() => checkUpdateMutation.mutate()} className="h-9 rounded-xl border border-slate-200 px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">{checkUpdateMutation.isPending ? '检查中…' : '检查更新'}</button></div>
         </div>
+        {checkUpdateMutation.isPending && (
+          <p role="status" aria-live="polite" className="mt-3 text-xs text-slate-600">正在连接 GitHub 检查最新正式版本…</p>
+        )}
+        {!checkUpdateMutation.isPending && manualUpdateFeedback && (
+          <p role="status" aria-live="polite" className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-800">{manualUpdateFeedback}</p>
+        )}
+        {checkUpdateMutation.error && (
+          <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-700">
+            本次检查未成功：{String(checkUpdateMutation.error)}。下方版本信息可能来自此前的检查，不能代表本次结果。
+          </p>
+        )}
         {updateCheck && (
           <div className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-xs leading-6 text-slate-600">
             <div>当前版本 <span className="font-mono">v{updateCheck.currentVersion}</span> · 最新版本 <span className="font-mono">v{updateCheck.latestVersion}</span>{updateCheck.publishedAt ? ` · 发布于 ${updateCheck.publishedAt.slice(0, 10)}` : ''}</div>
