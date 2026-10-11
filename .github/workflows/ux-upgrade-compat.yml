@@ -39,7 +39,7 @@ jobs:
           repository: 159357yangjun/Mirror_Cloud
           run-id: 38119902170
           name: mirror-cloud-ux-native-candidate-installers
-          github-token: \${{ github.token }}
+          github-token: ${{ github.token }}
           path: candidate
 
       - name: Verify old official release and candidate install compatibility
@@ -51,6 +51,6 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mirror-cloud-ux-upgrade-compat-evidence
-          path: \${{ runner.temp }}/mirror-cloud-upgrade-compat/**
+          path: ${{ runner.temp }}/mirror-cloud-upgrade-compat/**
           if-no-files-found: warn
           retention-days: 14
