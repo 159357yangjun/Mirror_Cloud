@@ -14,6 +14,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .node-version
@@ -24,10 +26,11 @@ jobs:
         shell: pwsh
         run: |
           $expected = '0f7ac930860c46c3553f76d83429aae842fa35a9'
-          $parent = (git rev-parse HEAD^).Trim()
-          $changed = @(git diff --name-only HEAD^ HEAD)
-          if ($parent -ne $expected -or $changed.Count -ne 1 -or $changed[0] -ne '.github/workflows/ux-browser-smoke.yml') {
-            throw "Isolated browser test must derive from $expected, changing only its own workflow. Found parent=$parent changed=$($changed -join ',')"
+          git merge-base --is-ancestor $expected HEAD
+          if ($LASTEXITCODE -ne 0) { throw "Original #33 product source $expected is not an ancestor of this isolated CI branch." }
+          $changed = @(git diff --name-only $expected HEAD)
+          if ($LASTEXITCODE -ne 0 -or $changed.Count -ne 1 -or $changed[0] -ne '.github/workflows/ux-browser-smoke.yml') {
+            throw "Only this test workflow may differ from exact #33 product source $expected. Changed=$($changed -join ',')"
           }
 
       - name: Install locked frontend dependencies
