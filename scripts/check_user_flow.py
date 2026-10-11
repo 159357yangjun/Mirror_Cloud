@@ -299,6 +299,9 @@ require("accepted = await confirmAction({" in upload and "retryFailedMutation.mu
 require("retryFailedMutation.isError" in upload and "retryDispatchRef.current" in upload, 'ambiguous failed retry cannot be replayed in same session')
 require("publishDispatchRef.current" in upload and "上次提交状态不确定" in upload, 'ambiguous initial submission requires explicit confirmation')
 require("listTasks(Math.min(10_000" in upload, 'upload dialog requests more than default 100 task rows')
+require("function removeSelectedFile(path: string)" in upload and "current.filter((item) => item !== path)" in upload and "onClick={() => removeSelectedFile(path)}" in upload, 'file upload selection supports individual removal before submit')
+require("error: tasksError" in upload and "refetch: refetchTasks" in upload and "onClick={() => void refetchTasks()}" in upload, 'upload status read errors have a visible manual recovery action')
+require("cancelledTasks.length" in upload and "successfulTasks.length" in upload and "已取消 · 请核对是否产生部分云端副作用" in upload, 'cancelled upload tasks cannot be reported as successful')
 
 # Typora self-heals the same pipeline.
 require('ensure_default_workflow(&context).await?' in cli, 'Typora auto-ensures default pipeline')
