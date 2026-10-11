@@ -1,0 +1,83 @@
+name: UX Browser Acceptance (isolated)
+
+on:
+  push:
+    branches:
+      - ci/ux-browser-smoke-20261011
+
+permissions:
+  contents: read
+
+jobs:
+  windows-ui-browser:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Verify branch contains only the fixed candidate plus this test workflow
+        shell: pwsh
+        run: |
+          $expected = '0f7ac930860c46c3553f76d83429aae842fa35a9'
+          $parent = (git rev-parse HEAD^).Trim()
+          $changed = @(git diff --name-only HEAD^ HEAD)
+          if ($parent -ne $expected -or $changed.Count -ne 1 -or $changed[0] -ne '.github/workflows/ux-browser-smoke.yml') {
+            throw "Isolated browser test must derive from $expected, changing only its own workflow. Found parent=$parent changed=$($changed -join ',')"
+          }
+
+      - name: Install locked frontend dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Exercise real keyboard and mouse flows using headless Windows Edge
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $env:RUNNER_TEMP 'mirror-cloud-ux-browser'
+          New-Item -ItemType Directory -Path $out -Force | Out-Null
+          $desktop = Join-Path $env:GITHUB_WORKSPACE 'apps/desktop'
+          $vite = Join-Path $desktop 'node_modules/vite/bin/vite.js'
+          $proc = Start-Process -FilePath (Get-Command node).Source -ArgumentList @($vite, '--host', '127.0.0.1', '--port', '1420', '--strictPort') -WorkingDirectory $desktop -RedirectStandardOutput (Join-Path $out 'vite-stdout.txt') -RedirectStandardError (Join-Path $out 'vite-stderr.txt') -PassThru
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 60; $i++) {
+              try {
+                $response = Invoke-WebRequest 'http://127.0.0.1:1420/' -UseBasicParsing -TimeoutSec 2
+                if ([int]$response.StatusCode -eq 200) { $ready = $true; break }
+              } catch { Start-Sleep -Seconds 1 }
+            }
+            if (-not $ready) { throw 'Isolated Vite did not become reachable on port 1420' }
+
+            & node scripts/verify_dialog_interactions.mjs confirm --out $out 2>&1 |
+              Tee-Object -FilePath (Join-Path $out 'confirm-console.txt')
+            if ($LASTEXITCODE -ne 0) { throw "Real browser confirm gate failed, exit=$LASTEXITCODE" }
+            $confirmLog = Get-Content (Join-Path $out 'confirm-console.txt') -Raw
+            if ($confirmLog -notmatch 'CONFIRM_GATE steps=\d+ checked=\d+ failed=0') {
+              throw 'Browser confirm gate had no explicit zero-failure verdict'
+            }
+
+            & node scripts/verify_dialog_interactions.mjs pages --out $out 2>&1 |
+              Tee-Object -FilePath (Join-Path $out 'pages-console.txt')
+            if ($LASTEXITCODE -ne 0) { throw "Real browser pages gate failed, exit=$LASTEXITCODE" }
+            $pagesLog = Get-Content (Join-Path $out 'pages-console.txt') -Raw
+            if ($pagesLog -notmatch 'PAGES_GATE routes=\d+ judged=\d+ checked=\d+ failed=0') {
+              throw 'Browser pages gate had no explicit zero-failure verdict'
+            }
+            Write-Host 'Both interactive browser gates measured and passed, not skipped.'
+          } finally {
+            if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+          }
+
+      - name: Preserve browser screenshots and gate outputs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ux-browser-acceptance-evidence
+          path: ${{ runner.temp }}/mirror-cloud-ux-browser/**
+          if-no-files-found: warn
+          retention-days: 7
