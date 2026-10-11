@@ -1906,6 +1906,15 @@ require(re.search(r'<h2[^>]*\bbreak-words\b[^>]*>', confirm_dialog) is not None,
 require(re.search(r'<p[^>]*\bbreak-words\b[^>]*>', confirm_dialog) is not None, 'the confirm dialog detail wraps unbreakable filenames')
 require("event.key === 'Escape'" in confirm_dialog and 'settle(false)' in confirm_dialog, 'Escape cancels the confirm request')
 require('cancelRef.current?.focus()' in confirm_dialog, 'the dialog focuses Cancel, so Enter cannot fire the destructive action')
+require('ref={dialogRef}' in confirm_dialog
+        and 'event.key !== \'Tab\'' in confirm_dialog
+        and 'dialogRef.current.contains(active)' in confirm_dialog
+        and 'last.focus()' in confirm_dialog and 'first.focus()' in confirm_dialog,
+        'the confirm dialog traps keyboard focus instead of exposing underlying controls')
+require('previouslyFocused?.isConnected' in confirm_dialog
+        and 'previouslyFocused.focus({ preventScroll: true })' in confirm_dialog
+        and 'window.removeEventListener(\'keydown\', onKeyDown)' in confirm_dialog,
+        'dismissing confirmation safely restores keyboard focus and cleans its listener')
 
 # docs/VISUAL_BASELINE.md measured six defects in the onboarding dialog. These are the four that
 # hold without a browser; the runtime half (contrast below 4.5:1, size utilities discarded on
