@@ -19,7 +19,7 @@
 | #34 原生 Windows + NSIS/MSI | [#38132107841](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/38132107841) | Success | 固定源码 `e6c2e0e4...`；原生窗口 2 次启动、SQLite 进程重启保留、安装卸载均通过 |
 | #34 构建身份 | [#38123998014](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/38123998014) | Success | 默认构建没有候选标识；显式设置完整 SHA 后前端显示短 SHA，语义版本仍为 1.4.9 |
 | 官方 1.4.9 → #33 候选升级 | [#38123515352](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/38123515352) | Success | 临时 Windows 用户配置中的 SQLite 设置、离线存储记录、`credential_ref` 和本机 API Windows 凭据字节保留；不是任何真实云 Token 兼容性的证明 |
-| 官方 1.4.9 → #34 候选升级 | [升级兼容性测试分支](https://github.com/159357yangjun/Mirror_Cloud/tree/ci/ux34-upgrade-compat-20261011) | **需核对最新运行结论** | 复用固定 #34 安装包，在隔离 Windows Runner 验证同版本 NSIS 覆盖安装和同一设置/WinCred 判据 |
+| 官方 1.4.9 → #34 候选升级 | [#38140613195](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/38140613195) | **Success** | 使用实际 #34 固定安装包，核验同版本 NSIS 覆盖安装、新旧原生启动、数据库设置、WinCred 本机 API Token 未变；`UPGRADE_UX34_COMPAT_GATE ... failed=0` |
 
 ### #34 原生产物独立核验
 
@@ -62,7 +62,7 @@
 - [x] #35 整栈 Push/PR CI 全绿
 - [x] #34 原生 Windows、安装卸载与候选文件 SHA256 通过
 - [x] #33 的官方版 → 候选版数据库设置与本机凭据保留
-- [ ] #34 同版本候选的独立升级复测判据全部通过（请依最新 run 更新）
+- [x] #34 同版本候选真实 NSIS 覆盖升级复测：[#38140613195](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/38140613195)，`baseline=1 replaced=1 native=2 sqlite=1 settings=1 storage=1 keyring=1 failed=0`
 - [ ] 受保护 R2 真实 E2E + 私有访问、清理、到期验证完成并人工批准
 - [ ] 各 Provider 真实权限/上传/删除/恢复风险按产品承诺验收或明确标为不可用
 - [ ] 正式版本号经维护者确认并全仓同步，新包重建并验证升级
