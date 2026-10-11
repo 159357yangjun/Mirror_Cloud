@@ -31,6 +31,7 @@ export interface StorageView {
   detail: string
   publicBaseUrl?: string | null
   publicHint: string
+  accessMode?: 'public' | 'private_requested' | 'unknown'
 }
 
 
@@ -61,6 +62,7 @@ export interface BatchStorageOperationView {
 
 export interface CreateS3StorageInput {
   providerKey: 'r2' | 's3'
+  accessMode?: 'public' | 'private_requested'
   name: string
   accountId?: string
   endpoint?: string
@@ -70,6 +72,8 @@ export interface CreateS3StorageInput {
   publicBaseUrl?: string
   accessKeyId: string
   secretAccessKey: string
+  /** Enforce atomic target conflict checks for an imported configuration. */
+  restoreGuard?: boolean
 }
 
 export interface CreateObjectStorageInput {
@@ -81,6 +85,8 @@ export interface CreateObjectStorageInput {
   publicBaseUrl?: string
   accessKeyId: string
   secretAccessKey: string
+  /** Enforce atomic target conflict checks for an imported configuration. */
+  restoreGuard?: boolean
 }
 
 export interface CreateWebDavStorageInput {
@@ -90,6 +96,8 @@ export interface CreateWebDavStorageInput {
   publicBaseUrl?: string
   username: string
   password: string
+  /** Enforce atomic target conflict checks for an imported configuration. */
+  restoreGuard?: boolean
 }
 
 export interface CreateRepositoryStorageInput {
@@ -101,6 +109,8 @@ export interface CreateRepositoryStorageInput {
   root?: string
   publicBaseUrl?: string
   token: string
+  /** Enforce atomic target conflict checks for an imported configuration. */
+  restoreGuard?: boolean
 }
 
 export interface CreateStorageGroupInput {
@@ -266,7 +276,10 @@ export interface AssetView {
   createdAt: string
   deployments: Array<{
     storage: string
+    storageId: string
+    remotePath: string
     providerKey: string
+    accessMode: 'private_requested' | 'unknown'
     role: DeploymentRole
     ok: boolean
     error?: string | null

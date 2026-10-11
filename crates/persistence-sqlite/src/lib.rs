@@ -1,5 +1,6 @@
 use std::path::Path;
 
+pub mod asset_staging;
 pub mod journal;
 pub mod remote_scan;
 
@@ -77,6 +78,66 @@ impl StorageRepository {
             .execute(&self.pool)
             .await?;
         Ok(())
+    }
+
+    /// Insert a reconnect target atomically. A plain SELECT followed by INSERT is unsafe:
+    /// another window may create the same target between those operations.
+    ///
+    /// The single SQLite statement makes the conflict decision and insertion indivisible.
+    /// Existing duplicates are tolerated; only new reconnections are guarded.
+    pub async fn insert_if_no_conflict(&self, record: &StorageRecord) -> Result<bool, sqlx::Error> {
+        let field = |name: &str| {
+            record
+                .config_json
+                .get(name)
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim()
+                .to_string()
+        };
+        let bucket = field("bucket");
+        let owner = field("owner");
+        let repo = field("repo");
+        let branch = field("branch");
+        let repo_identity_complete = !owner.is_empty() && !repo.is_empty() && !branch.is_empty();
+        let result = sqlx::query(
+            r#"INSERT INTO storages
+               (id,name,provider_key,category,credential_ref,config_json,capabilities_json,enabled,created_at,updated_at)
+               SELECT ?,?,?,?,?,?,?,?,?,?
+               WHERE NOT EXISTS (
+                 SELECT 1 FROM storages AS existing
+                 WHERE existing.provider_key = ?
+                 AND (
+                   lower(trim(existing.name)) = lower(trim(?))
+                   OR (? <> '' AND lower(trim(coalesce(json_extract(existing.config_json,'$.bucket'),''))) = lower(trim(?)))
+                   OR (? = 1
+                       AND lower(trim(coalesce(json_extract(existing.config_json,'$.owner'),''))) = lower(trim(?))
+                       AND lower(trim(coalesce(json_extract(existing.config_json,'$.repo'),''))) = lower(trim(?))
+                       AND lower(trim(coalesce(json_extract(existing.config_json,'$.branch'),''))) = lower(trim(?)))
+                 )
+               )"#,
+        )
+        .bind(record.id.to_string())
+        .bind(&record.name)
+        .bind(&record.provider_key)
+        .bind(&record.category)
+        .bind(&record.credential_ref)
+        .bind(record.config_json.to_string())
+        .bind(record.capabilities_json.to_string())
+        .bind(if record.enabled { 1 } else { 0 })
+        .bind(record.created_at.to_rfc3339())
+        .bind(record.updated_at.to_rfc3339())
+        .bind(&record.provider_key)
+        .bind(&record.name)
+        .bind(&bucket)
+        .bind(&bucket)
+        .bind(repo_identity_complete)
+        .bind(&owner)
+        .bind(&repo)
+        .bind(&branch)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
     }
 
     pub async fn get(&self, id: Uuid) -> Result<Option<StorageRecord>, sqlx::Error> {
@@ -183,6 +244,33 @@ impl TaskRepository {
             .bind(task.finished_at.map(|value| value.to_rfc3339()))
             .execute(&self.pool)
             .await?;
+        Ok(())
+    }
+
+    /// Persist a whole publish batch before starting any workers.
+    /// If one insert fails, SQLite rolls back all earlier items in this batch.
+    pub async fn insert_many(&self, entries: &[(Task, Value)]) -> Result<(), sqlx::Error> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        let mut tx = self.pool.begin().await?;
+        for (task, payload) in entries {
+            sqlx::query("INSERT INTO tasks (id,kind,status,progress,payload_json,attempt,max_attempts,error,created_at,started_at,finished_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+                .bind(task.id.to_string())
+                .bind(&task.kind)
+                .bind(task_status_str(&task.status))
+                .bind(task.progress as i64)
+                .bind(payload.to_string())
+                .bind(task.attempt as i64)
+                .bind(task.max_attempts as i64)
+                .bind(&task.error)
+                .bind(task.created_at.to_rfc3339())
+                .bind(task.started_at.map(|value| value.to_rfc3339()))
+                .bind(task.finished_at.map(|value| value.to_rfc3339()))
+                .execute(&mut *tx)
+                .await?;
+        }
+        tx.commit().await?;
         Ok(())
     }
 
@@ -352,6 +440,31 @@ impl WorkflowRepository {
             .await?;
         tx.commit().await?;
         Ok(())
+    }
+
+    /// Restore only as a non-default workflow and refuse any existing name.
+    /// A single conditional INSERT is atomic under concurrent restore windows.
+    pub async fn insert_restored_if_name_free(
+        &self,
+        workflow: &Workflow,
+    ) -> Result<bool, sqlx::Error> {
+        let now = Utc::now().to_rfc3339();
+        let steps = serde_json::to_string(&workflow.steps)
+            .map_err(|error| sqlx::Error::Decode(Box::new(error)))?;
+        let result = sqlx::query(
+            "INSERT INTO workflows (id,name,steps_json,is_default,created_at,updated_at,description,source_recipe) \
+             SELECT ?,?,?,0,?,?,?,NULL WHERE NOT EXISTS (SELECT 1 FROM workflows WHERE lower(trim(name))=lower(trim(?)))",
+        )
+        .bind(workflow.id.to_string())
+        .bind(&workflow.name)
+        .bind(&steps)
+        .bind(&now)
+        .bind(&now)
+        .bind("")
+        .bind(&workflow.name)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
     }
 
     pub async fn upsert_system_default(
@@ -556,6 +669,47 @@ impl StorageGroupRepository {
         Ok(())
     }
 
+    /// Restore one group without overwriting existing names or leaving half its members.
+    /// The name check is inside INSERT; the group and members share a transaction.
+    pub async fn insert_restored_if_name_free(
+        &self,
+        id: Uuid,
+        name: &str,
+        strategy: &str,
+        members: &[NewStorageGroupMember],
+    ) -> Result<bool, sqlx::Error> {
+        let now = Utc::now().to_rfc3339();
+        let mut tx = self.pool.begin().await?;
+        let result = sqlx::query(
+            "INSERT INTO storage_groups (id,name,strategy,created_at,updated_at) \
+             SELECT ?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM storage_groups WHERE lower(trim(name))=lower(trim(?)))",
+        )
+        .bind(id.to_string())
+        .bind(name)
+        .bind(strategy)
+        .bind(&now)
+        .bind(&now)
+        .bind(name)
+        .execute(&mut *tx)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Ok(false);
+        }
+        for member in members {
+            sqlx::query(
+                "INSERT INTO storage_group_members (group_id,storage_id,role,priority) VALUES (?,?,?,?)",
+            )
+            .bind(id.to_string())
+            .bind(member.storage_id.to_string())
+            .bind(&member.role)
+            .bind(member.priority)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(true)
+    }
+
     pub async fn get(&self, id: Uuid) -> Result<Option<StorageGroupRecord>, sqlx::Error> {
         let row = sqlx::query(
             "SELECT id,name,strategy,created_at,updated_at FROM storage_groups WHERE id=?",
@@ -656,6 +810,8 @@ pub struct DeploymentSummaryRecord {
     pub storage_id: Uuid,
     pub storage_name: String,
     pub provider_key: String,
+    /// Stored intent from R2/S3 config_json, not a remotely proven privacy verdict.
+    pub access_mode: String,
     pub role: String,
     pub status: String,
     pub remote_path: String,
@@ -710,6 +866,25 @@ pub struct AssetRepository {
 impl AssetRepository {
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
+    }
+
+    /// Read-only identity check for a portable catalogue preview.
+    /// Unlike a bounded asset list, this cannot miss older duplicates.
+    pub async fn has_variant_identity(
+        &self,
+        content_hash: &str,
+        mime_type: &str,
+        size_bytes: u64,
+    ) -> Result<bool, sqlx::Error> {
+        let exists: i64 = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM asset_variants WHERE content_hash=? AND mime_type=? AND size_bytes=?)",
+        )
+        .bind(content_hash)
+        .bind(mime_type)
+        .bind(size_bytes as i64)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(exists != 0)
     }
 
     pub async fn insert_published(
@@ -793,7 +968,7 @@ impl AssetRepository {
             let variant_raw: String = row.try_get("variant_id")?;
             let created: String = row.try_get("created_at")?;
             let variant_id = parse_uuid(&variant_raw)?;
-            let dep_rows = sqlx::query("SELECT d.id AS deployment_id,d.storage_id,s.name AS storage_name,s.provider_key,d.role,d.status,d.remote_path,d.public_url,d.last_error,d.last_error_kind,                         d.deployed_at,d.last_attempted_at,d.last_observed_at,d.last_verified_at                          FROM deployments d JOIN storages s ON s.id=d.storage_id WHERE d.variant_id=?                          ORDER BY CASE d.role WHEN 'primary' THEN 0 WHEN 'mirror' THEN 1 ELSE 2 END")
+            let dep_rows = sqlx::query("SELECT d.id AS deployment_id,d.storage_id,s.name AS storage_name,s.provider_key,s.config_json AS storage_config_json,d.role,d.status,d.remote_path,d.public_url,d.last_error,d.last_error_kind,                         d.deployed_at,d.last_attempted_at,d.last_observed_at,d.last_verified_at                          FROM deployments d JOIN storages s ON s.id=d.storage_id WHERE d.variant_id=?                          ORDER BY CASE d.role WHEN 'primary' THEN 0 WHEN 'mirror' THEN 1 ELSE 2 END")
                 .bind(variant_id.to_string())
                 .fetch_all(&self.pool)
                 .await?;
@@ -802,11 +977,23 @@ impl AssetRepository {
                 .map(|deployment| {
                     let deployment_id: String = deployment.try_get("deployment_id")?;
                     let storage_id: String = deployment.try_get("storage_id")?;
+                    let config_raw: String = deployment.try_get("storage_config_json")?;
+                    let config: Value = parse_json(&config_raw)?;
+                    let provider_key: String = deployment.try_get("provider_key")?;
+                    let access_mode = if matches!(provider_key.as_str(), "r2" | "s3")
+                        && config.get("access_mode").and_then(Value::as_str)
+                            == Some("private_requested")
+                    {
+                        "private_requested"
+                    } else {
+                        "unknown"
+                    };
                     Ok(DeploymentSummaryRecord {
                         deployment_id: parse_uuid(&deployment_id)?,
                         storage_id: parse_uuid(&storage_id)?,
                         storage_name: deployment.try_get("storage_name")?,
-                        provider_key: deployment.try_get("provider_key")?,
+                        provider_key,
+                        access_mode: access_mode.to_string(),
                         role: deployment.try_get("role")?,
                         status: deployment.try_get("status")?,
                         remote_path: deployment.try_get("remote_path")?,
@@ -1401,5 +1588,286 @@ impl PluginRepository {
                 })
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod reconnect_conflict_tests {
+    use super::{StorageRecord, StorageRepository};
+    use chrono::Utc;
+    use serde_json::{Value, json};
+    use sqlx::SqlitePool;
+    use uuid::Uuid;
+
+    fn storage(name: &str, provider: &str, config_json: Value) -> StorageRecord {
+        let now = Utc::now();
+        StorageRecord {
+            id: Uuid::new_v4(),
+            name: name.into(),
+            provider_key: provider.into(),
+            category: "object".into(),
+            credential_ref: None,
+            config_json,
+            capabilities_json: json!({}),
+            enabled: true,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[sqlx::test]
+    async fn rejects_duplicate_name_and_bucket(pool: SqlitePool) -> Result<(), sqlx::Error> {
+        let repository = StorageRepository::new(pool);
+
+        let first = storage("Photos", "r2", json!({"bucket": "my-pics"}));
+        let same_name = storage(" PHOTOS ", "r2", json!({"bucket": "other"}));
+        let same_bucket = storage("New name", "r2", json!({"bucket": "MY-PICS"}));
+        let different_provider = storage("Photos", "s3", json!({"bucket": "my-pics"}));
+        let different_target = storage("Other target", "r2", json!({"bucket": "different"}));
+
+        assert!(repository.insert_if_no_conflict(&first).await?);
+        assert!(!repository.insert_if_no_conflict(&same_name).await?);
+        assert!(!repository.insert_if_no_conflict(&same_bucket).await?);
+        assert!(
+            repository
+                .insert_if_no_conflict(&different_provider)
+                .await?
+        );
+        assert!(repository.insert_if_no_conflict(&different_target).await?);
+        assert_eq!(repository.list().await?.len(), 3);
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn rejects_duplicate_repository_identity(pool: SqlitePool) -> Result<(), sqlx::Error> {
+        let repository = StorageRepository::new(pool);
+
+        let first = storage(
+            "Git A",
+            "github",
+            json!({"owner": "Alice", "repo": "pics", "branch": "main"}),
+        );
+        let same_target = storage(
+            "Git B",
+            "github",
+            json!({"owner": "ALICE", "repo": "PICS", "branch": "MAIN"}),
+        );
+        let other_branch = storage(
+            "Git C",
+            "github",
+            json!({"owner": "Alice", "repo": "pics", "branch": "archive"}),
+        );
+        assert!(repository.insert_if_no_conflict(&first).await?);
+        assert!(!repository.insert_if_no_conflict(&same_target).await?);
+        assert!(repository.insert_if_no_conflict(&other_branch).await?);
+        assert_eq!(repository.list().await?.len(), 2);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod restored_group_transaction_tests {
+    use super::{NewStorageGroupMember, StorageGroupRepository};
+    use sqlx::SqlitePool;
+    use uuid::Uuid;
+
+    #[sqlx::test]
+    async fn group_restore_avoids_overwrite_and_rolls_back_member_error(
+        pool: SqlitePool,
+    ) -> Result<(), sqlx::Error> {
+        let repository = StorageGroupRepository::new(pool);
+        let storage_id = Uuid::new_v4();
+        // The same member twice violates the compound primary key. A failed member
+        // insert must also roll back the previously inserted group header.
+        let members = vec![
+            NewStorageGroupMember {
+                storage_id,
+                role: "primary".into(),
+                priority: 0,
+            },
+            NewStorageGroupMember {
+                storage_id,
+                role: "backup".into(),
+                priority: 1,
+            },
+        ];
+        let attempted_id = Uuid::new_v4();
+        assert!(
+            repository
+                .insert_restored_if_name_free(attempted_id, "Recover me", "mirror_all", &members)
+                .await
+                .is_err()
+        );
+        assert!(repository.get(attempted_id).await?.is_none());
+        assert!(repository.list().await?.is_empty());
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn group_restore_rejects_existing_name_without_overwriting(
+        pool: SqlitePool,
+    ) -> Result<(), sqlx::Error> {
+        let repository = StorageGroupRepository::new(pool.clone());
+        let storage_a = Uuid::new_v4();
+        let storage_b = Uuid::new_v4();
+        let now = chrono::Utc::now().to_rfc3339();
+        for id in [storage_a, storage_b] {
+            sqlx::query("INSERT INTO storages (id,name,provider_key,category,credential_ref,config_json,capabilities_json,enabled,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
+                .bind(id.to_string())
+                .bind(id.to_string())
+                .bind("r2")
+                .bind("object")
+                .bind(Option::<String>::None)
+                .bind("{}")
+                .bind("{}")
+                .bind(1)
+                .bind(&now)
+                .bind(&now)
+                .execute(&pool)
+                .await?;
+        }
+        let members = vec![
+            NewStorageGroupMember {
+                storage_id: storage_a,
+                role: "primary".into(),
+                priority: 0,
+            },
+            NewStorageGroupMember {
+                storage_id: storage_b,
+                role: "backup".into(),
+                priority: 1,
+            },
+        ];
+        assert!(
+            repository
+                .insert_restored_if_name_free(Uuid::new_v4(), "Photos", "mirror_all", &members)
+                .await?
+        );
+        assert!(
+            !repository
+                .insert_restored_if_name_free(Uuid::new_v4(), " PHOTOS ", "mirror_all", &members)
+                .await?
+        );
+        assert_eq!(repository.list().await?.len(), 1);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod restored_workflow_tests {
+    use super::WorkflowRepository;
+    use domain::{PublishTarget, Workflow, WorkflowStep};
+    use sqlx::SqlitePool;
+    use uuid::Uuid;
+
+    fn workflow(name: &str) -> Workflow {
+        Workflow {
+            id: Uuid::new_v4(),
+            name: name.to_string(),
+            steps: vec![
+                WorkflowStep::Convert {
+                    format: "webp".into(),
+                    quality: 82,
+                },
+                WorkflowStep::Rename {
+                    template: "images/{year}/{month}/{hash:12}-u{uuid}-{stem}.{ext}".into(),
+                },
+                WorkflowStep::Publish {
+                    target: PublishTarget::Storage {
+                        storage_id: Uuid::new_v4(),
+                    },
+                },
+                WorkflowStep::Output {
+                    template: "{url}".into(),
+                },
+            ],
+        }
+    }
+
+    #[sqlx::test]
+    async fn recovered_workflow_preserves_default_and_rejects_duplicate_names(
+        pool: SqlitePool,
+    ) -> Result<(), sqlx::Error> {
+        let repo = WorkflowRepository::new(pool);
+        let original = workflow("Current Default");
+        repo.insert(&original, "", None, true).await?;
+
+        let restored = workflow("Blog Upload");
+        assert!(repo.insert_restored_if_name_free(&restored).await?);
+        assert!(
+            !repo
+                .insert_restored_if_name_free(&workflow(" BLOG UPLOAD "))
+                .await?
+        );
+
+        let list = repo.list().await?;
+        assert_eq!(list.len(), 2);
+        assert!(repo.get(original.id).await?.unwrap().is_default);
+        assert!(!repo.get(restored.id).await?.unwrap().is_default);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod task_batch_transaction_tests {
+    use super::TaskRepository;
+    use chrono::Utc;
+    use domain::{Task, TaskStatus};
+    use serde_json::json;
+    use sqlx::SqlitePool;
+    use uuid::Uuid;
+
+    fn queued_task(id: Uuid) -> Task {
+        Task {
+            id,
+            kind: "workflow_publish".into(),
+            status: TaskStatus::Queued,
+            progress: 0,
+            attempt: 0,
+            max_attempts: 3,
+            error: None,
+            created_at: Utc::now(),
+            started_at: None,
+            finished_at: None,
+        }
+    }
+
+    #[sqlx::test]
+    async fn batch_insert_persists_all_sources(pool: SqlitePool) -> Result<(), sqlx::Error> {
+        let repository = TaskRepository::new(pool);
+        let entries = vec![
+            (queued_task(Uuid::new_v4()), json!({"path": "first.png"})),
+            (queued_task(Uuid::new_v4()), json!({"path": "second.png"})),
+        ];
+
+        repository.insert_many(&entries).await?;
+        for (task, payload) in &entries {
+            let recorded = repository.get(task.id).await?.expect("task persisted");
+            assert_eq!(recorded.status, "queued");
+            assert_eq!(&recorded.payload_json, payload);
+        }
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn duplicate_task_in_batch_rolls_back_all_sources(
+        pool: SqlitePool,
+    ) -> Result<(), sqlx::Error> {
+        let repository = TaskRepository::new(pool.clone());
+        let id = Uuid::new_v4();
+        let entries = vec![
+            (queued_task(id), json!({"path": "first.png"})),
+            (queued_task(id), json!({"path": "second.png"})),
+        ];
+
+        assert!(repository.insert_many(&entries).await.is_err());
+        let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tasks")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(
+            total, 0,
+            "a failed batch must leave no partial queued tasks"
+        );
+        Ok(())
     }
 }
