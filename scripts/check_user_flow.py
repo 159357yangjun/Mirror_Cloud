@@ -2463,7 +2463,7 @@ require('正在提交任务…' in upload_copy and '检查目标…' not in uplo
 # Later micro-interactions: keyboard stays inside the upload modal; disabled actions
 # explain the missing prerequisite; validation points to a specific URL input line.
 require('dialogRef.current?.focus({ preventScroll: true })' in upload_copy
-        and 'previouslyFocused?.focus({ preventScroll: true })' in upload_copy
+        and 'if (previouslyFocused?.isConnected) previouslyFocused.focus({ preventScroll: true })' in upload_copy
         and 'if (!uploadOpen) return' in upload_copy,
         'upload modal moves focus into the dialog and restores the invoking control')
 require("event.key === 'Escape'" in upload_copy
