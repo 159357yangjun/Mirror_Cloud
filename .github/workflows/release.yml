@@ -109,7 +109,7 @@ jobs:
       - name: Verify packaged frontend identifies exact candidate commit
         shell: pwsh
         run: |
-          $short = 'e6c2e0e4e78d'
+          $short = $env:MIRROR_CANDIDATE_SOURCE_SHA.Substring(0, 12)
           $bundleText = (Get-ChildItem apps/desktop/dist/assets -File -Filter '*.js' | ForEach-Object {
             [System.IO.File]::ReadAllText($_.FullName)
           }) -join "`n"
