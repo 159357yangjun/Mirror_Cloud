@@ -125,7 +125,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             </button>
             <div className="app-sidebar-footer theme-surface rounded-2xl border p-3">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-xs font-medium text-[var(--text-secondary)]">v{__APP_VERSION__} · Mirror Cloud</div>
+                <div className="min-w-0 text-xs font-medium text-[var(--text-secondary)]">
+                  v{__APP_VERSION__} · Mirror Cloud
+                  {__APP_CANDIDATE_LABEL__ && <div className="mt-1 break-all font-mono text-[10px] text-amber-700">{__APP_CANDIDATE_LABEL__}</div>}
+                </div>
                 {updateAvailableVersion && (
                   <button
                     onClick={() => setPage('settings')}

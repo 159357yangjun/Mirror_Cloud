@@ -1565,8 +1565,13 @@ export function SettingsPage() {
       <section className="mt-6 rounded-[24px] border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div><div className="text-sm font-semibold">关于与更新</div><div className="mt-1 text-xs leading-5 text-slate-400">仅检查 GitHub 已发布的正式版本，不包含测试候选版；不会自动下载或安装。升级前请备份本地数据，安装包需通过 SHA256 校验。</div></div>
-          <div className="flex shrink-0 flex-col items-end gap-1"><span className="font-mono text-[11px] text-slate-400">v{__APP_VERSION__}</span><button disabled={checkUpdateMutation.isPending} onClick={() => checkUpdateMutation.mutate()} className="h-9 rounded-xl border border-slate-200 px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">{checkUpdateMutation.isPending ? '检查中…' : '检查更新'}</button></div>
+          <div className="flex shrink-0 flex-col items-end gap-1"><span className="font-mono text-[11px] text-slate-400">v{__APP_VERSION__}</span>{__APP_CANDIDATE_LABEL__ && <span className="font-mono text-[11px] text-amber-700">{__APP_CANDIDATE_LABEL__}</span>}<button disabled={checkUpdateMutation.isPending} onClick={() => checkUpdateMutation.mutate()} className="h-9 rounded-xl border border-slate-200 px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">{checkUpdateMutation.isPending ? '检查中…' : '检查更新'}</button></div>
         </div>
+        {__APP_CANDIDATE_LABEL__ && (
+          <p role="note" className="mt-3 text-xs leading-5 text-amber-800">
+            当前为未发布的测试候选构建。检查更新只比较正式 GitHub Release；即使显示“无新版本”，也不代表候选构建与正式版内容完全相同。
+          </p>
+        )}
         {checkUpdateMutation.isPending && (
           <p role="status" aria-live="polite" className="mt-3 text-xs text-slate-600">正在连接 GitHub 检查最新正式版本…</p>
         )}
