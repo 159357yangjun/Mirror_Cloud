@@ -1,10 +1,11 @@
-name: Release Bundle
+# Isolated candidate build. Production source is the frozen parent commit.
+# No GitHub Release publishing or privileged cloud workflows.
+name: UX34 Native Candidate Installer Smoke
 
 on:
-  workflow_dispatch:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - 'ci/ux34-native-smoke-20261011'
 
 permissions:
   contents: read
@@ -15,8 +16,30 @@ jobs:
     timeout-minutes: 75
     env:
       DOCS_BASE_URL: https://159357yangjun.github.io/image-hosting-platform
+      MIRROR_CANDIDATE_SOURCE_SHA: e6c2e0e4e78d6677bbcd3bc98c6aba2ceb7e25df
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 10
+          persist-credentials: false
+      - name: Verify isolated candidate source and prevent release runs
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -ne 'refs/heads/ci/ux34-native-smoke-20261011') {
+            throw "Workflow must run only on the isolated MVP installer smoke branch."
+          }
+          $candidate = 'e6c2e0e4e78d6677bbcd3bc98c6aba2ceb7e25df'
+          git merge-base --is-ancestor $candidate HEAD
+          if ($LASTEXITCODE -ne 0) {
+            throw "The current smoke-build branch does not descend from frozen candidate $candidate."
+          }
+          $changed = @(git diff --name-only $candidate HEAD)
+          $allowed = @('.github/workflows/release.yml', '.github/scripts/native_tauri_acceptance.ps1')
+          if ($LASTEXITCODE -ne 0 -or $changed.Count -ne 2 -or @($changed | Where-Object { $_ -notin $allowed }).Count -gt 0) {
+            throw "Candidate app source changed unexpectedly: $($changed -join '; ')."
+          }
+          Write-Host "Candidate application source verified: $candidate; only isolated release workflow differs."
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: '.node-version'
@@ -83,6 +106,20 @@ jobs:
         working-directory: apps/desktop
         run: npm run build
 
+      - name: Verify packaged frontend identifies exact candidate commit
+        shell: pwsh
+        run: |
+          $short = 'e6c2e0e4e78d'
+          $bundleText = (Get-ChildItem apps/desktop/dist/assets -File -Filter '*.js' | ForEach-Object {
+            [System.IO.File]::ReadAllText($_.FullName)
+          }) -join "`n"
+          if (-not $bundleText.Contains($short)) {
+            throw "Built frontend missing expected candidate source identity $short"
+          }
+          $version = (Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json).version
+          if ($version -ne '1.4.9') { throw 'Candidate build mutated official semantic version' }
+          Write-Host "NATIVE_CANDIDATE_ID_GATE sha=$short semantic_version=$version failed=0"
+
       - name: Build Windows bundles
         working-directory: apps/desktop
         run: npm run tauri build
@@ -94,6 +131,20 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw 'Release build modified a committed dependency lock. Update dependencies explicitly before releasing.'
           }
+
+      - name: Native Tauri window, SQLite integrity and restart acceptance
+        id: native-acceptance
+        shell: pwsh
+        run: ./.github/scripts/native_tauri_acceptance.ps1
+
+      - name: Preserve native acceptance logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mirror-cloud-ux34-native-acceptance-logs
+          path: ${{ runner.temp }}/mirror-cloud-native-acceptance/**
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Smoke-test NSIS and MSI installers
         id: installer-smoke
@@ -122,13 +173,15 @@ jobs:
           if ($exeFiles.Count -ne 1) { throw "Expected exactly one Windows EXE installer, found $($exeFiles.Count)." }
           if ($msiFiles.Count -ne 1) { throw "Expected exactly one Windows MSI installer, found $($msiFiles.Count)." }
 
-          $exeName = "image-hosting-platform-v$version-windows-x64-setup.exe"
-          $msiName = "image-hosting-platform-v$version-windows-x64.msi"
+          # Artifact filenames identify this as a test candidate, not public v1.4.9.
+          $candidateLabel = 'ux34-candidate-e6c2e0e4e78d'
+          $exeName = "mirror-cloud-$candidateLabel-windows-x64-setup.exe"
+          $msiName = "mirror-cloud-$candidateLabel-windows-x64.msi"
           Copy-Item $exeFiles[0].FullName -Destination (Join-Path $releaseDir $exeName)
           Copy-Item $msiFiles[0].FullName -Destination (Join-Path $releaseDir $msiName)
 
-          $sourceName = "image-hosting-platform-v$version-source.zip"
-          git archive --format=zip -o (Join-Path $releaseDir $sourceName) HEAD
+          $sourceName = "mirror-cloud-ux34-candidate-e6c2e0e4e78d-source.zip"
+          git archive --format=zip -o (Join-Path $releaseDir $sourceName) e6c2e0e4e78d6677bbcd3bc98c6aba2ceb7e25df
           if ($LASTEXITCODE -ne 0) { throw 'git archive failed' }
 
           $checksumPath = Join-Path $releaseDir 'SHA256SUMS.txt'
@@ -143,7 +196,7 @@ jobs:
       - name: Upload Windows release files
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: image-hosting-platform-release-files
+          name: mirror-cloud-ux34-native-candidate-installers
           path: release/*
           if-no-files-found: error
           retention-days: 30
@@ -151,33 +204,10 @@ jobs:
       - name: Upload dependency locks used by this release
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: image-hosting-platform-dependency-locks
+          name: mirror-cloud-ux34-native-candidate-dependency-locks
           path: |
             Cargo.lock
             apps/desktop/package-lock.json
             website/package-lock.json
           if-no-files-found: error
           retention-days: 30
-
-  publish-release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs:
-      - windows-bundle
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: write
-    steps:
-      - name: Download staged release files
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: image-hosting-platform-release-files
-          path: release
-
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          name: Mirror Cloud ${{ github.ref_name }}
-          generate_release_notes: true
-          files: release/*
-          fail_on_unmatched_files: true
