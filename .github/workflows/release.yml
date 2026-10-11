@@ -18,17 +18,25 @@ jobs:
       DOCS_BASE_URL: https://159357yangjun.github.io/image-hosting-platform
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 10
+          persist-credentials: false
       - name: Verify isolated candidate source and prevent release runs
         shell: pwsh
         run: |
           if ($env:GITHUB_REF -ne 'refs/heads/ci/mvp-installer-smoke-20261010') {
             throw "Workflow must run only on the isolated MVP installer smoke branch."
           }
-          $parent = (git rev-parse HEAD^).Trim()
-          if ($parent -ne 'b6568acea19c96a4bddf0fe8338dfcee295a4abf') {
-            throw "Expected frozen candidate parent b6568acea19c96a4bddf0fe8338dfcee295a4abf, got $parent"
+          $candidate = 'b6568acea19c96a4bddf0fe8338dfcee295a4abf'
+          git merge-base --is-ancestor $candidate HEAD
+          if ($LASTEXITCODE -ne 0) {
+            throw "The current smoke-build branch does not descend from frozen candidate $candidate."
           }
-          Write-Host "Candidate source verified: $parent; no GitHub Release publishing."
+          $changed = @(git diff --name-only $candidate HEAD)
+          if ($LASTEXITCODE -ne 0 -or $changed.Count -ne 1 -or $changed[0] -ne '.github/workflows/release.yml') {
+            throw "Candidate app source changed unexpectedly: $($changed -join '; ')."
+          }
+          Write-Host "Candidate application source verified: $candidate; only isolated release workflow differs."
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
