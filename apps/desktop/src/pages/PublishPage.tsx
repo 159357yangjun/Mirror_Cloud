@@ -232,7 +232,7 @@ export function PublishPage() {
                     >{FORMAT_LABELS[format]}</button>
                   ))}
                 </div>
-                <label className="mt-4 flex cursor-pointer items-center justify-between rounded-xl bg-slate-50 px-3 py-3 text-xs text-slate-600">
+                <label className="mt-4 flex min-h-11 cursor-pointer items-center justify-between rounded-xl bg-slate-50 px-3 py-3 text-xs text-slate-600">
                   <span>发布完成自动复制</span>
                   <input
                     type="checkbox"
