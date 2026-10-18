@@ -1,0 +1,71 @@
+name: TaskUI PR39 Browser Acceptance (isolated)
+on:
+  push:
+    branches:
+      - qa/taskui-pr39-windows-browser-20261018
+
+permissions:
+  contents: read
+
+jobs:
+  windows-browser-acceptance:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Guard isolated source, workflow scope and no-cloud boundary
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -ne 'refs/heads/qa/taskui-pr39-windows-browser-20261018') { throw 'Ref is not isolated QA branch' }
+          $base = '62a8fd60625df64b5f8a617548aa54e1cd4a3180'
+          if ((git rev-parse HEAD) -eq $base) { throw 'QA workflow commit did not land on the isolated branch' }
+          $changed = @(git diff --name-only $base HEAD)
+          if ($changed.Count -ne 1 -or $changed[0] -ne '.github/workflows/taskui-pr39-browser-acceptance.yml') { throw "Unexpected QA diff: $($changed -join ', ')" }
+          Write-Host "QA_SOURCE_GATE source=$base workflow_only=1 no_cloud=1"
+      - name: Install deterministic desktop dependencies
+        working-directory: apps/desktop
+        run: npm ci
+      - name: Launch local Vite fixture; real Windows Edge browser probes
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path qa-output | Out-Null
+          $dir = (Resolve-Path apps/desktop).Path
+          $server = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c','npm run dev -- --host 127.0.0.1 > qa-vite.log 2>&1' -WorkingDirectory $dir -PassThru
+          Write-Host "Started local UI dev server process $($server.Id) on loopback 1420; no cloud credentials."
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 80; $i++) {
+              try {
+                $response = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:1420/' -TimeoutSec 3
+                if ($response.StatusCode -eq 200) { $ready = $true; break }
+              } catch {}
+              Start-Sleep -Milliseconds 500
+            }
+            if (-not $ready) { throw 'UI fixture did not come up on localhost:1420' }
+            $failed = @()
+            foreach ($mode in @('pages','confirm','layout')) {
+              Write-Host "TASKUI_BROWSER_MODE_BEGIN $mode"
+              & node scripts/verify_dialog_interactions.mjs $mode '--out=qa-output'
+              $code = $LASTEXITCODE
+              Write-Host "TASKUI_BROWSER_MODE_END mode=$mode exit=$code"
+              if ($code -ne 0) { $failed += "$mode=$code" }
+            }
+            if ($failed.Count -gt 0) { throw "Browser acceptance probe failed: $($failed -join ', ')" }
+          } finally {
+            if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue }
+          }
+      - name: Upload grounded screenshots and diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: taskui-pr39-windows-browser-evidence
+          path: |
+            qa-output/
+            apps/desktop/qa-vite.log
+          if-no-files-found: warn
+          retention-days: 14
