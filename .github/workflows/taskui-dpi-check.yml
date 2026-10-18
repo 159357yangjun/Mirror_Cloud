@@ -1,0 +1,68 @@
+name: TaskUI isolated browser DPR acceptance
+on:
+  push:
+    branches:
+      - qa/taskui-dpi-125-150-20261018
+
+permissions:
+  contents: read
+
+jobs:
+  density:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Verify QA-only source changes and frozen UI head
+        shell: pwsh
+        run: |
+          $src = '6ee670e6975ac06babeb60f841c5b95073eae341'
+          $changed = @(git diff --name-only $src HEAD)
+          $want = @('.github/workflows/taskui-dpi-check.yml', 'scripts/verify_dialog_interactions.mjs')
+          if (@(Compare-Object $changed $want).Count -ne 0) { throw "QA isolation failed: $($changed -join ',')" }
+          Write-Host "TASKUI_DPI_SOURCE_GATE product_head=$src isolated_changes=2"
+      - name: Install frontend and start local fixture
+        working-directory: apps/desktop
+        run: npm ci
+      - name: Verify browser geometry at 125% and 150% DPR emulation
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path qa-density -Force | Out-Null
+          $app = (Resolve-Path apps/desktop).Path
+          $server = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c','npm run dev -- --host 127.0.0.1 > qa-vite.log 2>&1' -WorkingDirectory $app -PassThru
+          try {
+            $up = $false
+            for ($i=0; $i -lt 80; $i++) {
+              try { if ((Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:1420/' -TimeoutSec 3).StatusCode -eq 200) {$up=$true; break} } catch {}
+              Start-Sleep -Milliseconds 500
+            }
+            if (-not $up) { throw 'Local frontend did not start' }
+            foreach ($dpr in @('1.25', '1.5')) {
+              $dir = "qa-density/dpr-$dpr"
+              New-Item -ItemType Directory -Path $dir -Force | Out-Null
+              Write-Host "TASKUI_DPI_BEGIN dpr=$dpr"
+              & node scripts/verify_dialog_interactions.mjs layout "--dpr=$dpr" "--out=$dir"
+              $code = $LASTEXITCODE
+              Write-Host "TASKUI_DPI_END dpr=$dpr exit=$code"
+              if ($code -ne 0) { throw "DPR layout failure: $dpr, exit=$code" }
+            }
+          } finally {
+            if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue }
+          }
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: taskui-browser-dpr-125-150
+          path: |
+            qa-density/
+            apps/desktop/qa-vite.log
+          retention-days: 14
+          if-no-files-found: warn
