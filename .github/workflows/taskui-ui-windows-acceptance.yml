@@ -19,6 +19,18 @@ jobs:
       - name: Install frontend
         working-directory: apps/desktop
         run: npm ci
+      - name: Authentic TaskUI validator, strict project manifest, positive/negative controls
+        shell: pwsh
+        run: |
+          python -m unittest discover -s TaskUI/tests -v
+          if ($LASTEXITCODE -ne 0) { throw 'TaskUI upstream unit tests failed' }
+          python TaskUI/tools/taskui_check.py TaskUI/examples/good.project.taskui.json --strict
+          if ($LASTEXITCODE -ne 0) { throw 'TaskUI positive control failed' }
+          python TaskUI/tools/taskui_check.py TaskUI/examples/bad.project.taskui.json --strict
+          if ($LASTEXITCODE -ne 1) { throw 'TaskUI negative control did not reject' }
+          python TaskUI/tools/taskui_check.py project.taskui.json --strict
+          if ($LASTEXITCODE -ne 0) { throw 'Mirror Cloud TaskUI manifest strict gate failed' }
+          Write-Host 'TASKUI_STRICT_GATE original_validator=1 positive=1 negative=1 real_project=1'
       - name: Run actual Windows Edge page, keyboard and layout probes
         shell: pwsh
         run: |
