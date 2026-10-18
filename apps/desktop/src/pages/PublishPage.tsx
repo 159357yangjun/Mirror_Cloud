@@ -163,7 +163,7 @@ export function PublishPage() {
               <div className={`mx-auto grid size-20 place-items-center rounded-[28px] text-white shadow-xl transition group-hover:-translate-y-1 group-hover:rotate-3 ${dragging ? 'bg-blue-500' : 'bg-gradient-to-br from-slate-950 to-indigo-600'}`}>
                 <UploadCloud size={34} />
               </div>
-              <h2 className="mt-6 text-xl font-semibold tracking-[-0.03em] sm:text-2xl">{dragging ? '松开即可加入发布队列' : '把图片拖到这里'}</h2>
+              <h2 className="mt-6 text-xl font-semibold tracking-[-0.03em]">{dragging ? '松开即可加入发布队列' : '把图片拖到这里'}</h2>
               <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-400">或点击选择文件。提交前可核对文件列表，再执行图片处理、上传和结果确认。</p>
               <div className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-slate-200"><FileImage size={16} />选择图片</div>
             </div>
