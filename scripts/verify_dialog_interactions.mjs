@@ -2953,6 +2953,9 @@ async function main() {
       { width: 640, height: 480 },
     ]
     const ROUTES = routeList()
+    const DPR = Number(opt('dpr', '1'))
+    if (![1, 1.25, 1.5].includes(DPR)) { console.error(`unsupported QA dpr=${DPR}`); finish(2) }
+    console.log(`TASKUI_DPI_QA css_pixel_scale=${DPR} (CDP emulation, NOT Windows system DPI)`)
     const TOUCH = Number(opt('touch', '44'))
     const onlyTier = opt('tier', '') ? Number(opt('tier', '')) : null
     const tiers = onlyTier ? TIERS.filter((t) => t.width === onlyTier) : TIERS
@@ -3249,7 +3252,7 @@ async function main() {
       finish(2)
     }
     for (const tier of tiers) {
-      await send('Emulation.setDeviceMetricsOverride', { width: tier.width, height: tier.height, deviceScaleFactor: 1, mobile: false })
+      await send('Emulation.setDeviceMetricsOverride', { width: tier.width, height: tier.height, deviceScaleFactor: DPR, mobile: false })
       // The override is asynchronous: reading innerWidth on the next tick returns the PREVIOUS
       // tier's width, which under verify:all made the 1024 tier abort and then blame the app.
       let took = false
