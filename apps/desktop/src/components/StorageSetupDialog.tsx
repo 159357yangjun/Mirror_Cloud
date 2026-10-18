@@ -52,12 +52,12 @@ const providerGuideSteps: Record<SupportedProviderKey, string[]> = {
     '点击“测试并保存”，随后到“图库”验证远端文件浏览。',
   ],
   r2: [
-    '在 Cloudflare R2 创建 Bucket，并记下 Account ID。',
-    '选择“公开发布”或“私有存储目标”：私有模式不配置公开域名，但镜云无法仅凭此选项证明 Bucket 未公开。',
-    '创建 R2 API Token / Access Key，获得 Access Key ID 与 Secret Access Key。',
-    'Region 保持 auto；填写 Bucket、Account ID 和密钥。',
-    '填写公开访问域名：它决定图片的公网链接。留空时该云端只能作为镜像 / 备份成员；作为发布目标时发布会失败并回滚。',
-    '点击“测试并保存”，再上传一张测试图片验证。',
+    '先在 Cloudflare R2 创建桶，复制 Bucket 名和 Account ID。桶名不是图片路径，也不是访问域名。',
+    '默认桶使用 Region auto。镜云目前的后端只生成默认辖区 Endpoint；EU / US / FedRAMP 专用辖区暂不支持，请勿误用。',
+    '区分公开发布与私有访问意图。S3 API Endpoint 不能当作公开图片 URL，选择私有也不会自动关闭桶的公网入口。',
+    '在 R2 Manage API Tokens 创建限定目标桶的 Object Read & Write 密钥，取得 Access Key ID 和 Secret Access Key。不要填写普通 API Token。',
+    '向导前三步只执行本地字段校验；最后一步会明确请求你授权临时对象写入、元数据校验及删除，清理失败可能留存临时对象。',
+    '远端测试成功后，再单独验证实际发布、公开地址或匿名访问拒绝。不要把连接通过当作私有权限已验收。',
   ],
   s3: [
     '准备兼容 S3 的 Bucket、Endpoint 和 Region。',
