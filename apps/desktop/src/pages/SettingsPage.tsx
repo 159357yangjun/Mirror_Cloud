@@ -1275,7 +1275,7 @@ export function SettingsPage() {
               <div className="flex items-center gap-2 text-sm font-semibold text-violet-950"><Keyboard size={17} /> 全局快捷上传</div>
               <p className="mt-1 text-xs leading-6 text-violet-800">不切换窗口：截图复制到剪贴板后按快捷键，Publisher 后台上传并把最终 URL 重新写入剪贴板。</p>
             </div>
-            <label className="flex min-h-11 items-center gap-2 text-xs font-medium text-slate-600">
+            <label className="flex min-h-11 min-w-11 cursor-pointer items-center justify-center gap-2 rounded-lg text-xs font-medium text-slate-600">
               <input
                 type="checkbox"
                 checked={globalShortcut?.enabled ?? false}
