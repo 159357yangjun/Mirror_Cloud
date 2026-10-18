@@ -1,0 +1,32 @@
+name: TaskUI R2 guided setup isolated checks
+on:
+  push:
+    branches:
+      - ui/taskui-r2-guided-diagnostics-20261018
+permissions:
+  contents: read
+jobs:
+  offline-and-frontend:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Offline R2 diagnostic and secret redaction controls
+        run: node --experimental-strip-types scripts/test_r2_diagnostics.mjs
+      - name: Install locked frontend deps
+        working-directory: apps/desktop
+        run: npm ci
+      - name: Typecheck and build R2 guided setup
+        working-directory: apps/desktop
+        run: npm run build
+      - name: Confirm no lockfile modification
+        shell: pwsh
+        run: |
+          git diff --exit-code -- Cargo.lock apps/desktop/package-lock.json
+          if ($LASTEXITCODE -ne 0) { throw 'Build modified a dependency lockfile' }
+          Write-Host 'R2_GUIDED_GATE frontend=1 offline=1 live_cloud_writes=0'
