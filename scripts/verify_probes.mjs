@@ -273,6 +273,14 @@ window.__L = (function () {
     return parts.join('>')
   }
   const vis = (e) => {
+    // A closed native <details> hides everything except its summary. Blink can still
+    // expose geometric boxes for its inactive descendants: those must not be probed
+    // for touch, focus, clipping or scroll reachability until users expand the details.
+    const closed = e.closest('details:not([open])')
+    if (closed && closed !== e) {
+      const summary = closed.querySelector(':scope > summary')
+      if (!summary || !summary.contains(e)) return false
+    }
     const r = e.getBoundingClientRect(); const cs = getComputedStyle(e)
     return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && Number(cs.opacity) > 0.05
   }
