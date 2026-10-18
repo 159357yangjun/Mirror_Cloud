@@ -632,6 +632,11 @@ window.__L = (function () {
         }
         for (const e of nodes) {
           if (!vis(e)) continue
+          // A screen-reader-only skip link has a 1x1 resting box by design. It is keyboard
+          // accessible, but not a visible touch target until :focus makes it visible.
+          // Check computed hiding, not the mere presence of sr-only, so focused links
+          // and genuinely undersized visible controls remain measurable.
+          if (isVisualHiding(e, getComputedStyle(e))) continue
           if (/^(BUTTON|INPUT|SELECT|TEXTAREA)$/.test(e.tagName)) {
             const util = fontUtilOf(e)
             if (util) {
