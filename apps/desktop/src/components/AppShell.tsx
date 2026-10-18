@@ -74,7 +74,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="app-shell-root min-h-screen text-[var(--text-primary)]">
-      <a href="#mirror-main" className="sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:not-sr-only focus:rounded-lg focus:bg-[var(--surface)] focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent)]">跳到主工作区</a>
+      <a href="#mirror-main" className="sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:not-sr-only focus:rounded-lg focus:bg-[var(--surface)] focus:px-3 focus:py-2 text-sm focus:font-semibold focus:text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent)]">跳到主工作区</a>
       <aside aria-label="应用导航" className="app-sidebar theme-glass fixed inset-y-0 left-0 z-30 w-[220px] border-r">
         <div className="flex min-h-full flex-col p-4">
           <div className="flex items-center gap-3 px-2 py-3">
