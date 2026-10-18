@@ -1,0 +1,334 @@
+{
+  "version": "1.0",
+  "project": {
+    "name": "Mirror Cloud 发布工作台 TaskUI V1",
+    "primary_user": "在 Windows 桌面频繁上传及管理图片的普通用户（频率为待实测假设）",
+    "platform": "desktop",
+    "patterns": [
+      "business-workflow",
+      "object-management",
+      "monitoring-analysis"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "name": "首次连接云端并发布图片",
+      "frequency": "high",
+      "success_criterion": "任务与资源页出现同一提交的可信状态和可检查的部署；不能将入队等同于上传成功",
+      "step_budget": 3,
+      "steps": [
+        "configure-storage",
+        "choose-source",
+        "submit-upload"
+      ]
+    },
+    {
+      "id": "T2",
+      "name": "查找已发布资源并复制公开链接",
+      "frequency": "high",
+      "success_criterion": "定位资源并复制已存在且允许公开的链接，私有对象通过独立限时分享流程",
+      "step_budget": 2,
+      "steps": [
+        "find-asset",
+        "copy-public-link"
+      ]
+    },
+    {
+      "id": "T3",
+      "name": "定位并恢复失败任务",
+      "frequency": "medium",
+      "success_criterion": "查清失败原因并重试允许重试的失败项，重新在任务和资源确认结果",
+      "step_budget": 2,
+      "steps": [
+        "inspect-failure",
+        "retry-failed-task"
+      ]
+    }
+  ],
+  "screens": [
+    {
+      "id": "publish",
+      "name": "发布工作台",
+      "primary_region": "upload",
+      "main_region_min_ratio": 0.6,
+      "regions": [
+        {
+          "id": "upload",
+          "role": "primary",
+          "persistent": true
+        },
+        {
+          "id": "target",
+          "role": "inspector",
+          "persistent": true
+        },
+        {
+          "id": "recent",
+          "role": "status",
+          "persistent": false
+        },
+        {
+          "id": "navigation",
+          "role": "navigation",
+          "persistent": true
+        }
+      ]
+    },
+    {
+      "id": "storages",
+      "name": "云端连接与发布目标",
+      "primary_region": "storage-list",
+      "main_region_min_ratio": 0.65,
+      "regions": [
+        {
+          "id": "storage-list",
+          "role": "primary",
+          "persistent": true
+        },
+        {
+          "id": "storage-detail",
+          "role": "inspector",
+          "persistent": false
+        }
+      ]
+    },
+    {
+      "id": "assets",
+      "name": "已发布资源索引",
+      "primary_region": "asset-list",
+      "main_region_min_ratio": 0.66,
+      "regions": [
+        {
+          "id": "asset-list",
+          "role": "primary",
+          "persistent": true
+        },
+        {
+          "id": "asset-detail",
+          "role": "inspector",
+          "persistent": false
+        },
+        {
+          "id": "filters",
+          "role": "filter",
+          "persistent": true
+        }
+      ]
+    },
+    {
+      "id": "tasks",
+      "name": "任务与恢复",
+      "primary_region": "task-list",
+      "main_region_min_ratio": 0.65,
+      "regions": [
+        {
+          "id": "task-list",
+          "role": "primary",
+          "persistent": true
+        },
+        {
+          "id": "task-detail",
+          "role": "inspector",
+          "persistent": false
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "id": "configure-storage",
+      "name": "连接并选择云端目标",
+      "scope": "workspace",
+      "frequency": "medium",
+      "risk": "medium",
+      "effect": "mutate",
+      "recovery": "retry",
+      "task_ids": [
+        "T1"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "storages",
+          "region_id": "storage-list",
+          "surface": "inline",
+          "menu_depth": 0,
+          "context": "尚未配置或需要更换云端；经过连接测试再设为默认"
+        }
+      ],
+      "feedback": [
+        "success",
+        "failure"
+      ]
+    },
+    {
+      "id": "choose-source",
+      "name": "选择文件、剪贴板或 URL",
+      "scope": "workspace",
+      "frequency": "high",
+      "risk": "low",
+      "effect": "read",
+      "recovery": "not-needed",
+      "task_ids": [
+        "T1"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "publish",
+          "region_id": "upload",
+          "surface": "inline",
+          "menu_depth": 0,
+          "context": "发布页空状态或新增图片"
+        }
+      ],
+      "feedback": [
+        "selection"
+      ]
+    },
+    {
+      "id": "submit-upload",
+      "name": "核对并提交发布任务",
+      "scope": "workspace",
+      "frequency": "medium",
+      "risk": "medium",
+      "effect": "mutate",
+      "recovery": "retry",
+      "task_ids": [
+        "T1"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "publish",
+          "region_id": "upload",
+          "surface": "inline",
+          "menu_depth": 0,
+          "context": "已有待发布图片，复用 UploadDialog 的提交门禁"
+        }
+      ],
+      "feedback": [
+        "success",
+        "failure",
+        "pending"
+      ]
+    },
+    {
+      "id": "find-asset",
+      "name": "检索发布资源",
+      "scope": "workspace",
+      "frequency": "high",
+      "risk": "low",
+      "effect": "read",
+      "recovery": "not-needed",
+      "task_ids": [
+        "T2"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "assets",
+          "region_id": "asset-list",
+          "surface": "toolbar",
+          "menu_depth": 0,
+          "context": "资源列表及过滤器"
+        }
+      ],
+      "feedback": [
+        "selection"
+      ]
+    },
+    {
+      "id": "copy-public-link",
+      "name": "复制资源的公开链接",
+      "scope": "object",
+      "frequency": "high",
+      "risk": "low",
+      "effect": "read",
+      "recovery": "not-needed",
+      "task_ids": [
+        "T2"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "assets",
+          "region_id": "asset-list",
+          "surface": "inline",
+          "menu_depth": 0,
+          "context": "已选公开发布资源，存在非私有 publicUrl"
+        }
+      ],
+      "feedback": [
+        "success",
+        "failure"
+      ]
+    },
+    {
+      "id": "inspect-failure",
+      "name": "查看任务失败原因和状态",
+      "scope": "object",
+      "frequency": "medium",
+      "risk": "low",
+      "effect": "read",
+      "recovery": "not-needed",
+      "task_ids": [
+        "T3"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "tasks",
+          "region_id": "task-list",
+          "surface": "inline",
+          "menu_depth": 0,
+          "context": "失败或部分成功任务"
+        }
+      ],
+      "feedback": [
+        "detail"
+      ]
+    },
+    {
+      "id": "retry-failed-task",
+      "name": "有保护地重试失败项",
+      "scope": "object",
+      "frequency": "medium",
+      "risk": "high",
+      "effect": "mutate",
+      "recovery": "retry",
+      "task_ids": [
+        "T3"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "tasks",
+          "region_id": "task-list",
+          "surface": "inline",
+          "menu_depth": 0,
+          "context": "任务失败且安全重试条件成立，重复提交须核对"
+        }
+      ],
+      "feedback": [
+        "success",
+        "failure",
+        "pending"
+      ],
+      "confirmation": "对可能重复上传的任务要求明确确认"
+    }
+  ],
+  "design_evidence": {
+    "wireframe": "docs/ui/TASKUI_PUBLISH_FIRST_PASS_2026-10-18.md",
+    "task_walkthrough": "docs/ui/TASKUI_PUBLISH_FIRST_PASS_2026-10-18.md",
+    "decision_log": "docs/ui/TASKUI_PUBLISH_FIRST_PASS_2026-10-18.md"
+  },
+  "test_plan": {
+    "viewport_sizes": [
+      "1440x900 Windows Edge",
+      "1024x768 Windows Edge",
+      "640x480 Windows Edge",
+      "Windows native 1366x768 at 100/125/150% DPI — pending"
+    ],
+    "covered_tasks": [
+      "T1",
+      "T2",
+      "T3"
+    ],
+    "status": "in-progress"
+  }
+}

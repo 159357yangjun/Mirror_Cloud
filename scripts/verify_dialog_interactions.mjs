@@ -3089,9 +3089,12 @@ async function main() {
       const ovBtn = mkCtl('button', 'width:16px;height:16px;padding:0;font-size:9px;overflow:hidden'); ovBtn.textContent = 'LCTLov';
       ovWrap.appendChild(ovBtn);
       const gT0 = window.__L.geometry(${TOUCH});
+      const skipLink = mkCtl('a', ''); skipLink.className = 'sr-only'; skipLink.href = '#mirror-main'; skipLink.textContent = 'LCTLsrhidden';
+      const smallLink = mkCtl('a', 'display:inline-flex;width:30px;height:30px;align-items:center'); smallLink.href = '#mirror-main'; smallLink.textContent = 'LCTLsrvisible';
       host.appendChild(bigL); host.appendChild(smallL); host.appendChild(forIn); host.appendChild(forL); host.appendChild(ovWrap);
+      host.appendChild(skipLink); host.appendChild(smallLink);
       const g6 = window.__L.geometry(${TOUCH});
-      const named = (needle) => g6.smallTargets.filter((c) => c.text && c.text.indexOf(needle) === 0);
+      const named = (needle) => g6.smallTargetsAll.filter((c) => c.text && c.text.indexOf(needle) === 0);
       // Delta against the same page with nothing planted, not an absolute: the real page contributes
       // its own rescued targets, and an assertion written as ">= 2" would pass on those alone.
       const dRescued = g6.rescuedByLabel - gT0.rescuedByLabel;
@@ -3104,9 +3107,11 @@ async function main() {
         smallLabelSize: named('LCTLsmall').length ? [named('LCTLsmall')[0].w, named('LCTLsmall')[0].h] : null,
         overlaySplitOut: named('LCTLov').length === 0 && g6.overlaySmall.some((o) => o.text === 'LCTLov'),
         overlayRecorded: dOverlay === 1,
+        srOnlyHiddenIgnored: named('LCTLsrhidden').length === 0,
+        visibleSmallLinkCaught: named('LCTLsrvisible').length === 1,
         dRescued, dOverlay,
       };
-      bigL.remove(); smallL.remove(); forIn.remove(); forL.remove(); ovWrap.remove();
+      bigL.remove(); smallL.remove(); forIn.remove(); forL.remove(); ovWrap.remove(); skipLink.remove(); smallLink.remove();
       // SELF-CLIP pair. The vertical half of the criterion just gained a precondition (the element
       // has to clip on the axis being judged), so both directions need a plant: a box that genuinely
       // cuts its own text must still be caught, and the 刷新 shape - a line box taller than its own
@@ -3211,6 +3216,8 @@ async function main() {
     if (control.touch.smallLabelCaught && control.touch.smallLabelSize.join('x') !== '60x18') bad.push(`touch control: the sub-floor label was reported at ${JSON.stringify(control.touch.smallLabelSize)} instead of the label box 60x18 - the finding would name the wrong element to fix`)
     if (!control.touch.overlaySplitOut) bad.push('touch control failed: a button inside a [role=status] overlay was counted in the page total')
     if (!control.touch.overlayRecorded) bad.push(`touch control failed: the overlay button was dropped rather than aggregated (overlay instance delta=${control.touch.dOverlay}) - splitting it out must report it once, not lose it`)
+    if (!control.touch.srOnlyHiddenIgnored) bad.push('touch control failed: a resting 1x1 sr-only skip link was wrongly charged as a visible touch target')
+    if (!control.touch.visibleSmallLinkCaught) bad.push('touch control failed: a visible 30x30 anchor was excused along with sr-only links')
     if (!control.selfClip.clipYCaught) bad.push(`SELF-CLIP precondition blinded the vertical half: a 14px box with overflow ${control.selfClip.clipYOf} cutting a 24px line was not reported (h/v delta ${JSON.stringify(control.selfClip.clipYDelta)})`)
     if (!control.selfClip.noClipIgnored) bad.push(`SELF-CLIP still charges a box that does not clip: ink ${control.selfClip.noClipInkH}px inside a ${control.selfClip.noClipBoxH}px box with overflow ${control.selfClip.noClipOf} was reported as cut text`)
     if (!control.selfClip.plantReproduces) bad.push(`SELF-CLIP green-half plant is vacuous: its ink box (${control.selfClip.noClipInkH}px) never exceeded its ${control.selfClip.noClipBoxH}px box, so it does not reproduce the shape the precondition excuses`)

@@ -273,7 +273,7 @@ export function AssetsPage() {
             <option value="custom">自定义模板</option>
           </select>
         </div>
-        <label className="flex h-10 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-xs text-[var(--text-secondary)]">
+        <label className="flex min-h-11 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-xs text-[var(--text-secondary)]">
           限时分享
           <select value={shareExpiry} onChange={(event) => setShareExpiry(Number(event.target.value) as 600 | 3600 | 86400)} className="bg-transparent text-xs" aria-label="限时分享有效期">
             <option value={600}>10 分钟</option>

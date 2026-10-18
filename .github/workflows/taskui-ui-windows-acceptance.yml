@@ -1,0 +1,99 @@
+name: TaskUI isolated Windows browser acceptance
+on:
+  push:
+    branches:
+      - ui/taskui-publish-first-pass-20261018
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Install frontend
+        working-directory: apps/desktop
+        run: npm ci
+      - name: Authentic TaskUI validator, strict project manifest, positive/negative controls
+        shell: pwsh
+        env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: '1'
+        run: |
+          python -m unittest discover -s TaskUI/tests -v
+          if ($LASTEXITCODE -ne 0) { throw 'TaskUI upstream unit tests failed' }
+          python TaskUI/tools/taskui_check.py TaskUI/examples/good.project.taskui.json --strict
+          if ($LASTEXITCODE -ne 0) { throw 'TaskUI positive control failed' }
+          python TaskUI/tools/taskui_check.py TaskUI/examples/bad.project.taskui.json --strict
+          if ($LASTEXITCODE -ne 1) { throw 'TaskUI negative control did not reject' }
+          python TaskUI/tools/taskui_check.py project.taskui.json --strict
+          if ($LASTEXITCODE -ne 0) { throw 'Mirror Cloud TaskUI manifest strict gate failed' }
+          Write-Host 'TASKUI_STRICT_GATE original_validator=1 positive=1 negative=1 real_project=1'
+      - name: Run actual Windows Edge page, keyboard and layout probes
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path qa-output | Out-Null
+          $app = (Resolve-Path apps/desktop).Path
+          $server = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c','npm run dev -- --host 127.0.0.1 > qa-vite.log 2>&1' -WorkingDirectory $app -PassThru
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 80; $i++) {
+              try {
+                $response = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:1420/' -TimeoutSec 3
+                if ($response.StatusCode -eq 200) { $ready = $true; break }
+              } catch {}
+              Start-Sleep -Milliseconds 500
+            }
+            if (-not $ready) { throw 'Local Vite UI test fixture did not start' }
+            $bad = @()
+            foreach ($mode in @('pages','confirm','layout')) {
+              Write-Host "TASKUI_MODE_BEGIN mode=$mode"
+              & node scripts/verify_dialog_interactions.mjs $mode '--out=qa-output'
+              $status = $LASTEXITCODE
+              Write-Host "TASKUI_MODE_END mode=$mode exit=$status"
+              if ($status -ne 0) { $bad += "$mode=$status" }
+            }
+            if ($bad.Count) { throw "Browser TaskUI gate failed: $($bad -join ', ')" }
+          } finally {
+            if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue }
+          }
+      - name: Upload browser measurements and screenshots
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: taskui-browser-acceptance
+          path: |
+            qa-output/
+            apps/desktop/qa-vite.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  ledger-proposal:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.node-version'
+      - name: Generate exact source fingerprint and harness shape ledgers (proposal only)
+        shell: pwsh
+        run: |
+          node scripts/verify_shape.mjs --snapshot --reason 'TaskUI acceptance adds sr-only and collapsed-details red-green geometry controls; preserves prior gate semantics'
+          if ($LASTEXITCODE -ne 0) { throw 'Shape snapshot generation failed' }
+          node scripts/fingerprint_rows.mjs --patch
+          if ($LASTEXITCODE -ne 0) { throw 'Fingerprint patch generator refused' }
+          Write-Host 'LEDGER_PROPOSAL generated from checked-out source, no mutation of remote refs'
+      - name: Upload ledger proposal for reviewed commit
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: taskui-reviewed-ledgers
+          path: |
+            CHANGELOG.md
+            scripts/verify_shape.baseline.json
+          retention-days: 7
