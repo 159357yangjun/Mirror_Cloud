@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "takenAt": "2026-10-06T10:53:32",
-    "head": "a302b6fe49957c6207208bd87a126cb693256cb3",
-    "reason": "step 3: M35-M37 + needle-via-env (+32L/+1820B)"
+    "takenAt": "2026-10-18T10:24:58",
+    "head": "9209a966e852656c8ccefca40b57fa8105382e77",
+    "reason": "TaskUI acceptance adds sr-only and collapsed-details red-green geometry controls; preserves prior gate semantics"
   },
   "files": [
     {
@@ -36,8 +36,8 @@
     {
       "file": "scripts/verify_dialog_interactions.mjs",
       "exists": true,
-      "lines": 3797,
-      "bytes": 312097,
+      "lines": 3804,
+      "bytes": 312950,
       "families": {
         "failures.push": 29,
         "emitGate": 16,
@@ -50,8 +50,8 @@
     {
       "file": "scripts/verify_guard_mutations.mjs",
       "exists": true,
-      "lines": 450,
-      "bytes": 34919,
+      "lines": 477,
+      "bytes": 36708,
       "families": {
         "failures.push": 1,
         "emitGate": 0,
@@ -78,8 +78,8 @@
     {
       "file": "scripts/verify_probes.mjs",
       "exists": true,
-      "lines": 771,
-      "bytes": 47295,
+      "lines": 784,
+      "bytes": 48170,
       "families": {
         "failures.push": 0,
         "emitGate": 0,
@@ -120,8 +120,8 @@
   ],
   "totals": {
     "files": 8,
-    "lines": 5936,
-    "bytes": 449615,
+    "lines": 5983,
+    "bytes": 453132,
     "families": {
       "failures.push": 33,
       "emitGate": 16,
