@@ -58,7 +58,7 @@ export function validateR2Setup(input: R2SetupSnapshot): R2SetupIssue[] {
   return issues
 }
 
-export type R2FailureKind = 'bucket' | 'permission' | 'signature' | 'endpoint' | 'network' | 'unknown'
+export type R2FailureKind = 'conflict' | 'bucket' | 'permission' | 'signature' | 'endpoint' | 'network' | 'unknown'
 export interface R2SafeDiagnosis { kind: R2FailureKind; title: string; checks: string[] }
 
 /**
@@ -67,6 +67,10 @@ export interface R2SafeDiagnosis { kind: R2FailureKind; title: string; checks: s
  */
 export function diagnoseR2Failure(error: unknown): R2SafeDiagnosis {
   const message = String(error).toLowerCase()
+  if (/restore_conflict/.test(message)) return {
+    kind: 'conflict', title: '发现同名连接或重复目标，未创建新配置。',
+    checks: ['返回云端页核对已有连接。', '更换唯一的连接名称，或退出重新连接流程；不会覆盖旧记录。'],
+  }
   if (/nosuchbucket|invalidbucketname|bucket.not.found|no such bucket/.test(message)) return {
     kind: 'bucket', title: '无法找到存储桶；请确认桶名、账号与辖区。',
     checks: ['对照控制台复制 Bucket 名称。', '确认桶属于输入的 Account ID。', '默认辖区以外的桶暂不支持在此向导中连接。'],
