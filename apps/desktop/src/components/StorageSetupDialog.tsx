@@ -454,16 +454,14 @@ export function StorageSetupDialog({
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="显示名称" value={s3Form.name} onChange={(value) => setS3('name', value)} />
             <Field label="Bucket" value={s3Form.bucket} onChange={(value) => setS3('bucket', value)} placeholder="images" />
-            {provider === 'r2'
-              ? <Field label="Account ID" value={s3Form.accountId || ''} onChange={(value) => setS3('accountId', value)} placeholder="Cloudflare Account ID" />
-              : <Field label="Endpoint" value={s3Form.endpoint || ''} onChange={(value) => setS3('endpoint', value)} placeholder="https://s3.example.com" />}
-            <Field label="Region" value={s3Form.region || ''} onChange={(value) => setS3('region', value)} placeholder={provider === 'r2' ? 'auto' : 'us-east-1'} />
+            <Field label="Endpoint" value={s3Form.endpoint || ''} onChange={(value) => setS3('endpoint', value)} placeholder="https://s3.example.com" />
+            <Field label="Region" value={s3Form.region || ''} onChange={(value) => setS3('region', value)} placeholder="us-east-1" />
             <Field label="Access Key ID" value={s3Form.accessKeyId} onChange={(value) => setS3('accessKeyId', value)} />
             <Field label="Secret Access Key" type="password" value={s3Form.secretAccessKey} onChange={(value) => setS3('secretAccessKey', value)} />
             <Field label="资源目录（可选）" value={s3Form.root || ''} onChange={(value) => setS3('root', value)} placeholder="assets" />
             {isGenericS3 && (
               <div className="sm:col-span-2">
-                <div className="mb-2 text-xs font-medium text-slate-600">此 {provider === 'r2' ? 'R2' : 'S3'} 存储的发布用途</div>
+                <div className="mb-2 text-xs font-medium text-slate-600">此 S3 存储的发布用途</div>
                 <div className="grid grid-cols-2 gap-2">
                   <button type="button" onClick={() => { setRestoreModeConfirmed(true); setS3Form((current) => ({ ...current, accessMode: 'public' })) }} aria-pressed={s3Form.accessMode !== 'private_requested'} className={`rounded-xl border px-3 py-2.5 text-xs ${s3Form.accessMode !== 'private_requested' ? 'border-indigo-300 bg-indigo-50 text-indigo-900' : 'border-slate-200 text-slate-600'}`}>公开发布</button>
                   <button type="button" onClick={() => { setRestoreModeConfirmed(true); setS3Form((current) => ({ ...current, accessMode: 'private_requested', publicBaseUrl: '' })) }} aria-pressed={s3Form.accessMode === 'private_requested'} className={`rounded-xl border px-3 py-2.5 text-xs ${s3Form.accessMode === 'private_requested' ? 'border-indigo-300 bg-indigo-50 text-indigo-900' : 'border-slate-200 text-slate-600'}`}>私有存储目标</button>
