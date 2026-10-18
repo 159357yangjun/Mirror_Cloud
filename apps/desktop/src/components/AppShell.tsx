@@ -126,7 +126,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             <button
               onClick={() => setShowHelp(true)}
               aria-label="打开教程与帮助"
-              title="教程与帮助"
               className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-soft)] hover:text-[var(--text-primary)]"
               title="打开应用内新手教程"
             >
