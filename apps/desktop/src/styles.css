@@ -374,7 +374,8 @@ button { cursor: pointer; }
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior-y: contain;
-  scroll-behavior: smooth;
+  /* Instant positioning keeps keyboard focus jumps and nested-scroll reachability deterministic. */
+  scroll-behavior: auto;
   scrollbar-gutter: stable;
 }
 
