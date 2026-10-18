@@ -84,7 +84,7 @@ jobs:
       - name: Generate exact source fingerprint and harness shape ledgers (proposal only)
         shell: pwsh
         run: |
-          node scripts/verify_shape.mjs --snapshot
+          node scripts/verify_shape.mjs --snapshot --reason 'TaskUI acceptance adds sr-only and collapsed-details red-green geometry controls; preserves prior gate semantics'
           if ($LASTEXITCODE -ne 0) { throw 'Shape snapshot generation failed' }
           node scripts/fingerprint_rows.mjs --patch
           if ($LASTEXITCODE -ne 0) { throw 'Fingerprint patch generator refused' }
