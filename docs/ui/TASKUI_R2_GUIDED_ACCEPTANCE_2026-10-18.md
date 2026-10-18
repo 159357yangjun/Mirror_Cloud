@@ -85,3 +85,14 @@
 2. 如果确有需求，另提 Rust 的**只读独立探针**接口，不得把当前会写对象的 `test_connection` 假装成只读。
 3. 独立设计 EU/US/FedRAMP 对应 Endpoint + Rust storage 配置，完成后需真实端到端验证。
 4. 只有仓库所有者配置专用 R2 测试桶、最小权限凭据与受保护环境，才执行真实对象写入/私有 E2E。
+
+## 本批增补提交（逐次记录）
+
+| Commit | 文件 | 具体变化 | 验证门禁 |
+|---|---|---|---|
+| `6581801` | `docs/ui/TASKUI_R2_GUIDED_ACCEPTANCE_2026-10-18.md` [新增] | 写入 G0/G1/G2 证据、逐 Commit 文件清单和 G3 未验事项 | 文档审查；不代替真实测试 |
+| `700c3d3` | `apps/desktop/src/components/StorageSetupDialog.tsx` [修改] | 删除只属于 S3 的分支中不可能进入的 R2 条件，解决 `TS2367` | Windows TypeScript + Vite 构建重新通过 |
+| `cb8bfbc` | `apps/desktop/src/pages/StoragesPage.tsx` [修改] | 已保存 R2 的「测试连接」也弹写入同意框；成功只报告读写测试；失败不展示原始可能泄密的错误 | Windows 独立构建通过，真实远端写入未执行 |
+| `d7fcaf7` | `apps/desktop/src/lib/r2Diagnostics.ts` [修改] | 迁移重复目标 `RESTORE_CONFLICT` 改为独立常量诊断，不误报为未知云端错误 | 纯离线诊断测试 |
+
+> 每个 commit 的完整 diff 均保留在 Draft PR 的 **Commits** 页面。以上每项指向实际修改路径；后续修复继续单独添加记录，不在有未结门禁时宣称全部验收完成。
