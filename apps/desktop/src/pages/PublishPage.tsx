@@ -64,7 +64,7 @@ export function PublishPage() {
   const { data: storages = [], isLoading: storagesLoading, error: storagesError } = useQuery({ queryKey: ['storages'], queryFn: listStorages })
   const { data: groups = [], isLoading: groupsLoading, error: groupsError } = useQuery({ queryKey: ['storage-groups'], queryFn: listStorageGroups })
   const { data: target } = useQuery({ queryKey: ['default-publish-target'], queryFn: getDefaultPublishTarget })
-  const { data: assets = [], isLoading: assetsLoading } = useQuery({ queryKey: ['assets', 'publish-recent'], queryFn: () => listAssets(6) })
+  const { data: assets = [], isLoading: assetsLoading, error: assetsError } = useQuery({ queryKey: ['assets', 'publish-recent'], queryFn: () => listAssets(6) })
   const { data: tasks = [], error: tasksError, isLoading: tasksLoading } = useQuery({ queryKey: ['tasks', 'publish-recent'], queryFn: () => listTasks(6), refetchInterval: 1500 })
   const { data: preferences } = useQuery({ queryKey: ['output-preferences'], queryFn: getOutputPreferences })
 
@@ -172,7 +172,7 @@ export function PublishPage() {
           <div className="grid gap-3 border-t border-slate-100 p-5 sm:grid-cols-2">
             <button onClick={() => openUpload('clipboard')} className="flex items-center gap-3 rounded-2xl border border-slate-200 p-4 text-left transition hover:-translate-y-0.5 hover:bg-slate-50">
               <div className="grid size-10 place-items-center rounded-xl bg-violet-50 text-violet-600"><ClipboardPaste size={17} /></div>
-              <div><div className="text-sm font-medium">剪贴板</div><div className="mt-0.5 text-[11px] text-slate-400">截图后直接发布</div></div>
+              <div><div className="text-sm font-medium">剪贴板</div><div className="mt-0.5 text-[11px] text-slate-400">从剪贴板选择图片</div></div>
             </button>
             <button onClick={() => openUpload('urls')} className="flex items-center gap-3 rounded-2xl border border-slate-200 p-4 text-left transition hover:-translate-y-0.5 hover:bg-slate-50">
               <div className="grid size-10 place-items-center rounded-xl bg-blue-50 text-blue-600"><Link2 size={17} /></div>
@@ -184,6 +184,8 @@ export function PublishPage() {
         <aside className="space-y-5" aria-label="发布辅助配置">
           <section aria-label="发布目标" className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,.03)]">
           <div className="p-5">
+            {(storagesLoading || groupsLoading) && <p role="status" className="mb-3 text-xs text-slate-600">正在读取可用云端…</p>}
+            {(storagesError || groupsError) && <p role="alert" className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">云端列表读取失败，请到「云端」页面检查连接。</p>}
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-400">当前发布目标</div>
@@ -246,21 +248,23 @@ export function PublishPage() {
       </div>
       <section aria-label="最近活动" className="mt-6">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <div role="tablist" aria-label="最近活动类型" className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
-            <button type="button" id="recent-assets-tab" role="tab" aria-selected={recentView === 'assets'} aria-controls="recent-assets-panel" onClick={() => setRecentView('assets')} className={`rounded-lg px-4 py-2 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 ${recentView === 'assets' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>最近发布</button>
-            <button type="button" id="recent-tasks-tab" role="tab" aria-selected={recentView === 'tasks'} aria-controls="recent-tasks-panel" onClick={() => setRecentView('tasks')} className={`rounded-lg px-4 py-2 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 ${recentView === 'tasks' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>最近任务</button>
+          <div role="group" aria-label="最近活动类型" className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+            <button type="button" id="recent-assets-tab" aria-pressed={recentView === 'assets'} aria-controls="recent-assets-panel" onClick={() => setRecentView('assets')} className={`rounded-lg px-4 py-2 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 ${recentView === 'assets' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>最近发布</button>
+            <button type="button" id="recent-tasks-tab" aria-pressed={recentView === 'tasks'} aria-controls="recent-tasks-panel" onClick={() => setRecentView('tasks')} className={`rounded-lg px-4 py-2 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 ${recentView === 'tasks' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>最近任务</button>
           </div>
           <button type="button" onClick={() => setPage(recentView === 'assets' ? 'assets' : 'tasks')} className="text-xs font-medium text-indigo-700 hover:underline">查看全部{recentView === 'assets' ? '资源' : '任务'} →</button>
         </div>
         {recentView === 'assets' && (
-          <div role="tabpanel" id="recent-assets-panel" aria-labelledby="recent-assets-tab">
+          <div role="region" id="recent-assets-panel" aria-label="最近发布列表">
           <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,.03)]">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm font-semibold"><GalleryHorizontalEnd size={15} className="text-indigo-500" />最近发布</div>
               <button onClick={() => setPage('assets')} className="text-[11px] font-medium text-indigo-600">全部资源</button>
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {!assetsLoading && !assets.length && <div className="rounded-xl bg-slate-50 px-3 py-6 text-center text-xs text-slate-400">发布第一张图片后会显示在这里</div>}
+              {assetsLoading && <p role="status" className="rounded-xl bg-slate-50 px-3 py-6 text-xs text-slate-600">正在读取最近发布…</p>}
+              {assetsError && <p role="alert" className="rounded-xl bg-red-50 px-3 py-6 text-xs text-red-700">最近发布读取失败，请前往资源页查看或重试。</p>}
+              {!assetsLoading && !assetsError && !assets.length && <div className="rounded-xl bg-slate-50 px-3 py-6 text-center text-xs text-slate-500">发布第一张图片后会显示在这里</div>}
               {assets.slice(0, 4).map((asset) => (
                 <div key={asset.id} className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-100 px-3 py-3 hover:bg-slate-50">
                   <div className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-slate-100 text-slate-400">{asset.publicUrl ? <img src={asset.publicUrl} alt="" loading="lazy" className="size-full object-cover" /> : <FileImage size={17} />}</div>
@@ -274,11 +278,13 @@ export function PublishPage() {
           </div>
         )}
         {recentView === 'tasks' && (
-          <div role="tabpanel" id="recent-tasks-panel" aria-labelledby="recent-tasks-tab">
+          <div role="region" id="recent-tasks-panel" aria-label="最近任务列表">
           <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,.03)]">
             <div className="flex items-center justify-between"><div className="text-sm font-semibold">最近任务</div><button onClick={() => setPage('tasks')} className="text-[11px] font-medium text-indigo-600">任务中心</button></div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              {!tasksLoading && !tasks.length && (tasksError ? <div className="text-xs text-red-600">最近任务读取失败</div> : <div className="text-xs text-slate-400">暂无任务</div>)}
+              {tasksLoading && <p role="status" className="text-xs text-slate-600">正在读取最近任务…</p>}
+              {tasksError && <p role="alert" className="text-xs text-red-700">最近任务读取失败，请前往任务中心核对。</p>}
+              {!tasksLoading && !tasksError && !tasks.length && <div className="text-xs text-slate-500">暂无任务</div>}
               {tasks.slice(0, 4).map((task) => (
                 <div key={task.id} className="flex items-start gap-2 rounded-xl border border-slate-100 p-3">
                   {task.status === 'running' || task.status === 'preparing' || task.status === 'queued'
