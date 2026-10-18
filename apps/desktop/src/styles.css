@@ -270,7 +270,10 @@ body {
   background-color: var(--app-bg);
   transition: background-color .2s ease, color .2s ease;
 }
-button, input, select, textarea { font: inherit; }
+/* Keep form defaults in Tailwind's base layer: unlayered font:inherit overrode text-xs/text-sm utilities. */
+@layer base {
+  button, input, select, textarea { font: inherit; }
+}
 button { cursor: pointer; }
 ::selection { background: var(--accent-soft); }
 
@@ -385,7 +388,22 @@ button { cursor: pointer; }
 }
 
 @media (max-width: 680px) {
-  .app-sidebar { width: 64px !important; }
+  /* Keep the compact rail, but reserve at least a 44px hit box after its scrollbar. */
+  .app-sidebar { width: 80px !important; }
   .app-sidebar > div { padding: 10px; }
-  .app-main { margin-left: 64px !important; }
+  .app-main { margin-left: 80px !important; }
+
+  /* Windows minimum size is 640x480. Give small view controls a real 44px hit area.
+     Do not stretch checkboxes, radios or custom drag handles to full-height fields. */
+  .app-sidebar nav button,
+  .app-sidebar .app-upload-button,
+  .app-sidebar .mt-auto > button,
+  .app-main button,
+  .app-main select,
+  .app-main input:not([type="checkbox"]):not([type="radio"]),
+  .app-main a[href] {
+    min-height: 44px;
+  }
+  /* Contextual text links need vertical hit area without gaining full block width. */
+  .app-main a[href] { display: inline-flex; align-items: center; }
 }
