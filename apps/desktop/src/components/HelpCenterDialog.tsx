@@ -52,6 +52,7 @@ export function HelpCenterDialog({
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6">
           <div className="grid grid-cols-2 gap-4 max-md:grid-cols-1">
             <GuideCard tint="info" icon={Cloud} step="1" title="连接一个云端存储" description="首次可从 GitHub 开始：填写仓库信息和访问令牌，先测试连接再保存。连接成功不等于公开地址可用或私有权限已验证。" action="去云端" onClick={() => go('storages')} />
+            <GuideCard tint="info" icon={Cloud} step="R2" title="R2 逐步配置与排错" description="在云端选择 Cloudflare R2，依次核对桶名、Account ID、公开/私有用途和密钥。遇到连接错误可查看不泄漏密钥的对应修复建议；仅最后的远端测试会请求写入授权。" action="打开 R2 配置入口" onClick={() => go('storages')} />
             <GuideCard tint="accent" icon={Upload} step="2" title="上传第一张测试图片" description="点击“快速发布”选择图片，确认默认云端后提交。任务成功代表本次上传已完成；请再核对资源记录、访问链接或私有权限。" action="开始发布" onClick={() => go('publish')} />
             <GuideCard tint="info" icon={Images} step="3" title="在“图库”查看云端文件" description="图库浏览已连接云端的文件，也能查看非镜云上传的旧图片；它与记录本机发布结果的“资源”页不同。" action="打开图库" onClick={() => go('gallery')} />
             <GuideCard tint="success" icon={Boxes} step="4" title="理解“资源”记录" description="“资源”记录图片名称、可用地址、部署和插件结果，图片本体仍在云端。连接已有云端不会自动把旧文件加入发布记录。" action="查看资源" onClick={() => go('assets')} />
