@@ -15,6 +15,8 @@ import {
 import type { PortableStorageProfile } from '../lib/desktop'
 import { portableReconnectConflict } from '../lib/portableReconnect'
 import { confirmAction } from '../store/useConfirmStore'
+import { R2GuidedFields } from './R2GuidedFields'
+import { diagnoseR2Failure, validateR2Setup } from '../lib/r2Diagnostics'
 import type {
   CreateObjectStorageInput,
   CreateRepositoryStorageInput,
@@ -122,6 +124,7 @@ export function StorageSetupDialog({
           : Cloud
 
   const [showGuide, setShowGuide] = useState(false)
+  const [r2Step, setR2Step] = useState<0 | 1 | 2 | 3>(0)
   // An older manifest's 'unknown' access intent must never silently become public
   // just because public was the historical default in the setup form.
   const [restoreModeConfirmed, setRestoreModeConfirmed] = useState(false)
@@ -203,6 +206,18 @@ export function StorageSetupDialog({
     },
   })
 
+  const r2Issues = provider === 'r2' ? validateR2Setup({
+    name: s3Form.name,
+    bucket: s3Form.bucket,
+    accountId: s3Form.accountId ?? '',
+    region: s3Form.region ?? 'auto',
+    accessMode: s3Form.accessMode ?? 'public',
+    publicBaseUrl: s3Form.publicBaseUrl ?? '',
+    accessKeyId: s3Form.accessKeyId,
+    secretAccessKey: s3Form.secretAccessKey,
+  }) : []
+  const r2Failure = provider === 'r2' && mutation.error ? diagnoseR2Failure(mutation.error) : null
+
   const setS3 = (key: keyof CreateS3StorageInput, value: string) =>
     setS3Form((current) => ({ ...current, [key]: value }))
   const setObject = (key: keyof CreateObjectStorageInput, value: string) =>
@@ -255,6 +270,9 @@ export function StorageSetupDialog({
       missingFields.push('自定义公开域名必须是 http/https URL，不能包含查询参数或片段')
     }
   } else if (isGenericS3) {
+    if (provider === 'r2') {
+      missingFields.push(...r2Issues.map((issue) => issue.message))
+    } else {
     if (blank(s3Form.name)) missingFields.push('显示名称')
     if (blank(s3Form.bucket)) missingFields.push('Bucket')
     if (blank(s3Form.accessKeyId)) missingFields.push('Access Key ID')
@@ -266,6 +284,7 @@ export function StorageSetupDialog({
       else if (invalidPublicBaseUrl(s3Form.publicBaseUrl)) missingFields.push('公开访问域名必须是 http/https URL，不能包含查询参数或片段')
     }
     if (s3Form.providerKey === 's3' && (notHttp(s3Form.endpoint) || insecureHttp(s3Form.endpoint))) missingFields.push('Endpoint（需 https，或本机 http://127.0.0.1）')
+    }
   } else if (isObject) {
     if (blank(objectForm.name)) missingFields.push('显示名称')
     if (blank(objectForm.bucket)) missingFields.push('Bucket')
@@ -295,7 +314,15 @@ export function StorageSetupDialog({
     submitGuard.current = true
     setSubmitBusy(true)
     try {
-      if (restoreProfile) {
+      if (provider === 'r2') {
+        const accepted = await confirmAction({
+          title: '确认 R2 远端写入测试并保存',
+          detail: '当前后端会向目标 Bucket 写入一个独立的临时测试对象、检查元数据，再尝试删除。如果网络中断或清理失败，可能留下临时对象。不是只读测试；请确认你对这个 Bucket 拥有操作权限。此操作不改变 Bucket 公共访问设置，也不能证明它已经私有。' + (restoreProfile ? ' 迁移模式只新增连接，不覆盖旧记录。' : ''),
+          confirmLabel: '授权临时写入测试',
+          danger: false,
+        })
+        if (!accepted) return
+      } else if (restoreProfile) {
         const accepted = await confirmAction({
           title: '确认新增连接配置',
           detail: `将以“${isRepository ? repoForm.name : isGenericS3 ? s3Form.name : isObject ? objectForm.name : webdavForm.name}”新建一条 ${providerNames[provider]} 连接。将先测试新凭据；不会覆盖或关联旧资源记录、图片、工作流和现有存储。`,
@@ -416,7 +443,14 @@ export function StorageSetupDialog({
           </div>
         )}
 
-        {isGenericS3 && (
+        {provider === 'r2' && (
+          <R2GuidedFields
+            form={s3Form} setField={setS3} issues={r2Issues} step={r2Step} setStep={setR2Step}
+            restoreChoicePending={Boolean(restoreProfile?.accessMode === 'unknown' && !restoreModeConfirmed)}
+            confirmMode={(accessMode) => { setRestoreModeConfirmed(true); setS3Form((current) => ({ ...current, accessMode, publicBaseUrl: accessMode === 'private_requested' ? '' : current.publicBaseUrl })) }}
+          />
+        )}
+        {isGenericS3 && provider !== 'r2' && (
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="显示名称" value={s3Form.name} onChange={(value) => setS3('name', value)} />
             <Field label="Bucket" value={s3Form.bucket} onChange={(value) => setS3('bucket', value)} placeholder="images" />
@@ -475,17 +509,27 @@ export function StorageSetupDialog({
           </div>
         )}
 
-        {mutation.error && <div role="alert" className="mt-4 rounded-xl border border-red-100 bg-red-50 px-3 py-2.5 text-xs leading-5 text-red-600">{restoreProfile ? (String(mutation.error).includes('RESTORE_CONFLICT') ? '发现同名连接或相同目标。请先到存储管理核对；不会重复创建或覆盖。' : '重新连接失败，请核对 Endpoint、公开访问方式及本机输入的凭据。') : String(mutation.error).replace(/^Error:\s*/i, '')}</div>}
+        {r2Failure && (
+          <section aria-label="R2 连接诊断" role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs leading-6 text-red-800">
+            <h3 className="font-semibold">{r2Failure.title}</h3>
+            <p className="mt-1">以下是排查方向，尚未证实根因。原始错误可能包含敏感信息，不在此显示。</p>
+            <ul className="mt-2 list-inside list-disc">{r2Failure.checks.map((check) => <li key={check}>{check}</li>)}</ul>
+            <button type="button" className="mt-3 min-h-11 rounded-lg border border-red-200 bg-white px-3 text-red-900"
+              onClick={() => setR2Step(r2Failure.kind === 'bucket' || r2Failure.kind === 'endpoint' ? 0 : 2)}>返回相关配置步骤</button>
+          </section>
+        )}
+        {mutation.error && !r2Failure && <div role="alert" className="mt-4 rounded-xl border border-red-100 bg-red-50 px-3 py-2.5 text-xs leading-5 text-red-600">{restoreProfile ? (String(mutation.error).includes('RESTORE_CONFLICT') ? '发现同名连接或相同目标。请先到存储管理核对；不会重复创建或覆盖。' : '重新连接失败，请核对 Endpoint、公开访问方式及本机输入的凭据。') : String(mutation.error).replace(/^Error:\s*/i, '')}</div>}
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-          {missingFields.length > 0 ? (
+          {missingFields.length > 0 && (provider !== 'r2' || r2Step === 3) ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-700">还需填写：{missingFields.join('、')}</div>
           ) : <span />}
           <div className="flex gap-2">
             <button disabled={submitBusy || mutation.isPending} onClick={requestClose} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm disabled:opacity-50">取消</button>
-            <button disabled={submitBusy || mutation.isPending || missingFields.length > 0} onClick={() => void submitStorage()} className="flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">
+            {provider === 'r2' && r2Step > 0 && <button type="button" disabled={submitBusy || mutation.isPending} onClick={() => setR2Step((r2Step - 1) as 0 | 1 | 2 | 3)} className="min-h-11 rounded-xl border border-slate-200 px-4 text-sm">上一步</button>}
+            {(provider !== 'r2' || r2Step === 3) && <button disabled={submitBusy || mutation.isPending || missingFields.length > 0} onClick={() => void submitStorage()} className="flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">
               {mutation.isPending && <LoaderCircle size={15} className="animate-spin" />}
-              {restoreProfile ? '测试并新增连接' : '测试并保存'}
-            </button>
+              {provider === 'r2' ? '授权测试并保存' : restoreProfile ? '测试并新增连接' : '测试并保存'}
+            </button>}
           </div>
         </div>
       </section>
