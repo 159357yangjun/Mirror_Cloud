@@ -1,0 +1,87 @@
+# Mirror Cloud — R2 防呆向导与诊断第一批交付（2026-10-18）
+
+> 本文是**实际修改记录**，不是功能已经正式发布的声明。
+> 基线：`integration/mirror-cloud-taskui-postfreeze-20261018` 的 `3eca9cc8c51b696d3e1fc6d26d5d90853e75d3ab`。
+> 目标：独立 UI Draft PR。不得合并原冻结候选、`main`、`dev`，不得更改版本号或开启真实 R2 live E2E。
+
+## TaskUI G0：用户任务与恢复路径
+
+| ID | 新手任务 | 可见完成条件 | 失败时应如何处理 |
+|---|---|---|---|
+| R2-T1 | 填写 Bucket + Account ID | 本地格式及默认辖区核对通过，看到派生的 S3 Endpoint | 原位置显示字段错误、解释桶名规则；保留其他输入 |
+| R2-T2 | 区分公开发布与私有访问意图 | 明确选择用途；私有时不填写公开域名 | S3 API Endpoint 不可作为公开图片地址；私有不代表匿名读取已拒绝 |
+| R2-T3 | 提供最小权限密钥 | 只在本次表单中输入；默认密码形式遮盖 | 鉴权与签名错误以固定模板显示，不回显 Secret、签名查询参数 |
+| R2-T4 | 验证并创建连接 | 第 4 步授权后调用原有 Rust create 命令；完成后返回云端页 | 异步锁、错误分类、回到相关步骤；对未知错误不猜测根因 |
+
+## TaskUI G1：任务驱动导航
+
+- **Step 1 存储桶**：连接名称、Bucket、32 位 Account ID、默认辖区 Endpoint 预览；Region 仅允许 `auto`。
+- **Step 2 用途**：公开访问地址（必须不是 S3 API Endpoint）与私有意图提示；迁移旧清单 `unknown` 时必须重新选择。
+- **Step 3 密钥**：介绍目标桶范围的 Object Read & Write，两个密钥输入框均采用 password；资源目录可选。
+- **Step 4 审核与保存**：只展示非敏感摘要、权限尚未验证状态；原有保存调用不会提前触发。不得无授权触发远端写入。
+- **教程入口**：原帮助中心新增“R2 逐步配置与排错”指向「云端」；配置弹窗已有的本地教程已改写为准确的六步说明。
+
+## 风险门禁：现有后端行为（重要）
+
+`crates/storage-opendal/src/lib.rs` 的 `test_connection` 不是只读：`operator.check → write 临时对象 → stat → delete`。
+
+本批 UI **没有修改** Rust、Provider 权限、数据库、云端测试工作流或任何凭据处理代码。
+
+- 本地诊断 `validateR2Setup` 和 Endpoint 预览：无网络调用。
+- 点击「授权测试并保存」前，必须通过现有 `confirmAction` 获得明确授权，文案写明写入/删除及残留风险。
+- 临时对象写入属于已经存在的业务逻辑，而非本批新增自动测试。当前不提供虚假的「已验证私有」徽标。
+- **暂不支持** EU / US / FedRAMP R2 辖区：Rust 当前强制合成默认域名，即使前端给出辖区 Endpoint 也不会使用。UI 拦截不支持的 Region，不伪造成功。
+
+## G2：修改清单与逐 Commit 报告
+
+| Commit | 文件（完整路径） | 修改前 → 修改后 | 影响及风险 |
+|---|---|---|---|
+| `69ff193` | `apps/desktop/src/lib/r2Diagnostics.ts` [新增] | 无本地细分诊断 → 离线字段校验、受控 Endpoint 预览、错误常量模板 | 不读取外部账户、无网络；不会把错误原文打印到 UI |
+| `933e0ee` | `apps/desktop/src/components/R2GuidedFields.tsx` [新增] | 单页填写 → 四步配置、字段帮助、回到上一步、未验证状态 | 纯 React UI；不独立发起远端调用 |
+| `6f28777` | `apps/desktop/src/components/StorageSetupDialog.tsx` [修改] | R2 与泛用 S3 同用一页，直接测试 → 独立 R2 向导 + 明确写入测试授权 + 错误脱敏分流 | 保留 S3/OSS/COS/GitHub/Gitee/WebDAV 原分支，R2 保存仍用原命令 |
+| `914df88` | `scripts/test_r2_diagnostics.mjs` [新增] | 无测试 → 边界值、桶名、默认辖区、私有模式、公开 Endpoint 误用与密钥脱敏负例 | 只运行本地常量；禁止凭据外传 |
+| `5abc083` | `apps/desktop/src/components/StorageSetupDialog.tsx` [修改] | 教程未披露真实写入 → 逐步解释远端测试与私有权限局限 | 修正文案，不改 Rust |
+| `aabe786` | `.github/workflows/taskui-r2-guided-check.yml` [新增] | 无独立 R2 UI 检查 → Windows Runner 离线诊断测试 + 前端构建 + 锁文件检查 | 没有存储密钥，也不访问真实桶 |
+| `db3aaa7` | `apps/desktop/src/components/HelpCenterDialog.tsx` [修改] | 只有一般教程 → 新增 R2 排错入口 | 引导至已有云端页，不创建假页面 |
+
+后续若本分支出现修复提交，以 GitHub PR 的 `Commits` 和 `Files changed` 为完整实时明细；每次修复需单独说明原因，不能用本文已完成项代替新提交。
+
+## 可验证关键代码差异（节选）
+
+```diff
+- if (isGenericS3) return createS3Storage({ ...s3Form, restoreGuard: ... })
++ // 仅 R2 走受控的四步 UI 和脱敏解释；
++ // 最终仍通过原 createS3Storage，不新增隐藏远端写入路径。
++ if (isGenericS3) return createS3Storage({ ...s3Form, restoreGuard: ... })
+```
+
+```diff
+- {mutation.error && <div>{String(mutation.error)}</div>}
++ {r2Failure && <section role="alert">{r2Failure.title} …常量检查建议…</section>}
++ {mutation.error && !r2Failure && <div>…原非 R2 提示…</div>}
+```
+
+```diff
+- <button onClick={() => void submitStorage()}>测试并保存</button>
++ // R2 仅在第四步显示，并且先经 confirmAction 明确批准临时写入测试。
++ <button onClick={() => void submitStorage()}>授权测试并保存</button>
+```
+
+## G3 验收矩阵（证据分层）
+
+| 任务 | 静态/离线检查 | Windows 浏览器真实交互 | Windows 原生云服务 |
+|---|---|---|---|
+| Bucket 格式/Account ID/Endpoint | 独立单测 | 待覆盖完整四步键盘、640×480 | 不涉及网络 |
+| 公开/私有意图区分 | 离线单测 | 待人工走查 | 真正匿名访问**未验** |
+| API 错误脱敏 | 常量映射/敏感样例负例 | 待模拟失败提示 | 真实权限异常**未验** |
+| 远端测试知情授权 | 源码检查及 TS 编译 | 待取消/确认弹窗走查 | **严禁无授权执行写入** |
+| UI 嵌入与构建 | Windows CI | 尚无专门 4 步截图记录 | 尚未做新版本安装/升级 |
+
+本次 UI 通过不等于真实 Cloudflare R2 写入成功、真实权限隔离、公开域名可用或正式发版。正式 R2 protected E2E 仍维持 HOLD。
+
+## 下一批（未包含）
+
+1. 先检查真实 Windows UI 的对话框焦点、Escape、Tab、640×480 与系统 DPI；必要时修复。
+2. 如果确有需求，另提 Rust 的**只读独立探针**接口，不得把当前会写对象的 `test_connection` 假装成只读。
+3. 独立设计 EU/US/FedRAMP 对应 Endpoint + Rust storage 配置，完成后需真实端到端验证。
+4. 只有仓库所有者配置专用 R2 测试桶、最小权限凭据与受保护环境，才执行真实对象写入/私有 E2E。
