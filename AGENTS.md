@@ -12,6 +12,8 @@
 6. **本机工具链事实。** 这台机器没有 cargo/rustc：Rust 的编译/测试/格式判定只能以 CI 为裁判；`apps/desktop/node_modules/.bin/tauri icon` 是纯 Node 可用。CI 三个失败步骤（Rust format / Rust check / Rust tests）都自带公开注解通道，取证据先查 `check-runs/{job_id}/annotations`。
 7. **凭据纪律。** 任何 token/key 不得进入错误消息、日志或提交信息；storage-gitee 的 `redact()/safe_ctx()` 是参照实现，新增 provider 的错误路径必须同样脱敏。
 8. **行为边界。** 安装/打包/推送/部署/版本号/DDL 属用户点名事项；本地门禁、渲染取证、本地提交属 Agent。
+9. **后续只允许 main（用户决定于 2026-10-19）。** 禁止任何 Agent 新建 feature、QA、release、integration 等 Git 分支；存量分支仅供安全审计、合并与收口。所有新增成果最终以 `main` 为目标；已包含且不再被 PR 使用的分支在成果确认进入 main、CI 成功后及时清理。若仓库 main 仍有“必须通过 PR”保护，与直接在 main 提交相冲突，必须报请维护者调整，不得强推、伪造合并或绕过规则。
+10. **逐 Commit 修改报告（用户要求）。** 每次修改都给出完整文件路径（增改删）、改动前后关键代码、目的、影响和风险、完整 SHA 与 GitHub Diff 链接、该 SHA 的 CI 实际结论、未验证项；批次末整理汇总。CI pending 时不得写 PASS，旧分支已包含在未合并集成分支时不得说已进入 main。
 
 ## .ai/ 台账约定
 
