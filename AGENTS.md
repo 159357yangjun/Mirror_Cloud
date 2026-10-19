@@ -12,6 +12,7 @@
 6. **本机工具链事实。** 这台机器没有 cargo/rustc：Rust 的编译/测试/格式判定只能以 CI 为裁判；`apps/desktop/node_modules/.bin/tauri icon` 是纯 Node 可用。CI 三个失败步骤（Rust format / Rust check / Rust tests）都自带公开注解通道，取证据先查 `check-runs/{job_id}/annotations`。
 7. **凭据纪律。** 任何 token/key 不得进入错误消息、日志或提交信息；storage-gitee 的 `redact()/safe_ctx()` 是参照实现，新增 provider 的错误路径必须同样脱敏。
 8. **行为边界。** 安装/打包/推送/部署/版本号/DDL 属用户点名事项；本地门禁、渲染取证、本地提交属 Agent。
+9. **逐次提交必须交付代码修改清单。** 每一个 Commit（不是只在 PR 最终总结）都要向用户汇报：完整路径和增/改/删类型、修改目的、关键代码前后差异、业务影响与安全风险、完整 Commit SHA 与 Diff 链接、该 SHA 的测试/CI 实际状态（待运行不得写通过）、未验证与剩余工作。批次末另给逐 Commit 汇总表；修复早先失败必须记录失败一手证据和修复 SHA。文档应保存在 `docs/ui/` 或对应任务目录，避免只有聊天记录可追溯。
 
 ## .ai/ 台账约定
 
