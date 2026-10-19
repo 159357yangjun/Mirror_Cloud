@@ -83,6 +83,17 @@ async function typeIn(label,value) {
   await send('Input.insertText',{text:value})
   await sleep(160)
 }
+async function pressTab(shift = false) {
+  await send('Input.dispatchKeyEvent', {
+    type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9,
+    modifiers: shift ? 8 : 0,
+  })
+  await send('Input.dispatchKeyEvent', {
+    type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9,
+    modifiers: shift ? 8 : 0,
+  })
+  await sleep(130)
+}
 async function pressEscape() {
   await send('Input.dispatchKeyEvent',{type:'rawKeyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27})
   await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27})
@@ -129,6 +140,26 @@ async function runCase({width,height,dpr}) {
   await clickButton('继续：检查与保存')
   verdict('step 4 review visible',String(await stage()).includes('检查与保存'))
   verdict('review does not echo secrets',await evaluate(`(function(){const d=document.querySelector('section[aria-labelledby="r2-dialog-title"]');return !d.textContent.includes('FAKE-ACCESS-KEY-FOR-QA')&&!d.textContent.includes('FAKE-SECRET-KEY-FOR-QA')})()`))
+  verdict('small window R2 dialog remains inside CSS viewport',await evaluate(`(function(){const r=document.querySelector('section[aria-labelledby="r2-dialog-title"]').getBoundingClientRect();return r.left>=-1&&r.right<=innerWidth+1&&r.top>=-1&&r.bottom<=innerHeight+1})()`))
+  const trap = await evaluate(`(function(){
+    const d=document.querySelector('section[aria-labelledby="r2-dialog-title"]');
+    const enabled=[...d.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled])')].filter(x=>x.getClientRects().length>0);
+    enabled[enabled.length-1].focus();
+    return enabled.length>=3
+  })()`)
+  verdict('modal exposes a focusable keyboard sequence',trap)
+  await pressTab()
+  verdict('Tab wraps last control to first inside R2 modal',await evaluate(`(function(){
+    const d=document.querySelector('section[aria-labelledby="r2-dialog-title"]');
+    const first=[...d.querySelectorAll('button:not([disabled]),input:not([disabled])')].find(x=>x.getClientRects().length>0);
+    return document.activeElement===first
+  })()`))
+  await pressTab(true)
+  verdict('Shift+Tab wraps first control to last inside R2 modal',await evaluate(`(function(){
+    const d=document.querySelector('section[aria-labelledby="r2-dialog-title"]');
+    const buttons=[...d.querySelectorAll('button:not([disabled]),input:not([disabled])')].filter(x=>x.getClientRects().length>0);
+    return document.activeElement===buttons[buttons.length-1]
+  })()`))
   await shot(`r2-step4-${width}-dpr${dpr}`)
   await clickButton('授权测试并保存')
   await waitFor(async()=>evaluate(`!!document.querySelector('section[aria-labelledby="confirm-dialog-title"]')`),'write consent dialog')
@@ -147,10 +178,13 @@ async function runCase({width,height,dpr}) {
   await waitFor(async()=>evaluate(`(document.body.innerText||'').includes('访问受到拒绝')`),'safe classified error displayed')
   verdict('only local refusing bridge was called',await evaluate(`window.__R2_QA_INVOKES.length===1 && window.__R2_QA_INVOKES[0]==='create_s3_storage'`))
   verdict('no raw secret leaks into dialog or global toast',await evaluate(`(function(){const text=document.body.innerText;return !text.includes('QA-SECRET-DO-NOT-RENDER-7b83')&&!text.includes('X-Amz-Signature')&&!text.includes('AccessDenied simulated token=')})()`))
+  verdict('diagnosis received keyboard focus for recovery',await evaluate(`(function(){const el=document.querySelector('section[aria-label="R2 连接诊断"]');return !!el&&document.activeElement===el})()`))
   verdict('diagnosis includes recovery path',await evaluate(`!![...document.querySelectorAll('button')].find(b=>b.textContent.includes('返回相关配置步骤'))`))
   await shot(`r2-safe-diagnosis-${width}-dpr${dpr}`)
   await clickButton('返回相关配置步骤')
   verdict('after failure, keys remain masked in editable step',await evaluate(`(function(){const d=document.querySelector('section[aria-labelledby="r2-dialog-title"]');return !!d && d.querySelectorAll('input[type="password"]').length===2 && d.textContent.includes('API 密钥')})()`))
+  await typeIn('Secret Access Key','QA-CHANGED-SECRET-NO-NETWORK')
+  verdict('editing after failure clears stale R2 diagnosis',await evaluate(`!document.querySelector('section[aria-label="R2 连接诊断"]')`))
   await pressEscape()
   verdict('Escape closes wizard without retry',await evaluate(`!document.querySelector('section[aria-labelledby="r2-dialog-title"]') && window.__R2_QA_INVOKES.length===1`))
   verdict('focus returns to opener',await evaluate(`document.activeElement?.id === 'r2-qa-open'`))
