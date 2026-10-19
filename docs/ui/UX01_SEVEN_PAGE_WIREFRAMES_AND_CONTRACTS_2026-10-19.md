@@ -167,6 +167,6 @@ StorageEntry 不是 Asset；删除必须明确当前桶、目录、对象数量�
 ## 7. G1 验收与后续交接
 
 - [ ] 七页真实用户任务复核与页面线框人工审查（**待做**）。
-- [ ] 依据本文件扩充 `project.taskui.json` 到七页/十任务，完成真实原始 TaskUI strict 检查（下一提交）。
+- [x] 已将 `project.taskui.json` 扩展为 **7 屏幕、10 条假设任务、20 个动作入口**；[原始 TaskUI strict 检查 #39185480287](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/39185480287) 输出 **PASS errors=0 warnings=0**，原始 validator 9 项单测通过，故意错误示例被拒绝；与 AppShell 七入口源码对齐。此结论仅代表**机器结构符合**，不等于 G0 真实用户验证或 G3 可用性。
 - [ ] UI-02 才能开始实现共享 `SafeProblem / GuideDock / ObjectInspector` 产品组件；本 PR 不直接触碰产品 TypeScript/Rust。
 - [ ] Windows Tauri 原生多 DPI、键盘与任务试验：G3 HOLD；R2 受保护 E2E：未授权不运行。
