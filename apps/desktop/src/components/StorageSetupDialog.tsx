@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { BookOpen, CheckCircle2, Cloud, ExternalLink, GitBranch, GitFork, HardDrive, LoaderCircle, Server, X } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -14,7 +14,7 @@ import {
 } from '../lib/desktop'
 import type { PortableStorageProfile } from '../lib/desktop'
 import { portableReconnectConflict } from '../lib/portableReconnect'
-import { confirmAction } from '../store/useConfirmStore'
+import { confirmAction, useConfirmStore } from '../store/useConfirmStore'
 import { notifyError } from '../store/useToastStore'
 import { R2GuidedFields } from './R2GuidedFields'
 import { diagnoseR2Failure, validateR2Setup } from '../lib/r2Diagnostics'
@@ -109,6 +109,7 @@ export function StorageSetupDialog({
   onCreated?: (created: StorageView) => void
 }) {
   const queryClient = useQueryClient()
+  const dialogRef = useRef<HTMLElement>(null)
   const guideUrl = getProviderGuideUrl(provider)
   const isRepository = provider === 'github' || provider === 'gitee'
   const isGenericS3 = provider === 'r2' || provider === 's3'
@@ -353,6 +354,50 @@ export function StorageSetupDialog({
     }
   }
 
+  useEffect(() => {
+    if (provider !== 'r2') return
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const dialog = dialogRef.current
+    dialog?.querySelector<HTMLElement>('input, button:not([disabled])')?.focus({ preventScroll: true })
+    function handleKeyDown(event: KeyboardEvent) {
+      // ConfirmDialog owns Escape and Tab while it is visible.
+      if (useConfirmStore.getState().request || !dialogRef.current) return
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        if (!submitGuard.current) onClose()
+      } else if (event.key === 'Tab') {
+        const enabled = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        )).filter((node) => node.getClientRects().length > 0)
+        if (!enabled.length) return
+        const first = enabled[0], last = enabled[enabled.length - 1]
+        if (event.shiftKey && (document.activeElement === first || !dialogRef.current.contains(document.activeElement))) {
+          event.preventDefault()
+          last.focus()
+        } else if (!event.shiftKey && (document.activeElement === last || !dialogRef.current.contains(document.activeElement))) {
+          event.preventDefault()
+          first.focus()
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      if (previous?.isConnected) previous.focus({ preventScroll: true })
+    }
+    // The dialog lifecycle owns focus; step transitions have a separate focus handoff.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider])
+
+  useEffect(() => {
+    if (provider !== 'r2') return
+    const active = dialogRef.current?.querySelector<HTMLElement>(
+      `[aria-current="step"], input:not([disabled])`,
+    )
+    active?.focus({ preventScroll: true })
+  }, [provider, r2Step])
+
   async function openGitHubTokenPage() {
     const url = 'https://github.com/settings/personal-access-tokens/new'
     setTokenStatus('正在打开 GitHub Token 页面…')
@@ -371,11 +416,11 @@ export function StorageSetupDialog({
 
   return (
     <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/25 p-3 backdrop-blur-sm sm:p-6" onMouseDown={requestClose}>
-      <section onMouseDown={(event) => event.stopPropagation()} className="max-h-[92vh] w-full max-w-[760px] overflow-auto rounded-[24px] border border-white bg-white p-4 shadow-[0_30px_100px_rgba(15,23,42,.22)] sm:rounded-[28px] sm:p-6">
+      <section ref={dialogRef} role={provider === 'r2' ? 'dialog' : undefined} aria-modal={provider === 'r2' ? true : undefined} aria-labelledby={provider === 'r2' ? 'r2-dialog-title' : undefined} onMouseDown={(event) => event.stopPropagation()} className="max-h-[92vh] w-full max-w-[760px] overflow-auto rounded-[24px] border border-white bg-white p-4 shadow-[0_30px_100px_rgba(15,23,42,.22)] sm:rounded-[28px] sm:p-6">
         <div className="flex items-start gap-4">
           <div className="grid size-11 place-items-center rounded-2xl bg-slate-100"><Icon size={19} /></div>
           <div>
-            <h2 className="text-lg font-semibold">连接 {providerNames[provider]}</h2>
+            <h2 id={provider === 'r2' ? 'r2-dialog-title' : undefined} className="text-lg font-semibold">连接 {providerNames[provider]}</h2>
             <p className="mt-1 text-xs text-slate-400">
               {isRepository
                 ? '仓库、分支与 Token 即可开始。公开仓库默认生成 Raw URL。'
