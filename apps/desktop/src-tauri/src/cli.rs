@@ -428,7 +428,8 @@ fn reject_private_cli_target(record: &StorageRecord) -> Result<(), String> {
             .and_then(serde_json::Value::as_str),
     ) {
         return Err(
-            "私有 R2/S3 不能通过 Typora / CLI 公网链接模式发布，请改用镜云桌面上传与临时分享".into(),
+            "私有 R2/S3 不能通过 Typora / CLI 公网链接模式发布，请改用镜云桌面上传与临时分享"
+                .into(),
         );
     }
     Ok(())
