@@ -1,0 +1,70 @@
+name: Mirror Cloud UI-00 Windows Edge baseline
+on:
+  push:
+    branches:
+      - qa/full-ux-00-baseline-20261019
+permissions:
+  contents: read
+jobs:
+  seven-page-visual-baseline:
+    runs-on: windows-latest
+    timeout-minutes: 28
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Ensure screenshot source exactly matches frozen UI-00 integrated baseline
+        shell: pwsh
+        run: |
+          $baseline = '3eca9cc8c51b696d3e1fc6d26d5d90853e75d3ab'
+          $changed = @(git diff --name-only $baseline HEAD)
+          if ($changed.Count -ne 1 -or $changed[0] -ne '.github/workflows/full-ux-00-baseline.yml') {
+            throw "UI00 QA isolation failed, changed: $($changed -join ', ')"
+          }
+          Write-Host "UX00_SOURCE_GATE baseline=$baseline only_test_workflow=1"
+      - name: Install pinned frontend
+        working-directory: apps/desktop
+        run: npm ci
+      - name: Run seven-page baseline and 3 viewport screenshots
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path ux00-evidence -Force | Out-Null
+          $app = (Resolve-Path apps/desktop).Path
+          $server = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c','npm run dev -- --host 127.0.0.1 > ux00-vite.log 2>&1' -WorkingDirectory $app -PassThru
+          try {
+            $ready = $false
+            for ($i=0; $i -lt 80; $i++) {
+              try {
+                if ((Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:1420/' -TimeoutSec 3).StatusCode -eq 200) { $ready=$true; break }
+              } catch {}
+              Start-Sleep -Milliseconds 500
+            }
+            if (-not $ready) { throw 'UI-00 localhost fixture failed to start' }
+            $failed = @()
+            foreach ($mode in @('pages','layout')) {
+              Write-Host "UX00_BROWSER_BEGIN mode=$mode"
+              & node scripts/verify_dialog_interactions.mjs $mode '--out=ux00-evidence'
+              $exit = $LASTEXITCODE
+              Write-Host "UX00_BROWSER_END mode=$mode exit=$exit"
+              if ($exit -ne 0) { $failed += "$mode=$exit" }
+            }
+            if ($failed.Count -ne 0) { throw "UI-00 baseline reported findings: $($failed -join ',')" }
+            Write-Host 'UX00_BASELINE_GATE seven_pages=1 multi_viewport=1 screenshots=1 cloud_writes=0'
+          } finally {
+            if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue }
+          }
+      - name: Upload seven-page screenshot and measurements
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mirror-cloud-ux00-frozen-seven-page-baseline
+          path: |
+            ux00-evidence/
+            apps/desktop/ux00-vite.log
+          if-no-files-found: warn
+          retention-days: 14
