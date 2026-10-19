@@ -179,6 +179,7 @@ async function runCase({width,height,dpr}) {
   verdict('only local refusing bridge was called',await evaluate(`window.__R2_QA_INVOKES.length===1 && window.__R2_QA_INVOKES[0]==='create_s3_storage'`))
   verdict('no raw secret leaks into dialog or global toast',await evaluate(`(function(){const text=document.body.innerText;return !text.includes('QA-SECRET-DO-NOT-RENDER-7b83')&&!text.includes('X-Amz-Signature')&&!text.includes('AccessDenied simulated token=')})()`))
   verdict('diagnosis received keyboard focus for recovery',await evaluate(`(function(){const el=document.querySelector('section[aria-label="R2 连接诊断"]');return !!el&&document.activeElement===el})()`))
+  verdict('inline R2 error does not create an overlapping duplicate toast',await evaluate(`document.querySelectorAll('.pointer-events-none.fixed.bottom-4.right-4').length===0`))
   verdict('diagnosis includes recovery path',await evaluate(`!![...document.querySelectorAll('button')].find(b=>b.textContent.includes('返回相关配置步骤'))`))
   await shot(`r2-safe-diagnosis-${width}-dpr${dpr}`)
   await clickButton('返回相关配置步骤')
