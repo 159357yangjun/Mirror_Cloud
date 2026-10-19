@@ -15,6 +15,7 @@ import {
 import type { PortableStorageProfile } from '../lib/desktop'
 import { portableReconnectConflict } from '../lib/portableReconnect'
 import { confirmAction } from '../store/useConfirmStore'
+import { notifyError } from '../store/useToastStore'
 import { R2GuidedFields } from './R2GuidedFields'
 import { diagnoseR2Failure, validateR2Setup } from '../lib/r2Diagnostics'
 import type {
@@ -203,6 +204,17 @@ export function StorageSetupDialog({
       await queryClient.invalidateQueries({ queryKey: ['workflows'] })
       onCreated?.(created)
       onClose()
+    },
+    // A mutation-level handler suppresses main.tsx's global raw-error toast.
+    // Without it, the R2 inline diagnosis was redacted but the global toast leaked the raw provider error.
+    onError: (error) => {
+      if (provider === 'r2') {
+        notifyError(diagnoseR2Failure(error).title)
+      } else if (restoreProfile) {
+        notifyError('重新连接失败，请核对配置及本机输入的凭据；诊断信息未包含服务商原始响应。')
+      } else {
+        notifyError(`操作失败：${String(error)}`)
+      }
     },
   })
 
