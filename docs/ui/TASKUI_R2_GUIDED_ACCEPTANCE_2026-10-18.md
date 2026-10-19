@@ -96,3 +96,49 @@
 | `d7fcaf7` | `apps/desktop/src/lib/r2Diagnostics.ts` [修改] | 迁移重复目标 `RESTORE_CONFLICT` 改为独立常量诊断，不误报为未知云端错误 | 纯离线诊断测试 |
 
 > 每个 commit 的完整 diff 均保留在 Draft PR 的 **Commits** 页面。以上每项指向实际修改路径；后续修复继续单独添加记录，不在有未结门禁时宣称全部验收完成。
+
+## 第二轮续做：2026-10-19 实际修改与证据（按 Commit 顺序）
+
+本轮先读原始 CI 与源码，发现：R2 表单虽已将原始错误替换为固定诊断文案，`main.tsx` 的全局 MutationCache 仍会发送含原始错误的 Toast。因此先修泄密风险，再做真正的 UI 验收。下述 QA 桥接器为**仅在 Vite 测试页面运行的拒绝式模拟器**，无真实云端权限与写入。
+
+| Commit SHA | 文件（增/改） | 修改前 → 修改后 | 影响和验证 |
+|---|---|---|---|
+| `2617bc1062f13769ab959e798f18fca445961ea3` | `apps/desktop/src/components/StorageSetupDialog.tsx`（改） | R2 虽有脱敏 `role=alert`，全局 MutationCache 仍可能弹出原始错误 → R2 mutation 自己处理固定诊断 Toast，阻止全局兜底显示原始 Provider 文本 | 错误 UI 与全局 Toast 双路径脱敏，**模拟含签名与密钥的错误测试已通过** |
+| `da7a7bb227480b718ef2379820489361cd1b4490` | `apps/desktop/src/components/StorageSetupDialog.tsx`（改） | R2 配置窗没有正式 dialog/初始焦点/Escape/Tab 约束 → 新增 aria-modal、焦点陷阱、Esc 关闭、关闭后焦点恢复；确认框打开时由 ConfirmDialog 独占键盘 | Windows Edge 全流程已覆盖 Esc、Cancel、焦点回到入口与 Tab 正反环绕 |
+| `0ad4dae7bad6167563f7e7161e35426eca6dfd04` | `apps/desktop/r2-wizard-qa.html`（增） | 无可独立加载的真实 R2 UI 测试入口 → 新增 Vite-only fixture HTML | 仅开发服务器访问；Tauri 常规构建不以此文件作为主入口 |
+| `069e9bc8bcf7f12eafb3682d65b1c57b9509f5b1` | `apps/desktop/src/r2-wizard-qa.tsx`（增） | 无可信模拟桥接 → 挂载真实 React 向导、真实确认框、生产同款全局 Mutation 错误处理及**始终拒绝**的本地 Tauri invoke 模拟器 | 允许在不携带云密钥、无远端对象操作的条件下复现敏感错误 |
+| `8c3fb8c249ca34dcefb5ef257f565a7a1b9f7959` | `scripts/test_r2_wizard_browser.mjs`（增） | 原离线 9 项规则测试不能证明真实 DOM/键盘/防误提交 → 新增 Windows Edge CDP 实际按钮输入、UI 截图、取消确认零调用、批准后模拟失败不泄密 | 真实 Chromium 执行；不替代 Cloudflare E2E |
+| `5dfb81b266c936ec4eade0fe7d5fb350720d2800` | `.github/workflows/taskui-r2-guided-check.yml`（改） | 只有 TS 与离线测试 → 加 Windows Edge R2 交互和截图证据 Artifact | [#39181314625](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/39181314625)：**成功**，46/46 交互检查 |
+| `7d12cb63092158b88dd5c597172c3ee306ea767b` | `apps/desktop/src/components/StorageSetupDialog.tsx`（改） | 失败面板在小窗较难找到、用户修改输入后旧错误仍保留 → 失败时滚动/聚焦诊断；字段修改时重置旧错误 | 下游浏览器 UI 验证：诊断聚焦及旧错误移除通过 |
+| `6344cc3bb4e4898f37d24cf5bff9816edd5cd8ad` | `scripts/test_r2_wizard_browser.mjs`（改） | 只验 Esc/Cancel → 增加 Tab/Shift+Tab 双向环绕、640 容器边界、错误焦点及编辑后旧诊断清除 | [#39181650542](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/39181650542)：**成功**，2 场景 `checks=58 failed=0 cloud_writes=0` |
+| `77c693b8bea1a702ada4381f33b836b17ad082b4` | `AGENTS.md`（改） | 逐 Commit 报告要求仅约定在对话里 → 固化为第 9 条仓库强制规则（完整文件路径、意图、前后变化、风险、证据、SHA 和 Diff） | 不更改产品运行逻辑 |
+| `1cd7b12d8aa43e1fe8fb57b57e9161d04ec6e5ce` | `.github/workflows/taskui-r2-native-windows-smoke.yml`（增） | R2 PR 无实际 Tauri 候选构建与 Windows 安装检查 → 复用此前通过的原生窗口、NSIS/MSI 安装卸载和锁文件门禁，限此隔离分支 | 等待本提交对应 native 运行裁决；**不涉及真实 R2** |
+
+### 第二轮关键代码差异（可审计节选）
+
+```diff
+- // 仅修改表单中的 mutation.error 显示，但全局 handler 仍会 notifyError(String(error))
++ onError: (error) => {
++   if (provider === 'r2') notifyError(diagnoseR2Failure(error).title)
++   // 防止全局 MutationCache 再弹出未脱敏的原始错误
++ }
+```
+
+```diff
+- // R2 表单未标注 aria-modal，Escape / Tab 在窗口外也能游走
++ <section role="dialog" aria-modal="true" aria-labelledby="r2-dialog-title" ...>
++ // 绑定 Esc 关闭、Tab 焦点环绕；ConfirmDialog 打开时交由其优先处理
+```
+
+```diff
+- // 失败后旧诊断保留，修正字段时可能误以为新配置仍失败
++ if (provider === 'r2' && mutation.error) mutation.reset()
++ // 首次失败时滚动并聚焦 R2 诊断面板
+```
+
+### 自动化现状与证明范围
+
+- Windows Edge：1366×768 / DPR 1.0、640×480 / DPR 1.5 两套输入、键盘、授权流程，**58/58** 全通过；有提交前截图与脱敏诊断截图（QA artifact）。
+- 原始离线 R2 配置/泄密负例：**9/9** 通过。浏览器模拟器**批准前零 invoke**，批准后仅记录一次本地被拒绝的 `create_s3_storage`，不是远端调用。
+- 浏览器 DPR ≠ Windows 系统缩放：本轮还未在真实 Windows Tauri WebView 下逐步骤操作。Windows Native Smoke 仅用于确认打包、窗口启动、安装和卸载，不会证明 R2 真实写入或用户任务成功。
+- 正式保护边界：没有请求/存储真实 R2 凭据、未解除 live E2E protected Environment、未打 tag/Release、未修改 `main`/`dev`/原始冻结候选。
