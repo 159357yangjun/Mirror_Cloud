@@ -110,6 +110,7 @@ export function StorageSetupDialog({
 }) {
   const queryClient = useQueryClient()
   const dialogRef = useRef<HTMLElement>(null)
+  const r2ErrorRef = useRef<HTMLElement>(null)
   const guideUrl = getProviderGuideUrl(provider)
   const isRepository = provider === 'github' || provider === 'gitee'
   const isGenericS3 = provider === 'r2' || provider === 's3'
@@ -231,8 +232,12 @@ export function StorageSetupDialog({
   }) : []
   const r2Failure = provider === 'r2' && mutation.error ? diagnoseR2Failure(mutation.error) : null
 
-  const setS3 = (key: keyof CreateS3StorageInput, value: string) =>
+  const setS3 = (key: keyof CreateS3StorageInput, value: string) => {
+    // Correcting a field invalidates the old diagnosis; don't keep a stale cloud failure
+    // attached to an updated config that has not yet been submitted.
+    if (provider === 'r2' && mutation.error) mutation.reset()
     setS3Form((current) => ({ ...current, [key]: value }))
+  }
   const setObject = (key: keyof CreateObjectStorageInput, value: string) =>
     setObjectForm((current) => ({ ...current, [key]: value }))
   const setRepo = (key: keyof CreateRepositoryStorageInput, value: string) =>
@@ -391,6 +396,13 @@ export function StorageSetupDialog({
   }, [provider])
 
   useEffect(() => {
+    if (provider !== 'r2' || !mutation.error) return
+    const target = r2ErrorRef.current
+    target?.scrollIntoView({ block: 'nearest', behavior: 'auto' })
+    target?.focus({ preventScroll: true })
+  }, [provider, mutation.error])
+
+  useEffect(() => {
     if (provider !== 'r2') return
     const active = dialogRef.current?.querySelector<HTMLElement>(
       `[aria-current="step"], input:not([disabled])`,
@@ -504,7 +516,7 @@ export function StorageSetupDialog({
           <R2GuidedFields
             form={s3Form} setField={setS3} issues={r2Issues} step={r2Step} setStep={setR2Step}
             restoreChoicePending={Boolean(restoreProfile?.accessMode === 'unknown' && !restoreModeConfirmed)}
-            confirmMode={(accessMode) => { setRestoreModeConfirmed(true); setS3Form((current) => ({ ...current, accessMode, publicBaseUrl: accessMode === 'private_requested' ? '' : current.publicBaseUrl })) }}
+            confirmMode={(accessMode) => { if (mutation.error) mutation.reset(); setRestoreModeConfirmed(true); setS3Form((current) => ({ ...current, accessMode, publicBaseUrl: accessMode === 'private_requested' ? '' : current.publicBaseUrl })) }}
           />
         )}
         {isGenericS3 && provider !== 'r2' && (
@@ -565,7 +577,7 @@ export function StorageSetupDialog({
         )}
 
         {r2Failure && (
-          <section aria-label="R2 连接诊断" role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs leading-6 text-red-800">
+          <section ref={r2ErrorRef} tabIndex={-1} aria-label="R2 连接诊断" role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs leading-6 text-red-800">
             <h3 className="font-semibold">{r2Failure.title}</h3>
             <p className="mt-1">以下是排查方向，尚未证实根因。原始错误可能包含敏感信息，不在此显示。</p>
             <ul className="mt-2 list-inside list-disc">{r2Failure.checks.map((check) => <li key={check}>{check}</li>)}</ul>
