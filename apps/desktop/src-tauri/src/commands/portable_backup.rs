@@ -144,7 +144,9 @@ fn validate_manifest(manifest: &PortableStorageManifest) -> CmdResult<()> {
 /// import inspector. Check the fully serialized bytes *before* creating a file.
 fn ensure_export_importable(bytes: &[u8]) -> CmdResult<()> {
     if bytes.len() as u64 > MAX_IMPORT_BYTES {
-        return Err("导出清单超过 1 MB 导入上限；尚未创建文件。请减少配置条目或缩短目录字段".into());
+        return Err(
+            "导出清单超过 1 MB 导入上限；尚未创建文件。请减少配置条目或缩短目录字段".into(),
+        );
     }
     Ok(())
 }
