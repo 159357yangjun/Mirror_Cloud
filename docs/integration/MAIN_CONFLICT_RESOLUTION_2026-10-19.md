@@ -41,3 +41,21 @@
 6. PR #40 R2, #41 seven-page audit, #42 TaskUI architecture are independent Draft deliverables; no assertion that these are already included.
 
 **Evidence boundary:** 3-way blob/semantic comparison is not runtime proof. Cargo/SQLite migration, browser focus, native build and upgrade/rollback gates must still pass. This report records conflict decisions; it does not state that main has been merged or that code has been deployed.
+
+## PR #43 review remediation (2026-10-19)
+
+All 3 review findings remain **unresolved until final CI is green**; code changes below were made on the existing integration branch and not on protected `main`.
+
+| Commit (full SHA) | File (M=modified) | Before → After | Verification |
+|---|---|---|---|
+| `687bdde864bedcd4f3bbdc6ec49f58ac4d532a28` | **M** `apps/desktop/src-tauri/src/cli.rs` | `provider_key == "r2"` rejected a private-public-URL mismatch only for R2 → common helper rejects private `r2` **and** `s3`; adds unit test for private/public/absent mode | Final HEAD Rust tests pending |
+| `bebed50c890fc3a3ce077d391ac91292942e2a03` | **M** `apps/desktop/src-tauri/src/commands.rs` | Mixed private/public group was rejected only at publish preflight → collect enabled `StorageRecord` while validating, call existing `validate_group_access_intents` before `groups.insert` | Existing guard unit tests + final CI pending |
+| `9edddd534862789b0a3bb95222d464a3f427d5c5` | **M** `apps/desktop/src-tauri/src/commands/portable_backup.rs` | Export wrote serialized manifests even if >1 MB and hence impossible to import → check serialized bytes **before** destination create; applies to storage manifest and reconnect receipts, with length-boundary + large-root test | Final HEAD Rust tests pending |
+| `919385ad7156a3688e9ba11459934ac3363ee499` | **M** `AGENTS.md` | Only existing 8 rules → codify main-only, no new branch, verified cleanup and per-Commit change reports | Documentation only |
+
+### Real integration constraints
+
+- GitHub reports PR #43 `mergeable=true` after two-parent conflict reconciliation, but its `main` rules require all inline review threads resolved.
+- The initial `merge` API call was rejected (405: `Merge commits are not allowed on this repository`). A `squash` attempt was rejected until 3 review threads are addressed (405: `All comments must be resolved`). **Neither failed attempt modified main.**
+- `squash` will carry the current code tree into main as one summary commit, but not preserve 763+ commits as direct ancestors of main. Individual SHA, files and reviews remain visible in PR while branches exist. Preserve audit/PR history before any deletion.
+- The fixes above are not live Cloudflare E2E, not a release, and do not authorize bypassing remaining Windows/upgrade tests.
