@@ -87,19 +87,29 @@
 
 ## G. 基线截图及实测证据台账
 
-**源码审计完成；真实 Windows Edge 7 页×视口截图由隔离 QA 分支另行采集**（严格与产品 SHA 对齐，不在此伪造图片）。
+**源码审计 + Windows Edge CSS 视口截图已完成。** 证据来自只新增 QA 工作流的隔离分支 `qa/full-ux-00-baseline-20261019`，测试时 checkout 的产品源码与此审计基线完全一致（`UX00_SOURCE_GATE baseline=3eca9cc8c51b696d3e1fc6d26d5d90853e75d3ab only_test_workflow=1`）。[QA Run #39184599203](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/39184599203) — **SUCCESS**；Artifact：`mirror-cloud-ux00-frozen-seven-page-baseline`，包含七页在 1440×900、1024×768、640×480 的真实 Edge 视口截图、页面观测和布局测量 JSON。
 
 | 目标 | 测量类型 | 截图/日志状态 | 说明 |
 |---|---|---|---|
-| 七页 1366×768 / 1024×768 / 640×480 | Windows Edge CDP | **待 QA 运行链接和 artifact** | 3 档 CSS 视口；不替代 Windows 系统缩放 |
-| 七页 1440×900 | Windows Edge CDP | **待/既有视觉基线参考** | 若未采集单独声明 |
+| 七页 1440×900 / 1024×768 / 640×480 | Windows Edge CDP | **PASS**，21 个布局组合且无跳过；Run #39184599203 | 视口模拟；不是 1366×768，也不替代 Windows 系统缩放 |
+| 七页 1440×900 首屏 | Windows Edge CDP | **PASS**，7 页截图均在 artifact | 仅记录渲染外观，不代表用户可独立完成任务 |
 | 100/125/150% DPI、鼠标、拖放和真实窗口 | 原生 Windows Tauri | **尚未按 UI-00 新基线人工走查** | G3 必须 HOLD |
 | 5 名新手实际完成 T1–T5 | 用户测试 | **NOT RUN** | 不以假定完成率替代测量 |
 | R2 私有权限/真实对象写入 | 受保护真实环境 | **NOT RUN，保护不变** | 独立发行门禁 |
 
+
+### UI-00 真实基线自动检查读数（QA #39184599203）
+
+- `PAGES_GATE routes=7 judged=7 checked=36 failed=0`
+- `RAIL-PROOF elements_past_viewport_needing_a_rail=936 proven_reachable_by_scrolling=936 unreachable=0`
+- `LAYOUT_GATE checked=21 matched=21 skipped=0 failures=0`
+- 仪器的 21 个组合对应 **7 页 × 3 档 CSS 视口（1440、1024、640）**；这是 **Edge 模拟视口**，**没有测量**真实 125%/150% Windows 系统显示缩放。
+- 浏览器截图可见一些“Typora Command / Tauri 接口不可用”类错误 Toast：浏览器运行没有桌面 Tauri Runtime，这些 **不能单凭截图归类为原生产品缺陷**。应在后续原生 G3 任务回放中确认，同时避免把错误 Toast 当作真实 Cloud Provider 响应。
+- 源码审计发现的“跨页状态潜在丢失、原始错误风险、固定三列布局”等是**下一阶段的调查输入**；本次 21/21 布局 PASS 并不证明十项用户任务或所有对话框已无问题。
+
 ## H. UI-00 结论与 UI-01 入场条件
 
 - **完成**：七页入口与代码索引、对象语义、10 条任务假设、8 项安全风险、首批共用诊断需求、PR #40 隔离边界、截图测具策略。
-- **待补**：Windows Edge 新基线运行 Artifact、用户走查和真实初学者卡点、G0 人工复核。
+- **待补**：真实 Windows Tauri DPI / 用户走查和真实初学者卡点、G0 人工复核；Windows Edge 截图已采集并完成来源校验。
 - **UI-00 不改产品代码、不改 `project.taskui.json`**；后者作为 UI-01 七页 G1 Manifest，在冻结线框和任务路径后进行严格校验。
 - **门禁裁决**：UI-00 源码审计 READY FOR REVIEW；G0 真实用户任务确认与 G3 尚未 PASS。不能直接因此合并未来 UI-01/02 产品代码。
