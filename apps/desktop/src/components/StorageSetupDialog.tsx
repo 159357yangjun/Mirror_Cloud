@@ -211,7 +211,10 @@ export function StorageSetupDialog({
     // Without it, the R2 inline diagnosis was redacted but the global toast leaked the raw provider error.
     onError: (error) => {
       if (provider === 'r2') {
-        notifyError(diagnoseR2Failure(error).title)
+        // The focused inline diagnosis is the single error surface.
+        // A second toast obscures the recovery controls on compact Windows windows.
+        // Defining onError also suppresses main.tsx's global raw-error toast.
+        return
       } else if (restoreProfile) {
         notifyError('重新连接失败，请核对配置及本机输入的凭据；诊断信息未包含服务商原始响应。')
       } else {
