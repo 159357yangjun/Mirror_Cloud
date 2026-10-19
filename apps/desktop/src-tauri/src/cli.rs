@@ -415,16 +415,20 @@ async fn load_ai_settings(context: &CliContext) -> serde_json::Value {
 
 // Typora/CLI returns a permanent public URL to the caller. A private upload cannot
 // satisfy that output contract, so reject it before writing any remote object.
+fn private_cli_target(provider_key: &str, access_mode: Option<&str>) -> bool {
+    matches!(provider_key, "r2" | "s3") && access_mode == Some("private_requested")
+}
+
 fn reject_private_cli_target(record: &StorageRecord) -> Result<(), String> {
-    if record.provider_key == "r2"
-        && record
+    if private_cli_target(
+        &record.provider_key,
+        record
             .config_json
             .get("access_mode")
-            .and_then(serde_json::Value::as_str)
-            == Some("private_requested")
-    {
+            .and_then(serde_json::Value::as_str),
+    ) {
         return Err(
-            "私有 R2 不能通过 Typora / CLI 公网链接模式发布，请改用镜云桌面上传与临时分享".into(),
+            "私有 R2/S3 不能通过 Typora / CLI 公网链接模式发布，请改用镜云桌面上传与临时分享".into(),
         );
     }
     Ok(())
@@ -1049,5 +1053,21 @@ fn build_provider(
             "Provider {} is not supported by the Typora bridge",
             record.provider_key
         )),
+    }
+}
+
+#[cfg(test)]
+mod private_cli_target_tests {
+    use super::private_cli_target;
+
+    #[test]
+    fn s3_and_r2_private_intents_cannot_publish_public_cli_links() {
+        for provider in ["r2", "s3"] {
+            assert!(private_cli_target(provider, Some("private_requested")));
+            assert!(!private_cli_target(provider, Some("public")));
+            assert!(!private_cli_target(provider, None));
+        }
+        assert!(!private_cli_target("oss", Some("private_requested")));
+        assert!(!private_cli_target("github", Some("private_requested")));
     }
 }
