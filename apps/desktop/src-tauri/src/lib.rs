@@ -9,6 +9,7 @@ use std::{
 };
 
 use credential_store::CredentialStore;
+use persistence_sqlite::asset_staging::AssetStagingRepository;
 use persistence_sqlite::{
     AssetRepository, PluginRepository, SettingsRepository, StorageGroupRepository,
     StorageRepository, TaskRepository, WorkflowRepository, journal::SqliteEventJournal,
@@ -21,6 +22,7 @@ use tokio::sync::RwLock;
 pub struct AppState {
     pub storages: StorageRepository,
     pub assets: AssetRepository,
+    pub asset_staging: AssetStagingRepository,
     pub settings: SettingsRepository,
     pub groups: StorageGroupRepository,
     pub workflows: WorkflowRepository,
@@ -95,6 +97,7 @@ pub fn run() {
             let state = AppState {
                 storages: StorageRepository::new(pool.clone()),
                 assets: AssetRepository::new(pool.clone()),
+                asset_staging: AssetStagingRepository::new(pool.clone()),
                 settings: SettingsRepository::new(pool.clone()),
                 groups: StorageGroupRepository::new(pool.clone()),
                 workflows: WorkflowRepository::new(pool.clone()),
@@ -126,11 +129,34 @@ pub fn run() {
             commands::create_webdav_storage,
             commands::create_repository_storage,
             commands::list_storages,
+            commands::export_portable_storage_manifest,
+            commands::inspect_portable_storage_manifest,
+            commands::export_portable_reference_manifest,
+            commands::inspect_portable_reference_manifest,
+            commands::preview_portable_reference_restore,
+            commands::restore_portable_storage_group,
+            commands::export_portable_group_mapping,
+            commands::inspect_portable_group_mapping,
+            commands::restore_portable_workflow,
+            commands::export_portable_reconnect_map,
+            commands::inspect_portable_reconnect_map,
+            commands::export_portable_asset_manifest,
+            commands::inspect_portable_asset_manifest,
+            commands::preview_portable_asset_restore,
+            commands::stage_portable_asset_manifest,
+            commands::list_portable_asset_staging,
+            commands::list_portable_staged_items,
+            commands::update_portable_staged_item_review,
+            commands::assess_portable_asset_activation,
+            commands::apply_portable_staged_batch_decision,
+            commands::discard_portable_asset_staging,
             commands::get_default_publish_target,
             commands::set_default_publish_target,
             commands::delete_storage,
             commands::test_storage,
             commands::browse_storage,
+            commands::create_temporary_share_link,
+            commands::preview_private_storage_entry,
             commands::sync_storage_asset_index,
             commands::delete_storage_entry,
             commands::download_storage_entry,

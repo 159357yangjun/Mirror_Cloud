@@ -1,0 +1,63 @@
+{
+ "verdict": "G3 v1.4.8 -> RC(0422c0d) upgrade fidelity",
+ "candidate_note": "RC built from 0422c0d whose tree == 2b936e5 (748e58ce); provenance ruling pending user",
+ "installer_sha256": "ad6727f25348b7373f0ebcfba7e3b6c92728c91daeeeee4776f9a059dc616a6d",
+ "rows": {
+  "1_app_version": {
+   "before": "1.4.8",
+   "after": "1.4.9",
+   "pass": true
+  },
+  "2_sqlite": {
+   "stable_counts_equal": true,
+   "migrations": 19,
+   "assets_b_a": [
+    47,
+    48
+   ],
+   "note": "+1 is row-10's own upload",
+   "pass": true
+  },
+  "3_storage_config": {
+   "GitHub/github/enabled + config_json byte-equal, parses in current build": true,
+   "pass": true
+  },
+  "4_token": {
+   "repo_visible": true,
+   "user_ok": true,
+   "login_matches_owner": true,
+   "local_api_cred_readable": true,
+   "pass": true
+  },
+  "5_default_target": {
+   "publish.default_target identical": true,
+   "pass": true
+  },
+  "6_typora_bridge": {
+   "cli --typora-upload rc": 0,
+   "url_fetched_http": 200,
+   "pass": true
+  },
+  "7_theme": {
+   "status": "PENDING-GUI",
+   "pass": null
+  },
+  "8_asset_index": {
+   "scan_entries": 47,
+   "index_readable_after": true,
+   "pass": true
+  },
+  "9_plugin": {
+   "row_identical": true,
+   "after_upload_executed_on_new_asset": true,
+   "template_output": "G3-v149::probe_after.png::<url>",
+   "pass": true
+  },
+  "10_fresh_upload": {
+   "asset": "probe_after.png",
+   "deployments": 48,
+   "pass": true
+  }
+ },
+ "score": "9/9 decidable rows PASS; row 7 awaiting the user's eyes"
+}

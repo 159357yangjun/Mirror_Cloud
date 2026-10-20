@@ -74,7 +74,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="app-shell-root min-h-screen text-[var(--text-primary)]">
-      <aside className="app-sidebar theme-glass fixed inset-y-0 left-0 z-30 w-[220px] border-r">
+      <a href="#mirror-main" className="sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:not-sr-only focus:rounded-lg focus:bg-[var(--surface)] focus:px-3 focus:py-2 text-sm focus:font-semibold focus:text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent)]">跳到主工作区</a>
+      <aside aria-label="应用导航" className="app-sidebar theme-glass fixed inset-y-0 left-0 z-30 w-[220px] border-r">
         <div className="flex min-h-full flex-col p-4">
           <div className="flex items-center gap-3 px-2 py-3">
             <div className="grid size-9 place-items-center rounded-2xl bg-slate-950 text-white shadow-sm"><Zap size={17} /></div>
@@ -87,18 +88,23 @@ export function AppShell({ children }: { children: ReactNode }) {
           <button
             className="app-upload-button mt-5 flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-medium text-white shadow-[0_8px_30px_rgba(15,23,42,.16)] transition hover:-translate-y-0.5"
             onClick={() => openUpload('files')}
+            aria-label="快速发布图片"
+            title="快速发布图片"
           >
             <Upload size={16} /> <span className="app-upload-label">快速发布</span>
           </button>
 
-          <nav className="mt-6 space-y-1">
+          <nav aria-label="主要页面" className="mt-6 space-y-1">
             {items.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
                 onClick={() => setPage(key)}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
+                aria-label={`切换到${label}页面`}
+                aria-current={page === key ? 'page' : undefined}
+                title={label}
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
                   page === key
-                    ? 'bg-[var(--surface-soft)] font-medium text-[var(--text-primary)]'
+                    ? 'bg-[var(--surface-soft)] font-semibold text-[var(--text-primary)] ring-1 ring-[var(--border)]'
                     : 'text-[var(--text-secondary)] hover:bg-[var(--surface-soft)] hover:text-[var(--text-primary)]'
                 }`}
               >
@@ -111,6 +117,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="mt-auto space-y-2">
             <button
               onClick={() => setShowTheme(true)}
+              aria-label={`打开皮肤设置，当前主题${themeLabel(appearance.theme)}`}
               className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-soft)] hover:text-[var(--text-primary)]"
               title="打开皮肤面板：主题、强调色、壁纸、玻璃透明度与模糊"
             >
@@ -118,6 +125,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </button>
             <button
               onClick={() => setShowHelp(true)}
+              aria-label="打开教程与帮助"
               className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:bg-[var(--surface-soft)] hover:text-[var(--text-primary)]"
               title="打开应用内新手教程"
             >
@@ -125,7 +133,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             </button>
             <div className="app-sidebar-footer theme-surface rounded-2xl border p-3">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-xs font-medium text-[var(--text-secondary)]">v{__APP_VERSION__} · Mirror Cloud</div>
+                <div className="min-w-0 text-xs font-medium text-[var(--text-secondary)]">
+                  v{__APP_VERSION__} · Mirror Cloud
+                  {__APP_CANDIDATE_LABEL__ && <div className="mt-1 break-all font-mono text-[10px] text-amber-700">{__APP_CANDIDATE_LABEL__}</div>}
+                </div>
                 {updateAvailableVersion && (
                   <button
                     onClick={() => setPage('settings')}
@@ -135,13 +146,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                   />
                 )}
               </div>
-              <div className="mt-1 text-[11px] leading-5 text-[var(--text-muted)]">托管 · 管理 · 发布 · 多云可靠性</div>
-              <div className="mt-3 flex items-center gap-2 text-[11px] text-emerald-600"><span className="size-1.5 rounded-full bg-emerald-500" /> UX / Sync / Theme 开发中</div>
+              <div className="mt-1 text-[11px] leading-5 text-[var(--text-muted)]">图片上传 · 云端管理 · 任务追踪</div>
+              <div className="mt-3 text-[11px] leading-5 text-[var(--text-muted)]">检查更新仅提示；下载和安装需手动确认</div>
             </div>
           </div>
         </div>
       </aside>
-      <main className="app-main ml-[220px] min-h-screen">{children}</main>
+      <main id="mirror-main" tabIndex={-1} className="app-main ml-[220px] min-h-screen">{children}</main>
       {showHelp && (
         <HelpCenterDialog
           onClose={closeHelp}

@@ -413,6 +413,28 @@ async fn load_ai_settings(context: &CliContext) -> serde_json::Value {
     settings
 }
 
+// Typora/CLI returns a permanent public URL to the caller. A private upload cannot
+// satisfy that output contract, so reject it before writing any remote object.
+fn private_cli_target(provider_key: &str, access_mode: Option<&str>) -> bool {
+    matches!(provider_key, "r2" | "s3") && access_mode == Some("private_requested")
+}
+
+fn reject_private_cli_target(record: &StorageRecord) -> Result<(), String> {
+    if private_cli_target(
+        &record.provider_key,
+        record
+            .config_json
+            .get("access_mode")
+            .and_then(serde_json::Value::as_str),
+    ) {
+        return Err(
+            "私有 R2/S3 不能通过 Typora / CLI 公网链接模式发布，请改用镜云桌面上传与临时分享"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
 async fn preflight_target(context: &CliContext, workflow: &Workflow) -> Result<(), String> {
     let target = workflow
         .steps
@@ -433,6 +455,7 @@ async fn preflight_target(context: &CliContext, workflow: &Workflow) -> Result<(
                 .ok_or_else(|| {
                     "The default workflow points to a storage that no longer exists".to_string()
                 })?;
+            reject_private_cli_target(&record)?;
             let _ = build_provider(context, &record)?;
         }
         PublishTarget::StorageGroup { storage_group_id } => {
@@ -455,6 +478,7 @@ async fn preflight_target(context: &CliContext, workflow: &Workflow) -> Result<(
                 else {
                     continue;
                 };
+                reject_private_cli_target(&record)?;
                 if build_provider(context, &record).is_ok() {
                     viable += 1;
                 }
@@ -550,6 +574,7 @@ async fn publish_one(
                 .await
                 .map_err(|error| error.to_string())?
                 .ok_or_else(|| "Workflow storage no longer exists".to_string())?;
+            reject_private_cli_target(&storage)?;
             let provider = build_provider(context, &storage)?;
             PublisherCore::publish_group(
                 StorageGroupStrategy::MirrorAll,
@@ -914,6 +939,18 @@ async fn upload_group(
         other => return Err(format!("Unsupported Storage Group strategy: {other}")),
     };
 
+    // Guard even if this call bypassed preflight: never leak or delete private output
+    // merely because the CLI has no long-lived public URL to print.
+    for member in &group.members {
+        if let Some(record) = context
+            .storages
+            .get(member.storage_id)
+            .await
+            .map_err(|error| error.to_string())?
+        {
+            reject_private_cli_target(&record)?;
+        }
+    }
     let mut members = Vec::with_capacity(group.members.len());
     for member in &group.members {
         members.push(upload_group_member(context, member).await?);
@@ -1017,5 +1054,21 @@ fn build_provider(
             "Provider {} is not supported by the Typora bridge",
             record.provider_key
         )),
+    }
+}
+
+#[cfg(test)]
+mod private_cli_target_tests {
+    use super::private_cli_target;
+
+    #[test]
+    fn s3_and_r2_private_intents_cannot_publish_public_cli_links() {
+        for provider in ["r2", "s3"] {
+            assert!(private_cli_target(provider, Some("private_requested")));
+            assert!(!private_cli_target(provider, Some("public")));
+            assert!(!private_cli_target(provider, None));
+        }
+        assert!(!private_cli_target("oss", Some("private_requested")));
+        assert!(!private_cli_target("github", Some("private_requested")));
     }
 }

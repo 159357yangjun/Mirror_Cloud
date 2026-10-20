@@ -6,18 +6,44 @@ export function ConfirmDialog() {
   const request = useConfirmStore((state) => state.request)
   const settle = useConfirmStore((state) => state.settle)
   const cancelRef = useRef<HTMLButtonElement>(null)
+  const dialogRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     if (!request) return
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    // A destructive confirmation must start on Cancel, never Confirm.
     cancelRef.current?.focus()
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         event.preventDefault()
+        event.stopPropagation()
         settle(false)
+        return
+      }
+      if (event.key !== 'Tab' || !dialogRef.current) return
+      const controls = Array.from(dialogRef.current.querySelectorAll<HTMLButtonElement>('button:not([disabled])'))
+        .filter((element) => element.getClientRects().length > 0)
+      if (!controls.length) {
+        event.preventDefault()
+        dialogRef.current.focus()
+        return
+      }
+      const first = controls[0]
+      const last = controls[controls.length - 1]
+      const active = document.activeElement
+      if (event.shiftKey && (active === first || !dialogRef.current.contains(active))) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && (active === last || !dialogRef.current.contains(active))) {
+        event.preventDefault()
+        first.focus()
       }
     }
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      if (previouslyFocused?.isConnected) previouslyFocused.focus({ preventScroll: true })
+    }
   }, [request, settle])
 
   if (!request) return null
@@ -25,6 +51,8 @@ export function ConfirmDialog() {
   return (
     <div className="fixed inset-0 z-[95] grid place-items-center bg-slate-950/35 p-4 backdrop-blur-sm" onMouseDown={() => settle(false)}>
       <section
+        ref={dialogRef}
+        tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"

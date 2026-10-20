@@ -276,15 +276,32 @@ require("key: 'workflows'" not in app_shell, 'no Workflow navigation item')
 require("'workflows'" not in types.split('export type PageKey', 1)[1].split('\n', 1)[0], 'PageKey hides workflows')
 
 # A connected storage creates or repairs the hidden automatic pipeline.
-require(commands.count('persist_new_storage(state.inner(), &record).await?;') >= 4, 'all storage creation paths persist and auto-ensure pipeline')
+require((commands.count('persist_new_storage(state.inner(), &record).await?;') + commands.count('persist_new_storage(state.inner(), &record, input.restore_guard).await?;')) >= 4, 'all storage creation paths persist and auto-ensure pipeline')
 require('sync_system_default_pipeline' in commands and 'SYSTEM_PIPELINE_SOURCE' in commands, 'hidden system pipeline exists')
 require('set_default_publish_target' in commands and 'get_default_publish_target' in commands, 'default cloud target commands exist')
 require('commands::set_default_publish_target' in lib and 'commands::get_default_publish_target' in lib, 'default cloud target commands registered')
 
-# Every desktop input mode uses the same hidden workflow.
-require('publishFilesWithWorkflow(defaultWorkflow.id, paths)' in upload, 'local files use automatic pipeline')
-require('publishUrlsWithWorkflow(defaultWorkflow.id, urls)' in upload, 'URL upload uses automatic pipeline')
-require('publishClipboardImageWithWorkflow(defaultWorkflow.id)' in upload, 'clipboard upload uses automatic pipeline')
+# Each first submission snapshots the same hidden default workflow; the invocation
+# modes use that pinned workflow ID instead of re-reading a potentially changed
+# default during a failed-only republish.
+require('workflowId: defaultWorkflow.id' in upload, 'new publication pins automatic workflow')
+require("if (request.mode === 'urls') return publishUrlsWithWorkflow(request.workflowId, request.sources)" in upload, 'URL upload uses pinned automatic pipeline')
+require("if (request.mode === 'clipboard') return [await publishClipboardImageWithWorkflow(request.workflowId)]" in upload, 'clipboard upload uses pinned automatic pipeline')
+require("return publishFilesWithWorkflow(request.workflowId, request.sources)" in upload, 'local files use pinned automatic pipeline')
+# The failure-only UI cannot silently replay completed tasks.
+require("task.id === id)?.status === 'failed'" in upload, 'retry selection accepts failed tasks only')
+require('failedIndexes.map((index) => sources[index])' in upload, 'retry submits only failed original sources')
+require('failedIndexes.forEach((index, i) => { updated[index] = ids[i] })' in upload, 'retry preserves successful task IDs')
+require("if (mode === 'files') return publishFilesWithWorkflow(workflowId, failedSources)" in upload, 'retry files retains pinned target')
+require("if (mode === 'urls') return publishUrlsWithWorkflow(workflowId, failedSources)" in upload, 'retry URLs retains pinned target')
+require("throw new Error('剪贴板图片无法保证与之前的内容相同" in upload, 'retry refuses changed clipboard data')
+require("accepted = await confirmAction({" in upload and "retryFailedMutation.mutate({ submission" in upload, 'failed-only republish asks for explicit confirmation')
+require("retryFailedMutation.isError" in upload and "retryDispatchRef.current" in upload, 'ambiguous failed retry cannot be replayed in same session')
+require("publishDispatchRef.current" in upload and "上次提交状态不确定" in upload, 'ambiguous initial submission requires explicit confirmation')
+require("listTasks(Math.min(10_000" in upload, 'upload dialog requests more than default 100 task rows')
+require("function removeSelectedFile(path: string)" in upload and "current.filter((item) => item !== path)" in upload and "onClick={() => removeSelectedFile(path)}" in upload, 'file upload selection supports individual removal before submit')
+require("error: tasksError" in upload and "refetch: refetchTasks" in upload and "onClick={() => void refetchTasks()}" in upload, 'upload status read errors have a visible manual recovery action')
+require("cancelledTasks.length" in upload and "successfulTasks.length" in upload and "已取消 · 请核对是否产生部分云端副作用" in upload, 'cancelled upload tasks cannot be reported as successful')
 
 # Typora self-heals the same pipeline.
 require('ensure_default_workflow(&context).await?' in cli, 'Typora auto-ensures default pipeline')
@@ -405,7 +422,10 @@ url_publish = commands[commands.find('pub async fn publish_urls_with_workflow'):
 
 require('.test_connection().await' not in preflight_desktop and 'build_provider' in preflight_desktop, 'desktop preflight does not block runtime failover on primary network health')
 require('.test_connection().await' not in preflight_cli and 'build_provider' in preflight_cli, 'Typora preflight does not block runtime failover on primary network health')
-require(url_publish.find('for url in &urls') < url_publish.find('let mut task_ids'), 'URL batch validates every URL before creating tasks')
+require('for url in &urls' in url_publish and url_publish.find('for url in &urls') < url_publish.find('let payloads = urls') and 'create_batch("workflow_url_publish", payloads)' in url_publish, 'URL batch validates every URL before creating tasks')
+file_publish = commands[commands.find('pub async fn publish_files_with_workflow'):commands.find('pub async fn publish_urls_with_workflow')]
+require('create_batch("workflow_publish", payloads)' in file_publish and file_publish.find('create_batch("workflow_publish"') < file_publish.find('tauri::async_runtime::spawn'), 'file batch transaction commits before uploading workers spawn')
+require(url_publish.find('create_batch("workflow_url_publish"') < url_publish.find('tauri::async_runtime::spawn'), 'URL batch transaction commits before uploading workers spawn')
 require('for path in paths {' in cli[:cli.find('std::fs::create_dir_all')] and 'path.is_file()' in cli[:cli.find('std::fs::create_dir_all')], 'Typora validates full local batch before first task/upload')
 require('{uuid}' in commands and '{uuid}' in cli and '{uuid}' in workflow_engine, 'new automatic remote paths include UUID uniqueness')
 require('active_deployment_reference_count' in persistence and 'reference_count > 1' in commands, 'asset deletion protects shared legacy remote paths')
@@ -919,7 +939,7 @@ _needle('age.num_seconds() >= 0 && age < Duration::hours(UPDATE_CACHE_MAX_AGE_HO
 _needle('setUpdateAvailableVersion(cached.result.latestVersion)',
         'the sidebar dot is driven only by an observed updateAvailable result')
 require('workflows.find((workflow) => workflow.isDefault)' in upload and '?? workflows[0]' not in upload, 'upload UI never falls back to an arbitrary legacy workflow')
-require('async fn persist_new_storage' in commands and commands.count('persist_new_storage(state.inner(), &record).await?;') >= 4, 'storage setup only succeeds after automatic pipeline persistence')
+require('async fn persist_new_storage' in commands and (commands.count('persist_new_storage(state.inner(), &record).await?;') + commands.count('persist_new_storage(state.inner(), &record, input.restore_guard).await?;')) >= 4, 'storage setup only succeeds after automatic pipeline persistence')
 require('sync_system_default_pipeline(state.inner(), None).await?;' in commands, 'automatic pipeline sync errors are surfaced instead of silently ignored')
 require('connection-test-u' in opendal and '.write(&probe_path' in opendal and '.stat(&probe_path)' in opendal and '.delete(&probe_path)' in opendal, 'OpenDAL connection test verifies write/stat/delete permissions')
 
@@ -1886,6 +1906,15 @@ require(re.search(r'<h2[^>]*\bbreak-words\b[^>]*>', confirm_dialog) is not None,
 require(re.search(r'<p[^>]*\bbreak-words\b[^>]*>', confirm_dialog) is not None, 'the confirm dialog detail wraps unbreakable filenames')
 require("event.key === 'Escape'" in confirm_dialog and 'settle(false)' in confirm_dialog, 'Escape cancels the confirm request')
 require('cancelRef.current?.focus()' in confirm_dialog, 'the dialog focuses Cancel, so Enter cannot fire the destructive action')
+require('ref={dialogRef}' in confirm_dialog
+        and 'event.key !== \'Tab\'' in confirm_dialog
+        and 'dialogRef.current.contains(active)' in confirm_dialog
+        and 'last.focus()' in confirm_dialog and 'first.focus()' in confirm_dialog,
+        'the confirm dialog traps keyboard focus instead of exposing underlying controls')
+require('previouslyFocused?.isConnected' in confirm_dialog
+        and 'previouslyFocused.focus({ preventScroll: true })' in confirm_dialog
+        and 'window.removeEventListener(\'keydown\', onKeyDown)' in confirm_dialog,
+        'dismissing confirmation safely restores keyboard focus and cleans its listener')
 
 # docs/VISUAL_BASELINE.md measured six defects in the onboarding dialog. These are the four that
 # hold without a browser; the runtime half (contrast below 4.5:1, size utilities discarded on
@@ -2411,6 +2440,66 @@ require("PROJECT_STATE_VERIFY facts=(\\d+) problems=(\\d+)" in text('scripts/ver
         'verify_all runs project_state --verify as a stage, so drift cannot pass an aggregate green')
 require('本文件不再手写事实' in text('.ai/STATE.md'),
         'STATE.md states that it holds narrative only, pointing at the generated JSON for facts')
+
+# UX text / interaction guards (2026-10-11). Keep the copy honest about what
+# checks, uploads and updates have actually verified, and expose UI states to AT.
+shell_copy = text('apps/desktop/src/components/AppShell.tsx')
+settings_copy = text('apps/desktop/src/pages/SettingsPage.tsx')
+guide_copy = text('apps/desktop/src/components/HelpCenterDialog.tsx')
+publish_copy = text('apps/desktop/src/pages/PublishPage.tsx')
+upload_copy = text('apps/desktop/src/components/UploadDialog.tsx')
+require('UX / Sync / Theme 开发中' not in shell_copy
+        and '检查更新仅提示；下载和安装需手动确认' in shell_copy,
+        'the sidebar explains the update interaction instead of showing an internal dev-status light')
+require('不会自动下载或安装' in settings_copy
+        and '升级前请备份本地数据' in settings_copy
+        and '更新不会触碰' not in settings_copy,
+        'Settings describes candidate exclusion and backup advice without a blanket data promise')
+require('任务成功意味着远端 Provider 已确认文件存在' not in guide_copy
+        and '上传成功后' not in guide_copy
+        and '私有图片不应直接公开' in guide_copy,
+        'the onboarding guide does not mistake upload completion for validated access')
+require('Publisher Core' not in publish_copy
+        and '公开图片上传后可复制链接' in publish_copy
+        and '已上传（访问待核对）' in publish_copy,
+        'publish copy is user-facing and labels access as unverified')
+require('role="dialog" aria-modal="true" aria-labelledby="upload-dialog-title"' in upload_copy
+        and all(f"aria-pressed={{mode === '{m}'}}" in upload_copy for m in ('files', 'urls', 'clipboard'))
+        and 'aria-label="待发布的图片链接，每行一个"' in upload_copy,
+        'the upload dialog and its source buttons expose interaction semantics')
+require('正在提交任务…' in upload_copy and '检查目标…' not in upload_copy,
+        'pending submit tells users that work is being queued, not that cloud upload already succeeded')
+# Later micro-interactions: keyboard stays inside the upload modal; disabled actions
+# explain the missing prerequisite; validation points to a specific URL input line.
+require('dialogRef.current?.focus({ preventScroll: true })' in upload_copy
+        and 'if (previouslyFocused?.isConnected) previouslyFocused.focus({ preventScroll: true })' in upload_copy
+        and 'if (!uploadOpen) return' in upload_copy,
+        'upload modal moves focus into the dialog and restores the invoking control')
+require("event.key === 'Escape'" in upload_copy
+        and 'event.stopPropagation()' in upload_copy
+        and 'closeDialog()' in upload_copy
+        and 'if (event.key !== \'Tab\'' in upload_copy
+        and 'last.focus()' in upload_copy and 'first.focus()' in upload_copy,
+        'upload modal Escape uses the existing safe-close guard and Tab wraps focus')
+require('invalidUrlLines' in upload_copy
+        and 'line.trim()' in upload_copy
+        and 'index + 1' in upload_copy
+        and 'aria-invalid={Boolean(urlInputError)}' in upload_copy
+        and "aria-describedby={urlInputError ? 'upload-url-error' : 'upload-url-help'}" in upload_copy,
+        'URL validation reports original source lines with accessible field errors')
+require("const publishDisabledReason = !defaultWorkflow" in upload_copy
+        and 'const canPublish = publishDisabledReason === null' in upload_copy
+        and 'aria-describedby={publishDisabledReason' in upload_copy
+        and '请先选择至少一张图片' in upload_copy,
+        'disabled publish actions explain their prerequisite without bypassing guards')
+require('terminal && <p role="status"' in upload_copy
+        and '下一步：先到“任务”' in upload_copy
+        and '下一步：到“任务”' in upload_copy
+        and '下一步：到“资源”' in upload_copy,
+        'all terminal outcomes have an actionable next step')
+require('if ((publishing && !terminal) || publishMutation.isPending || retryFailedMutation.isPending) return' in upload_copy
+        and '正在创建任务，请勿重复提交或关闭窗口' in upload_copy,
+        'Escape and disabled close still refuse dismissal of active work')
 
 failed = [label for ok, label in checks if not ok]
 # Print every failure, then a short tail of passing checks for context. Printing only the last 20

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { BookOpen, CheckCircle2, Cloud, ExternalLink, GitBranch, GitFork, HardDrive, LoaderCircle, Server, X } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -8,15 +8,20 @@ import {
   createS3Storage,
   createWebDavStorage,
   getProviderGuideUrl,
+  listStorages,
   openExternalUrl,
   openExternalUrlOrReport,
 } from '../lib/desktop'
+import type { PortableStorageProfile } from '../lib/desktop'
+import { portableReconnectConflict } from '../lib/portableReconnect'
+import { confirmAction } from '../store/useConfirmStore'
 import type {
   CreateObjectStorageInput,
   CreateRepositoryStorageInput,
   CreateS3StorageInput,
   CreateWebDavStorageInput,
   SupportedProviderKey,
+  StorageView,
 } from '../types'
 
 const providerNames: Record<SupportedProviderKey, string> = {
@@ -46,6 +51,7 @@ const providerGuideSteps: Record<SupportedProviderKey, string[]> = {
   ],
   r2: [
     '在 Cloudflare R2 创建 Bucket，并记下 Account ID。',
+    '选择“公开发布”或“私有存储目标”：私有模式不配置公开域名，但镜云无法仅凭此选项证明 Bucket 未公开。',
     '创建 R2 API Token / Access Key，获得 Access Key ID 与 Secret Access Key。',
     'Region 保持 auto；填写 Bucket、Account ID 和密钥。',
     '填写公开访问域名：它决定图片的公网链接。留空时该云端只能作为镜像 / 备份成员；作为发布目标时发布会失败并回滚。',
@@ -53,10 +59,11 @@ const providerGuideSteps: Record<SupportedProviderKey, string[]> = {
   ],
   s3: [
     '准备兼容 S3 的 Bucket、Endpoint 和 Region。',
+    '选择“公开发布”或“私有存储目标”；私有模式不会自动修改 Bucket 的权限。',
     '创建具备对象读写权限的 Access Key ID / Secret Access Key。',
     '填写 Endpoint、Region、Bucket 和密钥；资源目录可选。',
-    '填写真正能让别人访问图片的公开 URL 前缀；应用不会从 Endpoint 推导图片地址，留空时该云端只能作为镜像 / 备份成员。',
-    '点击“测试并保存”，再到图库验证浏览。',
+    '公开模式填写能让别人访问图片的 URL 前缀；私有模式不填写公开 URL，通过认证预览与限时分享操作读取。',
+    '临时分享链接是否能打开、何时到期取决于 S3 兼容服务商实现，最终需真实验收。',
   ],
   oss: [
     '在阿里云 OSS 创建 Bucket，并确认区域对应的 Endpoint。',
@@ -90,9 +97,13 @@ function defaultObjectEndpoint(provider: 'oss' | 'cos') {
 export function StorageSetupDialog({
   provider,
   onClose,
+  restoreProfile,
+  onCreated,
 }: {
   provider: SupportedProviderKey
   onClose: () => void
+  restoreProfile?: PortableStorageProfile
+  onCreated?: (created: StorageView) => void
 }) {
   const queryClient = useQueryClient()
   const guideUrl = getProviderGuideUrl(provider)
@@ -111,43 +122,51 @@ export function StorageSetupDialog({
           : Cloud
 
   const [showGuide, setShowGuide] = useState(false)
+  // An older manifest's 'unknown' access intent must never silently become public
+  // just because public was the historical default in the setup form.
+  const [restoreModeConfirmed, setRestoreModeConfirmed] = useState(false)
   const [tokenStatus, setTokenStatus] = useState<string | null>(null)
+  // A synchronous lock covers the confirmation dialog as well as the async provider call.
+  const submitGuard = useRef(false)
+  const [submitBusy, setSubmitBusy] = useState(false)
   const [s3Form, setS3Form] = useState<CreateS3StorageInput>({
     providerKey: provider === 's3' ? 's3' : 'r2',
-    name: provider === 's3' ? 'S3 Storage' : 'Cloudflare R2',
-    bucket: '',
-    region: provider === 'r2' ? 'auto' : 'us-east-1',
+    name: restoreProfile?.name ?? (provider === 's3' ? 'S3 Storage' : 'Cloudflare R2'),
+    bucket: restoreProfile?.bucket ?? '',
+    region: restoreProfile?.region ?? (provider === 'r2' ? 'auto' : 'us-east-1'),
     accessKeyId: '',
     secretAccessKey: '',
     publicBaseUrl: '',
+    accessMode: restoreProfile?.accessMode === 'private_requested' ? 'private_requested' : 'public',
     accountId: '',
     endpoint: '',
-    root: '',
+    root: restoreProfile?.root ?? '',
   })
   const [objectForm, setObjectForm] = useState<CreateObjectStorageInput>({
     providerKey: provider === 'cos' ? 'cos' : 'oss',
-    name: providerNames[provider],
-    endpoint: defaultObjectEndpoint(provider === 'cos' ? 'cos' : 'oss'),
-    bucket: '',
-    root: '',
+    name: restoreProfile?.name ?? providerNames[provider],
+    // Endpoints were intentionally excluded from export; do not infer one on import.
+    endpoint: restoreProfile ? '' : defaultObjectEndpoint(provider === 'cos' ? 'cos' : 'oss'),
+    bucket: restoreProfile?.bucket ?? '',
+    root: restoreProfile?.root ?? '',
     publicBaseUrl: '',
     accessKeyId: '',
     secretAccessKey: '',
   })
   const [repoForm, setRepoForm] = useState<CreateRepositoryStorageInput>({
     providerKey: provider === 'gitee' ? 'gitee' : 'github',
-    name: providerNames[provider],
-    owner: '',
-    repo: '',
-    branch: 'main',
-    root: 'assets',
+    name: restoreProfile?.name ?? providerNames[provider],
+    owner: restoreProfile?.owner ?? '',
+    repo: restoreProfile?.repo ?? '',
+    branch: restoreProfile?.branch ?? 'main',
+    root: restoreProfile?.root ?? 'assets',
     publicBaseUrl: '',
     token: '',
   })
   const [webdavForm, setWebdavForm] = useState<CreateWebDavStorageInput>({
-    name: 'WebDAV',
+    name: restoreProfile?.name ?? 'WebDAV',
     endpoint: '',
-    root: '',
+    root: restoreProfile?.root ?? '',
     publicBaseUrl: '',
     username: '',
     password: '',
@@ -155,16 +174,31 @@ export function StorageSetupDialog({
 
   const mutation = useMutation({
     mutationFn: async () => {
-      if (isRepository) return createRepositoryStorage(repoForm)
-      if (isGenericS3) return createS3Storage(s3Form)
-      if (isObject) return createObjectStorage(objectForm)
-      if (isWebDav) return createWebDavStorage(webdavForm)
+      if (restoreProfile) {
+        // Fresh duplicate check immediately before creating a *new* StorageRecord.
+        // Never update, delete, adopt or silently overwrite any existing record.
+        const current = await listStorages()
+        const candidate: PortableStorageProfile = {
+          ...restoreProfile,
+          name: isRepository ? repoForm.name : isGenericS3 ? s3Form.name : isObject ? objectForm.name : webdavForm.name,
+          bucket: isGenericS3 ? s3Form.bucket : isObject ? objectForm.bucket : undefined,
+          owner: isRepository ? repoForm.owner : undefined,
+          repo: isRepository ? repoForm.repo : undefined,
+          branch: isRepository ? repoForm.branch : undefined,
+        }
+        if (portableReconnectConflict(candidate, current)) throw new Error('RESTORE_CONFLICT')
+      }
+      if (isRepository) return createRepositoryStorage({ ...repoForm, restoreGuard: Boolean(restoreProfile) })
+      if (isGenericS3) return createS3Storage({ ...s3Form, restoreGuard: Boolean(restoreProfile) })
+      if (isObject) return createObjectStorage({ ...objectForm, restoreGuard: Boolean(restoreProfile) })
+      if (isWebDav) return createWebDavStorage({ ...webdavForm, restoreGuard: Boolean(restoreProfile) })
       throw new Error('不支持的 Provider')
     },
-    onSuccess: async () => {
+    onSuccess: async (created) => {
       await queryClient.invalidateQueries({ queryKey: ['storages'] })
       await queryClient.invalidateQueries({ queryKey: ['default-publish-target'] })
       await queryClient.invalidateQueries({ queryKey: ['workflows'] })
+      onCreated?.(created)
       onClose()
     },
   })
@@ -181,8 +215,23 @@ export function StorageSetupDialog({
   // Mirrors exactly the fields the Rust create_* commands reject as empty, so the form blocks a
   // doomed submit without inventing requirements the backend does not enforce.
   const missingFields: string[] = []
+  if (restoreProfile && isGenericS3 && restoreProfile.accessMode === 'unknown' && !restoreModeConfirmed) {
+    missingFields.push('请明确选择公开发布或私有存储目标')
+  }
   const blank = (value: string | undefined | null) => !value || !value.trim()
   const notHttp = (value: string | undefined | null) => !/^https?:\/\//i.test((value ?? '').trim())
+  // Match Rust normalize_public_base_url for both first-time setup and restore.
+  // This checks URL shape only, not whether the bucket/CDN is actually public.
+  const invalidPublicBaseUrl = (value: string | undefined | null) => {
+    try {
+      const url = new URL((value ?? '').trim())
+      // URL.search/hash are empty for bare '?' and '#', while Rust rejects
+      // even those empty markers (query().is_some()/fragment().is_some()).
+      return !['http:', 'https:'].includes(url.protocol) || !url.hostname || url.href.includes('?') || url.href.includes('#')
+    } catch {
+      return true
+    }
+  }
   // Mirrors the backend's final gate (plugin_runtime::require_https_or_loopback):
   // plain HTTP only for localhost/127.0.0.1/[::1]; anything else must be https.
   const insecureHttp = (value: string | undefined | null) => {
@@ -202,12 +251,20 @@ export function StorageSetupDialog({
     if (blank(repoForm.repo)) missingFields.push('仓库名')
     if (blank(repoForm.branch)) missingFields.push('分支')
     if (blank(repoForm.token)) missingFields.push('访问令牌')
+    if (!blank(repoForm.publicBaseUrl) && invalidPublicBaseUrl(repoForm.publicBaseUrl)) {
+      missingFields.push('自定义公开域名必须是 http/https URL，不能包含查询参数或片段')
+    }
   } else if (isGenericS3) {
     if (blank(s3Form.name)) missingFields.push('显示名称')
     if (blank(s3Form.bucket)) missingFields.push('Bucket')
     if (blank(s3Form.accessKeyId)) missingFields.push('Access Key ID')
     if (blank(s3Form.secretAccessKey)) missingFields.push('Secret Access Key')
     if (s3Form.providerKey === 'r2' && blank(s3Form.accountId)) missingFields.push('Account ID')
+    if (s3Form.accessMode === 'private_requested' && !blank(s3Form.publicBaseUrl)) missingFields.push('私有模式必须清空公开访问域名')
+    if (s3Form.accessMode !== 'private_requested') {
+      if (blank(s3Form.publicBaseUrl)) missingFields.push('公开模式必须填写公开访问域名')
+      else if (invalidPublicBaseUrl(s3Form.publicBaseUrl)) missingFields.push('公开访问域名必须是 http/https URL，不能包含查询参数或片段')
+    }
     if (s3Form.providerKey === 's3' && (notHttp(s3Form.endpoint) || insecureHttp(s3Form.endpoint))) missingFields.push('Endpoint（需 https，或本机 http://127.0.0.1）')
   } else if (isObject) {
     if (blank(objectForm.name)) missingFields.push('显示名称')
@@ -215,9 +272,46 @@ export function StorageSetupDialog({
     if (blank(objectForm.accessKeyId)) missingFields.push('Access Key ID')
     if (blank(objectForm.secretAccessKey)) missingFields.push('Secret Access Key')
     if (notHttp(objectForm.endpoint) || insecureHttp(objectForm.endpoint)) missingFields.push('Endpoint（需 https，或本机 http://127.0.0.1）')
+    if (blank(objectForm.publicBaseUrl)) missingFields.push('公开访问域名')
+    else if (invalidPublicBaseUrl(objectForm.publicBaseUrl)) missingFields.push('公开访问域名必须是 http/https URL，不能包含查询参数或片段')
   } else if (isWebDav) {
     if (blank(webdavForm.name)) missingFields.push('显示名称')
     if (notHttp(webdavForm.endpoint) || insecureHttp(webdavForm.endpoint)) missingFields.push('WebDAV Endpoint（需 https，或本机 http://127.0.0.1）')
+    if (restoreProfile && blank(webdavForm.username)) missingFields.push('重新填写 WebDAV 用户名')
+    if (restoreProfile && blank(webdavForm.password)) missingFields.push('重新填写 WebDAV 密码')
+    if (blank(webdavForm.publicBaseUrl)) missingFields.push('公开访问域名')
+    else if (invalidPublicBaseUrl(webdavForm.publicBaseUrl)) missingFields.push('公开访问域名必须是 http/https URL，不能包含查询参数或片段')
+  }
+
+  function requestClose() {
+    // A close while the confirmation or provider call is pending can otherwise
+    // leave the user thinking the operation was cancelled when it is still running.
+    if (submitGuard.current || mutation.isPending) return
+    onClose()
+  }
+
+  async function submitStorage() {
+    if (submitGuard.current || mutation.isPending || missingFields.length > 0) return
+    submitGuard.current = true
+    setSubmitBusy(true)
+    try {
+      if (restoreProfile) {
+        const accepted = await confirmAction({
+          title: '确认新增连接配置',
+          detail: `将以“${isRepository ? repoForm.name : isGenericS3 ? s3Form.name : isObject ? objectForm.name : webdavForm.name}”新建一条 ${providerNames[provider]} 连接。将先测试新凭据；不会覆盖或关联旧资源记录、图片、工作流和现有存储。`,
+          confirmLabel: '确认测试并新建',
+          danger: false,
+        })
+        if (!accepted) return
+      }
+      await mutation.mutateAsync()
+    } catch {
+      // The mutation owns error presentation. In migration mode it redacts
+      // provider errors so secrets and signed URLs are never echoed to the UI.
+    } finally {
+      submitGuard.current = false
+      setSubmitBusy(false)
+    }
   }
 
   async function openGitHubTokenPage() {
@@ -237,7 +331,7 @@ export function StorageSetupDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/25 p-3 backdrop-blur-sm sm:p-6" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/25 p-3 backdrop-blur-sm sm:p-6" onMouseDown={requestClose}>
       <section onMouseDown={(event) => event.stopPropagation()} className="max-h-[92vh] w-full max-w-[760px] overflow-auto rounded-[24px] border border-white bg-white p-4 shadow-[0_30px_100px_rgba(15,23,42,.22)] sm:rounded-[28px] sm:p-6">
         <div className="flex items-start gap-4">
           <div className="grid size-11 place-items-center rounded-2xl bg-slate-100"><Icon size={19} /></div>
@@ -255,9 +349,16 @@ export function StorageSetupDialog({
             <button type="button" onClick={() => setShowGuide((value) => !value)} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-100">
               <BookOpen size={14} /> {showGuide ? '收起教程' : '配置教程'}
             </button>
-            <button onClick={onClose} className="rounded-full p-2 text-slate-400 hover:bg-slate-100" aria-label="关闭"><X size={18} /></button>
+            <button onClick={requestClose} className="rounded-full p-2 text-slate-400 hover:bg-slate-100" aria-label="关闭"><X size={18} /></button>
           </div>
         </div>
+
+        {restoreProfile && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-6 text-amber-900">
+            <strong>迁移重连模式：</strong>已预填清单中的非敏感字段，云端 Endpoint、公开域名、账户 ID 与所有凭据必须重新确认。
+            测试成功后只会<strong>新增一条连接</strong>，不会覆盖同名存储，也不会恢复图片索引或工作流。
+          </div>
+        )}
 
         {showGuide && (
           <div className="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
@@ -326,10 +427,22 @@ export function StorageSetupDialog({
             <Field label="Access Key ID" value={s3Form.accessKeyId} onChange={(value) => setS3('accessKeyId', value)} />
             <Field label="Secret Access Key" type="password" value={s3Form.secretAccessKey} onChange={(value) => setS3('secretAccessKey', value)} />
             <Field label="资源目录（可选）" value={s3Form.root || ''} onChange={(value) => setS3('root', value)} placeholder="assets" />
-            <div className="sm:col-span-2">
-              <Field label="公开访问域名（发布到该云端时必填）" value={s3Form.publicBaseUrl || ''} onChange={(value) => setS3('publicBaseUrl', value)} placeholder="https://img.example.com" />
-              <p className="mt-1.5 text-[11px] text-slate-400">用于生成别人可以直接打开的 URL。</p>
-            </div>
+            {isGenericS3 && (
+              <div className="sm:col-span-2">
+                <div className="mb-2 text-xs font-medium text-slate-600">此 {provider === 'r2' ? 'R2' : 'S3'} 存储的发布用途</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => { setRestoreModeConfirmed(true); setS3Form((current) => ({ ...current, accessMode: 'public' })) }} aria-pressed={s3Form.accessMode !== 'private_requested'} className={`rounded-xl border px-3 py-2.5 text-xs ${s3Form.accessMode !== 'private_requested' ? 'border-indigo-300 bg-indigo-50 text-indigo-900' : 'border-slate-200 text-slate-600'}`}>公开发布</button>
+                  <button type="button" onClick={() => { setRestoreModeConfirmed(true); setS3Form((current) => ({ ...current, accessMode: 'private_requested', publicBaseUrl: '' })) }} aria-pressed={s3Form.accessMode === 'private_requested'} className={`rounded-xl border px-3 py-2.5 text-xs ${s3Form.accessMode === 'private_requested' ? 'border-indigo-300 bg-indigo-50 text-indigo-900' : 'border-slate-200 text-slate-600'}`}>私有存储目标</button>
+                </div>
+                {s3Form.accessMode === 'private_requested' && <p className="mt-2 text-xs leading-5 text-amber-700">仅请求以不生成公开 URL 的方式上传；镜云不会修改服务商的 Bucket ACL、公开域名或 CDN。请在云服务控制台关闭所有公开入口，并在最终验收时验证匿名读取被拒绝。S3 兼容签名实现可能不同；生成的临时链接属于持有者可访问的敏感凭据。</p>}
+              </div>
+            )}
+            {s3Form.accessMode !== 'private_requested' && (
+              <div className="sm:col-span-2">
+                <Field label="公开访问域名（发布到该云端时必填）" value={s3Form.publicBaseUrl || ''} onChange={(value) => setS3('publicBaseUrl', value)} placeholder="https://img.example.com" />
+                <p className="mt-1.5 text-[11px] text-slate-400">用于生成别人可以直接打开的 URL。</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -362,16 +475,16 @@ export function StorageSetupDialog({
           </div>
         )}
 
-        {mutation.error && <div className="mt-4 rounded-xl border border-red-100 bg-red-50 px-3 py-2.5 text-xs leading-5 text-red-600">{String(mutation.error).replace(/^Error:\s*/i, '')}</div>}
+        {mutation.error && <div role="alert" className="mt-4 rounded-xl border border-red-100 bg-red-50 px-3 py-2.5 text-xs leading-5 text-red-600">{restoreProfile ? (String(mutation.error).includes('RESTORE_CONFLICT') ? '发现同名连接或相同目标。请先到存储管理核对；不会重复创建或覆盖。' : '重新连接失败，请核对 Endpoint、公开访问方式及本机输入的凭据。') : String(mutation.error).replace(/^Error:\s*/i, '')}</div>}
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
           {missingFields.length > 0 ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-700">还需填写：{missingFields.join('、')}</div>
           ) : <span />}
           <div className="flex gap-2">
-            <button onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm">取消</button>
-            <button disabled={mutation.isPending || missingFields.length > 0} onClick={() => mutation.mutate()} className="flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">
+            <button disabled={submitBusy || mutation.isPending} onClick={requestClose} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm disabled:opacity-50">取消</button>
+            <button disabled={submitBusy || mutation.isPending || missingFields.length > 0} onClick={() => void submitStorage()} className="flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">
               {mutation.isPending && <LoaderCircle size={15} className="animate-spin" />}
-              测试并保存
+              {restoreProfile ? '测试并新增连接' : '测试并保存'}
             </button>
           </div>
         </div>

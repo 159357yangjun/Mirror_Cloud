@@ -27,10 +27,10 @@ export function ToastViewport() {
           <span className="min-w-0 flex-1 break-words whitespace-pre-line">{toast.message}</span>
           <button
             onClick={() => dismiss(toast.id)}
-            // 24x24 is the floor the layout gate charges for a clickable target; the glyph stays 12px,
-            // so this grows the hit area rather than the icon.
-            className="grid min-h-6 min-w-6 shrink-0 place-items-center rounded p-0.5 opacity-60 transition hover:opacity-100"
+            // The hit area is 44px in both dimensions; the icon stays small. Use an accessible name.
+            className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-lg opacity-70 transition hover:bg-black/5 hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2"
             title="关闭提示"
+            aria-label="关闭提示"
           >
             <X size={12} />
           </button>

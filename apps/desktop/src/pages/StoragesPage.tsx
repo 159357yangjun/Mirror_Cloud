@@ -17,6 +17,7 @@ import { notifyError, notifySuccess } from '../store/useToastStore'
 import { confirmAction } from '../store/useConfirmStore'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useAppStore } from '../store/useAppStore'
 import { PageHeader } from '../components/PageHeader'
 import { ReadFailurePanel } from '../components/ReadFailurePanel'
 import { ProviderPickerDialog } from '../components/ProviderPickerDialog'
@@ -47,6 +48,8 @@ const strategyLabel = (strategy: string) =>
 
 export function StoragesPage() {
   const queryClient = useQueryClient()
+  const { openUpload, setPage } = useAppStore()
+  const [recentlyAdded, setRecentlyAdded] = useState<Pick<StorageView, 'id' | 'name'> | null>(null)
   const { data } = useQuery({ queryKey: ['bootstrap'], queryFn: getBootstrapSnapshot })
   const { data: storages = [], isLoading, error: storagesError, refetch } = useQuery({ queryKey: ['storages'], queryFn: listStorages })
   const { data: groups = [] } = useQuery({ queryKey: ['storage-groups'], queryFn: listStorageGroups })
@@ -80,6 +83,26 @@ export function StoragesPage() {
     },
     onError: (error) => notifyError(`操作失败：${String(error)}`),
   })
+
+  const recentlyAddedAvailable = recentlyAdded !== null && storages.some((storage) => storage.id === recentlyAdded.id)
+  const recentlyAddedIsDefault = recentlyAddedAvailable
+    && defaultTarget?.kind === 'storage'
+    && defaultTarget.id === recentlyAdded?.id
+
+  async function beginFirstUpload() {
+    if (!recentlyAdded || !recentlyAddedAvailable || defaultTargetMutation.isPending) return
+    if (!recentlyAddedIsDefault) {
+      try {
+        // Switching a previously configured default is always explicit in the CTA.
+        await defaultTargetMutation.mutateAsync({ kind: 'storage', id: recentlyAdded.id })
+      } catch {
+        // The mutation displays the error. Stay on this screen for correction.
+        return
+      }
+    }
+    setPage('publish')
+    openUpload('files')
+  }
 
   const pickProvider = (provider: SupportedProviderKey) => {
     setPickerOpen(false)
@@ -131,6 +154,22 @@ export function StoragesPage() {
           </div>
         }
       />
+
+      {recentlyAddedAvailable && (
+        <div role="status" className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-emerald-900">“{recentlyAdded?.name}”已连接并保存</div>
+            <p className="mt-1 text-xs leading-5 text-emerald-800">
+              {recentlyAddedIsDefault
+                ? '已成为当前默认上传目标。现在可以上传第一张图片；真实云端上传和外链仍需在发布后确认。'
+                : '当前可能仍使用其他默认上传目标。你可以明确切换到这个存储，再上传第一张图片。'}
+            </p>
+          </div>
+          <button disabled={defaultTargetMutation.isPending} onClick={() => void beginFirstUpload()} className="rounded-xl bg-emerald-900 px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50">
+            {defaultTargetMutation.isPending ? '正在设置默认目标…' : recentlyAddedIsDefault ? '上传第一张图片 →' : '设为默认并上传 →'}
+          </button>
+        </div>
+      )}
 
       <div className="mt-8 flex items-center justify-between">
         <div>
@@ -192,7 +231,7 @@ export function StoragesPage() {
                 <div className="ml-auto flex shrink-0 items-center gap-2">{defaultTarget?.kind === 'storage' && defaultTarget.id === storage.id && <span className="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-medium text-indigo-600">默认</span>}{testResults[storage.id] === true && <span className="flex items-center gap-1 text-[10px] text-emerald-600"><CheckCircle2 size={12} /> 已验证</span>}{testResults[storage.id] === false && <span className="text-[10px] text-red-500">连接失败</span>}</div>
                 <button onClick={() => void removeStorage(storage.id, storage.name)} className="rounded-lg p-2 text-slate-300 transition hover:bg-red-50 hover:text-red-500" title="删除连接"><Trash2 size={14} /></button>
               </div>
-              <div className="mt-4 truncate text-[11px] text-slate-400">{storage.publicBaseUrl || storage.publicHint}</div>
+              <div className={`mt-4 truncate text-[11px] ${storage.accessMode === 'private_requested' ? 'text-amber-700' : 'text-slate-400'}`}>{storage.accessMode === 'private_requested' ? '私有模式请求 · Bucket 是否公开尚未验证' : storage.publicBaseUrl || storage.publicHint}</div>
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <button onClick={() => setBrowser(storage)} className="flex items-center justify-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs font-medium"><FolderOpen size={13} /> 浏览</button>
                 <button disabled={testing === storage.id} onClick={() => handleTest(storage.id)} className="flex items-center justify-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs font-medium">
@@ -245,7 +284,10 @@ export function StoragesPage() {
       </section>
 
       {pickerOpen && <ProviderPickerDialog onPick={pickProvider} onClose={() => setPickerOpen(false)} />}
-      {setup && <StorageSetupDialog provider={setup} onClose={() => setSetup(null)} />}
+      {setup && <StorageSetupDialog provider={setup} onClose={() => setSetup(null)} onCreated={(created) => {
+        setRecentlyAdded({ id: created.id, name: created.name })
+        notifySuccess(`已连接“${created.name}”，可以开始发布图片`)
+      }} />}
       {browser && <StorageBrowserDialog storage={browser} onClose={() => setBrowser(null)} />}
       {groupOpen && <StorageGroupDialog storages={storages} onClose={() => setGroupOpen(false)} />}
     </div>
