@@ -1,0 +1,46 @@
+name: Mirror Cloud seven-page TaskUI strict contract
+on:
+  push:
+    branches:
+      - main
+      - ui/full-ux-01-system # existing transitional PR only; never create new branches
+  pull_request:
+    branches:
+      - main
+permissions:
+  contents: read
+jobs:
+  strict-manifest-and-source-alignment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.node-version'
+      - name: Original TaskUI validator unit/positive/negative and project strict
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s TaskUI/tests -v
+          python TaskUI/tools/taskui_check.py TaskUI/examples/good.project.taskui.json --strict
+          if python TaskUI/tools/taskui_check.py TaskUI/examples/bad.project.taskui.json --strict; then
+            echo 'Negative fixture unexpectedly PASSED' >&2
+            exit 1
+          fi
+          python TaskUI/tools/taskui_check.py project.taskui.json --strict
+          echo 'UX01_G1_STRICT_GATE schema=1 positive=1 negative=1'
+      - name: Compare seven PageKey entries against TaskUI screens and 10 user tasks
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const source = fs.readFileSync('apps/desktop/src/components/AppShell.tsx','utf8');
+          const doc = JSON.parse(fs.readFileSync('project.taskui.json','utf8'));
+          const nav = [...source.matchAll(/\{ key: '([^']+)', label:/g)].map(m=>m[1]).sort();
+          const screens = doc.screens.map(s=>s.id).sort();
+          const required = ['publish','assets','storages','gallery','plugins','tasks','settings'].sort();
+          if(JSON.stringify(nav)!==JSON.stringify(required))throw Error('Current real nav not seven known entries');
+          if(JSON.stringify(nav)!==JSON.stringify(screens))throw Error('G1 screens diverge from actual source navigation');
+          if(doc.tasks.length!==10)throw Error('Expected 10 explicit candidate user tasks');
+          if(doc.test_plan.status==='verified')throw Error('Schema passing does not constitute Windows or novice task verification');
+          console.log('UX01_SOURCE_ALIGNMENT_GATE navigation=7 screens=7 tasks=10 status='+doc.test_plan.status);
+          NODE

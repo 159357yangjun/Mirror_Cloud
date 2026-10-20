@@ -1,13 +1,14 @@
 {
   "version": "1.0",
   "project": {
-    "name": "Mirror Cloud 发布工作台 TaskUI V1",
-    "primary_user": "在 Windows 桌面频繁上传及管理图片的普通用户（频率为待实测假设）",
+    "name": "Mirror Cloud 七页任务驱动信息架构 G1 V2 草案",
+    "primary_user": "首次使用与日常管理图片的 Windows 桌面用户；操作频率仍待 G0 真实用户验证",
     "platform": "desktop",
     "patterns": [
       "business-workflow",
       "object-management",
-      "monitoring-analysis"
+      "monitoring-analysis",
+      "guided-wizard"
     ]
   },
   "tasks": [
@@ -43,6 +44,84 @@
       "steps": [
         "inspect-failure",
         "retry-failed-task"
+      ]
+    },
+    {
+      "id": "T4",
+      "name": "浏览与维护真实远端云文件",
+      "frequency": "medium",
+      "success_criterion": "目标StorageEntry ID/路径有实际读数；执行结果与任务可核对；取消删除时零调用",
+      "step_budget": 2,
+      "steps": [
+        "browse-remote",
+        "operate-on-remote"
+      ]
+    },
+    {
+      "id": "T5",
+      "name": "配置云端与切换发布目标",
+      "frequency": "high",
+      "success_criterion": "目标ID在发布区实际生效；测试连接读写风险和访问权限未验证项明确",
+      "step_budget": 2,
+      "steps": [
+        "configure-storage",
+        "choose-default-target"
+      ]
+    },
+    {
+      "id": "T6",
+      "name": "管理插件与 AI 能力权限",
+      "frequency": "medium",
+      "success_criterion": "敏感权限申请/拒绝/撤销可查，绝不默认广泛授权",
+      "step_budget": 2,
+      "steps": [
+        "review-plugin-permission",
+        "authorize-plugin"
+      ]
+    },
+    {
+      "id": "T7",
+      "name": "调整输出格式和 Typora 集成",
+      "frequency": "medium",
+      "success_criterion": "实际复制内容符合设置值，集成失败可恢复",
+      "step_budget": 2,
+      "steps": [
+        "edit-output-preferences",
+        "verify-output"
+      ]
+    },
+    {
+      "id": "T8",
+      "name": "审查并激活配置迁移",
+      "frequency": "medium",
+      "success_criterion": "预览映射、风险确认和最终激活有真实证据且不可误覆盖",
+      "step_budget": 2,
+      "steps": [
+        "preview-migration",
+        "activate-migration"
+      ]
+    },
+    {
+      "id": "T9",
+      "name": "验证更新、安装与版本变化",
+      "frequency": "medium",
+      "success_criterion": "下载/安装/重启后的实际版本三者区分，失败有回滚指引",
+      "step_budget": 3,
+      "steps": [
+        "check-update",
+        "download-update",
+        "install-update"
+      ]
+    },
+    {
+      "id": "T10",
+      "name": "在错误处打开教程并返回原对象",
+      "frequency": "high",
+      "success_criterion": "引导关闭后保留来源页、对象和字段；无敏感数据存储",
+      "step_budget": 2,
+      "steps": [
+        "open-context-guide",
+        "return-to-context"
       ]
     }
   ],
@@ -133,6 +212,85 @@
           "persistent": false
         }
       ]
+    },
+    {
+      "id": "gallery",
+      "name": "真实云端文件与目录",
+      "primary_region": "entry-list",
+      "main_region_min_ratio": 0.64,
+      "regions": [
+        {
+          "id": "entry-list",
+          "role": "primary",
+          "persistent": true
+        },
+        {
+          "id": "browser-nav",
+          "role": "navigation",
+          "persistent": true
+        },
+        {
+          "id": "entry-inspector",
+          "role": "inspector",
+          "persistent": false
+        },
+        {
+          "id": "selection",
+          "role": "toolbar",
+          "persistent": false
+        }
+      ]
+    },
+    {
+      "id": "plugins",
+      "name": "插件与 AI 扩展",
+      "primary_region": "plugin-list",
+      "main_region_min_ratio": 0.65,
+      "regions": [
+        {
+          "id": "plugin-list",
+          "role": "primary",
+          "persistent": true
+        },
+        {
+          "id": "plugin-inspector",
+          "role": "inspector",
+          "persistent": false
+        },
+        {
+          "id": "execution-log",
+          "role": "log",
+          "persistent": false
+        },
+        {
+          "id": "ai-config",
+          "role": "secondary",
+          "persistent": false
+        }
+      ]
+    },
+    {
+      "id": "settings",
+      "name": "分组系统设置及数据操作",
+      "primary_region": "settings-panel",
+      "main_region_min_ratio": 0.63,
+      "regions": [
+        {
+          "id": "settings-panel",
+          "role": "primary",
+          "persistent": true
+        },
+        {
+          "id": "settings-nav",
+          "role": "navigation",
+          "persistent": true
+        },
+        {
+          "id": "migration-status",
+          "role": "status",
+          "persistent": false
+        }
+      ]
     }
   ],
   "actions": [
@@ -145,7 +303,8 @@
       "effect": "mutate",
       "recovery": "retry",
       "task_ids": [
-        "T1"
+        "T1",
+        "T5"
       ],
       "entrypoints": [
         {
@@ -310,25 +469,388 @@
         "pending"
       ],
       "confirmation": "对可能重复上传的任务要求明确确认"
+    },
+    {
+      "id": "browse-remote",
+      "name": "选择云端并浏览真实目录",
+      "scope": "workspace",
+      "frequency": "medium",
+      "risk": "low",
+      "effect": "read",
+      "recovery": "not-needed",
+      "task_ids": [
+        "T4"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "gallery",
+          "region_id": "entry-list",
+          "surface": "inline",
+          "menu_depth": 0,
+          "context": "已选择真实 storageId，目录与查询参数有效"
+        }
+      ],
+      "feedback": [
+        "selection",
+        "failure"
+      ]
+    },
+    {
+      "id": "operate-on-remote",
+      "name": "对明确的远端文件执行移动/重命名/永久删除",
+      "scope": "object",
+      "frequency": "medium",
+      "risk": "high",
+      "effect": "destructive",
+      "recovery": "none",
+      "task_ids": [
+        "T4"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "gallery",
+          "region_id": "entry-list",
+          "surface": "inline",
+          "menu_depth": 0,
+          "context": "选中同一Storage中的真实对象，明确远端路径与影响范围"
+        }
+      ],
+      "feedback": [
+        "success",
+        "failure",
+        "pending"
+      ],
+      "confirmation": "先列出精确Bucket、路径、对象数量、后果；不可恢复的永久删除明确二次确认，取消零调用"
+    },
+    {
+      "id": "choose-default-target",
+      "name": "选择并核对默认发布目标",
+      "scope": "workspace",
+      "frequency": "medium",
+      "risk": "medium",
+      "effect": "mutate",
+      "recovery": "retry",
+      "task_ids": [
+        "T5"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "storages",
+          "region_id": "storage-list",
+          "surface": "inline",
+          "menu_depth": 0,
+          "context": "已存在经过配置的 storage/group，结果必须和发布页展示一致"
+        }
+      ],
+      "feedback": [
+        "success",
+        "failure"
+      ]
+    },
+    {
+      "id": "review-plugin-permission",
+      "name": "阅读插件需要的权限与外发范围",
+      "scope": "object",
+      "frequency": "medium",
+      "risk": "low",
+      "effect": "read",
+      "recovery": "not-needed",
+      "task_ids": [
+        "T6"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "plugins",
+          "region_id": "plugin-list",
+          "surface": "inline",
+          "menu_depth": 0,
+          "context": "已选择已安装或待安装插件，权限从实际插件清单获得"
+        }
+      ],
+      "feedback": [
+        "detail"
+      ]
+    },
+    {
+      "id": "authorize-plugin",
+      "name": "批准或拒绝插件敏感权限",
+      "scope": "object",
+      "frequency": "medium",
+      "risk": "high",
+      "effect": "mutate",
+      "recovery": "retry",
+      "task_ids": [
+        "T6"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "plugins",
+          "region_id": "plugin-list",
+          "surface": "inline",
+          "menu_depth": 0,
+          "context": "仅用户确认当前具体插件权限申请后可授权"
+        }
+      ],
+      "feedback": [
+        "success",
+        "failure"
+      ],
+      "confirmation": "逐项展示访问密钥、网络、外部写入等敏感权限及撤销入口，不作自动全授"
+    },
+    {
+      "id": "edit-output-preferences",
+      "name": "修改输出与 Typora 格式选项",
+      "scope": "workspace",
+      "frequency": "medium",
+      "risk": "medium",
+      "effect": "mutate",
+      "recovery": "retry",
+      "task_ids": [
+        "T7"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "settings",
+          "region_id": "settings-panel",
+          "surface": "inline",
+          "menu_depth": 0,
+          "context": "定位当前输出和集成设置组"
+        }
+      ],
+      "feedback": [
+        "success",
+        "failure"
+      ]
+    },
+    {
+      "id": "verify-output",
+      "name": "复制已发布资源的真实格式结果",
+      "scope": "object",
+      "frequency": "medium",
+      "risk": "low",
+      "effect": "read",
+      "recovery": "not-needed",
+      "task_ids": [
+        "T7"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "assets",
+          "region_id": "asset-list",
+          "surface": "inline",
+          "menu_depth": 0,
+          "context": "已确认资源及用户选择的输出格式"
+        }
+      ],
+      "feedback": [
+        "success",
+        "failure"
+      ]
+    },
+    {
+      "id": "preview-migration",
+      "name": "只读检查迁移清单及对象映射",
+      "scope": "workspace",
+      "frequency": "medium",
+      "risk": "low",
+      "effect": "read",
+      "recovery": "not-needed",
+      "task_ids": [
+        "T8"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "settings",
+          "region_id": "settings-panel",
+          "surface": "inline",
+          "menu_depth": 0,
+          "context": "仅导入预览与映射，尚未修改现有数据"
+        }
+      ],
+      "feedback": [
+        "detail",
+        "failure"
+      ]
+    },
+    {
+      "id": "activate-migration",
+      "name": "核对并激活恢复批次",
+      "scope": "workspace",
+      "frequency": "medium",
+      "risk": "high",
+      "effect": "mutate",
+      "recovery": "none",
+      "task_ids": [
+        "T8"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "settings",
+          "region_id": "settings-panel",
+          "surface": "inline",
+          "menu_depth": 0,
+          "context": "预检与映射通过后，且对象与目标版本可核对"
+        }
+      ],
+      "feedback": [
+        "success",
+        "failure",
+        "pending"
+      ],
+      "confirmation": "展示映射冲突、可能不可逆影响与批次清单，激活必须获得明确批准"
+    },
+    {
+      "id": "check-update",
+      "name": "检查新版本但不修改安装",
+      "scope": "workspace",
+      "frequency": "medium",
+      "risk": "low",
+      "effect": "read",
+      "recovery": "not-needed",
+      "task_ids": [
+        "T9"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "settings",
+          "region_id": "settings-panel",
+          "surface": "inline",
+          "menu_depth": 0,
+          "context": "更新区仅表示检查结果，不能冒充下载/安装成功"
+        }
+      ],
+      "feedback": [
+        "detail",
+        "failure"
+      ]
+    },
+    {
+      "id": "download-update",
+      "name": "下载更新包并验证来源和完整性，不自动安装",
+      "scope": "workspace",
+      "frequency": "medium",
+      "risk": "medium",
+      "effect": "mutate",
+      "recovery": "retry",
+      "task_ids": [
+        "T9"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "settings",
+          "region_id": "settings-panel",
+          "surface": "inline",
+          "menu_depth": 0,
+          "context": "已核对更新版本与目标平台；下载完成后还需独立验证和安装确认"
+        }
+      ],
+      "feedback": [
+        "pending",
+        "success",
+        "failure"
+      ]
+    },
+    {
+      "id": "install-update",
+      "name": "单独授权安装更新并核对实际版本",
+      "scope": "workspace",
+      "frequency": "medium",
+      "risk": "high",
+      "effect": "mutate",
+      "recovery": "none",
+      "task_ids": [
+        "T9"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "settings",
+          "region_id": "settings-panel",
+          "surface": "inline",
+          "menu_depth": 0,
+          "context": "下载验证已通过且用户单独批准安装"
+        }
+      ],
+      "feedback": [
+        "success",
+        "failure",
+        "pending"
+      ],
+      "confirmation": "检查下载完成与安装确认，说明回滚风险；安装后再次核对实际原生版本"
+    },
+    {
+      "id": "open-context-guide",
+      "name": "从当前任务或报错打开相应教程",
+      "scope": "global",
+      "frequency": "high",
+      "risk": "low",
+      "effect": "read",
+      "recovery": "not-needed",
+      "task_ids": [
+        "T10"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "publish",
+          "region_id": "navigation",
+          "surface": "inline",
+          "menu_depth": 0,
+          "context": "帮助主题绑定当前真实错误类别和页面对象"
+        }
+      ],
+      "feedback": [
+        "detail"
+      ]
+    },
+    {
+      "id": "return-to-context",
+      "name": "关闭帮助并恢复已存在的任务位置",
+      "scope": "global",
+      "frequency": "medium",
+      "risk": "low",
+      "effect": "read",
+      "recovery": "not-needed",
+      "task_ids": [
+        "T10"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "settings",
+          "region_id": "settings-nav",
+          "surface": "inline",
+          "menu_depth": 0,
+          "context": "来源对象仍存在且权限允许，仅恢复非敏感UI状态"
+        }
+      ],
+      "feedback": [
+        "selection",
+        "failure"
+      ]
     }
   ],
   "design_evidence": {
-    "wireframe": "docs/ui/TASKUI_PUBLISH_FIRST_PASS_2026-10-18.md",
-    "task_walkthrough": "docs/ui/TASKUI_PUBLISH_FIRST_PASS_2026-10-18.md",
-    "decision_log": "docs/ui/TASKUI_PUBLISH_FIRST_PASS_2026-10-18.md"
+    "wireframe": "docs/ui/UX01_SEVEN_PAGE_WIREFRAMES_AND_CONTRACTS_2026-10-19.md",
+    "task_walkthrough": "docs/ui/UX01_SEVEN_PAGE_WIREFRAMES_AND_CONTRACTS_2026-10-19.md",
+    "decision_log": "docs/ui/UX01_SEVEN_PAGE_WIREFRAMES_AND_CONTRACTS_2026-10-19.md"
   },
   "test_plan": {
     "viewport_sizes": [
-      "1440x900 Windows Edge",
-      "1024x768 Windows Edge",
-      "640x480 Windows Edge",
-      "Windows native 1366x768 at 100/125/150% DPI — pending"
+      "1440x900 Windows Edge (UI-00 actual baseline only)",
+      "1024x768 Windows Edge (UI-00 actual baseline only)",
+      "640x480 Windows Edge (UI-00 actual baseline only)",
+      "Windows Tauri 1366x768 at OS DPI 100, 125, 150% (NOT RUN)"
     ],
     "covered_tasks": [
       "T1",
       "T2",
-      "T3"
+      "T3",
+      "T4",
+      "T5",
+      "T6",
+      "T7",
+      "T8",
+      "T9",
+      "T10"
     ],
-    "status": "in-progress"
+    "status": "planned"
   }
 }
