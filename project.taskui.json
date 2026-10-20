@@ -106,9 +106,10 @@
       "name": "验证更新、安装与版本变化",
       "frequency": "medium",
       "success_criterion": "下载/安装/重启后的实际版本三者区分，失败有回滚指引",
-      "step_budget": 2,
+      "step_budget": 3,
       "steps": [
         "check-update",
+        "download-update",
         "install-update"
       ]
     },
@@ -720,6 +721,32 @@
       ],
       "feedback": [
         "detail",
+        "failure"
+      ]
+    },
+    {
+      "id": "download-update",
+      "name": "下载更新包并验证来源和完整性，不自动安装",
+      "scope": "workspace",
+      "frequency": "medium",
+      "risk": "medium",
+      "effect": "mutate",
+      "recovery": "retry",
+      "task_ids": [
+        "T9"
+      ],
+      "entrypoints": [
+        {
+          "screen_id": "settings",
+          "region_id": "settings-panel",
+          "surface": "inline",
+          "menu_depth": 0,
+          "context": "已核对更新版本与目标平台；下载完成后还需独立验证和安装确认"
+        }
+      ],
+      "feedback": [
+        "pending",
+        "success",
         "failure"
       ]
     },
