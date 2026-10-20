@@ -1,8 +1,12 @@
-name: Mirror Cloud UI-01 TaskUI seven-page strict draft
+name: Mirror Cloud seven-page TaskUI strict contract
 on:
   push:
     branches:
-      - ui/full-ux-01-system
+      - main
+      - ui/full-ux-01-system # existing transitional PR only; never create new branches
+  pull_request:
+    branches:
+      - main
 permissions:
   contents: read
 jobs:
