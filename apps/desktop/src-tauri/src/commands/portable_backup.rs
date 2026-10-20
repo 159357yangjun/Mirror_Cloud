@@ -140,6 +140,17 @@ fn validate_manifest(manifest: &PortableStorageManifest) -> CmdResult<()> {
     Ok(())
 }
 
+/// Any file that we export must be small enough for the corresponding read-only
+/// import inspector. Check the fully serialized bytes *before* creating a file.
+fn ensure_export_importable(bytes: &[u8]) -> CmdResult<()> {
+    if bytes.len() as u64 > MAX_IMPORT_BYTES {
+        return Err(
+            "导出清单超过 1 MB 导入上限；尚未创建文件。请减少配置条目或缩短目录字段".into(),
+        );
+    }
+    Ok(())
+}
+
 fn ensure_json_path(path: &str) -> CmdResult<&Path> {
     let file = Path::new(path.trim());
     if !file.is_absolute() || file.extension().and_then(|x| x.to_str()) != Some("json") {
@@ -173,6 +184,7 @@ pub async fn export_portable_storage_manifest(
     validate_manifest(&manifest)?;
     let bytes =
         serde_json::to_vec_pretty(&manifest).map_err(|_| "无法序列化存储配置清单".to_string())?;
+    ensure_export_importable(&bytes)?;
     let destination = ensure_json_path(&destination_path)?;
     // Refuse overwrite: an export can never clobber an existing backup/file.
     let mut file = std::fs::OpenOptions::new()
@@ -228,6 +240,7 @@ pub async fn export_portable_reconnect_map(
         mappings,
     };
     let bytes = serde_json::to_vec_pretty(&receipt).map_err(|_| "无法序列化映射结果")?;
+    ensure_export_importable(&bytes)?;
     let destination = ensure_json_path(&destination_path)?;
     let mut output = std::fs::OpenOptions::new()
         .write(true)
@@ -320,6 +333,34 @@ mod tests {
     use chrono::Utc;
     use serde_json::json;
     use uuid::Uuid;
+
+    #[test]
+    fn export_byte_limit_prevents_creating_unimportable_manifests() {
+        assert!(ensure_export_importable(&vec![b'x'; MAX_IMPORT_BYTES as usize]).is_ok());
+        assert!(ensure_export_importable(&vec![b'x'; MAX_IMPORT_BYTES as usize + 1]).is_err());
+        // Serialize a valid-shaped long allowlisted root field to prove the actual
+        // exported JSON size, not profile count, drives the limit.
+        let manifest = PortableStorageManifest {
+            schema_version: VERSION,
+            exported_at: "2026-10-19T00:00:00Z".into(),
+            credential_rebind_required: true,
+            profiles: vec![PortableStorageProfile {
+                name: "demo".into(),
+                provider_key: "s3".into(),
+                bucket: Some("images".into()),
+                region: Some("auto".into()),
+                root: Some("a".repeat(MAX_IMPORT_BYTES as usize)),
+                owner: None,
+                repo: None,
+                branch: None,
+                access_mode: "unknown".into(),
+                source_storage_id: Some(Uuid::new_v4().to_string()),
+            }],
+        };
+        assert!(validate_manifest(&manifest).is_ok());
+        let bytes = serde_json::to_vec_pretty(&manifest).unwrap();
+        assert!(ensure_export_importable(&bytes).is_err());
+    }
 
     #[test]
     fn export_allowlist_excludes_keys_tokens_and_signed_urls() {
