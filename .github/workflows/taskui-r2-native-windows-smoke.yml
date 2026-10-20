@@ -1,0 +1,73 @@
+name: R2 guided TaskUI native Windows candidate smoke
+on:
+  push:
+    branches:
+      - ui/taskui-r2-guided-diagnostics-20261018
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # pinned stable
+        with:
+          toolchain: '1.98.1'
+      - name: Cache pinned Rust dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/release
+          key: r2-native-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}
+      - name: Protect release and cloud boundaries
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -ne 'refs/heads/ui/taskui-r2-guided-diagnostics-20261018') { throw 'Not the isolated UI candidate ref' }
+          if ((Get-Content apps/desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version -ne '1.4.9') { throw 'Unexpected release version change in isolated UI branch' }
+          Write-Host 'Native candidate only: no tag, no Release, no remote cloud writes'
+      - name: Install locked frontend
+        working-directory: apps/desktop
+        run: npm ci
+      - name: Build isolated Tauri NSIS and MSI candidates
+        working-directory: apps/desktop
+        run: npm run tauri build
+      - name: Verify native launch and window handle on clean Windows worker
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:GITHUB_WORKSPACE 'target/release/image-hosting-platform-desktop.exe'
+          if (-not (Test-Path $exe)) { throw "Tauri native executable missing: $exe" }
+          $p = Start-Process -FilePath $exe -PassThru
+          try {
+            $window = [IntPtr]::Zero
+            for ($i = 0; $i -lt 60; $i++) {
+              Start-Sleep -Milliseconds 500
+              $p.Refresh()
+              if ($p.HasExited) { throw "Native process exited too early: $($p.ExitCode)" }
+              if ($p.MainWindowHandle -ne [IntPtr]::Zero) { $window = $p.MainWindowHandle; break }
+            }
+            if ($window -eq [IntPtr]::Zero) { throw 'Native process remained alive but no real top-level window was obtained' }
+            Write-Host "R2_NATIVE_GATE process_alive=1 window_handle=1 head=$env:GITHUB_SHA"
+          } finally {
+            if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+          }
+      - name: Verify NSIS and MSI install/uninstall
+        shell: pwsh
+        run: ./scripts/smoke_windows_installers.ps1
+      - name: Verify build lockfiles unchanged and record candidate hashes
+        shell: pwsh
+        run: |
+          git diff --exit-code -- Cargo.lock apps/desktop/package-lock.json
+          if ($LASTEXITCODE -ne 0) { throw 'Build changed a dependency lockfile' }
+          Get-ChildItem target/release/bundle -File -Recurse -Include '*-setup.exe','*.msi' | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash
+            Write-Host "R2_NATIVE_INSTALLER_SHA256 name=$($_.Name) sha256=$hash"
+          }
+          Write-Host 'No installer publication: transient hosted Windows runner only'

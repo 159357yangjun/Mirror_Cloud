@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { BookOpen, CheckCircle2, Cloud, ExternalLink, GitBranch, GitFork, HardDrive, LoaderCircle, Server, X } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -14,7 +14,10 @@ import {
 } from '../lib/desktop'
 import type { PortableStorageProfile } from '../lib/desktop'
 import { portableReconnectConflict } from '../lib/portableReconnect'
-import { confirmAction } from '../store/useConfirmStore'
+import { confirmAction, useConfirmStore } from '../store/useConfirmStore'
+import { notifyError } from '../store/useToastStore'
+import { R2GuidedFields } from './R2GuidedFields'
+import { diagnoseR2Failure, validateR2Setup } from '../lib/r2Diagnostics'
 import type {
   CreateObjectStorageInput,
   CreateRepositoryStorageInput,
@@ -50,12 +53,12 @@ const providerGuideSteps: Record<SupportedProviderKey, string[]> = {
     '点击“测试并保存”，随后到“图库”验证远端文件浏览。',
   ],
   r2: [
-    '在 Cloudflare R2 创建 Bucket，并记下 Account ID。',
-    '选择“公开发布”或“私有存储目标”：私有模式不配置公开域名，但镜云无法仅凭此选项证明 Bucket 未公开。',
-    '创建 R2 API Token / Access Key，获得 Access Key ID 与 Secret Access Key。',
-    'Region 保持 auto；填写 Bucket、Account ID 和密钥。',
-    '填写公开访问域名：它决定图片的公网链接。留空时该云端只能作为镜像 / 备份成员；作为发布目标时发布会失败并回滚。',
-    '点击“测试并保存”，再上传一张测试图片验证。',
+    '先在 Cloudflare R2 创建桶，复制 Bucket 名和 Account ID。桶名不是图片路径，也不是访问域名。',
+    '默认桶使用 Region auto。镜云目前的后端只生成默认辖区 Endpoint；EU / US / FedRAMP 专用辖区暂不支持，请勿误用。',
+    '区分公开发布与私有访问意图。S3 API Endpoint 不能当作公开图片 URL，选择私有也不会自动关闭桶的公网入口。',
+    '在 R2 Manage API Tokens 创建限定目标桶的 Object Read & Write 密钥，取得 Access Key ID 和 Secret Access Key。不要填写普通 API Token。',
+    '向导前三步只执行本地字段校验；最后一步会明确请求你授权临时对象写入、元数据校验及删除，清理失败可能留存临时对象。',
+    '远端测试成功后，再单独验证实际发布、公开地址或匿名访问拒绝。不要把连接通过当作私有权限已验收。',
   ],
   s3: [
     '准备兼容 S3 的 Bucket、Endpoint 和 Region。',
@@ -106,6 +109,8 @@ export function StorageSetupDialog({
   onCreated?: (created: StorageView) => void
 }) {
   const queryClient = useQueryClient()
+  const dialogRef = useRef<HTMLElement>(null)
+  const r2ErrorRef = useRef<HTMLElement>(null)
   const guideUrl = getProviderGuideUrl(provider)
   const isRepository = provider === 'github' || provider === 'gitee'
   const isGenericS3 = provider === 'r2' || provider === 's3'
@@ -122,6 +127,7 @@ export function StorageSetupDialog({
           : Cloud
 
   const [showGuide, setShowGuide] = useState(false)
+  const [r2Step, setR2Step] = useState<0 | 1 | 2 | 3>(0)
   // An older manifest's 'unknown' access intent must never silently become public
   // just because public was the historical default in the setup form.
   const [restoreModeConfirmed, setRestoreModeConfirmed] = useState(false)
@@ -201,10 +207,40 @@ export function StorageSetupDialog({
       onCreated?.(created)
       onClose()
     },
+    // A mutation-level handler suppresses main.tsx's global raw-error toast.
+    // Without it, the R2 inline diagnosis was redacted but the global toast leaked the raw provider error.
+    onError: (error) => {
+      if (provider === 'r2') {
+        // The focused inline diagnosis is the single error surface.
+        // A second toast obscures the recovery controls on compact Windows windows.
+        // Defining onError also suppresses main.tsx's global raw-error toast.
+        return
+      } else if (restoreProfile) {
+        notifyError('重新连接失败，请核对配置及本机输入的凭据；诊断信息未包含服务商原始响应。')
+      } else {
+        notifyError(`操作失败：${String(error)}`)
+      }
+    },
   })
 
-  const setS3 = (key: keyof CreateS3StorageInput, value: string) =>
+  const r2Issues = provider === 'r2' ? validateR2Setup({
+    name: s3Form.name,
+    bucket: s3Form.bucket,
+    accountId: s3Form.accountId ?? '',
+    region: s3Form.region ?? 'auto',
+    accessMode: s3Form.accessMode ?? 'public',
+    publicBaseUrl: s3Form.publicBaseUrl ?? '',
+    accessKeyId: s3Form.accessKeyId,
+    secretAccessKey: s3Form.secretAccessKey,
+  }) : []
+  const r2Failure = provider === 'r2' && mutation.error ? diagnoseR2Failure(mutation.error) : null
+
+  const setS3 = (key: keyof CreateS3StorageInput, value: string) => {
+    // Correcting a field invalidates the old diagnosis; don't keep a stale cloud failure
+    // attached to an updated config that has not yet been submitted.
+    if (provider === 'r2' && mutation.error) mutation.reset()
     setS3Form((current) => ({ ...current, [key]: value }))
+  }
   const setObject = (key: keyof CreateObjectStorageInput, value: string) =>
     setObjectForm((current) => ({ ...current, [key]: value }))
   const setRepo = (key: keyof CreateRepositoryStorageInput, value: string) =>
@@ -255,6 +291,9 @@ export function StorageSetupDialog({
       missingFields.push('自定义公开域名必须是 http/https URL，不能包含查询参数或片段')
     }
   } else if (isGenericS3) {
+    if (provider === 'r2') {
+      missingFields.push(...r2Issues.map((issue) => issue.message))
+    } else {
     if (blank(s3Form.name)) missingFields.push('显示名称')
     if (blank(s3Form.bucket)) missingFields.push('Bucket')
     if (blank(s3Form.accessKeyId)) missingFields.push('Access Key ID')
@@ -266,6 +305,7 @@ export function StorageSetupDialog({
       else if (invalidPublicBaseUrl(s3Form.publicBaseUrl)) missingFields.push('公开访问域名必须是 http/https URL，不能包含查询参数或片段')
     }
     if (s3Form.providerKey === 's3' && (notHttp(s3Form.endpoint) || insecureHttp(s3Form.endpoint))) missingFields.push('Endpoint（需 https，或本机 http://127.0.0.1）')
+    }
   } else if (isObject) {
     if (blank(objectForm.name)) missingFields.push('显示名称')
     if (blank(objectForm.bucket)) missingFields.push('Bucket')
@@ -295,7 +335,15 @@ export function StorageSetupDialog({
     submitGuard.current = true
     setSubmitBusy(true)
     try {
-      if (restoreProfile) {
+      if (provider === 'r2') {
+        const accepted = await confirmAction({
+          title: '确认 R2 远端写入测试并保存',
+          detail: '当前后端会向目标 Bucket 写入一个独立的临时测试对象、检查元数据，再尝试删除。如果网络中断或清理失败，可能留下临时对象。不是只读测试；请确认你对这个 Bucket 拥有操作权限。此操作不改变 Bucket 公共访问设置，也不能证明它已经私有。' + (restoreProfile ? ' 迁移模式只新增连接，不覆盖旧记录。' : ''),
+          confirmLabel: '授权临时写入测试',
+          danger: false,
+        })
+        if (!accepted) return
+      } else if (restoreProfile) {
         const accepted = await confirmAction({
           title: '确认新增连接配置',
           detail: `将以“${isRepository ? repoForm.name : isGenericS3 ? s3Form.name : isObject ? objectForm.name : webdavForm.name}”新建一条 ${providerNames[provider]} 连接。将先测试新凭据；不会覆盖或关联旧资源记录、图片、工作流和现有存储。`,
@@ -313,6 +361,57 @@ export function StorageSetupDialog({
       setSubmitBusy(false)
     }
   }
+
+  useEffect(() => {
+    if (provider !== 'r2') return
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const dialog = dialogRef.current
+    dialog?.querySelector<HTMLElement>('input, button:not([disabled])')?.focus({ preventScroll: true })
+    function handleKeyDown(event: KeyboardEvent) {
+      // ConfirmDialog owns Escape and Tab while it is visible.
+      if (useConfirmStore.getState().request || !dialogRef.current) return
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        if (!submitGuard.current) onClose()
+      } else if (event.key === 'Tab') {
+        const enabled = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        )).filter((node) => node.getClientRects().length > 0)
+        if (!enabled.length) return
+        const first = enabled[0], last = enabled[enabled.length - 1]
+        if (event.shiftKey && (document.activeElement === first || !dialogRef.current.contains(document.activeElement))) {
+          event.preventDefault()
+          last.focus()
+        } else if (!event.shiftKey && (document.activeElement === last || !dialogRef.current.contains(document.activeElement))) {
+          event.preventDefault()
+          first.focus()
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      if (previous?.isConnected) previous.focus({ preventScroll: true })
+    }
+    // The dialog lifecycle owns focus; step transitions have a separate focus handoff.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider])
+
+  useEffect(() => {
+    if (provider !== 'r2' || !mutation.error) return
+    const target = r2ErrorRef.current
+    target?.scrollIntoView({ block: 'nearest', behavior: 'auto' })
+    target?.focus({ preventScroll: true })
+  }, [provider, mutation.error])
+
+  useEffect(() => {
+    if (provider !== 'r2') return
+    const active = dialogRef.current?.querySelector<HTMLElement>(
+      `[aria-current="step"], input:not([disabled])`,
+    )
+    active?.focus({ preventScroll: true })
+  }, [provider, r2Step])
 
   async function openGitHubTokenPage() {
     const url = 'https://github.com/settings/personal-access-tokens/new'
@@ -332,11 +431,11 @@ export function StorageSetupDialog({
 
   return (
     <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/25 p-3 backdrop-blur-sm sm:p-6" onMouseDown={requestClose}>
-      <section onMouseDown={(event) => event.stopPropagation()} className="max-h-[92vh] w-full max-w-[760px] overflow-auto rounded-[24px] border border-white bg-white p-4 shadow-[0_30px_100px_rgba(15,23,42,.22)] sm:rounded-[28px] sm:p-6">
+      <section ref={dialogRef} role={provider === 'r2' ? 'dialog' : undefined} aria-modal={provider === 'r2' ? true : undefined} aria-labelledby={provider === 'r2' ? 'r2-dialog-title' : undefined} onMouseDown={(event) => event.stopPropagation()} className="max-h-[92vh] w-full max-w-[760px] overflow-auto rounded-[24px] border border-white bg-white p-4 shadow-[0_30px_100px_rgba(15,23,42,.22)] sm:rounded-[28px] sm:p-6">
         <div className="flex items-start gap-4">
           <div className="grid size-11 place-items-center rounded-2xl bg-slate-100"><Icon size={19} /></div>
           <div>
-            <h2 className="text-lg font-semibold">连接 {providerNames[provider]}</h2>
+            <h2 id={provider === 'r2' ? 'r2-dialog-title' : undefined} className="text-lg font-semibold">连接 {providerNames[provider]}</h2>
             <p className="mt-1 text-xs text-slate-400">
               {isRepository
                 ? '仓库、分支与 Token 即可开始。公开仓库默认生成 Raw URL。'
@@ -416,20 +515,25 @@ export function StorageSetupDialog({
           </div>
         )}
 
-        {isGenericS3 && (
+        {provider === 'r2' && (
+          <R2GuidedFields
+            form={s3Form} setField={setS3} issues={r2Issues} step={r2Step} setStep={setR2Step}
+            restoreChoicePending={Boolean(restoreProfile?.accessMode === 'unknown' && !restoreModeConfirmed)}
+            confirmMode={(accessMode) => { if (mutation.error) mutation.reset(); setRestoreModeConfirmed(true); setS3Form((current) => ({ ...current, accessMode, publicBaseUrl: accessMode === 'private_requested' ? '' : current.publicBaseUrl })) }}
+          />
+        )}
+        {isGenericS3 && provider !== 'r2' && (
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="显示名称" value={s3Form.name} onChange={(value) => setS3('name', value)} />
             <Field label="Bucket" value={s3Form.bucket} onChange={(value) => setS3('bucket', value)} placeholder="images" />
-            {provider === 'r2'
-              ? <Field label="Account ID" value={s3Form.accountId || ''} onChange={(value) => setS3('accountId', value)} placeholder="Cloudflare Account ID" />
-              : <Field label="Endpoint" value={s3Form.endpoint || ''} onChange={(value) => setS3('endpoint', value)} placeholder="https://s3.example.com" />}
-            <Field label="Region" value={s3Form.region || ''} onChange={(value) => setS3('region', value)} placeholder={provider === 'r2' ? 'auto' : 'us-east-1'} />
+            <Field label="Endpoint" value={s3Form.endpoint || ''} onChange={(value) => setS3('endpoint', value)} placeholder="https://s3.example.com" />
+            <Field label="Region" value={s3Form.region || ''} onChange={(value) => setS3('region', value)} placeholder="us-east-1" />
             <Field label="Access Key ID" value={s3Form.accessKeyId} onChange={(value) => setS3('accessKeyId', value)} />
             <Field label="Secret Access Key" type="password" value={s3Form.secretAccessKey} onChange={(value) => setS3('secretAccessKey', value)} />
             <Field label="资源目录（可选）" value={s3Form.root || ''} onChange={(value) => setS3('root', value)} placeholder="assets" />
             {isGenericS3 && (
               <div className="sm:col-span-2">
-                <div className="mb-2 text-xs font-medium text-slate-600">此 {provider === 'r2' ? 'R2' : 'S3'} 存储的发布用途</div>
+                <div className="mb-2 text-xs font-medium text-slate-600">此 S3 存储的发布用途</div>
                 <div className="grid grid-cols-2 gap-2">
                   <button type="button" onClick={() => { setRestoreModeConfirmed(true); setS3Form((current) => ({ ...current, accessMode: 'public' })) }} aria-pressed={s3Form.accessMode !== 'private_requested'} className={`rounded-xl border px-3 py-2.5 text-xs ${s3Form.accessMode !== 'private_requested' ? 'border-indigo-300 bg-indigo-50 text-indigo-900' : 'border-slate-200 text-slate-600'}`}>公开发布</button>
                   <button type="button" onClick={() => { setRestoreModeConfirmed(true); setS3Form((current) => ({ ...current, accessMode: 'private_requested', publicBaseUrl: '' })) }} aria-pressed={s3Form.accessMode === 'private_requested'} className={`rounded-xl border px-3 py-2.5 text-xs ${s3Form.accessMode === 'private_requested' ? 'border-indigo-300 bg-indigo-50 text-indigo-900' : 'border-slate-200 text-slate-600'}`}>私有存储目标</button>
@@ -475,17 +579,27 @@ export function StorageSetupDialog({
           </div>
         )}
 
-        {mutation.error && <div role="alert" className="mt-4 rounded-xl border border-red-100 bg-red-50 px-3 py-2.5 text-xs leading-5 text-red-600">{restoreProfile ? (String(mutation.error).includes('RESTORE_CONFLICT') ? '发现同名连接或相同目标。请先到存储管理核对；不会重复创建或覆盖。' : '重新连接失败，请核对 Endpoint、公开访问方式及本机输入的凭据。') : String(mutation.error).replace(/^Error:\s*/i, '')}</div>}
+        {r2Failure && (
+          <section ref={r2ErrorRef} tabIndex={-1} aria-label="R2 连接诊断" role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs leading-6 text-red-800">
+            <h3 className="font-semibold">{r2Failure.title}</h3>
+            <p className="mt-1">以下是排查方向，尚未证实根因。原始错误可能包含敏感信息，不在此显示。</p>
+            <ul className="mt-2 list-inside list-disc">{r2Failure.checks.map((check) => <li key={check}>{check}</li>)}</ul>
+            <button type="button" className="mt-3 min-h-11 rounded-lg border border-red-200 bg-white px-3 text-red-900"
+              onClick={() => setR2Step(r2Failure.kind === 'bucket' || r2Failure.kind === 'endpoint' ? 0 : 2)}>返回相关配置步骤</button>
+          </section>
+        )}
+        {mutation.error && !r2Failure && <div role="alert" className="mt-4 rounded-xl border border-red-100 bg-red-50 px-3 py-2.5 text-xs leading-5 text-red-600">{restoreProfile ? (String(mutation.error).includes('RESTORE_CONFLICT') ? '发现同名连接或相同目标。请先到存储管理核对；不会重复创建或覆盖。' : '重新连接失败，请核对 Endpoint、公开访问方式及本机输入的凭据。') : String(mutation.error).replace(/^Error:\s*/i, '')}</div>}
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-          {missingFields.length > 0 ? (
+          {missingFields.length > 0 && (provider !== 'r2' || r2Step === 3) ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-700">还需填写：{missingFields.join('、')}</div>
           ) : <span />}
           <div className="flex gap-2">
             <button disabled={submitBusy || mutation.isPending} onClick={requestClose} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm disabled:opacity-50">取消</button>
-            <button disabled={submitBusy || mutation.isPending || missingFields.length > 0} onClick={() => void submitStorage()} className="flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">
+            {provider === 'r2' && r2Step > 0 && <button type="button" disabled={submitBusy || mutation.isPending} onClick={() => setR2Step((r2Step - 1) as 0 | 1 | 2 | 3)} className="min-h-11 rounded-xl border border-slate-200 px-4 text-sm">上一步</button>}
+            {(provider !== 'r2' || r2Step === 3) && <button disabled={submitBusy || mutation.isPending || missingFields.length > 0} onClick={() => void submitStorage()} className="flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">
               {mutation.isPending && <LoaderCircle size={15} className="animate-spin" />}
-              {restoreProfile ? '测试并新增连接' : '测试并保存'}
-            </button>
+              {provider === 'r2' ? '授权测试并保存' : restoreProfile ? '测试并新增连接' : '测试并保存'}
+            </button>}
           </div>
         </div>
       </section>

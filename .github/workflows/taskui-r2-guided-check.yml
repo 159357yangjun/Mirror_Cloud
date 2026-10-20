@@ -1,0 +1,63 @@
+name: TaskUI R2 guided setup isolated checks
+on:
+  push:
+    branches:
+      - ui/taskui-r2-guided-diagnostics-20261018
+permissions:
+  contents: read
+jobs:
+  offline-and-frontend:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Offline R2 diagnostic and secret redaction controls
+        run: node --experimental-strip-types scripts/test_r2_diagnostics.mjs
+      - name: Install locked frontend deps
+        working-directory: apps/desktop
+        run: npm ci
+      - name: Typecheck and build R2 guided setup
+        working-directory: apps/desktop
+        run: npm run build
+      - name: Windows Edge R2 wizard UI and no-cloud-write acceptance
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path qa-r2 | Out-Null
+          $dir = (Resolve-Path apps/desktop).Path
+          $server = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c','npm run dev -- --host 127.0.0.1 > qa-r2-vite.log 2>&1' -WorkingDirectory $dir -PassThru
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 70; $i++) {
+              try {
+                $req = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:1420/r2-wizard-qa.html' -TimeoutSec 3
+                if ($req.StatusCode -eq 200) { $ready = $true; break }
+              } catch {}
+              Start-Sleep -Milliseconds 500
+            }
+            if (-not $ready) { throw 'Local QA fixture did not start' }
+            & node scripts/test_r2_wizard_browser.mjs '--out=qa-r2'
+            if ($LASTEXITCODE -ne 0) { throw "R2 browser test failed: $LASTEXITCODE" }
+          } finally {
+            if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue }
+          }
+      - name: Upload browser screenshots and no-cloud evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: taskui-r2-guided-browser-acceptance
+          path: |
+            qa-r2/
+            apps/desktop/qa-r2-vite.log
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Confirm no lockfile modification
+        shell: pwsh
+        run: |
+          git diff --exit-code -- Cargo.lock apps/desktop/package-lock.json
+          if ($LASTEXITCODE -ne 0) { throw 'Build modified a dependency lockfile' }
+          Write-Host 'R2_GUIDED_GATE frontend=1 offline=1 live_cloud_writes=0'
