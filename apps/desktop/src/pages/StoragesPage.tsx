@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { notifyError, notifySuccess } from '../store/useToastStore'
 import { confirmAction } from '../store/useConfirmStore'
+import { diagnoseR2Failure } from '../lib/r2Diagnostics'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useAppStore } from '../store/useAppStore'
@@ -110,15 +111,25 @@ export function StoragesPage() {
   }
 
   const handleTest = async (id: string) => {
+    const isR2 = storages.some((storage) => storage.id === id && storage.providerKey === 'r2')
+    if (isR2) {
+      const accepted = await confirmAction({
+        title: '授权 R2 临时对象读写测试',
+        detail: '当前测试会向 Bucket 写入临时对象、读取元数据并尝试删除。清理失败时可能留下临时对象；此操作不属于只读诊断，也不能验证 Bucket 是否允许匿名访问。',
+        confirmLabel: '授权写入测试',
+        danger: false,
+      })
+      if (!accepted) return
+    }
     setTesting(id)
     try {
       const report = await testStorage(id)
       setTestResults((previous) => ({ ...previous, [id]: report.reachable }))
-      if (report.reachable) notifySuccess(report.detail)
-      else notifyError(`连接失败：${report.detail}`)
+      if (report.reachable) notifySuccess(isR2 ? 'R2 临时对象读写测试完成；公开与私有权限仍需单独验证。' : report.detail)
+      else notifyError(isR2 ? diagnoseR2Failure(report.detail).title : `连接失败：${report.detail}`)
     } catch (error) {
       setTestResults((previous) => ({ ...previous, [id]: false }))
-      notifyError(`连接失败：${String(error)}`)
+      notifyError(isR2 ? diagnoseR2Failure(error).title : `连接失败：${String(error)}`)
     } finally {
       setTesting(null)
     }
@@ -228,7 +239,7 @@ export function StoragesPage() {
                   <div className="truncate text-sm font-medium">{storage.name}</div>
                   <div className="truncate text-[11px] text-slate-400">{storage.providerKey.toUpperCase()} · {storage.detail}</div>
                 </div>
-                <div className="ml-auto flex shrink-0 items-center gap-2">{defaultTarget?.kind === 'storage' && defaultTarget.id === storage.id && <span className="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-medium text-indigo-600">默认</span>}{testResults[storage.id] === true && <span className="flex items-center gap-1 text-[10px] text-emerald-600"><CheckCircle2 size={12} /> 已验证</span>}{testResults[storage.id] === false && <span className="text-[10px] text-red-500">连接失败</span>}</div>
+                <div className="ml-auto flex shrink-0 items-center gap-2">{defaultTarget?.kind === 'storage' && defaultTarget.id === storage.id && <span className="rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-medium text-indigo-600">默认</span>}{testResults[storage.id] === true && <span className="flex items-center gap-1 text-[10px] text-emerald-600"><CheckCircle2 size={12} /> {storage.providerKey === 'r2' ? '读写测试完成（未验访问权限）' : '已验证'}</span>}{testResults[storage.id] === false && <span className="text-[10px] text-red-500">连接失败</span>}</div>
                 <button onClick={() => void removeStorage(storage.id, storage.name)} className="rounded-lg p-2 text-slate-300 transition hover:bg-red-50 hover:text-red-500" title="删除连接"><Trash2 size={14} /></button>
               </div>
               <div className={`mt-4 truncate text-[11px] ${storage.accessMode === 'private_requested' ? 'text-amber-700' : 'text-slate-400'}`}>{storage.accessMode === 'private_requested' ? '私有模式请求 · Bucket 是否公开尚未验证' : storage.publicBaseUrl || storage.publicHint}</div>

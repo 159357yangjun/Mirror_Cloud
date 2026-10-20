@@ -1356,6 +1356,7 @@ pub async fn create_storage_group(
     let mut unique = std::collections::HashSet::new();
     let mut primary_count = 0usize;
     let mut members = Vec::with_capacity(input.members.len());
+    let mut selected_records = Vec::with_capacity(input.members.len());
     for member in input.members {
         let storage_id = Uuid::parse_str(&member.storage_id).map_err(|error| error.to_string())?;
         if !unique.insert(storage_id) {
@@ -1379,6 +1380,7 @@ pub async fn create_storage_group(
         if !storage.enabled {
             return Err(format!("Storage {} is disabled", storage.name));
         }
+        selected_records.push(storage);
         members.push(NewStorageGroupMember {
             storage_id,
             role: role.into(),
@@ -1388,6 +1390,9 @@ pub async fn create_storage_group(
     if primary_count != 1 {
         return Err("A Storage Group must contain exactly one primary storage".into());
     }
+    // Reject mixed public/private intents before INSERT, not only during upload.
+    // Every selected storage record has already been checked for existence and enabled state.
+    validate_group_access_intents(&selected_records, members.len())?;
 
     let id = Uuid::new_v4();
     state
