@@ -1,8 +1,17 @@
-name: TaskUI native Windows candidate smoke
+name: Mirror Cloud main native Windows and SQLite acceptance
 on:
   push:
     branches:
-      - ui/taskui-publish-first-pass-20261018
+      - main
+    paths:
+      - 'apps/desktop/src/**'
+      - 'apps/desktop/src-tauri/**'
+      - 'apps/desktop/package*.json'
+      - 'crates/**'
+      - 'Cargo.lock'
+      - '.github/scripts/native_tauri_acceptance.ps1'
+      - '.github/workflows/taskui-native-windows-smoke.yml'
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -30,9 +39,11 @@ jobs:
       - name: Protect release and cloud boundaries
         shell: pwsh
         run: |
-          if ($env:GITHUB_REF -ne 'refs/heads/ui/taskui-publish-first-pass-20261018') { throw 'Not the isolated UI candidate ref' }
-          if ((Get-Content apps/desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version -ne '1.4.9') { throw 'Unexpected release version change in isolated UI branch' }
-          Write-Host 'Native candidate only: no tag, no Release, no remote cloud writes'
+          if ($env:GITHUB_REF -ne 'refs/heads/main') { throw 'Native acceptance only on main' }
+          $tauriVersion = (Get-Content apps/desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $packageVersion = (Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json).version
+          if ($tauriVersion -ne $packageVersion) { throw 'Tauri and package versions disagree' }
+          Write-Host 'MAIN_NATIVE_ACCEPTANCE test-only: no tag, no Release, no remote cloud writes'
       - name: Install locked frontend
         working-directory: apps/desktop
         run: npm ci
@@ -58,6 +69,17 @@ jobs:
           } finally {
             if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
           }
+      - name: Verify native window restart and SQLite persistence on disposable Windows runner
+        shell: pwsh
+        run: ./.github/scripts/native_tauri_acceptance.ps1
+      - name: Upload native SQLite restart evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mirror-cloud-main-native-sqlite-evidence
+          path: ${{ runner.temp }}/mirror-cloud-native-acceptance/**
+          if-no-files-found: warn
+          retention-days: 14
       - name: Verify NSIS and MSI install/uninstall
         shell: pwsh
         run: ./scripts/smoke_windows_installers.ps1
