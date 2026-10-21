@@ -1,4 +1,5 @@
-// Main-only Windows Edge CDP keyboard and DPR acceptance; no Tauri backend or cloud access.\n// DPR is CDP-emulated, not Windows system DPI / native Tauri G3.
+// Main-only Windows Edge CDP keyboard and DPR acceptance; no Tauri backend or cloud access.
+// DPR is CDP-emulated, not Windows system DPI / native Tauri G3.
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
