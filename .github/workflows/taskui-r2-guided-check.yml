@@ -1,8 +1,15 @@
-name: TaskUI R2 guided setup isolated checks
+name: Mirror Cloud main R2 offline guided acceptance
 on:
   push:
     branches:
-      - ui/taskui-r2-guided-diagnostics-20261018
+      - main
+    paths:
+      - 'apps/desktop/src/**'
+      - 'apps/desktop/r2-wizard-qa.html'
+      - 'apps/desktop/package*.json'
+      - 'scripts/test_r2_*.mjs'
+      - '.github/workflows/taskui-r2-guided-check.yml'
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -16,6 +23,11 @@ jobs:
           node-version-file: '.node-version'
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
+      - name: Confirm main-only and no live R2 credentials
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -ne 'refs/heads/main') { throw 'R2 offline acceptance only operates on main' }
+          Write-Host 'No live Provider credentials or remote writes are required by this job'
       - name: Offline R2 diagnostic and secret redaction controls
         run: node --experimental-strip-types scripts/test_r2_diagnostics.mjs
       - name: Install locked frontend deps

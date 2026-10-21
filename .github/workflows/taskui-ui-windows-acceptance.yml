@@ -1,14 +1,23 @@
-name: TaskUI isolated Windows browser acceptance
+name: Mirror Cloud main Windows UI acceptance
 on:
   push:
     branches:
-      - ui/taskui-publish-first-pass-20261018
+      - main
+    paths:
+      - 'apps/desktop/src/**'
+      - 'apps/desktop/package*.json'
+      - 'scripts/verify_*.mjs'
+      - 'scripts/ux_keyboard_smoke.mjs'
+      - 'TaskUI/**'
+      - 'project.taskui.json'
+      - '.github/workflows/taskui-ui-windows-acceptance.yml'
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
   browser:
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -58,6 +67,12 @@ jobs:
               Write-Host "TASKUI_MODE_END mode=$mode exit=$status"
               if ($status -ne 0) { $bad += "$mode=$status" }
             }
+            # Independent legacy #33 Edge CDP regressions, now using live main source.
+            # This does not invoke Tauri commands or remote/cloud writes.
+            & node scripts/ux_keyboard_smoke.mjs qa-output
+            $keyboardExit = $LASTEXITCODE
+            if ($keyboardExit -ne 0) { $bad += "keyboard=$keyboardExit" }
+            if (-not (Test-Path 'qa-output/ux-keyboard-report.json')) { $bad += 'keyboard-report-missing' }
             if ($bad.Count) { throw "Browser TaskUI gate failed: $($bad -join ', ')" }
           } finally {
             if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue }
