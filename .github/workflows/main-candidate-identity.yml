@@ -1,0 +1,60 @@
+name: Mirror Cloud main offline candidate build identity
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/desktop/vite.config.ts'
+      - 'apps/desktop/src/**'
+      - 'apps/desktop/package*.json'
+      - '.github/workflows/main-candidate-identity.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  candidate-build-identity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Guard source and version contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/main'
+          node -e "const a=require('./apps/desktop/package.json'); const b=require('./apps/desktop/src-tauri/tauri.conf.json'); if(a.version!==b.version)process.exit(1)"
+      - name: Install frontend from lock
+        working-directory: apps/desktop
+        run: npm ci
+      - name: Default build contains no synthetic candidate label
+        shell: bash
+        working-directory: apps/desktop
+        run: |
+          set -euo pipefail
+          unset MIRROR_CANDIDATE_SOURCE_SHA
+          npm run build
+          node -e "const fs=require('fs');const dir='dist/assets';const js=fs.readdirSync(dir).filter(f=>f.endsWith('.js')).map(f=>fs.readFileSync(dir+'/'+f,'utf8')).join('\\n');if(!js||js.includes('候选构建 '+process.env.GITHUB_SHA.slice(0,12)))process.exit(1);console.log('DEFAULT_BUILD_ID_GATE clean=1')"
+      - name: Explicit candidate SHA is labeled but does not change the semantic version
+        shell: bash
+        working-directory: apps/desktop
+        env:
+          MIRROR_CANDIDATE_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          npm run build
+          node -e "const fs=require('fs');const dir='dist/assets';const js=fs.readdirSync(dir).filter(f=>f.endsWith('.js')).map(f=>fs.readFileSync(dir+'/'+f,'utf8')).join('\\n');if(!js.includes(process.env.GITHUB_SHA.slice(0,12)))process.exit(1);console.log('CANDIDATE_BUILD_ID_GATE sha_present=1 no_version_change=1')"
+      - name: Reject malformed candidate SHA
+        shell: bash
+        working-directory: apps/desktop
+        run: |
+          set -euo pipefail
+          if MIRROR_CANDIDATE_SOURCE_SHA=invalid-candidate-sha npm run build; then
+            echo 'Malformed candidate SHA was accepted' >&2
+            exit 1
+          fi
+          echo 'INVALID_BUILD_ID_GATE rejected=1'
