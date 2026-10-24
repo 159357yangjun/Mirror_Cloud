@@ -23,3 +23,17 @@
 **G2 → PASS 的唯一缺口**：一次已登录人工 `workflow_dispatch(dev)`。三通道代做均失败且有证人：Edge 连接器可导航但 `evaluate_script` 返回 `{}`、点击后 `list_pages` 只剩 about:blank；Computer Use 中止于 `browser_url_policy / insufficient_url_confidence`；Qoder 内置浏览器未登录（快照头部 `Sign in`、无 Run workflow 控件）。
 
 **本笔不改任何东西**：`6116e3d` 保持为 RC 候选源码——不动 src、不动 release.yml、不建 tag、不复用 v1.4.6。点成功后须重读最新事实（不沿用本日读数），再按十二项证据 + 四个 artifact 文件名 + publish-release SKIPPED + tag/Release 无副作用一次核完。
+
+## 2026-10-24（远端分支与进度复核；main 本地验证）
+
+**事实**：按用户“拉取远端最新代码，本地测试提交”和“检查项目进度，检查远端分支情况”的要求，先执行 `git fetch origin`，再创建跟踪远端的本地 `main` 并执行 `git pull --ff-only origin main`，结果 Already up to date。被测源码基线为 `5c79c42a04bfde72020329679bbb5dd4f961dbbd`。原本地 `dev` 保留在 `d3e39b4c2bd6004f1e49c130e465fb67e348ce24`；`git rev-list --left-right --count origin/dev...dev` 为 0/159，未将这批历史工作覆盖、重置或合并到 main。
+
+远端采集使用 `git ls-remote origin refs/heads/main refs/heads/dev`，以及 GitHub REST `branches?per_page=100`、`pulls?state=open&per_page=100`：main 为上述被测 SHA，dev 为 `e634ced12a9531ffde63e751dbf24b03d875252e`；共 53 个分支、32 个开放 PR，其中 31 个 Draft。PR #40/#41/#42/#43 均已合并到 main（分别为 R2 向导、UI-00 审计、UI-01 合同、基础候选整合），PR #9 仍是开放 Draft。存量分支大量使用串联 PR，且 main 曾 Squash 合并；提交 ahead 或非祖先关系不等于成果缺失，不能据此删除或整批重合并。经典 branch-protection API 返回 403，不能以本连接器结果判断保护规则已解除。
+
+本地实际通过：validate（21 个 up 迁移、17 张表，仅内存库）、commands（97/97/97）、user-flow（639/0）、docs contract（16 项）、Action pins（45 个引用）、R2 live-workflow 静态门（10 项，未运行云端）、release version（1.4.9，13 个 workspace 成员）、Tauri dependency family、`cargo fmt --all -- --check`、桌面 `npm run build`、TaskUI 9 个单测及 `project.taskui.json --strict`（errors=0 warnings=0）、R2 离线诊断（9/0）、shape（81/0）。`node scripts/test_r2_wizard_browser.mjs` 使用本机 Edge、真实向导组件和明确拒绝远端写入的内存 IPC 替身，在 1366×768 DPR=1 与 640×480 DPR=1.5 两个场景通过 60 项检查，cloud_writes=0；此 DPR 测试不等于 Windows 原生系统 DPI 验收。前端构建仍有大于 500 kB chunk 及无效动态导入警告。主题文档核对失败：`node scripts/theme_face_inventory.mjs --verify` 报 mismatch=11（未修改文档或放宽门）。
+
+远端同源码 SHA 的 [CI 39604556442](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/39604556442) 为 success，jobs 的 Rust format/check/tests、Desktop build、Docs build 均为 success；同 SHA 的 [TaskUI strict 39604556641](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/39604556641) 亦 success。另有历史主线 Windows 原生/SQLite 验收 [39603276174](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/39603276174)，其 SHA 为 `72e9c2df4e6f8e0cbcc6c8c281430589b94cf77a`，不能冒充本次最新源码的原生复跑。
+
+**判断**：前次针对本地 dev 的 83 命令/885 静态断言/22 迁移及 ShareLinkPanel 未挂载等结论，只属于该历史开发线，不能套用到 main。当前 main 已有 R2/S3 临时签名分享调用及私有预览，UI-00/UI-01 为已合入的审计和设计合同，不代表 UI-02—UI-10 或正式发行验收完成。真实 R2 E2E 仍未验证，live workflow 的 `if: ${{ false }}` 保留。主题基线与早期 .ai/ 台账仍漂移，应与源码和实际 CI 交叉核实。
+
+**动作与边界**：本批仅追加本工作日志并按用户要求做本地 Git 提交，产品源码、迁移、版本及工作流均未修改；本日志提交没有远端 CI 结果，引用的 PASS 只对应上文被测源码 SHA。本机仍缺 MSVC C++ linker，本次未重跑本地 Rust 编译/测试；文档依赖未安装，未跑本地文档构建。未运行完整 verify:all、真实云端上传、用户旧库升级、安装器或人工 G3；未推送、合并 PR、删除分支、移动 tag 或发布。本次临时 Vite 服务在测试结束后关闭。下一步先对账存量 PR 的独立成果与 main 文件树，再按 main-only 规则推进 UI-02；主题基线修订需保留真实差异，不以重签掩盖失败。
