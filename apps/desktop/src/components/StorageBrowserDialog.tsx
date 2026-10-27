@@ -20,25 +20,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { browseStorage, chooseDownloadPath, copyText, createTemporaryShareLink, deleteStorageEntry, downloadStorageEntry, openExternalUrlOrReport } from '../lib/desktop'
 import { notifySuccess } from '../store/useToastStore'
 import { canPreviewCloudImage, isPrivateS3Storage, useCloudImagePreview } from '../lib/useCloudImagePreview'
+import { isImage, parentPath } from '../features/cloud-browser/entryUtils'
 import { confirmAction } from '../store/useConfirmStore'
 import type { StorageEntryView, StorageView } from '../types'
-
-function parentPath(path: string) {
-  const parts = path.split('/').filter(Boolean)
-  parts.pop()
-  return parts.join('/')
-}
 
 function sizeLabel(size?: number | null) {
   if (size == null) return ''
   if (size > 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`
   return `${Math.max(1, Math.round(size / 1024))} KB`
-}
-
-function isImage(entry: StorageEntryView) {
-  if (entry.isDir) return false
-  const source = `${entry.name} ${entry.publicUrl || ''}`.toLowerCase().split('?')[0]
-  return ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.avif'].some((extension) => source.endsWith(extension) || source.includes(`${extension} `))
 }
 
 export function StorageBrowserDialog({ storage, onClose }: { storage: StorageView; onClose: () => void }) {

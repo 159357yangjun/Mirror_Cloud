@@ -14,6 +14,7 @@ import { ToastViewport } from './components/ToastViewport'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { useAppStore } from './store/useAppStore'
 import { notifyError } from './store/useToastStore'
+import { manageDesktopSubscription } from './platform/desktop/subscription'
 
 type PublishedEvent = { name: string; publicUrl: string; pluginOutputs?: Array<{ pluginId: string; pluginName: string; pluginKind: string; text: string; data: unknown }> }
 
@@ -22,8 +23,7 @@ export default function App() {
 
   useEffect(() => {
     if (!isTauriRuntime()) return
-    let unlisten: (() => void) | undefined
-    void import('@tauri-apps/api/event').then(({ listen }) =>
+    return manageDesktopSubscription(() => import('@tauri-apps/api/event').then(({ listen }) =>
       listen<PublishedEvent>('asset://published', async (event) => {
         const { name, publicUrl } = event.payload
         if (!publicUrl) return
@@ -34,9 +34,8 @@ export default function App() {
         } catch {
           notifyError('发布成功，但自动复制失败，请到资源页手动复制')
         }
-      }).then((cleanup) => { unlisten = cleanup }),
-    )
-    return () => unlisten?.()
+      }),
+    ), () => notifyError('发布结果通知暂不可用，请到资源页检查结果并复制链接'))
   }, [])
 
   return (

@@ -26,6 +26,8 @@ import {
 import { useAppStore } from '../store/useAppStore'
 import { confirmAction } from '../store/useConfirmStore'
 import type { PageKey, TaskView, UploadMode } from '../types'
+import { notifyError } from '../store/useToastStore'
+import { manageDesktopSubscription } from '../platform/desktop/subscription'
 
 const IMAGE_EXTENSIONS = new Set(['bmp', 'gif', 'jpeg', 'jpg', 'png', 'webp'])
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
@@ -107,9 +109,7 @@ export function UploadDialog() {
 
   useEffect(() => {
     if (!uploadOpen || taskIds.length === 0 || !isTauriRuntime()) return
-    let unlisten: (() => void) | undefined
-    let disposed = false
-    void import('@tauri-apps/api/event').then(({ listen }) =>
+    return manageDesktopSubscription(() => import('@tauri-apps/api/event').then(({ listen }) =>
       listen<TaskProgressEvent>('task://updated', (event) => {
         const payload = event.payload
         if (!taskIds.includes(payload.id)) return
@@ -118,15 +118,8 @@ export function UploadDialog() {
             ? { ...task, status: payload.status, progress: payload.progress, error: payload.error ?? task.error }
             : task),
         )
-      }).then((cleanup) => {
-        if (disposed) cleanup()
-        else unlisten = cleanup
       }),
-    )
-    return () => {
-      disposed = true
-      unlisten?.()
-    }
+    ), () => notifyError('上传进度通知暂不可用，将继续定时核对上传任务'))
   }, [uploadOpen, taskIds, queryClient])
 
   const defaultWorkflow = useMemo(

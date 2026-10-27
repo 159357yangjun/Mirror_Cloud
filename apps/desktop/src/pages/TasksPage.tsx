@@ -5,6 +5,8 @@ import { PageHeader } from '../components/PageHeader'
 import { ReadFailurePanel } from '../components/ReadFailurePanel'
 import { cancelTask, isTauriRuntime, listTasks, retryTask } from '../lib/desktop'
 import type { TaskView } from '../types'
+import { notifyError } from '../store/useToastStore'
+import { manageDesktopSubscription } from '../platform/desktop/subscription'
 
 type TaskProgressEvent = { id: string; status: TaskView['status']; progress: number; error?: string | null }
 
@@ -30,8 +32,7 @@ export function TasksPage() {
 
   useEffect(() => {
     if (!isTauriRuntime()) return
-    let unlisten: (() => void) | undefined
-    import('@tauri-apps/api/event').then(({ listen }) =>
+    return manageDesktopSubscription(() => import('@tauri-apps/api/event').then(({ listen }) =>
       listen<TaskProgressEvent>('task://updated', (event) => {
         const payload = event.payload
         // Progress ticks only patch the visible row; refetching the whole list (and every asset)
@@ -44,11 +45,8 @@ export function TasksPage() {
         if (!TERMINAL_STATUSES.has(payload.status)) return
         void queryClient.invalidateQueries({ queryKey: ['tasks'] })
         void queryClient.invalidateQueries({ queryKey: ['assets'] })
-      }).then((cleanup) => {
-        unlisten = cleanup
       }),
-    )
-    return () => unlisten?.()
+    ), () => notifyError('任务进度通知暂不可用，将继续定时刷新任务列表'))
   }, [queryClient, taskLimit])
 
   return (

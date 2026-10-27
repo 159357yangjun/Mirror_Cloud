@@ -1,5 +1,13 @@
 # WORKLOG
 
+## 2026-10-27 — 代码结构统一第一批
+
+**事实**：用户批准保留 React/Tauri/Rust 和现有接口及业务行为，分批统一共享方法、前端领域、Rust 服务。首批从 `9502431f8cf8fc50ef770061f08d84bbc10895bc` 的干净工作区开始；方案与计划在 `8c02604e454b2aaaef2965c64feef1712c207c1e` 提交。修改前远端 main 为 `5c79c42a04bfde72020329679bbb5dd4f961dbbd`。
+
+**动作与判断**：提取异步桌面订阅释放逻辑，修复 App 和任务页面在卸载后才完成注册时的监听泄漏；云端浏览两处复用父路径及图片识别，同时保留原有显示和分享差异。开发启动入口共享环境检查，缺依赖时提示显式安装，不再自动安装。新增离线测试入口及框架职责说明。实际操作和真实 Tauri、云服务行为仍需后续验收。
+
+**验证**：在上述方案提交之后的未提交产品工作区运行 `npm run test:unit`（5 套通过，订阅 13/0、云端浏览 61/0），`npm run test:dev`（Windows PowerShell 5.1，16/0；另以 PowerShell 7 测试同样 16/0）、`npm run build`、`python scripts/validate.py`、`python scripts/check_contracts.py`、`python scripts/check_user_flow.py`（639/0）、`python scripts/check_docs_site.py`（16 项）和 `python scripts/check_release_version.py` 均通过；`git diff --check` 通过。浏览器页面巡检 7 个页面、36 项通过，浏览器没有 Tauri 注入，数据请求出现 invoke 不可用提示，不能视为原生或真实数据验收。工作区测试不等于提交后同 SHA CI。Node 22.12–22.17 的类型剥离兼容处理已加入，但本机只在 Node 24 上运行，尚未在这些旧版本实测。未运行真实云服务、真实 Tauri 桌面集成或 Rust 测试，未推送或发布。
+
 ## 2026-10-25 — 协作规则集中与过期记录清理
 
 **事实**：用户要求把 `.ai/` 中的详细规则整理到根目录 `AGENTS.md`，并直接删除过期内容。本轮从 `5a88d8579fb24a86e49a885d15feece40b3ef018` 开始，核对远端 main 为 `5c79c42a04bfde72020329679bbb5dd4f961dbbd`，工作区在修改前干净。

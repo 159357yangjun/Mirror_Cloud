@@ -8,6 +8,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "test:unit": "node ../../scripts/test_unit.mjs",
+    "test:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/test_dev_entrypoints.ps1",
     "verify:dialog": "node ../../scripts/verify_dialog_interactions.mjs",
     "verify:all": "node ../../scripts/verify_all.mjs"
   },

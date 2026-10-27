@@ -22,14 +22,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { GalleryMediaCard } from '../components/GalleryMediaCard'
 import { canPreviewCloudImage, isPrivateS3Storage, useCloudImagePreview } from '../lib/useCloudImagePreview'
+import { isImage, parentPath } from '../features/cloud-browser/entryUtils'
 import { browseStorage, chooseDownloadPath, copyText, createStorageDirectory, createTemporaryShareLink, deleteStorageEntry, downloadStorageEntry, listStorages, moveStorageEntry, openExternalUrlOrReport, queueBatchDeleteStorageEntries, queueBatchMoveStorageEntries, queueBatchRenameStorageEntries } from '../lib/desktop'
 import type { StorageEntryView } from '../types'
-
-function parentPath(path: string) {
-  const parts = path.split('/').filter(Boolean)
-  parts.pop()
-  return parts.join('/')
-}
 
 function joinRemotePath(parent: string, name: string) {
   const cleanParent = parent.split('/').filter(Boolean).join('/')
@@ -41,14 +36,6 @@ function sizeLabel(size?: number | null) {
   if (size == null) return ''
   if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`
   return `${Math.max(1, Math.round(size / 1024))} KB`
-}
-
-function isImage(entry: StorageEntryView) {
-  if (entry.isDir) return false
-  const source = `${entry.name} ${entry.publicUrl || ''}`.toLowerCase().split('?')[0]
-  return ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.avif'].some((extension) =>
-    source.endsWith(extension) || source.includes(`${extension} `),
-  )
 }
 
 const GALLERY_PAGE_SIZE = 120
