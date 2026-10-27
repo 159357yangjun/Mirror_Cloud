@@ -7,6 +7,7 @@ const suites = [
   'test_desktop_subscription.mjs',
   'test_cloud_browser_utils.mjs',
   'test_workflow_api.mjs',
+  'test_workflow_query_keys.mjs',
   'test_settings_diagnostics.mjs',
   'verify_confirmation_display.mjs',
   'verify_probe_display.mjs',

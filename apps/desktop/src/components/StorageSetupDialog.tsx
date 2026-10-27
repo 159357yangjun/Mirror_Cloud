@@ -1,3 +1,4 @@
+import { workflowQueryKeys } from '../features/workflows/queryKeys'
 import { useEffect, useRef, useState } from 'react'
 import { BookOpen, CheckCircle2, Cloud, ExternalLink, GitBranch, GitFork, HardDrive, LoaderCircle, Server, X } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -203,7 +204,7 @@ export function StorageSetupDialog({
     onSuccess: async (created) => {
       await queryClient.invalidateQueries({ queryKey: ['storages'] })
       await queryClient.invalidateQueries({ queryKey: ['default-publish-target'] })
-      await queryClient.invalidateQueries({ queryKey: ['workflows'] })
+      await queryClient.invalidateQueries({ queryKey: workflowQueryKeys.workflows })
       onCreated?.(created)
       onClose()
     },

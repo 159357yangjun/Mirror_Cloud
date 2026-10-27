@@ -1,3 +1,4 @@
+import { workflowQueryKeys } from '../features/workflows/queryKeys'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
@@ -80,7 +81,7 @@ export function PublishPage() {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['default-publish-target'] }),
-        queryClient.invalidateQueries({ queryKey: ['workflows'] }),
+        queryClient.invalidateQueries({ queryKey: workflowQueryKeys.workflows }),
       ])
     },
   })

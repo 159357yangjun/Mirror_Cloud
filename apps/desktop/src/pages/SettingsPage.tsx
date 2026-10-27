@@ -1,3 +1,4 @@
+import { workflowQueryKeys } from '../features/workflows/queryKeys'
 import {
   Check,
   ClipboardCopy,
@@ -679,7 +680,7 @@ export function SettingsPage() {
         referenceManifest, currentStorageMappings(), currentGroupMappings(), sourceWorkflowId,
       )
       setRestoredWorkflowIds((current) => new Map(current).set(sourceWorkflowId, id))
-      await queryClient.invalidateQueries({ queryKey: ['workflows'] })
+      await queryClient.invalidateQueries({ queryKey: workflowQueryKeys.workflows })
       await previewReferencePlan(referenceManifest)
       setPortableMessage('标准工作流已恢复，使用新 ID，原默认上传目标保持不变。')
     } catch {

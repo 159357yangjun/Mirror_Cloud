@@ -1,3 +1,4 @@
+import { workflowQueryKeys } from '../features/workflows/queryKeys'
 import { useEffect, useMemo, useState } from 'react'
 import { Gauge, ImageDown, Layers3, LoaderCircle, Sparkles, X } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -64,7 +65,7 @@ export function WorkflowSetupDialog({ recipe, onClose }: Props) {
       })
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['workflows'] })
+      await queryClient.invalidateQueries({ queryKey: workflowQueryKeys.workflows })
       onClose()
     },
   })

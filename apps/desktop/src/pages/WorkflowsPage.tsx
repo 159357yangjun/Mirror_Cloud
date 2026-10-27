@@ -1,3 +1,4 @@
+import { workflowQueryKeys } from '../features/workflows/queryKeys'
 import { Check, ChevronRight, Gauge, ImageDown, Plus, Sparkles, Star, Trash2, Workflow } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -9,17 +10,17 @@ import type { RecipeView } from '../types'
 
 export function WorkflowsPage() {
   const queryClient = useQueryClient()
-  const { data: recipes = [] } = useQuery({ queryKey: ['recipes'], queryFn: listRecipes })
-  const { data: workflows = [] } = useQuery({ queryKey: ['workflows'], queryFn: listWorkflows })
+  const { data: recipes = [] } = useQuery({ queryKey: workflowQueryKeys.recipes, queryFn: listRecipes })
+  const { data: workflows = [] } = useQuery({ queryKey: workflowQueryKeys.workflows, queryFn: listWorkflows })
   const [setupRecipe, setSetupRecipe] = useState<RecipeView | null | undefined>(undefined)
 
   const defaultMutation = useMutation({
     mutationFn: setDefaultWorkflow,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workflows'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: workflowQueryKeys.workflows }),
   })
   const deleteMutation = useMutation({
     mutationFn: deleteWorkflow,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workflows'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: workflowQueryKeys.workflows }),
   })
 
   return (

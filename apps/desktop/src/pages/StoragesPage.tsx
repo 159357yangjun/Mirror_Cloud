@@ -1,3 +1,4 @@
+import { workflowQueryKeys } from '../features/workflows/queryKeys'
 import {
   ArrowRight,
   CheckCircle2,
@@ -72,7 +73,7 @@ export function StoragesPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['storages'] })
       await queryClient.invalidateQueries({ queryKey: ['storage-groups'] })
-      await queryClient.invalidateQueries({ queryKey: ['workflows'] })
+      await queryClient.invalidateQueries({ queryKey: workflowQueryKeys.workflows })
     },
   })
 
@@ -80,7 +81,7 @@ export function StoragesPage() {
     mutationFn: ({ kind, id }: { kind: 'storage' | 'group'; id: string }) => setDefaultPublishTarget(kind, id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['default-publish-target'] })
-      await queryClient.invalidateQueries({ queryKey: ['workflows'] })
+      await queryClient.invalidateQueries({ queryKey: workflowQueryKeys.workflows })
     },
     onError: (error) => notifyError(`操作失败：${String(error)}`),
   })

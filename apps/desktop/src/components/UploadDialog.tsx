@@ -1,3 +1,4 @@
+import { workflowQueryKeys } from '../features/workflows/queryKeys'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
   AlertCircle,
@@ -70,7 +71,7 @@ function isHttpImageSource(value: string) {
 export function UploadDialog() {
   const { uploadOpen, setUploadOpen, setPage, requestedUploadMode, queuedUploadPaths, clearQueuedUploadPaths } = useAppStore()
   const queryClient = useQueryClient()
-  const { data: workflows = [], error: workflowError } = useQuery({ queryKey: ['workflows'], queryFn: listWorkflows, enabled: uploadOpen })
+  const { data: workflows = [], error: workflowError } = useQuery({ queryKey: workflowQueryKeys.workflows, queryFn: listWorkflows, enabled: uploadOpen })
   const { data: storages = [] } = useQuery({ queryKey: ['storages'], queryFn: listStorages, enabled: uploadOpen })
   const [paths, setPaths] = useState<string[]>([])
   const [urlsText, setUrlsText] = useState('')
