@@ -572,11 +572,11 @@ export async function chooseImageFiles(): Promise<string[]> {
 }
 
 export async function repairAsset(assetId: string): Promise<string> {
-  return invoke('repair_asset', { assetId })
+  return assetApi.repairAsset(assetId)
 }
 
 export async function deleteAsset(assetId: string): Promise<string> {
-  return invoke('delete_asset', { assetId })
+  return assetApi.deleteAsset(assetId)
 }
 
 export async function listTasks(limit = 100): Promise<TaskView[]> {

@@ -25,11 +25,12 @@ function setup(mode = 'native') {
   }]
   const state = { coreLoads: 0, reject: false, reason: undefined, loadFailure: undefined }
   const browserWindow = mode === 'native' ? { __TAURI_INTERNALS__: {} } : mode === 'no-window' ? undefined : {}
+  const taskIds = { repair_asset: 'synthetic-repair-task', delete_asset: 'synthetic-delete-task' }
   const core = { invoke: async (command, args) => {
     calls.push({ command, args })
-    assert.equal(command, 'list_assets', 'the read-only slice must not issue another command')
+    assert.ok(['list_assets', 'repair_asset', 'delete_asset'].includes(command), `unexpected asset command: ${command}`)
     if (state.reject) throw state.reason
-    return result
+    return command === 'list_assets' ? result : taskIds[command]
   } }
   function load(path) {
     if (loaded.has(path)) return loaded.get(path).exports
@@ -59,7 +60,7 @@ function setup(mode = 'native') {
       }
       assert.ok(specifier.startsWith('.'), `unexpected external dependency: ${specifier}`)
       const target = resolve(dirname(path), specifier) + '.ts'
-      if (target === toastPath) return { notifyError: () => { throw new Error('listAssets must not notify or replace its error') } }
+      if (target === toastPath) return { notifyError: () => { throw new Error('asset API must not notify or replace its error') } }
       return load(target)
     }
     new Function('require', 'module', 'exports', 'window', output)(resolveModule, module, module.exports, browserWindow)
@@ -83,7 +84,7 @@ await check('legacy listAssets remains a named async function export', () => {
   assert.ok(declaration.modifiers.some((node) => node.kind === ts.SyntaxKind.AsyncKeyword))
   assert.equal(typeof setup().load(desktopPath).listAssets, 'function')
 })
-await check('read-only asset domain module exists', () => assert.ok(existsSync(apiPath), 'asset domain module is missing'))
+await check('asset domain module exists', () => assert.ok(existsSync(apiPath), 'asset domain module is missing'))
 await check('compatibility entry delegates through its real asset module import', async () => {
   assert.ok(existsSync(apiPath), 'asset domain module is missing')
   const ctx = setup()
@@ -139,6 +140,64 @@ for (const [name, path] of [['legacy', desktopPath], ['api', apiPath]]) {
     assert.equal(ctx.state.coreLoads, 1)
     assert.deepEqual(ctx.calls, [])
   })
+}
+
+for (const [method, command, returnedTaskId] of [
+  ['repairAsset', 'repair_asset', 'synthetic-repair-task'],
+  ['deleteAsset', 'delete_asset', 'synthetic-delete-task'],
+]) {
+  await check(`legacy ${method} remains a named async function export`, () => {
+    const source = ts.createSourceFile(desktopPath, readFileSync(desktopPath, 'utf8'), ts.ScriptTarget.Latest, true)
+    const declaration = source.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === method)
+    assert.ok(declaration)
+    assert.ok(declaration.modifiers.some((node) => node.kind === ts.SyntaxKind.ExportKeyword))
+    assert.ok(declaration.modifiers.some((node) => node.kind === ts.SyntaxKind.AsyncKeyword))
+    assert.equal(typeof setup().load(desktopPath)[method], 'function')
+  })
+  await check(`asset domain exports executable ${method}`, () => {
+    assert.equal(typeof setup().load(apiPath)[method], 'function', `asset domain has no ${method}`)
+  })
+  await check(`legacy ${method} delegates through its real domain module import`, async () => {
+    const ctx = setup(), legacy = ctx.load(desktopPath), api = ctx.load(apiPath)
+    assert.equal(typeof api[method], 'function', `asset domain has no ${method}`)
+    assert.ok(ctx.loaded.has(apiPath))
+    const original = api[method], delegated = []
+    api[method] = async (assetId) => { delegated.push(assetId); return returnedTaskId }
+    try {
+      assert.strictEqual(await legacy[method]('asset-1'), returnedTaskId)
+      assert.deepEqual(delegated, ['asset-1'])
+      assert.deepEqual(ctx.calls, [])
+    } finally { api[method] = original }
+  })
+  for (const [name, path] of [['legacy', desktopPath], ['api', apiPath]]) {
+    for (const mode of ['native', 'browser', 'no-window']) {
+      await check(`${name} ${mode} ${method} preserves command, task ID and both failure forms`, async () => {
+        const ctx = setup(mode), entry = ctx.load(path)
+        assert.equal(typeof entry[method], 'function', `${name} has no ${method}`)
+        const assetId = 'asset-1'
+        assert.strictEqual(await entry[method](assetId), returnedTaskId)
+        assert.deepEqual(ctx.calls, [{ command, args: { assetId } }])
+        assert.equal(ctx.state.coreLoads, 1)
+        for (const reason of [new Error('synthetic asset command failure'), 'synthetic command string failure']) {
+          ctx.state.reject = true
+          ctx.state.reason = reason
+          const before = ctx.calls.length
+          await assert.rejects(entry[method](assetId), (error) => error === reason)
+          assert.equal(ctx.calls.length, before + 1, 'a failure must not trigger retries or other commands')
+          assert.deepEqual(ctx.calls.at(-1), { command, args: { assetId } })
+        }
+      })
+    }
+    await check(`${name} ${method} propagates module-loading failure without issuing a command`, async () => {
+      const ctx = setup(), entry = ctx.load(path)
+      assert.equal(typeof entry[method], 'function', `${name} has no ${method}`)
+      const reason = new Error('synthetic native core loading failure')
+      ctx.state.loadFailure = reason
+      await assert.rejects(entry[method]('asset-1'), (error) => error === reason)
+      assert.equal(ctx.state.coreLoads, 1)
+      assert.deepEqual(ctx.calls, [])
+    })
+  }
 }
 console.log(`ASSET_API_GATE checks=${checks} failed=${failed}`)
 if (failed) process.exitCode = 1
