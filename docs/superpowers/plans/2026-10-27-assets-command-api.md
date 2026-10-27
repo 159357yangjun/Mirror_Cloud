@@ -26,10 +26,10 @@
 
 ## Steps
 
-- [ ] Extend the test's fake core with a command allowlist and synthetic repair/delete task IDs. Preserve all existing list assertions.
-- [ ] For each operation, assert named async compatibility export, actual domain export and delegation through the real imported module. Test native, browser and no-window execution: exact command and `{ assetId }`, unchanged returned task ID, Error and string rejections, and native-module loading failure. Missing domain functions must fail with explicit assertions.
-- [ ] Run `node --no-experimental-strip-types scripts/test_asset_api.mjs` before implementation. Record the real failing count and confirm original compatibility behavior still passes.
-- [ ] Reread remote HEAD and target sources, then add these functions to the existing assets domain:
+- [x] Extend the test's fake core with a command allowlist and synthetic repair/delete task IDs. Preserve all existing list assertions.
+- [x] For each operation, assert named async compatibility export, actual domain export and delegation through the real imported module. Test native, browser and no-window execution: exact command and `{ assetId }`, unchanged returned task ID, Error and string rejections, and native-module loading failure. Missing domain functions must fail with explicit assertions.
+- [x] Run `node --no-experimental-strip-types scripts/test_asset_api.mjs` before implementation. Record the real failing count and confirm original compatibility behavior still passes.
+- [x] Reread remote HEAD and target sources, then add these functions to the existing assets domain:
 
 ```ts
 export async function repairAsset(assetId: string): Promise<string> {
@@ -41,7 +41,7 @@ export async function deleteAsset(assetId: string): Promise<string> {
 }
 ```
 
-- [ ] Replace the two compatibility bodies, preserving signatures:
+- [x] Replace the two compatibility bodies, preserving signatures:
 
 ```ts
 export async function repairAsset(assetId: string): Promise<string> {
@@ -53,5 +53,15 @@ export async function deleteAsset(assetId: string): Promise<string> {
 }
 ```
 
-- [ ] Rerun the focused test, existing unit entry, desktop build, contracts, user-flow and `git diff --check`. Compare AssetsPage with HEAD to confirm its complete source is unchanged.
-- [ ] Inspect all final changes and report observed counts, warnings and limitations. Leave changes uncommitted. Fake IPC tests do not validate native execution, permission decisions, storage rollback, actual repair/delete, or cloud safety; no such operations are authorized here. The existing theme inventory drift remains outside this slice.
+- [x] Rerun the focused test, existing unit entry, desktop build, contracts, user-flow and `git diff --check`. Compare AssetsPage with HEAD to confirm its complete source is unchanged.
+- [x] Inspect all final changes and report observed counts, warnings and limitations. Leave changes uncommitted. Fake IPC tests do not validate native execution, permission decisions, storage rollback, actual repair/delete, or cloud safety; no such operations are authorized here. The existing theme inventory drift remains outside this slice.
+
+## Observed evidence
+
+- Before production changes: `ASSET_API_GATE checks=47 failed=12`, exit 1. The 12 missing-domain/delegation assertions failed; all original compatibility behavior and existing list checks passed.
+- After the exact implementation move and compatibility delegation: `ASSET_API_GATE checks=47 failed=0`, exit 0.
+- Existing unified runner: `UNIT_SUITES total=11 failed=0`.
+- `npm run build`: TypeScript and Vite passed; existing warnings remain for a chunk over 500 kB and ineffective dynamic imports of Tauri core/event modules.
+- Command contracts: `97/97/97`; user-flow: `639/0`; `git diff --check` passed.
+- Both domain functions match their original HEAD implementations verbatim. AssetsPage source is unchanged, including its delete confirmation and 700/1000 ms delayed refreshes.
+- Evidence is for this uncommitted worktree based on `218c04c3d8f668b8a7ffa3bde53e850f27fe4d8c`; no new commit SHA or remote CI result exists. No actual Tauri, cloud repair/delete, installer, or database migration was exercised.
