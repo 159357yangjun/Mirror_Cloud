@@ -1,4 +1,6 @@
-import { mockBootstrap, mockRecipes } from '../data/mock'
+import { mockBootstrap } from '../data/mock'
+import * as workflowApi from '../features/workflows/api'
+import { invoke, isTauriRuntime as isDesktopRuntime } from '../platform/desktop/runtime'
 import { notifyError } from '../store/useToastStore'
 import type {
   AssetView,
@@ -103,12 +105,7 @@ export async function copyText(text: string): Promise<void> {
   await navigator.clipboard.writeText(text)
 }
 export function isTauriRuntime() {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
-}
-
-async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  const { invoke } = await import('@tauri-apps/api/core')
-  return invoke<T>(command, args)
+  return isDesktopRuntime()
 }
 
 export async function getBootstrapSnapshot(): Promise<BootstrapSnapshot> {
@@ -514,33 +511,31 @@ export async function queueBatchRenameStorageEntries(storageId: string, paths: s
 
 
 export async function listRecipes(): Promise<RecipeView[]> {
-  if (!isTauriRuntime()) return mockRecipes
-  return invoke('list_recipes')
+  return workflowApi.listRecipes()
 }
 
 export async function listWorkflows(): Promise<WorkflowView[]> {
-  if (!isTauriRuntime()) return []
-  return invoke('list_workflows')
+  return workflowApi.listWorkflows()
 }
 
 export async function createWorkflowFromRecipe(
   input: CreateWorkflowFromRecipeInput,
 ): Promise<WorkflowView> {
-  return invoke('create_workflow_from_recipe', { input })
+  return workflowApi.createWorkflowFromRecipe(input)
 }
 
 export async function createCustomWorkflow(
   input: CreateCustomWorkflowInput,
 ): Promise<WorkflowView> {
-  return invoke('create_custom_workflow', { input })
+  return workflowApi.createCustomWorkflow(input)
 }
 
 export async function setDefaultWorkflow(workflowId: string): Promise<void> {
-  return invoke('set_default_workflow', { workflowId })
+  return workflowApi.setDefaultWorkflow(workflowId)
 }
 
 export async function deleteWorkflow(workflowId: string): Promise<void> {
-  return invoke('delete_workflow', { workflowId })
+  return workflowApi.deleteWorkflow(workflowId)
 }
 
 export async function publishFilesWithWorkflow(

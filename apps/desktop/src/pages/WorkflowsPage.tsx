@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { WorkflowSetupDialog } from '../components/WorkflowSetupDialog'
-import { deleteWorkflow, listRecipes, listWorkflows, setDefaultWorkflow } from '../lib/desktop'
+import { deleteWorkflow, listRecipes, listWorkflows, setDefaultWorkflow } from '../features/workflows/api'
 import { confirmAction } from '../store/useConfirmStore'
 import type { RecipeView } from '../types'
 

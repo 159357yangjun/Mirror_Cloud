@@ -1,11 +1,12 @@
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-// Pure calculations and subscription ownership only. No browser, cloud,
+// Offline calculations, subscription ownership and simulated IPC only. No browser, cloud,
 // dependency installation or mutation suite is started by this entry point.
 const suites = [
   'test_desktop_subscription.mjs',
   'test_cloud_browser_utils.mjs',
+  'test_workflow_api.mjs',
   'verify_confirmation_display.mjs',
   'verify_probe_display.mjs',
   'test_r2_diagnostics.mjs',

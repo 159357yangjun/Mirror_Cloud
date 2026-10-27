@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-10-27 — 前端 Workflow API 领域化
+
+**事实与动作**：第一批本地提交为 `0a3648027dd51d7c6b38b0034030bdc9e8c5d385`。随后将六项工作流及方案操作迁入 `features/workflows/api.ts`，把原有 Tauri runtime 检测和 invoke 移至 `platform/desktop/runtime.ts`；`lib/desktop.ts` 保留同名兼容函数。工作流页面及设置弹窗改用领域入口，原查询键、失效规则、命令名与参数保持。此项仅是第二批的一个切片，其他领域、页面和查询规则仍待实施。
+
+**验证与限制**：在第一批提交后的工作区先以旧实现运行行为测试，10 项中只有新模块缺失的 2 项按预期失败；迁移后模拟 IPC 检查 17/0，`npm run test:unit` 六套通过，`npm run build`、`python scripts/check_contracts.py`（97/97/97）、`python scripts/check_user_flow.py`（639/0）及 `git diff --check` 通过。模拟 IPC 不等于真实 Tauri 或云端验收。`cargo fmt --all -- --check` 通过；独立目标目录下的 `cargo check --locked --offline -p image-hosting-platform-desktop --lib` 因缺少 MSVC `link.exe` 在依赖构建脚本阶段失败，不能证明桌面 Rust 源码编译或测试通过。本轮未安装工具、推送或发布。
+
 ## 2026-10-27 — 代码结构统一第一批
 
 **事实**：用户批准保留 React/Tauri/Rust 和现有接口及业务行为，分批统一共享方法、前端领域、Rust 服务。首批从 `9502431f8cf8fc50ef770061f08d84bbc10895bc` 的干净工作区开始；方案与计划在 `8c02604e454b2aaaef2965c64feef1712c207c1e` 提交。修改前远端 main 为 `5c79c42a04bfde72020329679bbb5dd4f961dbbd`。

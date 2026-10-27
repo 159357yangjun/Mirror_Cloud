@@ -1,12 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Gauge, ImageDown, Layers3, LoaderCircle, Sparkles, X } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  createCustomWorkflow,
-  createWorkflowFromRecipe,
-  listStorageGroups,
-  listStorages,
-} from '../lib/desktop'
+import { createCustomWorkflow, createWorkflowFromRecipe } from '../features/workflows/api'
+import { listStorageGroups, listStorages } from '../lib/desktop'
 import type { RecipeView, WorkflowImageFormat, WorkflowTargetKind } from '../types'
 
 interface Props {
