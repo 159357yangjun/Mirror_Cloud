@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-10-27 — 设置页诊断展示组件
+
+**事实与动作**：在 `da17aa79d11330fb248bb22a734446456b6cd2f5` 后，将系统诊断 JSX 提取为 `SettingsPage.tsx` 内的纯展示组件，查询和刷新仍由页面拥有。由于既有用户流程守卫和主题面统计按源文件读取，该切片暂未移动到独立文件；其余设置区域和领域化工作仍待实施。
+
+**验证与限制**：对提取前旧 JSX 和提取后实际组件执行渲染/刷新测试，结构检查预期先失败，最终 9/0；工作区 `npm run test:unit` 七套、前端 build、`python scripts/check_user_flow.py`（639/0）及 `git diff --check` 通过。`node scripts/theme_face_inventory.mjs --verify` 在改动前后均失败，11 行与既有基线不一致，其中设置页实际 329/50/10、记录基线为 165/24/7；本轮未改守卫或基线。服务器端渲染不代表原生 WebView 或真实服务验收。
+
 ## 2026-10-27 — 前端 Workflow API 领域化
 
 **事实与动作**：第一批本地提交为 `0a3648027dd51d7c6b38b0034030bdc9e8c5d385`。随后将六项工作流及方案操作迁入 `features/workflows/api.ts`，把原有 Tauri runtime 检测和 invoke 移至 `platform/desktop/runtime.ts`；`lib/desktop.ts` 保留同名兼容函数。工作流页面及设置弹窗改用领域入口，原查询键、失效规则、命令名与参数保持。此项仅是第二批的一个切片，其他领域、页面和查询规则仍待实施。
