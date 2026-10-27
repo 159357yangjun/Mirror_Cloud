@@ -1,4 +1,5 @@
 import { mockBootstrap } from '../data/mock'
+import * as taskApi from '../features/tasks/api'
 import * as workflowApi from '../features/workflows/api'
 import { invoke, isTauriRuntime as isDesktopRuntime } from '../platform/desktop/runtime'
 import { notifyError } from '../store/useToastStore'
@@ -578,16 +579,15 @@ export async function deleteAsset(assetId: string): Promise<string> {
 }
 
 export async function listTasks(limit = 100): Promise<TaskView[]> {
-  if (!isTauriRuntime()) return []
-  return invoke('list_tasks', { limit })
+  return taskApi.listTasks(limit)
 }
 
 export async function cancelTask(taskId: string): Promise<void> {
-  return invoke('cancel_task', { taskId })
+  return taskApi.cancelTask(taskId)
 }
 
 export async function retryTask(taskId: string): Promise<string> {
-  return invoke('retry_task', { taskId })
+  return taskApi.retryTask(taskId)
 }
 
 export async function listAssets(limit = 200): Promise<AssetView[]> {
