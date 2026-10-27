@@ -1,3 +1,4 @@
+import { taskQueryKeys } from '../features/tasks/queryKeys'
 import { AlertCircle, CheckCircle2, CircleDashed, LoaderCircle, RotateCcw, TriangleAlert, XCircle } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
@@ -16,18 +17,18 @@ export function TasksPage() {
   const queryClient = useQueryClient()
   const [taskLimit, setTaskLimit] = useState(100)
   const { data: tasks = [], error: tasksError, isLoading: tasksLoading } = useQuery({
-    queryKey: ['tasks', taskLimit],
+    queryKey: taskQueryKeys.list(taskLimit),
     queryFn: () => listTasks(taskLimit),
     refetchInterval: 1500,
   })
 
   const cancelMutation = useMutation({
     mutationFn: cancelTask,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: taskQueryKeys.root }),
   })
   const retryMutation = useMutation({
     mutationFn: retryTask,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: taskQueryKeys.root }),
   })
 
   useEffect(() => {
@@ -37,13 +38,13 @@ export function TasksPage() {
         const payload = event.payload
         // Progress ticks only patch the visible row; refetching the whole list (and every asset)
         // once per item made batch operations a refetch storm.
-        queryClient.setQueryData<TaskView[]>(['tasks', taskLimit], (current) =>
+        queryClient.setQueryData<TaskView[]>(taskQueryKeys.list(taskLimit), (current) =>
           current?.map((task) => task.id === payload.id
             ? { ...task, status: payload.status, progress: payload.progress, error: payload.error ?? task.error }
             : task),
         )
         if (!TERMINAL_STATUSES.has(payload.status)) return
-        void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+        void queryClient.invalidateQueries({ queryKey: taskQueryKeys.root })
         void queryClient.invalidateQueries({ queryKey: ['assets'] })
       }),
     ), () => notifyError('任务进度通知暂不可用，将继续定时刷新任务列表'))

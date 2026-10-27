@@ -1,3 +1,4 @@
+import { taskQueryKeys } from '../features/tasks/queryKeys'
 import { Check, Cloud, Copy, Download, Eye, LoaderCircle, RefreshCw, Search, Sparkles, Trash2, Upload, WifiOff, Plug, Images, X } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -130,10 +131,10 @@ export function AssetsPage() {
   const deleteMutation = useMutation({
     mutationFn: deleteAsset,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      await queryClient.invalidateQueries({ queryKey: taskQueryKeys.root })
       setTimeout(() => {
         void queryClient.invalidateQueries({ queryKey: ['assets'] })
-        void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+        void queryClient.invalidateQueries({ queryKey: taskQueryKeys.root })
       }, 700)
     },
   })
@@ -143,10 +144,10 @@ export function AssetsPage() {
     onMutate: (assetId) => setRepairing(assetId),
     onSettled: () => setRepairing(null),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      await queryClient.invalidateQueries({ queryKey: taskQueryKeys.root })
       setTimeout(() => {
         void queryClient.invalidateQueries({ queryKey: ['assets'] })
-        void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+        void queryClient.invalidateQueries({ queryKey: taskQueryKeys.root })
       }, 1000)
     },
   })

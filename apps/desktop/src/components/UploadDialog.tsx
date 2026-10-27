@@ -1,3 +1,4 @@
+import { taskQueryKeys } from '../features/tasks/queryKeys'
 import { workflowQueryKeys } from '../features/workflows/queryKeys'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
@@ -98,7 +99,7 @@ export function UploadDialog() {
   }, [uploadOpen])
 
   const { data: allTasks = [], error: tasksError, refetch: refetchTasks, isFetching: refreshingTasks } = useQuery({
-    queryKey: ['tasks'],
+    queryKey: taskQueryKeys.root,
     // A batch can contain more than the default 100 tasks. Leave headroom for
     // unrelated background jobs created after this batch was dispatched.
     queryFn: () => listTasks(Math.min(10_000, Math.max(300, taskIds.length * 5))),
@@ -114,7 +115,7 @@ export function UploadDialog() {
       listen<TaskProgressEvent>('task://updated', (event) => {
         const payload = event.payload
         if (!taskIds.includes(payload.id)) return
-        queryClient.setQueryData<TaskView[]>(['tasks'], (current) =>
+        queryClient.setQueryData<TaskView[]>(taskQueryKeys.root, (current) =>
           current?.map((task) => task.id === payload.id
             ? { ...task, status: payload.status, progress: payload.progress, error: payload.error ?? task.error }
             : task),
@@ -193,7 +194,7 @@ export function UploadDialog() {
     if (!terminal || finishedHandled) return
     setFinishedHandled(true)
     void queryClient.invalidateQueries({ queryKey: ['assets'] })
-    void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    void queryClient.invalidateQueries({ queryKey: taskQueryKeys.root })
   }, [finishedHandled, queryClient, terminal])
 
   const urls = useMemo(() => parseUrls(urlsText), [urlsText])
@@ -223,7 +224,7 @@ export function UploadDialog() {
     onSuccess: async (ids, request) => {
       setSubmission({ request, taskIds: ids })
       setTaskIds(ids)
-      await queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      await queryClient.invalidateQueries({ queryKey: taskQueryKeys.root })
     },
     onSettled: () => { publishDispatchRef.current = false },
   })
@@ -249,7 +250,7 @@ export function UploadDialog() {
       setSubmission({ request: previous.request, taskIds: updated })
       setTaskIds(updated)
       setFinishedHandled(false)
-      await queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      await queryClient.invalidateQueries({ queryKey: taskQueryKeys.root })
     },
     onSettled: () => { retryDispatchRef.current = false },
   })
