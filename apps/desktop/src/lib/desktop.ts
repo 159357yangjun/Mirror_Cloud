@@ -1,4 +1,5 @@
 import { mockBootstrap } from '../data/mock'
+import * as assetApi from '../features/assets/api'
 import * as taskApi from '../features/tasks/api'
 import * as workflowApi from '../features/workflows/api'
 import { invoke, isTauriRuntime as isDesktopRuntime } from '../platform/desktop/runtime'
@@ -591,8 +592,7 @@ export async function retryTask(taskId: string): Promise<string> {
 }
 
 export async function listAssets(limit = 200): Promise<AssetView[]> {
-  if (!isTauriRuntime()) return []
-  return invoke('list_assets', { limit })
+  return assetApi.listAssets(limit)
 }
 
 export async function getOutputPreferences(): Promise<OutputPreferences> {

@@ -10,6 +10,7 @@ const suites = [
   'test_workflow_query_keys.mjs',
   'test_task_api.mjs',
   'test_task_query_keys.mjs',
+  'test_asset_api.mjs',
   'test_settings_diagnostics.mjs',
   'verify_confirmation_display.mjs',
   'verify_probe_display.mjs',
