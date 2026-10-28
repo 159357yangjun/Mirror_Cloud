@@ -14,6 +14,7 @@ const suites = [
   'test_asset_api.mjs',
   'test_asset_query_keys.mjs',
   'test_settings_diagnostics.mjs',
+  'test_storage_delete_errors.mjs',
   'verify_confirmation_display.mjs',
   'verify_probe_display.mjs',
   'test_r2_diagnostics.mjs',
