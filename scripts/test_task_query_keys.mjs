@@ -80,10 +80,9 @@ await check('all 18 task read, patch and invalidation sites remain accounted for
   assert.deepEqual(Object.keys(actual).sort(), Object.keys(expected).sort())
   for (const [file, entries] of Object.entries(expected)) assert.deepEqual(actual[file], entries, file)
 })
-await check('all sites except the three guarded Gallery calls use the shared module', () => {
+await check('all task sites including Gallery use the real shared module', () => {
   for (const site of sites) {
     const wanted = site.key === 'list' ? 'taskQueryKeys.list(taskLimit)' : `taskQueryKeys.${site.key}`
-    if (site.rel === 'pages/GalleryPage.tsx') { assert.equal(site.expr, "['tasks']"); continue }
     assert.equal(site.expr, wanted, site.rel)
     const imports = site.ast.statements.filter((node) => ts.isImportDeclaration(node) && node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings) && node.importClause.namedBindings.elements.some((e) => e.name.text === 'taskQueryKeys'))
     assert.equal(imports.length, 1, `${site.rel}: import`)
@@ -192,6 +191,83 @@ await check('event patch does not create a cache entry when the list is absent',
     assert.equal(f.client.getQueryCache().getAll().length, 0)
     f.dispose(); f.client.clear()
   }
+})
+// Execute the actual batch callbacks without a component or remote API. Native queueing and
+// confirmation are substituted; the cache client and the callback control flow are real.
+function galleryBatch(operation, reject = false, confirmed = true) {
+  const path = 'apps/desktop/src/pages/GalleryPage.tsx'
+  const text = source(path), ast = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  const declarations = new Map()
+  function visit(node) {
+    if (ts.isFunctionDeclaration(node) && ['submitPathDialog', 'batchDeleteSelected', 'refreshAfterRemoteMutation'].includes(node.name?.text)) declarations.set(node.name.text, node.getText(ast))
+    ts.forEachChild(node, visit)
+  }
+  visit(ast)
+  assert.equal(declarations.size, 3)
+  const observed = { queue: [], invalidated: [], errors: [], busy: [], messages: [], selection: [], dialogs: [], refetch: 0, previewClosed: 0 }
+  const client = new QueryClient()
+  for (const key of [['tasks'], ['tasks', 100], ['assets'], ['assets', 'publish-recent'], ['workflows']]) client.setQueryData(key, 'cached')
+  const invalidate = client.invalidateQueries.bind(client)
+  client.invalidateQueries = (options) => { observed.invalidated.push(options.queryKey); return invalidate(options) }
+  let resolveQueue
+  const queued = new Promise((resolve) => { resolveQueue = resolve })
+  const reason = new Error('synthetic batch failure')
+  const queue = (name) => async (...args) => {
+    observed.queue.push({ name, args })
+    await queued
+    if (reject) throw reason
+    return 'synthetic-task-id'
+  }
+  const dependencies = {
+    taskQueryKeys, assetQueryKeys, queryClient: client, storageId: 'storage-1', path: '',
+    pathDialog: { mode: operation === 'move' ? 'batch_move' : 'batch_rename', value: ' target ' },
+    selectedPaths: new Set(['a.png', 'b.png']), preview: { entry: { path: 'a.png' } },
+    setOperationBusy: (value) => observed.busy.push(value), setActionError: (value) => observed.errors.push(value),
+    setSelectedPaths: (value) => observed.selection.push([...value]), setPathDialog: (value) => observed.dialogs.push(value),
+    notifySuccess: (value) => observed.messages.push(value), closePreview: () => { observed.previewClosed++ },
+    confirmAction: async () => confirmed,
+    queueBatchMoveStorageEntries: queue('move'), queueBatchRenameStorageEntries: queue('rename'), queueBatchDeleteStorageEntries: queue('delete'),
+    refetch: async () => { observed.refetch++ },
+  }
+  const output = compile([...declarations.values()].join('\n'))
+  const callbacks = new Function(...Object.keys(dependencies), `${output}\nreturn { submitPathDialog, batchDeleteSelected }`)(...Object.values(dependencies))
+  return { client, observed, release: resolveQueue, run: operation === 'delete' ? callbacks.batchDeleteSelected : callbacks.submitPathDialog }
+}
+for (const operation of ['move', 'rename', 'delete']) {
+  for (const reject of [false, true]) await check(`Gallery ${operation} ${reject ? 'failure' : 'success'} preserves real batch callback and task invalidation`, async () => {
+    const f = galleryBatch(operation, reject)
+    try {
+      const pending = f.run()
+      await new Promise((resolve) => setImmediate(resolve))
+      assert.deepEqual(f.observed.busy, [true])
+      assert.deepEqual(f.observed.invalidated, [])
+      assert.deepEqual(f.observed.queue, [{ name: operation, args: operation === 'delete' ? ['storage-1', ['a.png', 'b.png']] : ['storage-1', ['a.png', 'b.png'], 'target'] }])
+      f.release()
+      await pending
+      assert.deepEqual(f.observed.busy, [true, false])
+      if (reject) {
+        assert.deepEqual(f.observed.invalidated, [])
+        assert.equal(f.observed.messages.length, 0)
+        assert.equal(f.observed.selection.length, 0)
+        assert.equal(f.observed.refetch, 0)
+        assert.match(f.observed.errors.at(-1), /失败：Error: synthetic batch failure$/)
+      } else {
+        assert.deepEqual(f.observed.invalidated, operation === 'delete' ? [['tasks']] : [['tasks'], ['assets'], ['assets', 'publish-recent']])
+        assert.equal(f.client.getQueryState(['tasks', 100]).isInvalidated, true)
+        assert.equal(f.client.getQueryState(['workflows']).isInvalidated, false)
+        assert.deepEqual(f.observed.selection, [[]])
+        assert.equal(f.observed.messages.length, 1)
+        assert.equal(f.observed.refetch, operation === 'delete' ? 0 : 1)
+        assert.equal(f.observed.previewClosed, operation === 'delete' ? 1 : 0)
+        assert.deepEqual(f.observed.dialogs, operation === 'delete' ? [] : [null])
+      }
+    } finally { f.client.clear() }
+  })
+}
+await check('Gallery cancelled batch deletion does not queue or invalidate', async () => {
+  const f = galleryBatch('delete', false, false)
+  try { await f.run(); assert.deepEqual(f.observed.queue, []); assert.deepEqual(f.observed.invalidated, []); assert.deepEqual(f.observed.busy, []) }
+  finally { f.client.clear() }
 })
 console.log(`TASK_KEYS_GATE checks=${checks} failed=${failed}`)
 if (failed) process.exitCode = 1

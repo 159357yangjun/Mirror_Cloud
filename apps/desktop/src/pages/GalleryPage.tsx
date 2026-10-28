@@ -1,4 +1,5 @@
 import { assetQueryKeys } from '../features/assets/queryKeys'
+import { taskQueryKeys } from '../features/tasks/queryKeys'
 import {
   ChevronLeft,
   Copy,
@@ -197,12 +198,12 @@ export function GalleryPage() {
         const taskId = await queueBatchMoveStorageEntries(storageId, Array.from(selectedPaths), value)
         setSelectedPaths(new Set())
         notifySuccess(`批量移动已进入任务中心：${taskId.slice(0, 8)}…`)
-        void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+        void queryClient.invalidateQueries({ queryKey: taskQueryKeys.root })
       } else if (pathDialog.mode === 'batch_rename') {
         const taskId = await queueBatchRenameStorageEntries(storageId, Array.from(selectedPaths), value)
         setSelectedPaths(new Set())
         notifySuccess(`批量重命名已进入任务中心：${taskId.slice(0, 8)}…`)
-        void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+        void queryClient.invalidateQueries({ queryKey: taskQueryKeys.root })
       } else if (pathDialog.entry) {
         const entry = pathDialog.entry
         const destination = pathDialog.mode === 'rename'
@@ -237,7 +238,7 @@ export function GalleryPage() {
       setSelectedPaths(new Set())
       if (preview && paths.includes(preview.entry.path)) closePreview()
       notifySuccess(`批量删除已进入任务中心：${taskId.slice(0, 8)}…`)
-      void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      void queryClient.invalidateQueries({ queryKey: taskQueryKeys.root })
     } catch (error) {
       setActionError(`批量删除失败：${String(error)}`)
     } finally {

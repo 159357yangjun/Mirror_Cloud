@@ -1084,7 +1084,48 @@ require('queue_batch_delete_storage_entries' in storage_entries_commands and 'cl
 require('queue_batch_move_storage_entries' in storage_entries_commands and 'cloud_batch_move' in storage_entries_commands, 'batch cloud move can run as a persistent task')
 require('queue_batch_rename_storage_entries' in storage_entries_commands and 'cloud_batch_rename' in storage_entries_commands, 'batch cloud rename can run as a persistent task')
 require('commands::queue_batch_delete_storage_entries' in lib and 'commands::queue_batch_move_storage_entries' in lib and 'commands::queue_batch_rename_storage_entries' in lib, 'persistent cloud batch commands are registered')
-require('queueBatchDeleteStorageEntries' in gallery and 'queueBatchMoveStorageEntries' in gallery and 'queueBatchRenameStorageEntries' in gallery and "queryKey: ['tasks']" in gallery, 'Cloud Manager submits batch mutations to Task Center')
+def gallery_tasks_key_connected(page_source, key_source):
+    # This static connection check ignores comments and treats quoted/template prose as opaque
+    # tokens, so examples of imports/calls cannot stand in for the executable connection.
+    def tokens(source):
+        pattern = r'//[^\n]*|/\*.*?\*/|\'(?:\\.|[^\'\\])*\'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`|[A-Za-z_$][\w$]*|[^\s]'
+        result = []
+        for match in re.finditer(pattern, source, re.S):
+            token = match.group()
+            if token.startswith(('//', '/*')):
+                continue
+            if token.startswith(('\'', '"', '`')):
+                result.append(('literal', token[1:-1]))
+            else:
+                result.append(token)
+        return result
+
+    def occurrences(haystack, needle):
+        return sum(haystack[index:index + len(needle)] == needle for index in range(len(haystack) - len(needle) + 1))
+
+    page_tokens = tokens(page_source)
+    import_tokens = ['import', '{', 'taskQueryKeys', '}', 'from', ('literal', '../features/tasks/queryKeys')]
+    root_tokens = ['export', 'const', 'taskQueryKeys', '=', '{', 'root', ':', '[', ('literal', 'tasks'), ']', 'as', 'const']
+    call_tokens = ['void', 'queryClient', '.', 'invalidateQueries', '(', '{', 'queryKey', ':', 'taskQueryKeys', '.', 'root', '}', ')']
+    return (occurrences(page_tokens, import_tokens) == 1
+            and occurrences(tokens(key_source), root_tokens) == 1
+            and occurrences(page_tokens, call_tokens) == 3)
+
+task_key_source = text('apps/desktop/src/features/tasks/queryKeys.ts')
+_gallery_key_import = "import { taskQueryKeys } from '../features/tasks/queryKeys'\n"
+_gallery_key_call = 'void queryClient.invalidateQueries({ queryKey: taskQueryKeys.root })\n'
+_gallery_key_fixture = _gallery_key_import + _gallery_key_call * 3
+_gallery_root_fixture = "export const taskQueryKeys = { root: ['tasks'] as const }"
+require([
+    gallery_tasks_key_connected(_gallery_key_fixture, _gallery_root_fixture),
+    gallery_tasks_key_connected(_gallery_key_call * 3, _gallery_root_fixture),
+    gallery_tasks_key_connected(_gallery_key_fixture.replace('/tasks/', '/wrong/'), _gallery_root_fixture),
+    gallery_tasks_key_connected(_gallery_key_fixture, _gallery_root_fixture.replace("'tasks'", "'assets'")),
+    gallery_tasks_key_connected(_gallery_key_import + _gallery_key_call * 2, _gallery_root_fixture),
+    gallery_tasks_key_connected('/*' + _gallery_key_fixture + '*/', _gallery_root_fixture),
+    gallery_tasks_key_connected('`' + _gallery_key_fixture + '`', _gallery_root_fixture),
+] == [True, False, False, False, False, False, False], 'Gallery task-key connection catches missing, wrong and prose-only wiring')
+require('queueBatchDeleteStorageEntries' in gallery and 'queueBatchMoveStorageEntries' in gallery and 'queueBatchRenameStorageEntries' in gallery and gallery_tasks_key_connected(gallery, task_key_source), 'Cloud Manager submits batch mutations to Task Center')
 require('"cloud_batch_delete"' in commands_main and '"cloud_batch_move"' in commands_main and '"cloud_batch_rename"' in commands_main, 'Task Center renders persistent cloud batch task types')
 
 
