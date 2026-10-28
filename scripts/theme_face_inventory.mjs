@@ -18,8 +18,8 @@ const DOC = `${ROOT}docs/VISUAL_BASELINE.md`
 const MARK_BEGIN = '<!-- THEME_FACE_TABLE:BEGIN -->'
 const MARK_END = '<!-- THEME_FACE_TABLE:END -->'
 
-// A face is a file that paints pixels the three themes have to reach. Shared components are listed
-// apart from pages because a page can pass while the dialog on top of it does not.
+// A face paints pixels the three themes have to reach. A page's extracted presentation can have
+// multiple source files without adding a face or changing the census. Shared dialogs stay apart.
 const FACES = [
   ['页面 · 发布', 'apps/desktop/src/pages/PublishPage.tsx'],
   ['页面 · 资源', 'apps/desktop/src/pages/AssetsPage.tsx'],
@@ -28,7 +28,7 @@ const FACES = [
   ['页面 · 插件', 'apps/desktop/src/pages/PluginsPage.tsx'],
   ['页面 · 任务', 'apps/desktop/src/pages/TasksPage.tsx'],
   ['页面 · 方案', 'apps/desktop/src/pages/WorkflowsPage.tsx'],
-  ['页面 · 设置', 'apps/desktop/src/pages/SettingsPage.tsx'],
+  ['页面 · 设置', 'apps/desktop/src/pages/SettingsPage.tsx', ['apps/desktop/src/pages/SettingsPage.tsx', 'apps/desktop/src/features/settings/SystemDiagnosticsPanel.tsx']],
   ['弹窗 · Confirm', 'apps/desktop/src/components/ConfirmDialog.tsx'],
   ['弹窗 · 帮助中心', 'apps/desktop/src/components/HelpCenterDialog.tsx'],
   ['弹窗 · Provider 选择', 'apps/desktop/src/components/ProviderPickerDialog.tsx'],
@@ -48,10 +48,10 @@ const FACES = [
 const count = (src, re) => (src.match(re) || []).length
 
 export function measure() {
-  return FACES.map(([label, rel]) => {
+  return FACES.map(([label, rel, sources = [rel]]) => {
     let src
     try {
-      src = readFileSync(`${ROOT}${rel}`, 'utf8')
+      src = sources.map((part) => readFileSync(`${ROOT}${part}`, 'utf8')).join('\n')
     } catch {
       throw new Error(`theme_face_inventory: face "${label}" points at ${rel}, which is not readable`)
     }

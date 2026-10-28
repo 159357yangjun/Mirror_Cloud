@@ -1789,6 +1789,7 @@ task_engine = text('crates/task-engine/src/lib.rs')
 tasks_page = text('apps/desktop/src/pages/TasksPage.tsx')
 settings_page = text('apps/desktop/src/pages/SettingsPage.tsx')
 integrations = text('apps/desktop/src-tauri/src/commands/integrations.rs')
+settings_panel = text('apps/desktop/src/features/settings/SystemDiagnosticsPanel.tsx')
 
 require("status='cancelled'" in persistence and "status IN ('queued','preparing','running','paused')" in persistence, 'task cancellation is persisted only for active states')
 require('update_running_progress_if_active' in persistence and "status IN ('queued','preparing','running')" in persistence and "status <> 'cancelled'" in persistence, 'task status and progress updates cannot revive cancelled work')
@@ -1820,7 +1821,7 @@ require(re.search(r'record_execution\(\s*&manifest\.id', commands_main) is not N
 require(re.search(r'"manual_trigger"\s*,\s*"success"', plugin_commands) is not None and re.search(r'"manual_trigger"\s*,\s*"failed"', plugin_commands) is not None, 'manual plugin runs are audited')
 require('list_plugin_execution_logs' in plugin_commands and 'commands::list_plugin_execution_logs' in lib and 'listPluginExecutionLogs' in plugins and '插件执行记录' in plugins, 'plugin UI exposes recent execution success failure and duration')
 require('get_system_diagnostics' in integrations and 'enabled_storage_count' in integrations and 'failed_task_count' in integrations and 'commands::integrations::get_system_diagnostics' in lib, 'system diagnostics aggregate core runtime health')
-require('getSystemDiagnostics' in settings_page and '系统诊断' in settings_page and 'diagnostics.warnings' in settings_page, 'Settings exposes actionable runtime diagnostics')
+require('getSystemDiagnostics' in settings_page and '系统诊断' in settings_panel and 'diagnostics.warnings' in settings_panel, 'Settings exposes actionable runtime diagnostics')
 
 # A decorative duplicate <img> that points at the same remote original as the lazy main image
 # silently cancels the laziness: eager images start downloading at parse time, so opening the
