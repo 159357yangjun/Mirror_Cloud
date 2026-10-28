@@ -1,3 +1,4 @@
+import { assetQueryKeys } from '../features/assets/queryKeys'
 import { taskQueryKeys } from '../features/tasks/queryKeys'
 import { workflowQueryKeys } from '../features/workflows/queryKeys'
 import { useEffect, useMemo, useState } from 'react'
@@ -66,7 +67,7 @@ export function PublishPage() {
   const { data: storages = [], isLoading: storagesLoading, error: storagesError } = useQuery({ queryKey: ['storages'], queryFn: listStorages })
   const { data: groups = [], isLoading: groupsLoading, error: groupsError } = useQuery({ queryKey: ['storage-groups'], queryFn: listStorageGroups })
   const { data: target } = useQuery({ queryKey: ['default-publish-target'], queryFn: getDefaultPublishTarget })
-  const { data: assets = [], isLoading: assetsLoading, error: assetsError } = useQuery({ queryKey: ['assets', 'publish-recent'], queryFn: () => listAssets(6) })
+  const { data: assets = [], isLoading: assetsLoading, error: assetsError } = useQuery({ queryKey: assetQueryKeys.publishRecent, queryFn: () => listAssets(6) })
   const { data: tasks = [], error: tasksError, isLoading: tasksLoading } = useQuery({ queryKey: taskQueryKeys.publishRecent, queryFn: () => listTasks(6), refetchInterval: 1500 })
   const { data: preferences } = useQuery({ queryKey: ['output-preferences'], queryFn: getOutputPreferences })
 

@@ -133,6 +133,9 @@ function renderConsumer(consumer) {
     '../components/PageHeader': { PageHeader: 'PageHeader' },
     '../components/GalleryMediaCard': { GalleryMediaCard: 'GalleryMediaCard' },
     '../lib/desktop': {},
+    '../features/assets/queryKeys': existsSync(new URL('../apps/desktop/src/features/assets/queryKeys.ts', import.meta.url))
+      ? evaluate(sourceFile('apps/desktop/src/features/assets/queryKeys.ts').text, 'apps/desktop/src/features/assets/queryKeys.ts')
+      : {},
     '../store/useToastStore': {},
     '../store/useConfirmStore': {},
     '../lib/useCloudImagePreview': {

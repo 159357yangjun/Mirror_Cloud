@@ -1,3 +1,4 @@
+import { assetQueryKeys } from '../features/assets/queryKeys'
 import {
   ChevronLeft,
   Copy,
@@ -106,8 +107,8 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
       if (preview?.entry.path === entry.path) closePreview()
       await Promise.all([
         refetch(),
-        queryClient.invalidateQueries({ queryKey: ['assets'] }),
-        queryClient.invalidateQueries({ queryKey: ['assets', 'publish-recent'] }),
+        queryClient.invalidateQueries({ queryKey: assetQueryKeys.root }),
+        queryClient.invalidateQueries({ queryKey: assetQueryKeys.publishRecent }),
       ])
     } catch (error) {
       setActionError(storage.accessMode === 'private_requested' ? '私有文件删除失败，请检查存储权限。' : `删除失败：${String(error)}`)

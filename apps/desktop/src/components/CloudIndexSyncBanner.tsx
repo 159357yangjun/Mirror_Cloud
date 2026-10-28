@@ -1,3 +1,4 @@
+import { assetQueryKeys } from '../features/assets/queryKeys'
 import { AlertTriangle, CheckCircle2, Images, RefreshCw } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -21,7 +22,7 @@ export function CloudIndexSyncBanner({ onOpenGallery }: CloudIndexSyncBannerProp
       setHasWarning(false)
     },
     onSuccess: async (summary) => {
-      await queryClient.invalidateQueries({ queryKey: ['assets'] })
+      await queryClient.invalidateQueries({ queryKey: assetQueryKeys.root })
       setHasWarning(summary.errors.length > 0)
       setMessage(
         `扫描 ${summary.storagesScanned} 个云端、${summary.filesScanned} 个文件；新增 ${summary.imported} 张图片，已有 ${summary.skippedExisting} 张，跳过非图片 ${summary.skippedNonImages} 个${summary.errors.length ? `；${summary.errors.length} 项需要注意` : ''}。`,

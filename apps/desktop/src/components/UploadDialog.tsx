@@ -1,3 +1,4 @@
+import { assetQueryKeys } from '../features/assets/queryKeys'
 import { taskQueryKeys } from '../features/tasks/queryKeys'
 import { workflowQueryKeys } from '../features/workflows/queryKeys'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
@@ -193,7 +194,7 @@ export function UploadDialog() {
   useEffect(() => {
     if (!terminal || finishedHandled) return
     setFinishedHandled(true)
-    void queryClient.invalidateQueries({ queryKey: ['assets'] })
+    void queryClient.invalidateQueries({ queryKey: assetQueryKeys.root })
     void queryClient.invalidateQueries({ queryKey: taskQueryKeys.root })
   }, [finishedHandled, queryClient, terminal])
 

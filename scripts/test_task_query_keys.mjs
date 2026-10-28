@@ -27,6 +27,8 @@ function load(code) {
   return module.exports
 }
 const taskQueryKeys = existsSync(keysPath) ? load(readFileSync(keysPath, 'utf8')).taskQueryKeys : undefined
+const assetKeysPath = resolve(srcRoot, 'features/assets/queryKeys.ts')
+const assetQueryKeys = existsSync(assetKeysPath) ? load(readFileSync(assetKeysPath, 'utf8')).assetQueryKeys : undefined
 const manageDesktopSubscription = load(source('apps/desktop/src/platform/desktop/subscription.ts')).manageDesktopSubscription
 let checks = 0, failed = 0
 async function check(label, fn) {
@@ -138,7 +140,7 @@ async function effectFixture(path, limit = 100) {
   client.invalidateQueries = (options) => { invalidated.push(options.queryKey); return realInvalidate(options) }
   let handler
   const dependencies = {
-    taskQueryKeys, queryClient: client, taskLimit: limit, taskIds: ['task-1'], uploadOpen: true,
+    taskQueryKeys, assetQueryKeys, queryClient: client, taskLimit: limit, taskIds: ['task-1'], uploadOpen: true,
     TERMINAL_STATUSES: new Set(['completed', 'failed', 'cancelled']), isTauriRuntime: () => true,
     manageDesktopSubscription, notifyError: () => { throw new Error('unexpected subscription failure') },
     loadEvents: async () => ({ listen: async (_name, callback) => { handler = callback; return () => {} } }),

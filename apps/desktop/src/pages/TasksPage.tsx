@@ -1,3 +1,4 @@
+import { assetQueryKeys } from '../features/assets/queryKeys'
 import { taskQueryKeys } from '../features/tasks/queryKeys'
 import { AlertCircle, CheckCircle2, CircleDashed, LoaderCircle, RotateCcw, TriangleAlert, XCircle } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -45,7 +46,7 @@ export function TasksPage() {
         )
         if (!TERMINAL_STATUSES.has(payload.status)) return
         void queryClient.invalidateQueries({ queryKey: taskQueryKeys.root })
-        void queryClient.invalidateQueries({ queryKey: ['assets'] })
+        void queryClient.invalidateQueries({ queryKey: assetQueryKeys.root })
       }),
     ), () => notifyError('任务进度通知暂不可用，将继续定时刷新任务列表'))
   }, [queryClient, taskLimit])

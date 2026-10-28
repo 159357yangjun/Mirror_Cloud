@@ -1,3 +1,4 @@
+import { assetQueryKeys } from '../features/assets/queryKeys'
 import {
   ChevronLeft,
   Copy,
@@ -149,8 +150,8 @@ export function GalleryPage() {
       if (preview?.entry.path === entry.path) closePreview()
       await Promise.all([
         refetch(),
-        queryClient.invalidateQueries({ queryKey: ['assets'] }),
-        queryClient.invalidateQueries({ queryKey: ['assets', 'publish-recent'] }),
+        queryClient.invalidateQueries({ queryKey: assetQueryKeys.root }),
+        queryClient.invalidateQueries({ queryKey: assetQueryKeys.publishRecent }),
       ])
     } catch (error) {
       setActionError(privateS3 ? '私有文件删除失败，请检查存储权限。' : `删除失败：${String(error)}`)
@@ -178,8 +179,8 @@ export function GalleryPage() {
   async function refreshAfterRemoteMutation() {
     await Promise.all([
       refetch(),
-      queryClient.invalidateQueries({ queryKey: ['assets'] }),
-      queryClient.invalidateQueries({ queryKey: ['assets', 'publish-recent'] }),
+      queryClient.invalidateQueries({ queryKey: assetQueryKeys.root }),
+      queryClient.invalidateQueries({ queryKey: assetQueryKeys.publishRecent }),
     ])
   }
 

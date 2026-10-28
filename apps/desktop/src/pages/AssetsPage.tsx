@@ -1,3 +1,4 @@
+import { assetQueryKeys } from '../features/assets/queryKeys'
 import { taskQueryKeys } from '../features/tasks/queryKeys'
 import { Check, Cloud, Copy, Download, Eye, LoaderCircle, RefreshCw, Search, Sparkles, Trash2, Upload, WifiOff, Plug, Images, X } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -74,7 +75,7 @@ export function AssetsPage() {
   const queryClient = useQueryClient()
   const [assetLimit, setAssetLimit] = useState(200)
   const { data: assets = [], error: assetsError, isLoading: assetsLoading } = useQuery({
-    queryKey: ['assets', assetLimit],
+    queryKey: assetQueryKeys.list(assetLimit),
     queryFn: () => listAssets(assetLimit),
     refetchInterval: 2500,
   })
@@ -133,7 +134,7 @@ export function AssetsPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: taskQueryKeys.root })
       setTimeout(() => {
-        void queryClient.invalidateQueries({ queryKey: ['assets'] })
+        void queryClient.invalidateQueries({ queryKey: assetQueryKeys.root })
         void queryClient.invalidateQueries({ queryKey: taskQueryKeys.root })
       }, 700)
     },
@@ -146,7 +147,7 @@ export function AssetsPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: taskQueryKeys.root })
       setTimeout(() => {
-        void queryClient.invalidateQueries({ queryKey: ['assets'] })
+        void queryClient.invalidateQueries({ queryKey: assetQueryKeys.root })
         void queryClient.invalidateQueries({ queryKey: taskQueryKeys.root })
       }, 1000)
     },
