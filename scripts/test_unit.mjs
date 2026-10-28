@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 // dependency installation or mutation suite is started by this entry point.
 const suites = [
   'test_desktop_subscription.mjs',
+  'test_desktop_dialogs.mjs',
   'test_cloud_browser_utils.mjs',
   'test_workflow_api.mjs',
   'test_workflow_query_keys.mjs',

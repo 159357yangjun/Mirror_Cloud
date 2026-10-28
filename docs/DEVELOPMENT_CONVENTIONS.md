@@ -19,6 +19,7 @@
 ## 当前共享边界
 
 - `apps/desktop/src/platform/desktop/subscription.ts`：管理异步注册和迟到的 unlisten。React effect 返回 `manageDesktopSubscription` 的 cleanup；订阅失败由调用者提供固定、安全的用户提示。业务 callback 和缓存策略仍由所属页面负责。
+- `apps/desktop/src/platform/desktop/dialogs.ts`：系统图片文件和下载路径选择，保留非桌面环境的空值回退及插件错误传播；业务调用方继续决定选择后的操作。
 - `apps/desktop/src/features/cloud-browser/entryUtils.ts`：云端父路径和图片条目识别的纯计算。页面/弹窗复用实际实现，不复制函数体；目录操作、分享有效期和展示布局由各自业务负责。
 - `apps/desktop/src/features/workflows/api.ts`：工作流和方案的领域操作；命令及浏览器回退沿用原行为。`platform/desktop/runtime.ts` 负责 Tauri 环境检测和调用。
 - `apps/desktop/src/features/tasks/api.ts`：任务查询、取消和重试的领域操作；原 `desktop.ts` 接口保留兼容。

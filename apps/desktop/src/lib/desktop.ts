@@ -2,6 +2,7 @@ import { mockBootstrap } from '../data/mock'
 import * as assetApi from '../features/assets/api'
 import * as taskApi from '../features/tasks/api'
 import * as workflowApi from '../features/workflows/api'
+import * as desktopDialogs from '../platform/desktop/dialogs'
 import { invoke, isTauriRuntime as isDesktopRuntime } from '../platform/desktop/runtime'
 import { notifyError } from '../store/useToastStore'
 import type {
@@ -451,9 +452,7 @@ export async function deleteStorageEntry(storageId: string, path: string): Promi
 }
 
 export async function chooseDownloadPath(suggestedName: string): Promise<string | null> {
-  if (!isTauriRuntime()) return null
-  const { save } = await import('@tauri-apps/plugin-dialog')
-  return save({ defaultPath: suggestedName })
+  return desktopDialogs.chooseDownloadPath(suggestedName)
 }
 
 export async function downloadStorageEntry(
@@ -560,15 +559,7 @@ export async function publishClipboardImageWithWorkflow(workflowId: string): Pro
 }
 
 export async function chooseImageFiles(): Promise<string[]> {
-  if (!isTauriRuntime()) return []
-  const { open } = await import('@tauri-apps/plugin-dialog')
-  const result = await open({
-    multiple: true,
-    directory: false,
-    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
-  })
-  if (!result) return []
-  return Array.isArray(result) ? result : [result]
+  return desktopDialogs.chooseImageFiles()
 }
 
 export async function repairAsset(assetId: string): Promise<string> {
