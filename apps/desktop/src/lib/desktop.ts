@@ -2,6 +2,7 @@ import { mockBootstrap } from '../data/mock'
 import * as assetApi from '../features/assets/api'
 import * as taskApi from '../features/tasks/api'
 import * as workflowApi from '../features/workflows/api'
+import * as desktopClipboard from '../platform/desktop/clipboard'
 import * as desktopDialogs from '../platform/desktop/dialogs'
 import { invoke, isTauriRuntime as isDesktopRuntime } from '../platform/desktop/runtime'
 import { notifyError } from '../store/useToastStore'
@@ -100,12 +101,7 @@ export function openExternalUrlOrReport(url: string): void {
 }
 
 export async function copyText(text: string): Promise<void> {
-  if (isTauriRuntime()) {
-    const { writeText } = await import('@tauri-apps/plugin-clipboard-manager')
-    await writeText(text)
-    return
-  }
-  await navigator.clipboard.writeText(text)
+  return desktopClipboard.copyText(text)
 }
 export function isTauriRuntime() {
   return isDesktopRuntime()

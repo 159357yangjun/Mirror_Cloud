@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 const suites = [
   'test_desktop_subscription.mjs',
   'test_desktop_dialogs.mjs',
+  'test_desktop_clipboard.mjs',
   'test_cloud_browser_utils.mjs',
   'test_workflow_api.mjs',
   'test_workflow_query_keys.mjs',
