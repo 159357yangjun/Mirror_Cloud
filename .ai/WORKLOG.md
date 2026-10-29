@@ -117,3 +117,13 @@
 **已知缺口**：网站无 node_modules，未安装，未运行 Astro build 或网站渲染；Rust 仍由云端构建。本轮主题统计 --verify 为 mismatch=12，历史记录为 11；发布欢迎区新增计数，未重签或绕过。当前 GitHub 仓库元数据为 Mirror_Cloud、homepage /Mirror_Cloud/、has_pages=true；最新可见历史 Pages 作业 39604555498 对旧远端 SHA 成功，不是本轮 CI。新旧首页与 R2 页面实际 404；公开 Pages 配置接口 403；随后直接核对作业 39604555498/jobs，build 步骤为 Pull jekyll-build-pages 与 Build with Jekyll，最近 100 条作业没有 Docs Site，说明实际部署链未构建 Astro 教程产物。完整后台配置仍未读到，不声称排除其他问题。已修正本地站点 / 构建候选 / 示例路径，部署检查改读 page_url；未远端推送、部署或发布。
 
 **清理**：一次性代码只经标准输入执行，没有落盘脚本；被放弃的外部素材已删除。两处浏览器 profile 递归清理请求被自动执行策略拒绝，仅返回 blocked by policy，完整路径与证据在工作区交付报告；未绕过或声称清理成功。
+
+## 2026-10-29 — 教程站部署恢复（已授权）
+
+**事实与动作**：用户明确授权推送main的全部22个未推送提交、将Pages发布源切换GitHub Actions并部署教程。正常非force推送成功，目标SHA为 `508a203a4b282daf9313fa9c8072ef9baf6e1c7e`。使用现有GitHub登录凭据在内存中认证，GET /pages读取原build_type=legacy、source=main:/docs；PUT仅将build_type设为workflow返回204，GET确认workflow。凭据未写文件、日志或导出工件。
+
+**云端证据**：[Docs Site #40824465387](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/40824465387) 对上述SHA完成：build job 123284195632（文档契约、npm ci、Astro构建及Pages产物上传均成功）；deploy job 123284322796（部署及全部侧栏路由核对均成功）。没有手动触发重复部署，使用推送自动触发的对应作业。历史Jekyll来源已被替换。
+
+**线上验证**：https://159357yangjun.github.io/Mirror_Cloud/ 及R2页实际200。独立核对14个文档路由全部200、6个首页资源全部200、13个首页教程入口均位于正确项目路径；首页包含新版主标题，浏览器实际显示新版首页和天空图片的可访问内容。证据在工作区 outputs/anime-refresh-2026-10-29/live-deployment-check.json。浏览器截图调用超时，未生成或伪称截图证据。本轮没有保存一次性探针代码或新增测试浏览器profile。
+
+**边界**：网站成功不等于全部桌面验收通过；核查时桌面CI的Rust tests与原生Windows候选构建仍在运行，其余七页契约、R2离线引导、候选身份、Windows UI作业已成功。未创建正式tag、未发布桌面Release，版本保持1.4.9。先前主题表12行漂移及清理拒绝记录继续保留，不因教程部署而改写为通过。
