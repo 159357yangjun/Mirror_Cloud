@@ -30,8 +30,7 @@
 }
 body { background: var(--sl-color-bg); }
 .guide-page { min-height: 100vh; isolation: isolate; }
-.guide-wallpaper { position: fixed; inset: 0; z-index: -1; pointer-events: none; background-image: linear-gradient(var(--guide-scrim), var(--guide-scrim)), var(--guide-wallpaper-dark); background-position: center; background-size: cover; background-repeat: no-repeat; }
-:root[data-theme='light'] .guide-wallpaper { background-image: linear-gradient(var(--guide-scrim), var(--guide-scrim)), var(--guide-wallpaper-light); }
+.guide-wallpaper { position: fixed; inset: 0; z-index: -1; pointer-events: none; background-image: linear-gradient(var(--guide-scrim), var(--guide-scrim)), var(--guide-wallpaper); background-position: center; background-size: cover; background-repeat: no-repeat; }
 .guide-site-header { padding: 1rem clamp(1rem, 4vw, 3rem); background: var(--sl-color-bg-nav); border-bottom: 1px solid var(--sl-color-hairline-light); }
 .guide-site-header .header { display: flex; min-height: 2.5rem; gap: 1rem; }
 .site-title { letter-spacing: -.04em; font-weight: 800; }

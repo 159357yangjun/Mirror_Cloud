@@ -193,3 +193,7 @@
 浏览器R2实际手机390×844（scrollWidth375）、单列292.625px、9字段、无hero img；高层viewport API成功。此前CDP调用和过长多步截图调用超时，未把超时当作手机PASS。手机字段截图r2-mobile-fields.png成功保存；1280×720深色实际列宽505.203/505.211px，scrollWidth1265、fixed背景铺满可视工作区，锚点#configuration-fields，截图r2-desktop-fields-dark.png。仅R2做真实手机/深色布局，不扩称七平台手机矩阵。独立只读审查无阻断或重要发现，仍承认官方登录后控制台步骤和真实账户配置未实测。
 
 结束恢复Auto主题与viewport，临时6页关闭、用户2/3页保留；没有新建本地服务、独立profile或一次性代码文件。个人JPG/MP4未上传，公开范围问题仍待用户答复；排版和字段已上线，素材替换尚未完成。收尾记录与产品源码10ceab2区分，不以产品CI冒充后续记录提交CI。
+
+## 2026-10-29 — 已授权JPG网站背景
+
+用户明确答复网站公开使用JPG、MP4仍仅桌面本机导入。修改前核对干净main，HEAD8e81932cb296599da0bc7b86a3f3d55711b39ad4、远端10ceab2fdf68759300d741939856b0e5a1b1520c。将提供的2560×1440/1100598字节JPEG原样复制为website/src/assets/art/user-wallpaper.jpg，源/目标SHA256均f245f6f33699e7a5197a95f704805f874049a8931d7dc3ded32f869d82ca7919。GuidePageFrame从两张天空图改同一用户JPG，CSS仅合并为一个背景变量，保留fixed/cover、阅读遮罩和明暗主题，不增加独立展示图片。MP4未拷入仓库，原文件/桌面源码/候选包未改；本批实际构建/部署另记。
