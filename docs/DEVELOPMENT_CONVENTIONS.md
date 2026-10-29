@@ -42,6 +42,8 @@
 
 ## 验证分层
 
+本项目的 Rust 编译、测试与桌面打包默认交给云端 CI；本地使用已有环境做可运行检查，不需要为此额外安装 MSVC 或 Windows SDK。`ci.yml` 执行 Rust check/test，`release.yml` 执行验证与打包；发布门禁和远端操作授权仍按 AGENTS.md 执行。云端结果必须与本次源码 SHA 对应。
+
 在 `apps/desktop` 中运行：
 
 ```powershell
@@ -55,7 +57,7 @@ npm run build      # TypeScript 与 Vite 构建
 - `python scripts/validate.py`：配置和内存库迁移校验。
 - `python scripts/check_contracts.py`：前端调用、Rust command 和注册名称集合一致性，不证明所有参数和行为。
 - `python scripts/check_user_flow.py`：既有安全与流程守卫；移动实现时同步明确其实际来源并保留覆盖。
-- `cargo fmt --all -- --check`、`cargo check --workspace --locked`、`cargo test --workspace --locked`：Rust 各层验证，环境不足单独报告。
+- `cargo fmt --all -- --check`、`cargo check --workspace --locked`、`cargo test --workspace --locked`：Rust 各层验证命令；编译/测试在云端执行，本地已有条件时可运行，环境不足只说明本地未验证，不要求补装。
 - `scripts/test_r2_wizard_browser.mjs`：真实组件与离线 IPC 的浏览器验证，需要本地 Vite 与浏览器；不等于 live R2。
 - `npm run verify:all`：包含浏览器与会临时修改源码的 mutation；仅在干净、无并发写入的工作树上独占执行。
 
