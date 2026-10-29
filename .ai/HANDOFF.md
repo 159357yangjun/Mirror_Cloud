@@ -6,7 +6,7 @@
 
 网站源码10ceab2fdf68759300d741939856b0e5a1b1520c已推送；Docs Site 40884457082、CI 40884457319、七页契约40884457337成功。七平台52项字段从StorageSetupDialog/R2GuidedFields核对，页面含获取入口/操作路径/填写规则/例子/误填；首页移除独立hero图，整站fixed cover背景，顶部导航及响应式字段卡。HTTP14路由/52字段/顶部14链接/目录锚点一致；R2实际390×844单列、1280×720深色双列无横溢，跳字段锚点有效。截图/JSON在工作区outputs/field-guides-2026-10-29。测试页6已关闭，viewport和原Auto主题恢复，用户2/3页保留，无新增一次性脚本/profile。
 
-**素材授权已收到**：用户确认“网站公开使用JPG，MP4仍仅供桌面本机导入”。已把提供的JPG原样复制为website/src/assets/art/user-wallpaper.jpg并替换GuidePageFrame的全站底层背景，昼夜共用此图；待本批同SHA构建/部署与线上核对。不得继续把该问题当作待批准事项。MP4未加入仓库/公共包，桌面候选不改。真实七平台账号配置仍未实测。
+**素材授权已收到**：用户确认“网站公开使用JPG，MP4仍仅供桌面本机导入”。已把提供的JPG原样复制为website/src/assets/art/user-wallpaper.jpg并替换GuidePageFrame的全站底层背景，昼夜共用此图；已部署验证。源码b1eda34fd6c99a6800bdb55b4bf412e783369d9c的Docs Site 40887051140（build123493489490/deploy123493697979）、CI40887051000和七页契约40887051075均completed/success。独立HTTP14页共用用户JPG，52字段保留；线上图片1100598字节，SHA256 f245f6f33699e7a5197a95f704805f874049a8931d7dc3ded32f869d82ca7919，与源文件/仓库副本逐字节一致。首页1280×720浅色与390×844深色fixed/cover背景、无hero img、顶部14链接、无横溢已核对，截图和JSON在工作区outputs/user-jpg-wallpaper-2026-10-29。不得继续把该问题当作待批准事项。MP4未加入仓库/公共包，桌面候选不改。真实七平台账号配置仍未实测。
 
 ## 桌面候选交付 — 2026-10-29
 

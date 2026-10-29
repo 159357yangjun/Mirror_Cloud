@@ -197,3 +197,5 @@
 ## 2026-10-29 — 已授权JPG网站背景
 
 用户明确答复网站公开使用JPG、MP4仍仅桌面本机导入。修改前核对干净main，HEAD8e81932cb296599da0bc7b86a3f3d55711b39ad4、远端10ceab2fdf68759300d741939856b0e5a1b1520c。将提供的2560×1440/1100598字节JPEG原样复制为website/src/assets/art/user-wallpaper.jpg，源/目标SHA256均f245f6f33699e7a5197a95f704805f874049a8931d7dc3ded32f869d82ca7919。GuidePageFrame从两张天空图改同一用户JPG，CSS仅合并为一个背景变量，保留fixed/cover、阅读遮罩和明暗主题，不增加独立展示图片。MP4未拷入仓库，原文件/桌面源码/候选包未改；本批实际构建/部署另记。
+
+**本批完成**：源码b1eda34fd6c99a6800bdb55b4bf412e783369d9c的Docs Site 40887051140（build123493489490/deploy123493697979）、CI40887051000和七页契约40887051075均completed/success。独立HTTP14页共用用户JPG，52字段保留；线上图片1100598字节，SHA256 f245f6f33699e7a5197a95f704805f874049a8931d7dc3ded32f869d82ca7919，与源文件/仓库副本逐字节一致。首页1280×720浅色与390×844深色fixed/cover背景、无hero img、顶部14链接、无横溢已核对，截图和JSON在工作区outputs/user-jpg-wallpaper-2026-10-29。 初次图片字节检查错误拼成站点根/_astro返回404，是校验脚本遗漏/Mirror_Cloud基址，修正到页面实际资源URL后匹配，并非网站图片故障。原Auto主题/viewport恢复，临时7页关闭，用户2/3页保留；未建本地服务、独立profile或一次性脚本。记录提交只改Markdown，不冒充新部署；真实账号配置/桌面G3仍按既有范围待用户实测。
