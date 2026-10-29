@@ -1,13 +1,13 @@
 # Changelog
 
-## 1.4.10 候选打包准备 — 2026-10-29（无正式 tag / Release）
+## 1.4.10 候选包已交付 — 2026-10-29（无正式 tag / Release）
 
 用户已批准制作1.4.10候选包，测试后再正式发布。包含前端结构整理、原创动漫视觉、本机壁纸导入，以及独立背景强度与面板透明度；业务接口、应用identifier和凭据边界保持。
 
 - **版本与来源**：前后端版本统一1.4.10，Cargo.lock仅更新13个工作区成员版本；手动Release Bundle注入完整源码SHA并显示候选标记，tag构建不显示候选标记。正式发布作业要求push事件且为v标签，手动触发即使选了标签也不发布。
-- **G0**：以本批源码完整SHA对应的main CI实际结果为准；准备时待云端检查，不用历史成功替代。
+- **G0**：候选源码`c4d8a540a1f9b814d95ecd428a2f7fc2f3733ec3`的[main CI 40860759021](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/40860759021)成功；Rust 209通过、0失败、1项需真实凭据和写授权的R2 E2E忽略。同SHA原生窗口、SQLite重启持久化作业40860759018成功。
 - **G1**：更新器代码本轮未改，继续使用后端PendingUpdate、opaque id、受控目录、canonicalize和安装前重算SHA256；实际升级闭环仍需验证。
-- **G2**：批准从main手动运行无tag Release Bundle，等待同SHA云端检查、EXE/MSI、校验和及安装器smoke证据；完成状态与包哈希记入本轮交付报告。
+- **G2**：上述SHA的[无tag Release Bundle 40861900368](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/40861900368)成功；exactly-one EXE/MSI及两种安装卸载smoke通过，publish-release跳过。EXE SHA256 `638d4654c61a5d5d0c8ecc7a2ddc91cd42f8df6257924236e2bbe29dc4950a96`；MSI `2c7afd7505cc99a4cef158483494dabed51c629f06ed19f7f00f63bef2d0c43b`。下载归档与GitHub artifact digest一致，内层28项校验通过，源码435文件逐字节匹配该SHA，三个锁文件一致。交付目录`D:/image-hosting-builds/1.4.10-candidate-c4d8a540a1f9`；assets含安装器、源码和校验和，根目录含测试说明及报告。记录提交只更新文档，不是另一次候选构建。
 - **G3**：用户将从已安装1.4.9测试候选1.4.10，需逐项核对SQLite、云端连接、凭据、默认目标、Typora、主题壁纸、资源、插件和一次新上传。当前未装包，不能记为通过。
 - **G4/G5**：未创建正式tag或Release。更新器只读取正式releases/latest；测试包未正式发布前，1.4.9“检查更新”不会发现它。候选先手动安装验收，正式发布后再验证自动发现→下载→校验→安装，不能以候选安装器smoke冒充该闭环。
 

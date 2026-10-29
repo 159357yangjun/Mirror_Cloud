@@ -142,8 +142,18 @@
 
 ## 2026-10-29 — 1.4.10 候选准备（用户授权）
 
-**授权与动作**：用户要求云端打包供其测试自动更新及整体功能，确认“制作1.4.10候选包，测试后再正式发布”。已正常推送先前外观提交03041f9655bee5a7c31231714415a516357d681a。将Cargo workspace、desktop package/lock和Tauri版本从1.4.9统一到1.4.10；使用现有cargo update --workspace --offline仅更新13个工作区锁版本，没有安装MSVC/SDK或改第三方依赖。手动Release Bundle增加MIRROR_CANDIDATE_SOURCE_SHA标记，正式tag运行留空；publish-release原tag条件保留。
+**授权与动作**：用户要求云端打包供其测试自动更新及整体功能，确认“制作1.4.10候选包，测试后再正式发布”。已正常推送先前外观提交03041f9655bee5a7c31231714415a516357d681a。将Cargo workspace、desktop package/lock和Tauri版本从1.4.9统一到1.4.10；使用现有cargo update --workspace --offline仅更新13个工作区锁版本，没有安装MSVC/SDK或改第三方依赖。手动Release Bundle增加MIRROR_CANDIDATE_SOURCE_SHA标记，正式tag运行留空；独立审查建议强化publish-release，现要求push事件且为v标签，手动选择tag也不能发布。
 
 **本地证据**：版本检查1.4.10且13/13工作区锁一致，45个Actions固定引用、用户流程640、文档16和前端构建通过；其余检查和同SHA云端证据继续记入本轮交付报告。工作区内容未作为已出包或G3通过证据。
 
 **边界**：候选无正式tag/Release；用户先手动安装验证1.4.9→1.4.10保真，正式发布后才能验证应用内发现、下载和安装。此刻正式releases/latest仍v1.4.9，候选不会出现在其检查结果。不改用户数据库或覆盖当前安装，不执行真实云端写操作。
+
+## 2026-10-29 — 1.4.10候选完成并交付
+
+**源码与云端**：c4d8a540a1f9b814d95ecd428a2f7fc2f3733ec3已推送main；[CI 40860759021](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/40860759021)成功，Rust 209通过/0失败/1个真实R2忽略；[原生验收40860759018](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/40860759018)窗口和SQLite重启持久化通过。随后从main手动触发[Release Bundle 40861900368](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/40861900368)，head_sha相同，2026-10-29 11:18:58 UTC完成；本包EXE/MSI四步安装卸载成功，正式发布作业skipped。
+
+**产物**：release artifact 12892169395，59,195,409字节，digest 92ca2ef26cdf9f1b1d5d00279f73973c9e4c82f34847f56211e9b25dc170f92c；locks artifact 12892528960，digest d19ede2eec5fc9e238806852af2dde2c581719f2f5c9fa28f8d96448ce6447dc。下载重算相符。现有verify_release_assets的资产/版本/归档函数28项通过；候选不建tag，额外在内存git archive候选SHA，比较435个文件无差异且归档comment相同；三锁一致。EXE/MSI完整哈希见CHANGELOG G2。保留原始归档、assets、测试说明、截图及candidate-verification.json于D:/image-hosting-builds/1.4.10-candidate-c4d8a540a1f9；相同报告复制到工作区outputs/candidate-1.4.10-2026-10-29/。
+
+**范围与清理**：未代用户安装、改真实数据或写图床，G3及正式发布后完整更新闭环仍待用户实测。未认证更新源及旧版EXE内存下载/哈希一致不等于原生更新器E2E。候选浏览器标识和640×480无横溢已核对，测试页关闭、viewport恢复、1421进程停止。没有探针脚本落盘；网络检测结果update-source-probe.json用后立即请求删除被自动执行策略拒绝，仅blocked by policy，完整路径见交付报告；未绕过。文档收尾提交不改变上述构建源码，不冒充新提交已打包。
+
+**文档收尾验证**：check_docs_site.py 16/0、check_user_flow.py 640/0及diff --check通过。用户流程检查器自行生成的C:/Users/yyyy/AppData/Local/Temp/image-hosting-probes/2026-10-29/stray-guard-green.txt和stray-guard-red.txt在用后立即请求删除，同样被自动策略拒绝（blocked by policy），未绕过；这两份测具结果及上述JSON为本轮新增残留，不含凭据。
