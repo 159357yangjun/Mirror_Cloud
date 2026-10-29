@@ -4,6 +4,10 @@ description: 找到桶名、Account ID、S3 密钥和公开域名，再按四步
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components'
+import ProviderStart from '../../../components/ProviderStart.astro'
+import ConfigurationFields from '../../../components/ConfigurationFields.astro'
+
+<ProviderStart provider="r2" />
 
 ## 创建存储桶
 
@@ -35,17 +39,7 @@ import { Steps, Aside } from '@astrojs/starlight/components'
 
 打开 **云端 → 添加存储 → Cloudflare R2**，按四步向导操作。
 
-| 向导 / 字段 | 从哪里取值 | 示例或规则 |
-| --- | --- | --- |
-| 1 · 显示名称 | 自己命名 | 我的 R2 图床 |
-| 1 · Bucket | 控制台桶名 | `my-images` |
-| 1 · Account ID | R2 概览/S3 API信息 | 自己的32位账户ID |
-| 1 · Endpoint / Region | 根据Account ID生成 | `https://账户ID.r2.cloudflarestorage.com`；Region为`auto` |
-| 2 · 发布用途 | 对外分享选“公开发布”；只在认证后访问选“私有存储目标” | 两者选一 |
-| 2 · 公开访问地址 | 已启用的自定义域名或开发地址 | `https://img.example.com`，不能填S3 Endpoint |
-| 3 · Access Key ID | R2令牌创建结果 | 完整复制 |
-| 3 · Secret Access Key | 同次创建结果 | 完整复制，不填普通API Token |
-| 3 · 资源目录 | 桶内路径前缀，可留空 | `assets`，不填URL |
+<ConfigurationFields provider="r2" />
 
 在第4步核对摘要，点击 **授权测试并保存**，阅读确认后继续。保存后设为默认目标。
 

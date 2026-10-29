@@ -3,14 +3,10 @@ title: 镜云使用指南
 description: 连接云端，发布图片，分享你的灵感。
 template: splash
 hero:
-  title: 把灵感，寄给云端
-  tagline: 从连接第一个图床，到复制第一条图片链接。只讲你现在需要的步骤。
-  image:
-    alt: 樱花与海岸小镇上空的动漫天空
-    light: ../../assets/art/sky-day.png
-    dark: ../../assets/art/sky-night.png
+  title: 把每一项，填明白
+  tagline: 选你正在使用的平台。先找到需要的信息，再对照软件字段填写，最后用一张图片验证。
   actions:
-    - text: 从 R2 开始
+    - text: 查看 R2 字段怎么填
       link: ./guides/r2/
       icon: right-arrow
     - text: 我已配置好图床
@@ -22,16 +18,16 @@ import { LinkCard, CardGrid, Steps } from '@astrojs/starlight/components'
 
 ## 先连接一个云端
 
-已有哪家的账号，就选择哪家。首次使用对象存储可从 R2 开始；GitHub、Gitee 更适合文档图片和轻量资源。
+已有哪家的账号，就选择哪家。每页都有平台直达链接、信息获取路径、软件字段对照和填错后的处理方法。账号和密钥只在镜云桌面应用填写。
 
 <CardGrid>
-  <LinkCard title="Cloudflare R2" description="公开图床与私有存储，按四步向导连接。" href="./guides/r2/" />
-  <LinkCard title="S3 Compatible" description="AWS、MinIO 和其他兼容 S3 的服务。" href="./guides/s3/" />
-  <LinkCard title="阿里云 OSS" description="Bucket、地域和公开图片域名怎么填。" href="./guides/oss/" />
-  <LinkCard title="腾讯云 COS" description="配置 SecretId、SecretKey 和访问地址。" href="./guides/cos/" />
-  <LinkCard title="GitHub" description="仓库、分支和最小权限 Token。" href="./guides/github/" />
-  <LinkCard title="Gitee" description="仓库托管和公开访问方式。" href="./guides/gitee/" />
-  <LinkCard title="WebDAV" description="连接 NAS 或自建服务，区分存储与公开链接。" href="./guides/webdav/" />
+  <LinkCard title="Cloudflare R2" description="要准备：桶名、Account ID、两项 S3 密钥；公开用途另备图片域名。" href="./guides/r2/" />
+  <LinkCard title="S3 Compatible" description="要准备：桶名、Endpoint、Region、访问密钥；按自己的服务商取值。" href="./guides/s3/" />
+  <LinkCard title="阿里云 OSS" description="要准备：桶名、外网 Endpoint、RAM 密钥与图片 HTTPS 域名。" href="./guides/oss/" />
+  <LinkCard title="腾讯云 COS" description="要准备：含 APPID 的完整桶名、地域地址、子用户密钥和图片域名。" href="./guides/cos/" />
+  <LinkCard title="GitHub" description="要准备：仓库网址、分支和有 Contents 写权限的 Token。" href="./guides/github/" />
+  <LinkCard title="Gitee" description="要准备：仓库网址、实际分支和仓库权限令牌；外链需单独验证。" href="./guides/gitee/" />
+  <LinkCard title="WebDAV" description="要准备：接口地址、所需账号 / 应用密码、独立公开图片地址。" href="./guides/webdav/" />
 </CardGrid>
 
 ## 第一次发布，只需四步

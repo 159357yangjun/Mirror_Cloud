@@ -1,0 +1,17 @@
+---
+import { providerGuides, type ProviderKey } from '../data/providerGuides';
+interface Props { provider: ProviderKey }
+const { provider } = Astro.props;
+const guide = providerGuides[provider];
+---
+
+<section class="provider-start" aria-label={`${guide.title} 配置准备`}>
+  <div class="provider-start-heading"><span class="guide-eyebrow">跟着软件表单填</span><span class="guide-count">{guide.fields.length} 项填写说明</span></div>
+  <p class="provider-prepare"><strong>先准备好</strong>{guide.prepare}</p>
+  <div class="provider-links" aria-label="平台直达入口">
+    {guide.links.map((link) => <a href={link.href} target="_blank" rel="noopener noreferrer">{link.label}<span aria-hidden="true">↗</span></a>)}
+  </div>
+  <div class="provider-app-path"><span>在软件哪里填</span><strong>镜云桌面应用 → 云端 → 添加存储 → {guide.title}</strong></div>
+  <p class="provider-privacy">本页只教你获取和填写。账号、Token、Secret 请填在桌面应用中，本网站不收集这些信息。</p>
+  <a class="provider-jump" href="#configuration-fields">我已准备好，直接对照字段填写 <span aria-hidden="true">↓</span></a>
+</section>

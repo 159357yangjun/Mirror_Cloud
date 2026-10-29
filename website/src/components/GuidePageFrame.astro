@@ -1,8 +1,11 @@
 ---
 import GuideNavigation from './GuideNavigation.astro';
+import dayWallpaper from '../assets/art/sky-day.png';
+import nightWallpaper from '../assets/art/sky-night.png';
 ---
 
-<div class="guide-page">
+<div class="guide-page" style={`--guide-wallpaper-light: url("${dayWallpaper.src}"); --guide-wallpaper-dark: url("${nightWallpaper.src}")`}>
+  <div class="guide-wallpaper" aria-hidden="true"></div>
   <header class="guide-site-header"><slot name="header" /></header>
   <GuideNavigation />
   <div class="guide-main"><slot /></div>

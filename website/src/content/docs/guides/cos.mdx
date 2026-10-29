@@ -4,6 +4,10 @@ description: 找全桶名与地域，创建子账号密钥，再配置公开图�
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components'
+import ProviderStart from '../../../components/ProviderStart.astro'
+import ConfigurationFields from '../../../components/ConfigurationFields.astro'
+
+<ProviderStart provider="cos" />
 
 ## 创建桶并复制完整名称
 
@@ -36,15 +40,7 @@ import { Steps, Aside } from '@astrojs/starlight/components'
 
 打开 **云端 → 添加存储 → 腾讯云 COS**。
 
-| 镜云字段 | 来源 / 填写规则 | 示例 |
-| --- | --- | --- |
-| 显示名称 | 自己命名 | 我的 COS |
-| Bucket | COS列表完整桶名，包含APPID后缀 | `my-images-1250000000` |
-| Endpoint | 对应地域的API服务根地址，不拼桶名 | `https://cos.ap-guangzhou.myqcloud.com` |
-| SecretId | 子账号API密钥ID | 自己的ID |
-| SecretKey | 与SecretId配对的密钥 | 自己的Secret |
-| 资源目录（可选） | 桶内路径前缀，留空为根目录 | `assets` |
-| 公开访问域名 | 实际可读图片的HTTPS根地址 | `https://img.example.com` |
+<ConfigurationFields provider="cos" />
 
 点击 **测试并保存**，成功后设为默认目标；API测试不会替你修复公网访问域名。
 

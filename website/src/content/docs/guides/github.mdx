@@ -4,6 +4,10 @@ description: 从创建仓库和 Token，到逐字段填写、上传和验证图�
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components'
+import ProviderStart from '../../../components/ProviderStart.astro'
+import ConfigurationFields from '../../../components/ConfigurationFields.astro'
+
+<ProviderStart provider="github" />
 
 ## 创建并确认仓库
 
@@ -30,15 +34,7 @@ import { Steps, Aside } from '@astrojs/starlight/components'
 
 打开 **云端 → 添加存储 → GitHub**，按实际仓库替换示例。
 
-| 镜云字段 | 内容来源 / 填写规则 | 示例 |
-| --- | --- | --- |
-| 显示名称 | 自己取名 | 我的 GitHub 图片 |
-| 用户名 / Owner | 仓库 URL 第一段，组织仓库填组织名 | `your-name` |
-| 仓库名 | URL 第二段，只填仓库路径名，不带 `.git` | `my-images` |
-| 分支 | 仓库分支菜单中的实际名称 | `main` |
-| 资源目录 | 仓库内的图片目录；上传时自动创建，留空为根目录 | `assets` |
-| 访问令牌 | 刚生成且未过期的 Token | 粘贴自己的令牌 |
-| 自定义公开域名（可选） | 没有自己的代理/CDN就留空；填写时使用图片根地址 | 留空 |
+<ConfigurationFields provider="github" />
 
 点击 **测试并保存**。应用会校验仓库与分支访问；保存后在云端列表将其设为默认发布目标。
 

@@ -4,6 +4,10 @@ description: 创建 Bucket 与 RAM 凭据，分清 API Endpoint 和图片访问�
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components'
+import ProviderStart from '../../../components/ProviderStart.astro'
+import ConfigurationFields from '../../../components/ConfigurationFields.astro'
+
+<ProviderStart provider="oss" />
 
 ## 创建 Bucket 并记录地域
 
@@ -35,15 +39,7 @@ import { Steps, Aside } from '@astrojs/starlight/components'
 
 打开 **云端 → 添加存储 → 阿里云 OSS**。
 
-| 镜云字段 | 来源 / 填写规则 | 示例 |
-| --- | --- | --- |
-| 显示名称 | 自己命名 | 我的 OSS |
-| Bucket | OSS桶列表的准确名称 | `my-images` |
-| Endpoint | 桶所在地域的外网API地址 | `https://oss-cn-hangzhou.aliyuncs.com` |
-| AccessKey ID | 专用RAM用户的AccessKey | 自己的ID |
-| AccessKey Secret | 与ID配对的Secret | 自己的Secret |
-| 资源目录（可选） | 桶内目录前缀 | `assets`，也可留空 |
-| 公开访问域名 | 已绑定并可读取图片的HTTPS根地址，不是控制台URL | `https://img.example.com` |
+<ConfigurationFields provider="oss" />
 
 点击 **测试并保存**；它验证存储接口操作，不替你配置DNS/CDN或开放读取。保存后设为默认发布目标。
 

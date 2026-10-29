@@ -1,0 +1,26 @@
+---
+import { providerGuides, type ProviderKey } from '../data/providerGuides';
+interface Props { provider: ProviderKey }
+const { provider } = Astro.props;
+const guide = providerGuides[provider];
+---
+
+<section id="configuration-fields" class="configuration-fields" aria-label={`${guide.title} 逐项填写对照`}>
+  <p class="field-intro">按软件中的顺序逐项核对。示例需要换成自己的信息；标注“可选”的字段可以留空。</p>
+  <ol class="setup-field-list">
+    {guide.fields.map((field, index) => (
+      <li class="setup-field" data-field-label={field.label}>
+        <div class="setup-field-heading">
+          <span class="setup-field-number" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
+          <div>{field.step && <span class="setup-field-step">{field.step}</span>}<h3>{field.label}</h3></div>
+          <span class:list={['setup-field-badge', { optional: field.requirement === '可选' }]}>{field.requirement}</span>
+        </div>
+        <dl class="setup-field-details">
+          <div><dt>去哪里获取</dt><dd><strong>{field.source}</strong><p>{field.path}</p>{field.href && <a href={field.href} target="_blank" rel="noopener noreferrer">打开对应入口 / 官方说明 <span aria-hidden="true">↗</span></a>}</dd></div>
+          <div><dt>在软件怎么填</dt><dd>{field.fill}<div class="field-example"><span>填写示例</span><code>{field.example}</code></div></dd></div>
+        </dl>
+        <p class="setup-field-mistake"><strong>别填错</strong>{field.mistake}</p>
+      </li>
+    ))}
+  </ol>
+</section>

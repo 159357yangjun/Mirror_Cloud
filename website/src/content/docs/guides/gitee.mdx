@@ -4,6 +4,10 @@ description: 用现有仓库保存文档图片或多云副本。
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components'
+import ProviderStart from '../../../components/ProviderStart.astro'
+import ConfigurationFields from '../../../components/ConfigurationFields.astro'
+
+<ProviderStart provider="gitee" />
 
 ## 先准备仓库
 
@@ -25,15 +29,7 @@ import { Steps, Aside } from '@astrojs/starlight/components'
 
 打开 **云端 → 添加存储 → Gitee**。以下内容全部是示例，换成自己的仓库信息。
 
-| 镜云字段 | 去哪里找 / 怎么填 | 示例 |
-| --- | --- | --- |
-| 显示名称 | 自己取名，仅用于镜云区分连接 | 我的 Gitee 图床 |
-| 用户名 / Owner | 仓库网址中 `gitee.com/` 后的第一段，组织仓库填组织路径 | `your-name` |
-| 仓库名 | 仓库网址最后一段，不带 `.git`、域名或斜杠 | `my-images` |
-| 分支 | 仓库首页分支菜单，大小写也要一致 | `master` |
-| 资源目录 | 仓库内保存图片的位置；留空表示根目录，不用先手动建文件夹 | `assets` |
-| 访问令牌 | 上一步生成的私人令牌，完整粘贴 | 自己的令牌，不是示例文字 |
-| 自定义公开域名（可选） | 没有独立代理/CDN时留空；有则填写图片根地址 | 留空 |
+<ConfigurationFields provider="gitee" />
 
 点击 **测试并保存**。测试会检查仓库接口访问；这还不能证明图片能被未登录的访客打开。保存后到云端列表设为默认发布目标。
 

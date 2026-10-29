@@ -4,6 +4,10 @@ description: 分清 Bucket、Endpoint、Region 和公开地址，连接 AWS 或�
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components'
+import ProviderStart from '../../../components/ProviderStart.astro'
+import ConfigurationFields from '../../../components/ConfigurationFields.astro'
+
+<ProviderStart provider="s3" />
 
 ## 先在服务商准备
 
@@ -22,17 +26,7 @@ S3 Compatible不是一家具体图床：AWS S3、MinIO和其他兼容服务的�
 
 打开 **云端 → 添加存储 → S3 Compatible**。
 
-| 镜云字段 | 填写方法 | 示例 |
-| --- | --- | --- |
-| 显示名称 | 自己取名 | 我的 S3 |
-| Bucket | 控制台桶名，不是域名 | `my-images` |
-| Endpoint | 服务商S3 API根地址，不是管理后台，也不重复追加桶名 | AWS地域示例：`https://s3.us-east-1.amazonaws.com` |
-| Region | 桶所在地域；其他兼容服务按其文档填写 | `us-east-1`仅为AWS示例 |
-| Access Key ID | 当前桶凭据的ID | 自己的ID |
-| Secret Access Key | 与上项配对的密钥 | 自己的Secret |
-| 资源目录（可选） | 桶内路径前缀，留空为根目录 | `assets` |
-| 发布用途 | 公开发布或私有存储目标 | 按实际权限选择 |
-| 公开访问地址 | 公开用途必填，私有用途清空 | `https://img.example.com` |
+<ConfigurationFields provider="s3" />
 
 点击 **测试并保存**，成功后在云端列表设为默认发布目标。连接测试需要相应远端读写/删除权限；不要拿只读账号测试上传。
 
