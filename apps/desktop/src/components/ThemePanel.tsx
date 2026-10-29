@@ -1,6 +1,7 @@
 import { Check, Image, Palette, RotateCcw, Sparkles, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { prepareWallpaper } from '../lib/wallpaperImport'
+import { prepareVideoWallpaper, readVideoWallpaper, writeVideoWallpaper } from '../lib/videoWallpaper'
 import {
   DEFAULT_THEME_PREFERENCES,
   THEME_PRESETS,
@@ -25,12 +26,24 @@ export function ThemePanel({
   const [importing, setImporting] = useState(false)
   const [imageError, setImageError] = useState('')
   const alive = useRef(true)
+  const wallpaperReady = value.wallpaper === 'local:video' || Boolean(safeWallpaperUrl(value.wallpaper))
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
   async function importImage(file: File) {
     setImporting(true)
     setImageError('')
     const previous = safeWallpaperUrl('local:wallpaper')
     try {
+      if (!['image/png', 'image/jpeg', 'image/webp', 'video/mp4'].includes(file.type) && !(!file.type && /\.mp4$/i.test(file.name))) {
+        throw new Error('请选择 PNG、JPG、WebP 图片或 MP4 视频，原壁纸已保留。')
+      }
+      if (file.type === 'video/mp4' || /\.mp4$/i.test(file.name)) {
+        const previousVideo = await readVideoWallpaper()
+        const video = await prepareVideoWallpaper(file)
+        if (!alive.current) return
+        await writeVideoWallpaper(video)
+        if (!alive.current || !onChange({ ...value, wallpaper: 'local:video' })) await writeVideoWallpaper(previousVideo)
+        return
+      }
       const image = await prepareWallpaper(file)
       if (!alive.current) return
       storeLocalWallpaper(image)
@@ -42,10 +55,13 @@ export function ThemePanel({
       if (alive.current) setImageError(error instanceof Error ? error.message : '导入失败，原壁纸已保留。')
     } finally { if (alive.current) setImporting(false) }
   }
-  function removeImage() {
-    if (onChange({ ...value, wallpaper: value.wallpaper === 'local:wallpaper' ? '' : value.wallpaper })) {
-      try { clearLocalWallpaper(); setImageError('') } catch { setImageError('本机图片未能清除，请稍后重试。') }
-    }
+  async function clearPersonal(reset = false) {
+    const personal = value.wallpaper === 'local:wallpaper' || value.wallpaper === 'local:video'
+    if (!onChange(reset ? { ...DEFAULT_THEME_PREFERENCES } : { ...value, wallpaper: personal ? '' : value.wallpaper })) return
+    setImporting(true)
+    try { clearLocalWallpaper(); await writeVideoWallpaper(null); if (alive.current) setImageError('') }
+    catch { if (alive.current) setImageError('外观已更新，部分本机壁纸副本未能清除，请重试。') }
+    finally { if (alive.current) setImporting(false) }
   }
   const update = <K extends keyof ThemePreferences>(key: K, next: ThemePreferences[K]) =>
     onChange({ ...value, [key]: next })
@@ -110,28 +126,29 @@ export function ThemePanel({
 
           <section className="mt-7">
             <div className="flex items-center gap-2 text-xs font-semibold"><Image size={14} />壁纸</div>
-            <p className="mt-1 text-[11px] leading-5 text-[var(--text-muted)]">选择天空插画，或导入自己的图片。导入图片只保存在本机，不会上传。</p>
+            <p className="mt-1 text-[11px] leading-5 text-[var(--text-muted)]">壁纸铺满整个应用。支持图片和静音循环 MP4；个人文件只保存在本机，不会上传。</p>
             <div className="sky-presets mt-3">
               {WALLPAPER_PRESETS.map((preset) => <button key={preset.value} onClick={() => update('wallpaper', preset.value)} aria-pressed={value.wallpaper === preset.value} className="sky-preset" style={{ backgroundImage: `url(${preset.image})` }}><span>{preset.label}{value.wallpaper === preset.value ? ' ✓' : ''}</span></button>)}
             </div>
             <label className="mt-3 flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-xs focus-within:ring-2 focus-within:ring-[var(--accent)]">
-              {importing ? '正在处理图片…' : value.wallpaper === 'local:wallpaper' ? '更换本机图片' : '导入本机图片'}
-              <input type="file" accept="image/png,image/jpeg,image/webp" disabled={importing} className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void importImage(file) }} />
+              {importing ? '正在处理壁纸…' : '导入图片 / MP4'}
+              <input aria-label="导入本机壁纸" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,.mp4" disabled={importing} className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void importImage(file) }} />
             </label>
-            <p className="mt-2 text-[11px] text-[var(--text-muted)]">PNG / JPG / WebP，最大 16 MB。自动缩小为壁纸副本，原图不变。</p>
+            <p className="mt-2 text-[11px] text-[var(--text-muted)]">图片最大 16 MB，自动缩小副本；MP4 最大 64 MB、10 分钟。原文件不变。</p>
+            {value.wallpaper === 'local:video' && <label className="mt-3 flex items-center gap-2 text-xs"><input type="checkbox" checked={value.wallpaperMotion} onChange={(event) => update('wallpaperMotion', event.target.checked)} />播放动态壁纸<span className="text-[var(--text-muted)]">后台或系统减少动画时暂停</span></label>}
             {imageError && <p role="alert" className="mt-2 text-xs text-red-600">{imageError}</p>}
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
-              <button className="text-xs text-[var(--text-secondary)] underline underline-offset-4" onClick={removeImage}>清除个人图片</button>
+              <button className="text-xs text-[var(--text-secondary)] underline underline-offset-4" onClick={() => void clearPersonal()}>清除个人壁纸</button>
               <button className="text-xs text-[var(--text-secondary)] underline underline-offset-4" onClick={() => update('wallpaper', '')}>不使用壁纸</button>
             </div>
             <input
-              value={value.wallpaper.startsWith('preset:') || value.wallpaper === 'local:wallpaper' ? '' : value.wallpaper}
+              value={value.wallpaper.startsWith('preset:') || ['local:wallpaper', 'local:video'].includes(value.wallpaper) ? '' : value.wallpaper}
               onChange={(event) => update('wallpaper', event.target.value)}
               aria-label="在线壁纸地址（可选）"
               placeholder="在线图片地址（可选）https://…"
               className="mt-3 h-10 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-xs outline-none focus:border-[var(--accent)]"
             />
-            {value.wallpaper && !safeWallpaperUrl(value.wallpaper) && (
+            {value.wallpaper && !wallpaperReady && (
               <div className="mt-2 text-[11px] text-amber-600">请选择预置天空或填写 http/https 图片地址。</div>
             )}
           </section>
@@ -139,8 +156,8 @@ export function ThemePanel({
           <section className="mt-7 space-y-5 rounded-2xl border border-[var(--border)] bg-[var(--surface-soft)] p-4">
             <label className="block">
               <div className="flex items-center justify-between text-xs"><span className="font-medium">背景图片强度</span><span className="text-[var(--text-muted)]">{value.wallpaperStrength}%</span></div>
-              <input type="range" aria-label="背景图片强度" min="0" max="100" disabled={!safeWallpaperUrl(value.wallpaper)} value={value.wallpaperStrength} onChange={(event) => update('wallpaperStrength', Number(event.target.value))} className="mt-3 w-full accent-[var(--accent)] disabled:opacity-40" />
-              <div className="mt-1 text-[10px] text-[var(--text-muted)]">{safeWallpaperUrl(value.wallpaper) ? '越高越明显；0% 隐藏背景，100% 显示完整柔光效果。' : '先选择壁纸或导入本机图片，再调整显示强度。'}</div>
+              <input type="range" aria-label="背景图片强度" min="0" max="100" disabled={!wallpaperReady} value={value.wallpaperStrength} onChange={(event) => update('wallpaperStrength', Number(event.target.value))} className="mt-3 w-full accent-[var(--accent)] disabled:opacity-40" />
+              <div className="mt-1 text-[10px] text-[var(--text-muted)]">{wallpaperReady ? '0% 隐藏壁纸，100% 保留图片或视频原色；与面板透明度独立。' : '先选择壁纸或导入本机文件，再调整显示强度。'}</div>
             </label>
             <label className="block">
               <div className="flex items-center justify-between text-xs"><span className="font-medium">面板透明度</span><span className="text-[var(--text-muted)]">{100 - value.glass}%</span></div>
@@ -156,7 +173,7 @@ export function ThemePanel({
 
         <footer className="border-t border-[var(--border)] p-4">
           <div className="flex gap-2">
-            <button disabled={importing} onClick={() => { if (onChange({ ...DEFAULT_THEME_PREFERENCES })) { try { clearLocalWallpaper(); setImageError('') } catch { setImageError('已恢复默认，个人图片清除失败，请重试。') } } }} className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-xs font-medium"><RotateCcw size={13} />恢复默认</button>
+            <button disabled={importing} onClick={() => void clearPersonal(true)} className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-xs font-medium"><RotateCcw size={13} />恢复默认</button>
             <button onClick={onClose} className="flex-1 rounded-xl bg-[var(--accent)] px-4 py-2.5 text-xs font-medium text-white">完成</button>
           </div>
         </footer>

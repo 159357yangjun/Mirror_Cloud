@@ -95,6 +95,10 @@ EXTERNAL_UI = {
     'R2 Object Storage', 'Cloudflare', '偏好设置', '图像', 'Typora', 'GitHub', 'Gitee',
     '阿里云 OSS', '腾讯云 COS', 'Bucket', 'Console', '控制台', 'Access Key', '自定义域名',
     'Custom Command / 自定义命令', 'Test Uploader / 验证图片上传选项',
+    # Verified provider-console labels used by the detailed setup guides; these are not app pages.
+    '＋', '新建仓库', '私人令牌', 'Generate new token', 'Create bucket',
+    'Manage API tokens / 管理 API 令牌', 'Apply to specific buckets only',
+    'Settings', 'Public access', '文件', '个人设置', '安全',
 }
 INSTRUCTION = re.compile(r'(进入|打开|点击|选择|在)([^\n]{0,12})\*\*([^*\n]{1,40})\*\*')
 PROSE = set('。．，,、；;：:!！?？()（）')

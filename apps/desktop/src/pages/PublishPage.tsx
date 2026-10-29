@@ -150,7 +150,6 @@ export function PublishPage() {
           <p>一张图片，一个故事。连接喜欢的云端，让分享轻盈一点。</p>
           <button onClick={() => openUpload('files')} className="sky-welcome-action"><UploadCloud size={16} />开始发布<span aria-hidden="true"> ↗</span></button>
         </div>
-        <div className="sky-welcome-art" aria-hidden="true"><span>晴空放映中</span></div>
       </section>
 
       {needsFirstStorage && (

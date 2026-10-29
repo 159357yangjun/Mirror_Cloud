@@ -1,0 +1,9 @@
+---
+import GuideNavigation from './GuideNavigation.astro';
+---
+
+<div class="guide-page">
+  <header class="guide-site-header"><slot name="header" /></header>
+  <GuideNavigation />
+  <div class="guide-main"><slot /></div>
+</div>

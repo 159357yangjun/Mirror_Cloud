@@ -1,37 +1,71 @@
 ---
 title: 连接腾讯云 COS
-description: 配置桶名、地域 Endpoint、SecretId / SecretKey 和公开地址。
+description: 找全桶名与地域，创建子账号密钥，再配置公开图片访问。
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components'
 
-## 准备什么
-
-创建 COS Bucket，复制**完整桶名（包含 APPID 后缀）**，例如 `images-1250000000`。记录地域 Endpoint，例如 `https://cos.ap-guangzhou.myqcloud.com`；使用仅授权目标桶对象列举、读写和删除的 CAM 凭据，取得 **SecretId / SecretKey**。
-
-准备可直接读取图片的公开域名 / CDN 地址。COS 默认桶域名格式可参考[官方域名说明](https://cloud.tencent.com/document/faq/436/56560)，能否匿名访问仍取决于读取策略。
-
-## 在镜云填写
+## 创建桶并复制完整名称
 
 <Steps>
-1. 进入 **云端 → 添加存储 → 腾讯云 COS**。
-2. 填完整 Bucket 名、Endpoint、SecretId 和 SecretKey；资源目录可选，例如 `assets`。
-3. 填写“公开访问域名”，与 API Endpoint 分开。
-4. 点击 **测试并保存**，设为默认目标，再发布测试图片。
+
+1. 登录 [COS控制台](https://console.cloud.tencent.com/cos)，进入存储桶列表，创建存储桶，按用途选择地域和名称。
+2. 名称输入 `my-images` 后，完整桶名通常包含APPID，例如 `my-images-1250000000`。镜云必须填写完整名称。
+3. 在桶的概览/基本配置记录地域简称，例如广州为 `ap-guangzhou`。这用于API Endpoint与桶域名，不能拿北京的地址连接广州的桶。
+4. 访问权限保留私有，或仅对明确要公开的图片开放只读；不要启用匿名写入。
+
 </Steps>
 
-<Aside type="note" title="公开地址必填">
-当前添加界面要求填写公开访问域名，应用不会从 Endpoint 自动推导图片地址。请先准备能读取图片的域名或 CDN，再添加连接。
-</Aside>
+## 创建专用子账号密钥
 
-## 如何确认成功
+<Steps>
 
-在**图库**核对文件，在**资源**复制链接，用未登录的浏览器确认图片能打开。
+1. 打开 [访问管理CAM](https://console.cloud.tencent.com/cam)，创建供镜云使用的子用户，按控制台当前流程启用编程访问/API密钥。
+2. 授权到指定COS桶，至少满足对象列举、读取、写入、删除，以及所需的桶元数据访问；不要授予账号级全部资源管理权限。
+3. 在该子用户的API密钥管理取得 **SecretId / SecretKey**，完整保存。当前镜云没有临时Session Token字段，不能把临时密钥三元组当成长期二元组使用。
+
+</Steps>
+
+## 准备图片访问地址
+
+当前镜云COS界面的“公开访问域名”必填。可使用自己已配置的CDN/自定义域名；默认桶域名形式为 `完整桶名.cos.地域.myqcloud.com`。它是否允许匿名读取、是否可直接预览图片，以桶策略和平台实际响应为准。
+
+若使用CDN，在COS域名/CDN管理中按指引配置域名、回源、DNS与HTTPS；测试一张图片能被未登录访客读取后再填入镜云。选择私有桶时，不能期待仅填域名就能获得公开图片。
+
+## 在镜云逐项填写
+
+打开 **云端 → 添加存储 → 腾讯云 COS**。
+
+| 镜云字段 | 来源 / 填写规则 | 示例 |
+| --- | --- | --- |
+| 显示名称 | 自己命名 | 我的 COS |
+| Bucket | COS列表完整桶名，包含APPID后缀 | `my-images-1250000000` |
+| Endpoint | 对应地域的API服务根地址，不拼桶名 | `https://cos.ap-guangzhou.myqcloud.com` |
+| SecretId | 子账号API密钥ID | 自己的ID |
+| SecretKey | 与SecretId配对的密钥 | 自己的Secret |
+| 资源目录（可选） | 桶内路径前缀，留空为根目录 | `assets` |
+| 公开访问域名 | 实际可读图片的HTTPS根地址 | `https://img.example.com` |
+
+点击 **测试并保存**，成功后设为默认目标；API测试不会替你修复公网访问域名。
+
+## 上传并确认结果
+
+<Steps>
+
+1. 在 **发布** 上传一张测试图，等待任务成功；到 **图库** 与COS控制台确认对象存在。
+2. 到 **资源** 复制URL，核对目录前缀没有遗漏或重复。
+3. 在未登录的浏览器打开，应直接显示图片。若返回403/下载响应，先处理访问策略或域名预览条件。
+
+</Steps>
 
 ## 常见错误
 
-| 现象 | 先检查 |
+| 现象 | 检查及处理 |
 | --- | --- |
-| 403 / 签名错误 | CAM 权限、SecretId / SecretKey |
-| 找不到 Bucket | 桶名是否包含 APPID 后缀、Endpoint 是否与地域一致 |
-| 图片打不开 | 公开读取策略、域名或 CDN 回源路径 |
+| 找不到Bucket | 桶名是否包含APPID，地域Endpoint是否正确 |
+| 403 / 签名错误 | SecretId与SecretKey是否配对、子账号授权是否覆盖该桶及当前操作 |
+| 可以上传但图库失败 | 是否缺少列举或读取权限 |
+| URL打不开/要求签名 | 公开访问策略、CDN回源鉴权和域名是否配置好；不要把API Endpoint当图片根地址 |
+| 路径多一层目录 | 检查资源目录与CDN回源目录是否重复拼接 |
+
+参考：[COS地域和访问域名](https://cloud.tencent.com/document/product/436/6224)、[CAM子用户密钥管理](https://cloud.tencent.com/document/product/598/37140)、[COS权限管理](https://cloud.tencent.com/document/product/436/30581)。本网站不接收密钥。

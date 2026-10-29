@@ -1,42 +1,76 @@
 ---
 title: 连接 Cloudflare R2
-description: 按四步向导连接 R2，区分公开图片与私有存储。
+description: 找到桶名、Account ID、S3 密钥和公开域名，再按四步连接。
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components'
 
-## 准备什么
-
-在 Cloudflare 的 **R2 Object Storage** 创建 Bucket，记录 **Bucket 名称、Account ID**。在 R2 的 Manage API Tokens 创建仅限该桶的 **Object Read & Write** 凭据，保存 **Access Key ID、Secret Access Key**。普通 Cloudflare API Token 不能代替这对密钥。
-
-公开图片还需要启用自定义域名；临时测试可使用 R2 公共开发地址。长期使用建议绑定自己的域名。参见 [R2 公开访问](https://developers.cloudflare.com/r2/buckets/public-buckets/)与[凭据说明](https://developers.cloudflare.com/r2/api/tokens/)。
-
-## 在镜云填写
-
-进入 **云端 → 添加存储 → Cloudflare R2**，按向导操作：
+## 创建存储桶
 
 <Steps>
-1. **存储桶**：填写显示名称、Bucket 和 Account ID。API Endpoint 自动生成，Region 保持 `auto`。当前只支持默认辖区，EU / US / FedRAMP 专用辖区暂不支持。
-2. **发布用途**：公开图片选择“公开发布”，填写已启用的公开访问地址，例如 `https://img.example.com`；私有用途选择“私有存储目标”，不填公开地址。
-3. **API 密钥**：填写 Access Key ID、Secret Access Key。资源目录可留空，或填 `assets`，不要填域名或完整网址。
-4. **检查与保存**：核对摘要，点击“授权测试并保存”，阅读远端操作确认后继续。
+
+1. 登录 [Cloudflare 控制台](https://dash.cloudflare.com/)，选中自己的账户，进入 **R2 Object Storage**。首次开通按平台提示完成，先确认账户的计费与使用要求。
+2. 点击 **Create bucket**，填写桶名，例如 `my-images`。按用途选择存储类别和位置后创建；记录桶名。镜云目前支持默认辖区，不支持EU/US/FedRAMP等专用辖区Endpoint。
+3. 在 R2 概览或桶的 S3 API 信息中找到 **Account ID**，是32位十六进制账户编号。不要填 Bucket 名、邮箱或 Cloudflare Zone ID。
+
 </Steps>
 
-<Aside type="caution" title="保存前需要知道">
-前三步仅校验本地字段；最后的测试会写入临时对象、检查元数据并尝试删除，清理失败可能留下对象。选择私有模式不会关闭 Bucket 的公网入口，需自行在 Cloudflare 关闭并验证匿名访问被拒绝。
+## 创建 S3 访问密钥
+
+<Steps>
+
+1. 在 R2 概览进入 **Manage API tokens / 管理 API 令牌**，创建 R2 API 令牌。
+2. 权限选择 **Object Read & Write**，范围选择 **Apply to specific buckets only**，勾选刚才的桶；其他条件按实际需要设置。
+3. 创建后保存 **Access Key ID** 和 **Secret Access Key** 两项，Secret通常只显示一次。它们用于S3 API；普通 Cloudflare API Token 不能替代这对密钥。
+
+</Steps>
+
+## 准备公开图片地址或选择私有
+
+公开图床：打开桶 **Settings → Public access**，绑定 **Custom Domains** 下自己的域名，例如 `img.example.com`，等待状态可用。测试时也可按提示启用 **Public Development URL**，复制完整 `https://…r2.dev` 地址；开发地址有限制，不应作为长期生产地址。
+
+私有存储：不启用公共开发地址和公开域名，检查已有公开入口是否关闭。镜云中选择私有不会替你修改桶权限。
+
+## 在镜云逐项填写
+
+打开 **云端 → 添加存储 → Cloudflare R2**，按四步向导操作。
+
+| 向导 / 字段 | 从哪里取值 | 示例或规则 |
+| --- | --- | --- |
+| 1 · 显示名称 | 自己命名 | 我的 R2 图床 |
+| 1 · Bucket | 控制台桶名 | `my-images` |
+| 1 · Account ID | R2 概览/S3 API信息 | 自己的32位账户ID |
+| 1 · Endpoint / Region | 根据Account ID生成 | `https://账户ID.r2.cloudflarestorage.com`；Region为`auto` |
+| 2 · 发布用途 | 对外分享选“公开发布”；只在认证后访问选“私有存储目标” | 两者选一 |
+| 2 · 公开访问地址 | 已启用的自定义域名或开发地址 | `https://img.example.com`，不能填S3 Endpoint |
+| 3 · Access Key ID | R2令牌创建结果 | 完整复制 |
+| 3 · Secret Access Key | 同次创建结果 | 完整复制，不填普通API Token |
+| 3 · 资源目录 | 桶内路径前缀，可留空 | `assets`，不填URL |
+
+在第4步核对摘要，点击 **授权测试并保存**，阅读确认后继续。保存后设为默认目标。
+
+<Aside type="caution" title="最后一步会访问云端">
+前三步只做本地字段检查；最后测试会写临时对象、读取元数据并尝试删除，清理失败可能留下对象。确认目标桶正确后再授权。
 </Aside>
 
-## 如何确认成功
+## 上传并确认结果
 
-将连接设为默认目标，在**发布**上传一张图片；到**图库**核对远端文件，再到**资源**检查结果。公开模式请用未登录的浏览器打开链接；私有模式应无法匿名读取，可在应用内预览或生成限时分享。Typora / 命令行上传需要可返回公开链接的目标。
+<Steps>
+
+1. 在 **发布** 上传一张测试图，到 **图库** 刷新，再到Cloudflare桶内核对文件。
+2. 公开模式：到 **资源** 复制URL，用未登录浏览器直接打开图片。
+3. 私有模式：确认匿名读取被拒绝，再测试应用内认证预览或限时分享。Typora和命令行上传需要能返回公开链接的目标。
+
+</Steps>
 
 ## 常见错误
 
-| 现象 | 先检查 |
+| 现象 | 检查及处理 |
 | --- | --- |
-| 401 / 403 | 密钥是否正确、是否限定到当前 Bucket、是否有对象读写与删除权限 |
-| Endpoint 或签名错误 | Account ID 是否正确、Region 是否为 `auto`、是否误用了专用辖区 |
-| 上传成功但链接打不开 | 公开地址是否已启用，是否误填了 S3 API Endpoint |
-| 图片路径多了一层目录 | 资源目录与命名配置是否重复添加了同一目录 |
+| 401/403 | 两项S3密钥是否来自同次创建、是否有对象读写权限并限定到当前桶 |
+| 签名/Endpoint错误 | Account ID是否正确、Region是否auto、是否误用专用辖区 |
+| NoSuchBucket | Bucket是否拼错，令牌所在账户与桶是否一致 |
+| 上传成功，URL打不开 | 公共入口是否启用；公开地址是否误填成S3 API Endpoint |
+| 私有模式仍可匿名读 | 检查桶的公开开发地址、自定义域名及其他代理入口；应用模式不会关闭它们 |
 
-密钥只填在桌面应用中，本网站不接收密钥。
+参考：[R2 官方 S3 入门](https://developers.cloudflare.com/r2/get-started/s3/)、[令牌](https://developers.cloudflare.com/r2/api/tokens/)、[公开访问](https://developers.cloudflare.com/r2/buckets/public-buckets/)。本网站不接收密钥。

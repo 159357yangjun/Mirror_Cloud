@@ -11,6 +11,10 @@ export default defineConfig({
       title: '镜云 · Mirror Cloud',
       description: 'A multi-cloud image hosting, management and publishing platform.',
       customCss: ['./src/styles/custom.css'],
+      components: {
+        PageFrame: './src/components/GuidePageFrame.astro',
+        TwoColumnContent: './src/components/GuideContent.astro',
+      },
       sidebar: [
         { label: '开始', items: [{ label: '5 分钟上手', slug: 'index' }] },
         {

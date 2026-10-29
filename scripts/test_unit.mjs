@@ -20,6 +20,7 @@ const suites = [
   'verify_probe_display.mjs',
   'test_r2_diagnostics.mjs',
   'test_anime_theme.mjs',
+  'test_video_wallpaper.mjs',
 ]
 let failed = 0
 for (const suite of suites) {

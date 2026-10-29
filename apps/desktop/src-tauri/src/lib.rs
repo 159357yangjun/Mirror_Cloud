@@ -2,6 +2,7 @@ pub mod cli;
 mod commands;
 pub mod reconcile_cadence;
 mod rollback;
+mod window_layout;
 
 use std::{
     path::PathBuf,
@@ -78,6 +79,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                window_layout::configure_initial_window(&window)?;
+            }
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
             let db_path = data_dir.join("publisher.sqlite3");
@@ -120,6 +124,9 @@ pub fn run() {
                 local_api_running,
             );
             commands::reconcile::start_background_reconciler(app.handle());
+            if let Some(window) = app.get_webview_window("main") {
+                window.show()?;
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

@@ -18,6 +18,36 @@ if ($exe.Count -ne 1) { throw "Expected exactly one native app EXE, found $($exe
 Report "APP_PATH: $($exe[0].FullName)"
 Report "DB_PATH: $dbPath"
 $procs = @()
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class MirrorWindowBounds {
+  [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
+  [StructLayout(LayoutKind.Sequential)] public struct MonitorInfo { public int Size; public Rect Monitor, Work; public uint Flags; }
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out Rect rect);
+  [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr window, uint flags);
+  [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+  [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+}
+'@
+function Assert-InitialWindowBounds([IntPtr]$handle, [string]$name) {
+  $previous = [MirrorWindowBounds]::SetThreadDpiAwarenessContext([IntPtr](-4))
+  try {
+    $rect = [MirrorWindowBounds+Rect]::new()
+    $info = [MirrorWindowBounds+MonitorInfo]::new()
+    $info.Size = [Runtime.InteropServices.Marshal]::SizeOf($info)
+    $monitor = [MirrorWindowBounds]::MonitorFromWindow($handle, 2)
+    if (-not [MirrorWindowBounds]::GetWindowRect($handle, [ref]$rect) -or -not [MirrorWindowBounds]::GetMonitorInfo($monitor, [ref]$info)) { throw 'Native window/monitor bounds unavailable' }
+    $work = $info.Work
+    $rw = ($rect.Right - $rect.Left) / [double]($work.Right - $work.Left)
+    $rh = ($rect.Bottom - $rect.Top) / [double]($work.Bottom - $work.Top)
+    if ($rect.Left -lt $work.Left -or $rect.Top -lt $work.Top -or $rect.Right -gt $work.Right -or $rect.Bottom -gt $work.Bottom) { throw 'Initial native window exceeds monitor work area' }
+    if ([Math]::Abs($rw - 0.8) -gt 0.03 -or [Math]::Abs($rh - 0.8) -gt 0.03) { throw "Initial window ratio differs from 80%: $rw / $rh" }
+    Report "NATIVE_WINDOW_BOUNDS_$($name): within_work_area=1 width_ratio=$rw height_ratio=$rh"
+  } finally {
+    if ($previous -ne [IntPtr]::Zero) { [void][MirrorWindowBounds]::SetThreadDpiAwarenessContext($previous) }
+  }
+}
 function Stop-Native($p) {
   if ($null -eq $p) { return }
   $live = Get-Process -Id $p.Id -ErrorAction SilentlyContinue
@@ -46,6 +76,7 @@ function Start-Native([string]$name) {
     throw "$name DB not created at expected path; other matches: $($found -join ',')"
   }
   if (-not $window) { throw "$name SQLite created but native UI window was not observed; cannot claim GUI launch" }
+  Assert-InitialWindowBounds $live.MainWindowHandle $name
   Report "NATIVE_WINDOW_$($name): pass"
   Report "NATIVE_DB_$($name): pass"
   return $p

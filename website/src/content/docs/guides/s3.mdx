@@ -1,36 +1,63 @@
 ---
 title: 连接 S3 Compatible
-description: AWS S3、MinIO 和其他 S3 兼容存储的字段与验证方法。
+description: 分清 Bucket、Endpoint、Region 和公开地址，连接 AWS 或其他 S3 兼容服务。
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components'
 
-## 准备什么
+## 先在服务商准备
 
-从服务商控制台取得 **Endpoint、Region、Bucket、Access Key ID、Secret Access Key**。凭据仅授予目标桶需要的列举、读取、写入与删除权限。Endpoint 与 Region 采用服务商给出的值，不要填写控制台网页地址。
-
-## 在镜云填写
+S3 Compatible不是一家具体图床：AWS S3、MinIO和其他兼容服务的控制台不同。先从服务商取得下表五项，不能照抄某一家的值用于另一家。
 
 <Steps>
-1. 进入 **云端 → 添加存储 → S3 Compatible**。
-2. 填写显示名称、Endpoint、Region、Bucket 和密钥；资源目录可选，例如 `assets`。
-3. 公开用途选择“公开发布”，填写真正可匿名访问图片的公开地址；私有用途选择“私有存储目标”，清空公开地址。
-4. 点击 **测试并保存**，通过后设为默认目标，再发布一张图片。
+
+1. 创建或选中一个Bucket，记录**准确桶名与地域Region**。
+2. 找服务商的“S3 API / 连接信息 / Endpoint”页面，复制HTTPS API地址。AWS以所在地域的S3服务地址为准；其他服务商使用其提供的值。
+3. 创建用于这一个桶的访问凭据，取得 **Access Key ID / Secret Access Key**。权限需要能列举、读、写、删除对象；AWS策略通常涉及 ListBucket、GetObject、PutObject、DeleteObject，以及服务实际要求的桶地域/分段上传权限。
+4. 决定是否公开发布。公开图片需要独立配置匿名可读的域名/CDN；私有目标保留访问控制。不要设置匿名可写。
+
 </Steps>
 
-<Aside type="note" title="访问模式">
-选择私有不会修改桶权限。请在服务商控制台关闭公开入口，再验证匿名读取被拒绝。私有对象可在应用内预览、生成限时分享；有效期与实际访问能力取决于服务商实现。Typora / 命令行需要公开链接，不能使用私有目标。
+## 在镜云逐项填写
+
+打开 **云端 → 添加存储 → S3 Compatible**。
+
+| 镜云字段 | 填写方法 | 示例 |
+| --- | --- | --- |
+| 显示名称 | 自己取名 | 我的 S3 |
+| Bucket | 控制台桶名，不是域名 | `my-images` |
+| Endpoint | 服务商S3 API根地址，不是管理后台，也不重复追加桶名 | AWS地域示例：`https://s3.us-east-1.amazonaws.com` |
+| Region | 桶所在地域；其他兼容服务按其文档填写 | `us-east-1`仅为AWS示例 |
+| Access Key ID | 当前桶凭据的ID | 自己的ID |
+| Secret Access Key | 与上项配对的密钥 | 自己的Secret |
+| 资源目录（可选） | 桶内路径前缀，留空为根目录 | `assets` |
+| 发布用途 | 公开发布或私有存储目标 | 按实际权限选择 |
+| 公开访问地址 | 公开用途必填，私有用途清空 | `https://img.example.com` |
+
+点击 **测试并保存**，成功后在云端列表设为默认发布目标。连接测试需要相应远端读写/删除权限；不要拿只读账号测试上传。
+
+<Aside type="note" title="地址与权限">
+Endpoint用来操作存储；公开地址用来打开图片。二者可能不同。选“私有存储目标”不修改服务商桶策略。当前仅允许HTTPS或本机回环HTTP；普通局域网HTTP地址不能直接用于连接。
 </Aside>
 
-## 如何确认成功
+## 上传并确认结果
 
-**图库**能看到远端文件，**资源**有发布记录。公开链接应在未登录的浏览器中显示图片；私有对象应拒绝匿名访问，并单独验证限时分享能否按时失效。连接测试通过不能代替这两项检查。
+<Steps>
+
+1. 发布一张测试图，在 **图库** 和服务商控制台核对同一个文件。
+2. 公开目标：复制 **资源** 中的URL，用未登录浏览器直接打开。
+3. 私有目标：验证匿名访问失败，应用内认证预览可用；如需限时分享，另验证服务商支持和到期行为。Typora/命令行需要公开URL，不能用私有目标完成该链路。
+
+</Steps>
 
 ## 常见错误
 
-| 现象 | 先检查 |
+| 现象 | 检查及处理 |
 | --- | --- |
-| 403 / 签名错误 | 密钥、权限、Region，以及本机时间 |
-| 找不到 Bucket | 桶名与 Endpoint 是否对应同一服务和地域 |
-| 无法连接 | 使用 HTTPS；本机服务可用回环 HTTP，普通局域网 HTTP 不在当前允许范围内 |
-| URL 打不开 | 公开访问地址、访问策略或临时分享支持情况 |
+| 签名不匹配 / 403 | 密钥、Region、Endpoint是否匹配；检查本机时间与权限 |
+| 找不到桶 | 桶名与地域一致吗？Endpoint是否多拼了一层桶名？ |
+| 上传成功但无法列举/删除 | 凭据是否只授予写入，缺少列举、读取或删除权限 |
+| 自建服务无法连接 | HTTPS证书、外网可达性；局域网HTTP不符合当前地址策略 |
+| 图片URL要求登录 | 公开地址/策略未配置好，不要把登录后的管理链接当外链 |
+
+参考：[AWS S3 权限与访问控制](https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-management.html)、[AWS S3 地域地址](https://docs.aws.amazon.com/general/latest/gr/s3.html)。MinIO等服务应同时核对其部署管理员提供的S3连接说明。

@@ -1,37 +1,70 @@
 ---
 title: 连接 GitHub
-description: 为文档图片配置仓库、分支与最小权限 Token。
+description: 从创建仓库和 Token，到逐字段填写、上传和验证图片链接。
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components'
 
-## 准备什么
-
-准备一个资源仓库，确认已有目标分支，例如 `main`。创建仅授权该仓库、具备 **Contents: Read and write** 权限的细粒度 Token。
-
-## 在镜云填写
+## 创建并确认仓库
 
 <Steps>
-1. 进入 **云端 → 添加存储 → GitHub**。
-2. Owner 填用户或组织名；Repository 只填仓库名，不填完整网址；Branch 填实际分支。
-3. 填 Token，资源目录可填 `assets`，首次上传会自动创建目录。
-4. 公开仓库可留空“自定义公开域名”，应用会生成 Raw URL；有自己的代理 / CDN 才填写。
-5. 点击 **测试并保存**，设为默认目标，再发布一张图片。
+
+1. 登录 [GitHub](https://github.com/)，右上角 **＋ → New repository**。仓库名可用 `my-images`，需要对外分享图片时选择 **Public**。勾选 **Add a README file** 后创建，确保已有初始分支。
+2. 已有仓库直接打开即可，不要重复创建。地址例如 `https://github.com/your-name/my-images`，记录 Owner=`your-name`、仓库名=`my-images`。
+3. 从仓库文件列表左上角的分支菜单确认分支，例如 `main`。不能把网页地址中的 `tree/main` 整段填进分支。
+
 </Steps>
 
-<Aside type="caution" title="仓库公开性">
-私有仓库的 Raw 地址不能直接供访客读取。需要自己的公开代理 / CDN，或改用对象存储作为公开目标。仓库适合文档和少量资源，不适合承担大量图片流量。
+## 创建最小权限 Token
+
+<Steps>
+
+1. 打开 [Fine-grained personal access tokens](https://github.com/settings/personal-access-tokens)，点击 **Generate new token**。
+2. 填名称“Mirror Cloud”，设置过期时间。**Resource owner** 选仓库所属用户或组织；组织可能要求管理员批准。
+3. **Repository access → Only select repositories**，只选图床仓库；**Repository permissions → Contents** 选 **Read and write**，Metadata 保持系统必需的读取权限。无需勾选工作流、账号管理等权限。
+4. 生成后立即复制令牌，填入镜云“访问令牌”。令牌不是 GitHub 密码或 SSH 密钥；不要把它放进仓库、网址或教程截图。
+
+</Steps>
+
+## 在镜云逐项填写
+
+打开 **云端 → 添加存储 → GitHub**，按实际仓库替换示例。
+
+| 镜云字段 | 内容来源 / 填写规则 | 示例 |
+| --- | --- | --- |
+| 显示名称 | 自己取名 | 我的 GitHub 图片 |
+| 用户名 / Owner | 仓库 URL 第一段，组织仓库填组织名 | `your-name` |
+| 仓库名 | URL 第二段，只填仓库路径名，不带 `.git` | `my-images` |
+| 分支 | 仓库分支菜单中的实际名称 | `main` |
+| 资源目录 | 仓库内的图片目录；上传时自动创建，留空为根目录 | `assets` |
+| 访问令牌 | 刚生成且未过期的 Token | 粘贴自己的令牌 |
+| 自定义公开域名（可选） | 没有自己的代理/CDN就留空；填写时使用图片根地址 | 留空 |
+
+点击 **测试并保存**。应用会校验仓库与分支访问；保存后在云端列表将其设为默认发布目标。
+
+## 上传并确认结果
+
+<Steps>
+
+1. 在 **发布** 选择一张测试图并提交，等任务完成。
+2. 到 GitHub 仓库检查 `assets` 下是否出现图片和提交；到镜云 **图库** 刷新。
+3. 到 **资源** 复制 URL，未填写自定义域名时通常是 `raw.githubusercontent.com` 地址。用未登录的浏览器打开，再测试复制 Markdown 到文档。
+
+</Steps>
+
+<Aside type="caution" title="公开仓库与私有仓库">
+Token 能写私有仓库，不代表访客能看图片。私有仓库需要自己的公开代理/CDN才能提供永久公开链接。仓库适合文档和轻量资源，外链访问也受网络与平台策略影响。
 </Aside>
-
-## 如何确认成功
-
-**图库**能列出远端文件，仓库中出现提交；**资源**中的链接能在未登录浏览器中打开。
 
 ## 常见错误
 
-| 现象 | 先检查 |
+| 现象 | 检查及处理 |
 | --- | --- |
-| 401 | Token 是否过期、撤销或复制错误 |
-| 403 | Token 是否获准访问目标仓库，并有 Contents 写权限 |
-| 404 | Owner、仓库名、分支，以及私有仓库授权 |
-| 409 | 同一分支有并发写入；应用会重读远端状态后重试，仍失败时稍后重试 |
+| 401 | Token 是否过期、撤销、粘贴不完整 |
+| 403 | Token 是否包含当前仓库和 Contents 写权限；组织批准、分支保护是否允许操作 |
+| 404 | Owner、仓库名、分支是否准确；私有仓库授权失败也可能返回404 |
+| 空仓库无法保存 | 先在 GitHub 初始化 README，确认分支存在，再添加 |
+| 409 / 并发写入 | 同一分支可能被其他客户端修改，稍后重试，避免同时批量提交 |
+| 已上传但图片打不开 | 分别检查仓库公开性、Raw 访问网络与自定义域名，不能只看“测试成功” |
+
+参考：[GitHub 官方 Token 管理](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)、[创建仓库](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-new-repository)。本网站不接收密钥。

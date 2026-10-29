@@ -13,11 +13,12 @@
     "windows": [
       {
         "title": "镜云 | Mirror Cloud",
-        "width": 1280,
-        "height": 820,
+        "width": 640,
+        "height": 480,
         "minWidth": 640,
         "minHeight": 480,
         "center": true,
+        "visible": false,
         "resizable": true,
         "maximizable": true
       }

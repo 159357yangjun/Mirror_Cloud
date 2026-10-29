@@ -1,0 +1,24 @@
+---
+const { sidebar } = Astro.locals.starlightRoute;
+type Entry = (typeof sidebar)[number];
+function flatten(entries: Entry[]): { label: string; href: string; current: boolean }[] {
+  return entries.flatMap((entry) => entry.type === 'link'
+    ? [{ label: entry.label, href: entry.href, current: entry.isCurrent }]
+    : flatten(entry.entries));
+}
+---
+
+<nav class="guide-navigation print:hidden" aria-label="教程分类">
+  <div class="guide-navigation-inner">
+    {sidebar.map((entry) => (
+      <div class="guide-navigation-group">
+        <span class="guide-navigation-label">{entry.label}</span>
+        <div class="guide-navigation-links">
+          {flatten(entry.type === 'group' ? entry.entries : [entry]).map((link) => (
+            <a href={link.href} aria-current={link.current ? 'page' : undefined}>{link.label}</a>
+          ))}
+        </div>
+      </div>
+    ))}
+  </div>
+</nav>

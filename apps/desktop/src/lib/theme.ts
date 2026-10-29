@@ -5,6 +5,7 @@ export type ThemePreferences = {
   accent: string
   wallpaper: string
   wallpaperStrength: number
+  wallpaperMotion: boolean
   blur: number
   glass: number
 }
@@ -53,6 +54,7 @@ export const DEFAULT_THEME_PREFERENCES: ThemePreferences = {
   accent: '#bd3c71',
   wallpaper: 'preset:day',
   wallpaperStrength: 100,
+  wallpaperMotion: true,
   blur: 18,
   glass: 88,
 }
@@ -85,6 +87,7 @@ export function loadThemePreferences(): ThemePreferences {
       accent: typeof parsed.accent === 'string' && isHexColor(parsed.accent) ? parsed.accent : DEFAULT_THEME_PREFERENCES.accent,
       wallpaper: typeof parsed.wallpaper === 'string' ? parsed.wallpaper : '',
       wallpaperStrength: numberPreference(parsed.wallpaperStrength, DEFAULT_THEME_PREFERENCES.wallpaperStrength, 0, 100),
+      wallpaperMotion: typeof parsed.wallpaperMotion === 'boolean' ? parsed.wallpaperMotion : true,
       blur: numberPreference(parsed.blur, DEFAULT_THEME_PREFERENCES.blur, 0, 36),
       glass: numberPreference(parsed.glass, DEFAULT_THEME_PREFERENCES.glass, 45, 100),
     }
@@ -114,7 +117,8 @@ export function applyThemePreferences(preferences: ThemePreferences) {
   root.style.setProperty('--glass-strength', `${numberPreference(preferences.glass, DEFAULT_THEME_PREFERENCES.glass, 45, 100)}%`)
   root.style.setProperty('--wallpaper-strength', `${numberPreference(preferences.wallpaperStrength, DEFAULT_THEME_PREFERENCES.wallpaperStrength, 0, 100)}%`)
 
-  const wallpaper = safeWallpaperUrl(preferences.wallpaper)
+  // The local video is rendered as a blob-backed full-page layer; this image is its safe fallback.
+  const wallpaper = preferences.wallpaper === 'local:video' ? '/art/sky-day.png' : safeWallpaperUrl(preferences.wallpaper)
   if (wallpaper) {
     root.style.setProperty('--wallpaper', `url(${JSON.stringify(wallpaper)})`)
     root.dataset.wallpaper = 'true'

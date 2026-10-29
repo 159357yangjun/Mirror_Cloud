@@ -1,0 +1,13 @@
+---
+const { toc } = Astro.locals.starlightRoute;
+---
+
+<div class="guide-content">
+  {toc && (
+    <nav class="guide-outline print:hidden" aria-label="本页步骤">
+      <span>本页步骤</span>
+      <div>{toc.items.map((item) => <a href={`#${item.slug}`}>{item.text}</a>)}</div>
+    </nav>
+  )}
+  <div class="guide-article"><slot /></div>
+</div>
