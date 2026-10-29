@@ -187,3 +187,9 @@
 从bd46b969ba5d7329ae075b85a9d538d5fcd615db开始，远端main复读9cc88524d0342784e30c26a32046f655d245d48c。用户要求按真实表单逐字段获取/填写/链接与整体排版，随后明确网站图片应作背景并使用提供素材；此前个人媒体限定本机，已请求澄清公开使用范围，期间仅用仓库既有插画作全页背景，不上传个人媒体。
 
 对照桌面表单七平台52项：保留实际字段名称、R2四步位置/自动Endpoint、S3用途/Region规则、OSS/COS公开域名必填、WebDAV凭据按服务要求。统一数据/组件呈现准备清单、平台直达链接、获取路径、填写规则、例子、误填；七MDX接入并保留操作/验证/排错。官方网站复读包括Cloudflare、GitHub、阿里云、腾讯云、AWS、Nextcloud和Gitee；Gitee /new实为用户页，已改为/projects/new，官方页面跳转登录验证；控制台登录跳转不能当账号内步骤实测。移除首页hero image，在PageFrame统一fixed/cover底层背景，阅读面、间距、字段卡响应式重排。check_docs_site16/0和diff检查通过，编译部署与真实视口以随后作业/截图补齐。
+
+**10ceab2上线验证**：实现17文件提交10ceab2fdf68759300d741939856b0e5a1b1520c与此前仅文档bd46b96一并正常推送main。Docs Site 40884457082（build123484319781/deploy123484573431）成功，CI40884457319及七页契约40884457337成功。独立HTTP14页均200，七平台52个data-field-label顺序与数据逐项一致，顶部14入口、所有目录锚点、每页全背景层、无左右栏检查通过；JSON保留outputs/field-guides-2026-10-29/live-verification.json。
+
+浏览器R2实际手机390×844（scrollWidth375）、单列292.625px、9字段、无hero img；高层viewport API成功。此前CDP调用和过长多步截图调用超时，未把超时当作手机PASS。手机字段截图r2-mobile-fields.png成功保存；1280×720深色实际列宽505.203/505.211px，scrollWidth1265、fixed背景铺满可视工作区，锚点#configuration-fields，截图r2-desktop-fields-dark.png。仅R2做真实手机/深色布局，不扩称七平台手机矩阵。独立只读审查无阻断或重要发现，仍承认官方登录后控制台步骤和真实账户配置未实测。
+
+结束恢复Auto主题与viewport，临时6页关闭、用户2/3页保留；没有新建本地服务、独立profile或一次性代码文件。个人JPG/MP4未上传，公开范围问题仍待用户答复；排版和字段已上线，素材替换尚未完成。收尾记录与产品源码10ceab2区分，不以产品CI冒充后续记录提交CI。
