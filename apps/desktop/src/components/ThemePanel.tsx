@@ -138,13 +138,18 @@ export function ThemePanel({
 
           <section className="mt-7 space-y-5 rounded-2xl border border-[var(--border)] bg-[var(--surface-soft)] p-4">
             <label className="block">
-              <div className="flex items-center justify-between text-xs"><span className="font-medium">玻璃浓度</span><span className="text-[var(--text-muted)]">{value.glass}%</span></div>
-              <input type="range" min="45" max="100" value={value.glass} onChange={(event) => update('glass', Number(event.target.value))} className="mt-3 w-full accent-[var(--accent)]" />
-              <div className="mt-1 text-[10px] text-[var(--text-muted)]">数值越低，壁纸透得越明显。</div>
+              <div className="flex items-center justify-between text-xs"><span className="font-medium">背景图片强度</span><span className="text-[var(--text-muted)]">{value.wallpaperStrength}%</span></div>
+              <input type="range" aria-label="背景图片强度" min="0" max="100" disabled={!safeWallpaperUrl(value.wallpaper)} value={value.wallpaperStrength} onChange={(event) => update('wallpaperStrength', Number(event.target.value))} className="mt-3 w-full accent-[var(--accent)] disabled:opacity-40" />
+              <div className="mt-1 text-[10px] text-[var(--text-muted)]">{safeWallpaperUrl(value.wallpaper) ? '越高越明显；0% 隐藏背景，100% 显示完整柔光效果。' : '先选择壁纸或导入本机图片，再调整显示强度。'}</div>
+            </label>
+            <label className="block">
+              <div className="flex items-center justify-between text-xs"><span className="font-medium">面板透明度</span><span className="text-[var(--text-muted)]">{100 - value.glass}%</span></div>
+              <input type="range" aria-label="面板透明度" min="0" max="55" value={100 - value.glass} onChange={(event) => update('glass', 100 - Number(event.target.value))} className="mt-3 w-full accent-[var(--accent)]" />
+              <div className="mt-1 text-[10px] text-[var(--text-muted)]">越高越透明，影响侧栏与内容卡片。设置和确认弹窗保持清晰。</div>
             </label>
             <label className="block">
               <div className="flex items-center justify-between text-xs"><span className="font-medium">毛玻璃模糊</span><span className="text-[var(--text-muted)]">{value.blur}px</span></div>
-              <input type="range" min="0" max="36" value={value.blur} onChange={(event) => update('blur', Number(event.target.value))} className="mt-3 w-full accent-[var(--accent)]" />
+              <input type="range" aria-label="毛玻璃模糊" min="0" max="36" value={value.blur} onChange={(event) => update('blur', Number(event.target.value))} className="mt-3 w-full accent-[var(--accent)]" />
             </label>
           </section>
         </fieldset>

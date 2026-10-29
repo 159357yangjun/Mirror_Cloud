@@ -25,7 +25,6 @@
 :root[data-theme='sakura'] .app-brand-mark { background: linear-gradient(135deg, #407aac, #bd3c71); border-radius: 14px 14px 20px 14px; }
 :root[data-theme='sakura'] .app-upload-button { background: var(--accent); box-shadow: 0 8px 24px var(--accent-soft); border: 1px solid transparent; }
 :root[data-theme='sakura'] .app-nav-item[aria-current='page'] { background: var(--surface-soft); box-shadow: 0 4px 15px var(--accent-soft); border-left: 3px solid var(--accent); padding-left: 9px; }
-:root[data-theme='sakura'] .app-sidebar { background: var(--surface); }
 @media (max-width: 850px) { .sky-welcome { grid-template-columns: 1fr .8fr; min-height: 220px; } .sky-welcome-copy { padding: 24px; } }
 @media (max-width: 600px) { .sky-welcome { grid-template-columns: 1fr; } .sky-welcome-art { min-height: 125px; border-radius: 35px 0 0 0; background-position: center 45%; } .sky-welcome-copy { padding: 23px; } }
 @media (prefers-reduced-motion: reduce) { .sky-welcome *, .sky-preset { transition: none !important; } }
@@ -44,10 +43,13 @@
 
   /* v1.4 theme tokens: components should gradually depend on these instead of hard-coded palette values. */
   --app-bg: #f6f7fb;
-  --surface: rgba(255, 255, 255, .94);
-  --surface-soft: rgba(248, 250, 252, .9);
-  --surface-glass: rgba(255, 255, 255, .78);
-  --surface-hover: rgba(248, 250, 252, .96);
+  --surface-base: #fbfcfe;
+  --surface-soft-base: #f3f5f9;
+  --surface-hover-base: #f7f9fc;
+  --surface: color-mix(in srgb, var(--surface-base) var(--glass-strength), transparent);
+  --surface-soft: color-mix(in srgb, var(--surface-soft-base) var(--glass-strength), transparent);
+  --surface-glass: var(--surface);
+  --surface-hover: color-mix(in srgb, var(--surface-hover-base) var(--glass-strength), transparent);
   --text-primary: #0f172a;
   --text-secondary: #475569;
   /* Readable-on-surface grey. The previous #94a3b8 measured 2.45:1 against the card colour,
@@ -75,6 +77,7 @@
   --backdrop-blur: 18px;
   --glass-strength: 88%;
   --wallpaper: none;
+  --wallpaper-strength: 100%;
   /* 138 call sites use text-slate-400 and 43 use text-slate-500, and Tailwind compiles them to
      var(--color-slate-N) - so the readable grey is set here once instead of at 181 places.
      Neither rung is used as a background anywhere in the app, so darkening them only affects text
@@ -114,10 +117,9 @@
 :root[data-theme="midnight"] {
   color-scheme: dark;
   --app-bg: #090d16;
-  --surface: rgba(15, 23, 42, .88);
-  --surface-soft: rgba(30, 41, 59, .82);
-  --surface-glass: rgba(15, 23, 42, .7);
-  --surface-hover: rgba(30, 41, 59, .96);
+  --surface-base: #101828;
+  --surface-soft-base: #1b2536;
+  --surface-hover-base: #1e293b;
   --text-primary: #f8fafc;
   --text-secondary: #cbd5e1;
   --text-muted: #8d9bb3;
@@ -260,10 +262,9 @@
 
 :root[data-theme="sakura"] {
   --app-bg: #fff8fb;
-  --surface: rgba(255, 255, 255, .92);
-  --surface-soft: rgba(255, 245, 249, .9);
-  --surface-glass: rgba(255, 255, 255, .74);
-  --surface-hover: rgba(255, 247, 250, .98);
+  --surface-base: #fffbfd;
+  --surface-soft-base: #fdf2f7;
+  --surface-hover-base: #fff5f9;
   --text-primary: #28151e;
   --text-secondary: #6f4a5b;
   --text-muted: #7a6472;
@@ -315,60 +316,26 @@ button { cursor: pointer; }
   background-color: var(--app-bg);
   background-image:
     linear-gradient(
-      color-mix(in srgb, var(--app-bg) 90%, transparent),
-      color-mix(in srgb, var(--app-bg) 90%, transparent)
+      color-mix(in srgb, var(--app-bg) calc(100% - var(--wallpaper-strength)), transparent),
+      color-mix(in srgb, var(--app-bg) calc(100% - var(--wallpaper-strength)), transparent)
     ),
     var(--wallpaper);
+  /* The first layer hides/reveals the image independently of the panel alpha. Keep soft-light
+     on the image layer: arbitrary black/white user images must not determine text contrast. */
+  background-blend-mode: normal, soft-light;
   background-size: cover;
   background-position: center;
   background-attachment: fixed;
-  transition: background-color .2s ease, background-image .2s ease;
+  transition: background-color .2s ease;
 }
 
-/* Wallpaper floor, part 2 - the shell itself.
-   Panels are opaque in this mode (above), but page titles and section captions sit directly on
-   .app-shell-root, and the previous scrim was `color-mix(--app-bg 76%, transparent)` over an image
-   the user typed a URL for. Measured against an all-black wallpaper that put a "light" theme's
-   reading surface at rgb(189,190,193) - mid-grey, where no grey foreground can reach 4.5:1 (even
-   --text-secondary does 4.15) - and against an all-white one it put midnight at rgb(66,69,76).
-   Darkening the muted token to survive that band costs the type hierarchy its bottom rung
-   (muted would have to become near-body-text), so instead the wallpaper is composited with
-   background-blend-mode: soft-light over the theme's own opaque --app-bg. That bounds every
-   channel analytically: for base B and any source S the result lies between B-squared and
-   B-to-the-one-quarter-ish (sqrt branch), i.e. a light base stays light and a dark base stays
-   dark, whatever image is chosen. A 50% grey wallpaper leaves B exactly untouched. The image is
-   still visible as texture; it can no longer decide what a glyph sits on. */
-:root[data-wallpaper="true"] .app-shell-root {
-  background-image: var(--wallpaper);
-  background-blend-mode: soft-light;
-}
-
-/* Wallpaper floor. The scrim only covers the image with 76-84% of --app-bg, and the card surfaces
-   were translucent on top of that, so the colour a glyph actually sits on depended on a picture
-   the user typed a URL for. No fixed foreground can survive that: against an all-black wallpaper
-   the muted grey measured 1.42:1. Rather than tell people to pick a darker wallpaper, the panels
-   that carry text become opaque in this mode - the values below are each theme's own translucency
-   composited over its own background once, so the appearance barely moves while the contrast
-   becomes a fact instead of a hope. */
-:root[data-wallpaper="true"] {
-  --surface: #fbfcfe;
-  --surface-soft: #f3f5f9;
-  --surface-glass: #fbfcfe;
-  --surface-hover: #f7f9fc;
-}
-
-:root[data-wallpaper="true"][data-theme="midnight"] {
-  --surface: #101828;
-  --surface-soft: #1b2536;
-  --surface-glass: #101828;
-  --surface-hover: #1e293b;
-}
-
-:root[data-wallpaper="true"][data-theme="sakura"] {
-  --surface: #fffbfd;
-  --surface-soft: #fdf2f7;
-  --surface-glass: #fffbfd;
-  --surface-hover: #fff5f9;
+/* Dialog backdrops can be dark or contain other panels. Keep reading surfaces opaque there;
+   changing page-card transparency must not make confirmations or appearance controls unreadable. */
+.fixed.inset-0 {
+  --surface: var(--surface-base);
+  --surface-soft: var(--surface-soft-base);
+  --surface-glass: var(--surface-base);
+  --surface-hover: var(--surface-hover-base);
 }
 
 /* Shared primitives for the skin system. */
@@ -378,7 +345,7 @@ button { cursor: pointer; }
   box-shadow: var(--shadow-card);
 }
 .theme-glass {
-  background: color-mix(in srgb, var(--surface-glass) var(--glass-strength), transparent);
+  background: var(--surface-glass);
   border-color: var(--border);
   backdrop-filter: blur(var(--backdrop-blur));
 }

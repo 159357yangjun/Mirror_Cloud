@@ -4,6 +4,7 @@ export type ThemePreferences = {
   theme: ThemeKey
   accent: string
   wallpaper: string
+  wallpaperStrength: number
   blur: number
   glass: number
 }
@@ -51,6 +52,7 @@ export const DEFAULT_THEME_PREFERENCES: ThemePreferences = {
   theme: 'sakura',
   accent: '#bd3c71',
   wallpaper: 'preset:day',
+  wallpaperStrength: 100,
   blur: 18,
   glass: 88,
 }
@@ -61,6 +63,8 @@ const isThemeKey = (value: unknown): value is ThemeKey =>
 const isHexColor = (value: string) => /^#[0-9a-f]{6}$/i.test(value)
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+const numberPreference = (value: unknown, fallback: number, min: number, max: number) =>
+  typeof value === 'number' && Number.isFinite(value) ? clamp(value, min, max) : fallback
 
 function accentSoft(accent: string) {
   if (!isHexColor(accent)) return 'rgba(79, 70, 229, .12)'
@@ -80,8 +84,9 @@ export function loadThemePreferences(): ThemePreferences {
       theme: isThemeKey(parsed.theme) ? parsed.theme : DEFAULT_THEME_PREFERENCES.theme,
       accent: typeof parsed.accent === 'string' && isHexColor(parsed.accent) ? parsed.accent : DEFAULT_THEME_PREFERENCES.accent,
       wallpaper: typeof parsed.wallpaper === 'string' ? parsed.wallpaper : '',
-      blur: typeof parsed.blur === 'number' ? clamp(parsed.blur, 0, 36) : DEFAULT_THEME_PREFERENCES.blur,
-      glass: typeof parsed.glass === 'number' ? clamp(parsed.glass, 45, 100) : DEFAULT_THEME_PREFERENCES.glass,
+      wallpaperStrength: numberPreference(parsed.wallpaperStrength, DEFAULT_THEME_PREFERENCES.wallpaperStrength, 0, 100),
+      blur: numberPreference(parsed.blur, DEFAULT_THEME_PREFERENCES.blur, 0, 36),
+      glass: numberPreference(parsed.glass, DEFAULT_THEME_PREFERENCES.glass, 45, 100),
     }
   } catch {
     return { ...DEFAULT_THEME_PREFERENCES }
@@ -105,8 +110,9 @@ export function applyThemePreferences(preferences: ThemePreferences) {
   const accent = isHexColor(preferences.accent) ? preferences.accent : DEFAULT_THEME_PREFERENCES.accent
   root.style.setProperty('--accent', accent)
   root.style.setProperty('--accent-soft', accentSoft(accent))
-  root.style.setProperty('--backdrop-blur', `${clamp(preferences.blur, 0, 36)}px`)
-  root.style.setProperty('--glass-strength', `${clamp(preferences.glass, 45, 100)}%`)
+  root.style.setProperty('--backdrop-blur', `${numberPreference(preferences.blur, DEFAULT_THEME_PREFERENCES.blur, 0, 36)}px`)
+  root.style.setProperty('--glass-strength', `${numberPreference(preferences.glass, DEFAULT_THEME_PREFERENCES.glass, 45, 100)}%`)
+  root.style.setProperty('--wallpaper-strength', `${numberPreference(preferences.wallpaperStrength, DEFAULT_THEME_PREFERENCES.wallpaperStrength, 0, 100)}%`)
 
   const wallpaper = safeWallpaperUrl(preferences.wallpaper)
   if (wallpaper) {
