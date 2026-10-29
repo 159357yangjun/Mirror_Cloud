@@ -161,7 +161,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       </aside>
-      <main id="mirror-main" tabIndex={-1} className="app-main ml-[220px] min-h-screen">{children}</main>
+      <main id="mirror-main" tabIndex={-1} className="app-main ml-[220px] min-h-screen">
+        <div className="app-page-backdrop" aria-hidden="true" />
+        <div className="app-page-surface">{children}</div>
+      </main>
       {showHelp && (
         <HelpCenterDialog
           onClose={closeHelp}
