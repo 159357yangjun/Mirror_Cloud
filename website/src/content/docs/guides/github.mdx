@@ -1,38 +1,37 @@
 ---
 title: 连接 GitHub
-description: Repository Storage 的完整接入流程。
+description: 为文档图片配置仓库、分支与最小权限 Token。
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components'
 
-GitHub Provider 更适合 **README、项目文档、少量静态资源和多云镜像**，不把它定位成专业 CDN。
+## 准备什么
 
-## 需要准备
+准备一个资源仓库，确认已有目标分支，例如 `main`。创建仅授权该仓库、具备 **Contents: Read and write** 权限的细粒度 Token。
 
-- GitHub 账号
-- 一个 Repository
-- Branch（通常是 `main`）
-- 对该仓库有 Contents 读写权限的 Token
+## 在镜云填写
 
 <Steps>
-1. 新建或选择一个专门用于资源的 Repository，例如 `images`。
-2. 创建细粒度访问令牌，尽量只授权这个仓库，并授予仓库 Contents 读写能力。
-3. 在 Publisher 选择 **GitHub**，填写 Owner、Repository、Branch、Token。
-4. Root 可填写 `assets`，也可以留空。
-5. 公开仓库可以直接使用 Raw URL；如果你有自己的代理/CDN，可填写“自定义公开域名”。
-6. 点击 **测试并保存**。
+1. 进入 **云端 → 添加存储 → GitHub**。
+2. Owner 填用户或组织名；Repository 只填仓库名，不填完整网址；Branch 填实际分支。
+3. 填 Token，资源目录可填 `assets`，首次上传会自动创建目录。
+4. 公开仓库可留空“自定义公开域名”，应用会生成 Raw URL；有自己的代理 / CDN 才填写。
+5. 点击 **测试并保存**，设为默认目标，再发布一张图片。
 </Steps>
 
-<Aside type="caution" title="私有仓库">
-私有仓库的 Raw 地址不能天然作为“别人都能访问”的图床链接。若要公开分享，请提供你自己的公开代理/CDN 地址，或使用对象存储作为 Primary。
+<Aside type="caution" title="仓库公开性">
+私有仓库的 Raw 地址不能直接供访客读取。需要自己的公开代理 / CDN，或改用对象存储作为公开目标。仓库适合文档和少量资源，不适合承担大量图片流量。
 </Aside>
 
-## 推荐用法
+## 如何确认成功
 
-在 Storage Group 中把 R2/OSS/COS 作为 Primary，把 GitHub 作为 Mirror 或 Backup。这样仓库保留副本，但高流量访问仍由对象存储承担。
+**图库**能列出远端文件，仓库中出现提交；**资源**中的链接能在未登录浏览器中打开。
 
-## 常见问题
+## 常见错误
 
-- **404**：Owner/Repository/Branch 写错，或 Token 无权访问私有仓库。
-- **更新失败**：仓库内容 API 更新已有文件需要当前文件 SHA，Publisher 会自动读取并处理；若仍失败，检查 Token 的 Contents 写权限。
-- **Raw URL 不能访问**：确认仓库公开，或配置自定义公开域名。
+| 现象 | 先检查 |
+| --- | --- |
+| 401 | Token 是否过期、撤销或复制错误 |
+| 403 | Token 是否获准访问目标仓库，并有 Contents 写权限 |
+| 404 | Owner、仓库名、分支，以及私有仓库授权 |
+| 409 | 同一分支有并发写入；应用会重读远端状态后重试，仍失败时稍后重试 |

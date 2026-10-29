@@ -58,8 +58,14 @@ jobs:
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
       - name: Verify every tutorial route the desktop app links to
         shell: bash
+        env:
+          DOCS_DEPLOYED_URL: ${{ steps.deployment.outputs.page_url }}
         run: |
-          base="https://159357yangjun.github.io/image-hosting-platform"
+          base="${DOCS_DEPLOYED_URL%/}"
+          if [ -z "$base" ]; then
+            echo "Pages did not return a deployment URL." >&2
+            exit 1
+          fi
           status_of() {
             local url="$1" code
             code="$(curl -s -o /dev/null -L -w '%{http_code}' "$url" || true)"

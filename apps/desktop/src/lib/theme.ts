@@ -14,12 +14,43 @@ export const THEME_PRESETS: Array<{ key: ThemeKey; label: string; description: s
   { key: 'sakura', label: '樱粉', description: '柔和粉色强调，不改变信息层级' },
 ]
 
+export const WALLPAPER_PRESETS = [
+  { value: 'preset:day', label: '晴空', image: '/art/sky-day.png' },
+  { value: 'preset:sunset', label: '晚霞', image: '/art/sky-sunset.png' },
+  { value: 'preset:night', label: '星夜', image: '/art/sky-night.png' },
+]
+
+const LOCAL_WALLPAPER_KEY = 'image-hosting-platform.wallpaper-v1'
+const validLocalWallpaper = (value: string) => value.length <= 1_200_000 && /^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]*={0,2}$/.test(value)
+
+export function storeLocalWallpaper(image: string) {
+  if (!validLocalWallpaper(image)) throw new Error('壁纸图片无效，请重新导入。')
+  window.localStorage.setItem(LOCAL_WALLPAPER_KEY, image)
+}
+
+export function clearLocalWallpaper() {
+  window.localStorage.removeItem(LOCAL_WALLPAPER_KEY)
+}
+
+export function safeWallpaperUrl(value: string): string | null {
+  const clean = value.trim()
+  const preset = WALLPAPER_PRESETS.find((item) => item.value === clean)
+  if (preset) return preset.image
+  if (clean === 'local:wallpaper') {
+    try {
+      const image = window.localStorage.getItem(LOCAL_WALLPAPER_KEY)
+      return image && validLocalWallpaper(image) ? image : null
+    } catch { return null }
+  }
+  return /^https?:\/\//i.test(clean) ? clean : null
+}
+
 const STORAGE_KEY = 'image-hosting-platform.appearance-v1'
 
 export const DEFAULT_THEME_PREFERENCES: ThemePreferences = {
-  theme: 'mist',
-  accent: '#4f46e5',
-  wallpaper: '',
+  theme: 'sakura',
+  accent: '#bd3c71',
+  wallpaper: 'preset:day',
   blur: 18,
   glass: 88,
 }
@@ -42,7 +73,9 @@ function accentSoft(accent: string) {
 
 export function loadThemePreferences(): ThemePreferences {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || '{}') as Partial<ThemePreferences>
+    const saved = window.localStorage.getItem(STORAGE_KEY)
+    if (saved === null) return { ...DEFAULT_THEME_PREFERENCES }
+    const parsed = JSON.parse(saved) as Partial<ThemePreferences>
     return {
       theme: isThemeKey(parsed.theme) ? parsed.theme : DEFAULT_THEME_PREFERENCES.theme,
       accent: typeof parsed.accent === 'string' && isHexColor(parsed.accent) ? parsed.accent : DEFAULT_THEME_PREFERENCES.accent,
@@ -75,8 +108,8 @@ export function applyThemePreferences(preferences: ThemePreferences) {
   root.style.setProperty('--backdrop-blur', `${clamp(preferences.blur, 0, 36)}px`)
   root.style.setProperty('--glass-strength', `${clamp(preferences.glass, 45, 100)}%`)
 
-  const wallpaper = preferences.wallpaper.trim()
-  if (/^https?:\/\//i.test(wallpaper)) {
+  const wallpaper = safeWallpaperUrl(preferences.wallpaper)
+  if (wallpaper) {
     root.style.setProperty('--wallpaper', `url(${JSON.stringify(wallpaper)})`)
     root.dataset.wallpaper = 'true'
   } else {

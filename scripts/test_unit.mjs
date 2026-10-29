@@ -19,6 +19,7 @@ const suites = [
   'verify_confirmation_display.mjs',
   'verify_probe_display.mjs',
   'test_r2_diagnostics.mjs',
+  'test_anime_theme.mjs',
 ]
 let failed = 0
 for (const suite of suites) {

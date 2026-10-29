@@ -1,21 +1,57 @@
 ---
-title: 5 分钟上手
-description: 从零到第一条公网图片 URL。
+title: 镜云使用指南
+description: 连接云端，发布图片，分享你的灵感。
+template: splash
+hero:
+  title: 把灵感，寄给云端
+  tagline: 从连接第一个图床，到复制第一条图片链接。只讲你现在需要的步骤。
+  image:
+    alt: 樱花与海岸小镇上空的动漫天空
+    light: ../../assets/art/sky-day.png
+    dark: ../../assets/art/sky-night.png
+  actions:
+    - text: 从 R2 开始
+      link: ./guides/r2/
+      icon: right-arrow
+    - text: 我已配置好图床
+      link: ./use/publish/
+      variant: secondary
 ---
 
-import { Steps } from '@astrojs/starlight/components'
+import { LinkCard, CardGrid, Steps } from '@astrojs/starlight/components'
 
-# 镜云 | Mirror Cloud
+## 先连接一个云端
 
-**A multi-cloud image hosting, management and publishing platform.**
+已有哪家的账号，就选择哪家。首次使用对象存储可从 R2 开始；GitHub、Gitee 更适合文档图片和轻量资源。
 
-镜云把图片处理、云端托管、公开链接、图库管理和多云发布放进同一套流程。第一次使用不需要先理解复杂的 Provider / Workflow 模型，先连接一个云端并发布第一张图片即可。
+<CardGrid>
+  <LinkCard title="Cloudflare R2" description="公开图床与私有存储，按四步向导连接。" href="./guides/r2/" />
+  <LinkCard title="S3 Compatible" description="AWS、MinIO 和其他兼容 S3 的服务。" href="./guides/s3/" />
+  <LinkCard title="阿里云 OSS" description="Bucket、地域和公开图片域名怎么填。" href="./guides/oss/" />
+  <LinkCard title="腾讯云 COS" description="配置 SecretId、SecretKey 和访问地址。" href="./guides/cos/" />
+  <LinkCard title="GitHub" description="仓库、分支和最小权限 Token。" href="./guides/github/" />
+  <LinkCard title="Gitee" description="仓库托管和公开访问方式。" href="./guides/gitee/" />
+  <LinkCard title="WebDAV" description="连接 NAS 或自建服务，区分存储与公开链接。" href="./guides/webdav/" />
+</CardGrid>
+
+## 第一次发布，只需四步
 
 <Steps>
-1. **连接一个云端**：新用户可选择 Cloudflare R2；开发文档或轻量场景可以选择 GitHub / Gitee。
-2. **设置默认发布目标**：普通用户只需要选择一个默认 Storage；需要多云可靠性时再创建 Primary / Mirror / Backup Storage Group。
-3. **发布图片**：拖拽、文件、剪贴板、URL、Typora、快捷键和 Local HTTP API 共用同一个发布核心。
-4. **复制结果**：发布完成后直接得到 URL / Markdown / HTML / BBCode，并可在“图库”管理真实远端文件。
+1. 在桌面应用的**云端**添加一个连接，按向导测试并保存。
+2. 将连接设为默认发布目标；需要多云副本时再配置多云组。
+3. 在**发布**选择文件、剪贴板或图片 URL，核对列表后提交。
+4. 在**资源**复制公开链接；私有资源使用限时分享，并在**图库**核对远端文件。
 </Steps>
 
-> Token 和 Secret 只在桌面端录入并写入系统凭据库。教程页面不会要求你粘贴密钥。
+Token 和 Secret 只在桌面应用录入，写入系统凭据库；本网站不接收密钥。
+
+## 按需继续
+
+<CardGrid>
+  <LinkCard title="图片发布" description="文件、URL、剪贴板及发布结果。" href="./use/publish/" />
+  <LinkCard title="Typora" description="让编辑器自动上传插入的图片。" href="./use/typora/" />
+  <LinkCard title="多云与修复" description="主存储、镜像和失败后的恢复。" href="./use/multicloud/" />
+  <LinkCard title="本机 API" description="集成其他应用前，了解令牌和访问范围。" href="./use/local-api/" />
+  <LinkCard title="凭据与安全" description="公开、私有与临时分享的区别。" href="./use/security/" />
+  <LinkCard title="处理策略" description="什么时候需要缩放和格式转换。" href="./recipes/choose/" />
+</CardGrid>

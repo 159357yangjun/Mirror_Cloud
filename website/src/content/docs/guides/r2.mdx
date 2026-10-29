@@ -1,77 +1,42 @@
 ---
 title: 连接 Cloudflare R2
-description: 从注册到第一条公网图片 URL 的完整流程。
+description: 按四步向导连接 R2，区分公开图片与私有存储。
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components'
 
-预计时间：**5–10 分钟**。你最终只需要准备 5 项：**Account ID、Bucket、Access Key ID、Secret Access Key、公开访问域名**。
+## 准备什么
 
-<Aside type="tip" title="适合谁">
-第一次接触对象存储、博客/Markdown 图片、希望降低公网流量成本的用户可以优先从 R2 开始。
-</Aside>
+在 Cloudflare 的 **R2 Object Storage** 创建 Bucket，记录 **Bucket 名称、Account ID**。在 R2 的 Manage API Tokens 创建仅限该桶的 **Object Read & Write** 凭据，保存 **Access Key ID、Secret Access Key**。普通 Cloudflare API Token 不能代替这对密钥。
 
-## 1. 创建账号与 Bucket
+公开图片还需要启用自定义域名；临时测试可使用 R2 公共开发地址。长期使用建议绑定自己的域名。参见 [R2 公开访问](https://developers.cloudflare.com/r2/buckets/public-buckets/)与[凭据说明](https://developers.cloudflare.com/r2/api/tokens/)。
+
+## 在镜云填写
+
+进入 **云端 → 添加存储 → Cloudflare R2**，按向导操作：
 
 <Steps>
-1. 注册或登录 Cloudflare，打开 **R2 Object Storage**。
-2. 创建一个 Bucket，例如 `images`。Bucket 名称是“装图片的容器”，以后通常不需要频繁修改。
-3. 记下 **Account ID** 和 Bucket 名称。
+1. **存储桶**：填写显示名称、Bucket 和 Account ID。API Endpoint 自动生成，Region 保持 `auto`。当前只支持默认辖区，EU / US / FedRAMP 专用辖区暂不支持。
+2. **发布用途**：公开图片选择“公开发布”，填写已启用的公开访问地址，例如 `https://img.example.com`；私有用途选择“私有存储目标”，不填公开地址。
+3. **API 密钥**：填写 Access Key ID、Secret Access Key。资源目录可留空，或填 `assets`，不要填域名或完整网址。
+4. **检查与保存**：核对摘要，点击“授权测试并保存”，阅读远端操作确认后继续。
 </Steps>
 
-## 2. 配置公开访问
+<Aside type="caution" title="保存前需要知道">
+前三步仅校验本地字段；最后的测试会写入临时对象、检查元数据并尝试删除，清理失败可能留下对象。选择私有模式不会关闭 Bucket 的公网入口，需自行在 Cloudflare 关闭并验证匿名访问被拒绝。
+</Aside>
 
-上传成功不等于别人可以打开图片。你还需要一个公网访问入口。
+## 如何确认成功
 
-推荐顺序：
+将连接设为默认目标，在**发布**上传一张图片；到**图库**核对远端文件，再到**资源**检查结果。公开模式请用未登录的浏览器打开链接；私有模式应无法匿名读取，可在应用内预览或生成限时分享。Typora / 命令行上传需要可返回公开链接的目标。
 
-1. 已有域名：给 R2 Bucket 绑定 **Custom Domain**，例如 `img.example.com`。
-2. 仅测试：可使用平台提供的公开开发地址（若你的账户当前提供）。
+## 常见错误
 
-桌面端的 **公开访问域名** 填最终给别人访问图片使用的前缀，而不是 S3 API Endpoint。
+| 现象 | 先检查 |
+| --- | --- |
+| 401 / 403 | 密钥是否正确、是否限定到当前 Bucket、是否有对象读写与删除权限 |
+| Endpoint 或签名错误 | Account ID 是否正确、Region 是否为 `auto`、是否误用了专用辖区 |
+| 上传成功但链接打不开 | 公开地址是否已启用，是否误填了 S3 API Endpoint |
+| 图片路径多了一层目录 | 资源目录与命名配置是否重复添加了同一目录 |
 
-## 3. 创建最小权限凭据
-
-在 R2 的 API Token / S3 凭据页面创建一组只用于当前 Bucket 的凭据。至少需要对象读取和写入权限；如果要在 Publisher 中删除远端资源，还需要删除对象权限。
-
-你会得到：
-
-- Access Key ID
-- Secret Access Key
-
-Secret 只显示有限次数时，请立即保存到密码管理器。**不要把 Secret 粘贴到教程网页、聊天记录或公开仓库。**
-
-## 4. 在 Publisher 连接
-
-进入 **云端 → 添加存储 → Cloudflare R2**，填写：
-
-- 显示名称：任意，例如 `我的 R2`
-- Account ID
-- Bucket
-- Region：默认 `auto`
-- Access Key ID
-- Secret Access Key
-- 资源目录：可留空，或填写 `assets`
-- 公开访问域名：例如 `https://img.example.com`
-
-点击 **测试并保存**。凭据只进入操作系统凭据库，SQLite 不保存 Secret 明文。
-
-## 5. 第一次发布
-
-左侧导航进入 **发布**，拖入一张图片。应用会自动维护默认上传链（Resize / 命名 / 目标云端），不需要先创建“方案”才能上传。成功后进入 **资源** 查看公网 URL，并可自动复制 Markdown；想核对文件是否真的在 Bucket 里，到 **图库** 刷新一次。
-
-需要多个云同时保存同一张图时，在 **云端** 把 R2 与其他 Storage 组成一个 Storage Group，而不是另建一套上传逻辑。
-
-## 常见问题
-
-### 测试连接出现 401 / 403
-
-通常是 Access Key/Secret 错误、Token 没有当前 Bucket 权限，或 Bucket 名称不匹配。先回控制台检查凭据范围。
-
-### 上传成功但预览打不开
-
-这通常不是上传失败，而是 **公开访问域名** 配置错误。确认该域名确实能直接访问 Bucket 中的对象。
-
-### URL 出现重复目录
-
-Storage 的“资源目录”和 Recipe 的重命名模板都会参与最终路径。若出现 `assets/images/...`，按你的需求保留其中一层即可。
+密钥只填在桌面应用中，本网站不接收密钥。

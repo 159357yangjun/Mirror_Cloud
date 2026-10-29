@@ -1,7 +1,13 @@
 import { Check, Image, Palette, RotateCcw, Sparkles, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { prepareWallpaper } from '../lib/wallpaperImport'
 import {
   DEFAULT_THEME_PREFERENCES,
   THEME_PRESETS,
+  WALLPAPER_PRESETS,
+  safeWallpaperUrl,
+  storeLocalWallpaper,
+  clearLocalWallpaper,
   type ThemePreferences,
 } from '../lib/theme'
 
@@ -13,9 +19,34 @@ export function ThemePanel({
   onClose,
 }: {
   value: ThemePreferences
-  onChange: (next: ThemePreferences) => void
+  onChange: (next: ThemePreferences) => boolean
   onClose: () => void
 }) {
+  const [importing, setImporting] = useState(false)
+  const [imageError, setImageError] = useState('')
+  const alive = useRef(true)
+  useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
+  async function importImage(file: File) {
+    setImporting(true)
+    setImageError('')
+    const previous = safeWallpaperUrl('local:wallpaper')
+    try {
+      const image = await prepareWallpaper(file)
+      if (!alive.current) return
+      storeLocalWallpaper(image)
+      if (!onChange({ ...value, wallpaper: 'local:wallpaper' })) {
+        if (previous) storeLocalWallpaper(previous)
+        else clearLocalWallpaper()
+      }
+    } catch (error) {
+      if (alive.current) setImageError(error instanceof Error ? error.message : '导入失败，原壁纸已保留。')
+    } finally { if (alive.current) setImporting(false) }
+  }
+  function removeImage() {
+    if (onChange({ ...value, wallpaper: value.wallpaper === 'local:wallpaper' ? '' : value.wallpaper })) {
+      try { clearLocalWallpaper(); setImageError('') } catch { setImageError('本机图片未能清除，请稍后重试。') }
+    }
+  }
   const update = <K extends keyof ThemePreferences>(key: K, next: ThemePreferences[K]) =>
     onChange({ ...value, [key]: next })
 
@@ -34,7 +65,7 @@ export function ThemePanel({
           <button onClick={onClose} className="rounded-full p-2 text-[var(--text-muted)] hover:bg-[var(--surface-soft)]" aria-label="关闭皮肤设置"><X size={17} /></button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+        <fieldset disabled={importing} className="min-h-0 min-w-0 flex-1 overflow-y-auto px-5 py-5">
           <section>
             <div className="flex items-center gap-2 text-xs font-semibold"><Sparkles size={14} />预设主题</div>
             <div className="mt-3 grid grid-cols-3 gap-2">
@@ -79,15 +110,29 @@ export function ThemePanel({
 
           <section className="mt-7">
             <div className="flex items-center gap-2 text-xs font-semibold"><Image size={14} />壁纸</div>
-            <p className="mt-1 text-[11px] leading-5 text-[var(--text-muted)]">先支持 http/https 图片地址，后续再加入本地图片选择与自动取色。</p>
+            <p className="mt-1 text-[11px] leading-5 text-[var(--text-muted)]">选择天空插画，或导入自己的图片。导入图片只保存在本机，不会上传。</p>
+            <div className="sky-presets mt-3">
+              {WALLPAPER_PRESETS.map((preset) => <button key={preset.value} onClick={() => update('wallpaper', preset.value)} aria-pressed={value.wallpaper === preset.value} className="sky-preset" style={{ backgroundImage: `url(${preset.image})` }}><span>{preset.label}{value.wallpaper === preset.value ? ' ✓' : ''}</span></button>)}
+            </div>
+            <label className="mt-3 flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-xs focus-within:ring-2 focus-within:ring-[var(--accent)]">
+              {importing ? '正在处理图片…' : value.wallpaper === 'local:wallpaper' ? '更换本机图片' : '导入本机图片'}
+              <input type="file" accept="image/png,image/jpeg,image/webp" disabled={importing} className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void importImage(file) }} />
+            </label>
+            <p className="mt-2 text-[11px] text-[var(--text-muted)]">PNG / JPG / WebP，最大 16 MB。自动缩小为壁纸副本，原图不变。</p>
+            {imageError && <p role="alert" className="mt-2 text-xs text-red-600">{imageError}</p>}
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+              <button className="text-xs text-[var(--text-secondary)] underline underline-offset-4" onClick={removeImage}>清除个人图片</button>
+              <button className="text-xs text-[var(--text-secondary)] underline underline-offset-4" onClick={() => update('wallpaper', '')}>不使用壁纸</button>
+            </div>
             <input
-              value={value.wallpaper}
+              value={value.wallpaper.startsWith('preset:') || value.wallpaper === 'local:wallpaper' ? '' : value.wallpaper}
               onChange={(event) => update('wallpaper', event.target.value)}
-              placeholder="https://example.com/wallpaper.jpg"
+              aria-label="在线壁纸地址（可选）"
+              placeholder="在线图片地址（可选）https://…"
               className="mt-3 h-10 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-xs outline-none focus:border-[var(--accent)]"
             />
-            {value.wallpaper && !/^https?:\/\//i.test(value.wallpaper.trim()) && (
-              <div className="mt-2 text-[11px] text-amber-600">当前只接受 http/https 图片地址，不会把无效文本写进 CSS。</div>
+            {value.wallpaper && !safeWallpaperUrl(value.wallpaper) && (
+              <div className="mt-2 text-[11px] text-amber-600">请选择预置天空或填写 http/https 图片地址。</div>
             )}
           </section>
 
@@ -102,11 +147,11 @@ export function ThemePanel({
               <input type="range" min="0" max="36" value={value.blur} onChange={(event) => update('blur', Number(event.target.value))} className="mt-3 w-full accent-[var(--accent)]" />
             </label>
           </section>
-        </div>
+        </fieldset>
 
         <footer className="border-t border-[var(--border)] p-4">
           <div className="flex gap-2">
-            <button onClick={() => onChange({ ...DEFAULT_THEME_PREFERENCES })} className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-xs font-medium"><RotateCcw size={13} />恢复默认</button>
+            <button disabled={importing} onClick={() => { if (onChange({ ...DEFAULT_THEME_PREFERENCES })) { try { clearLocalWallpaper(); setImageError('') } catch { setImageError('已恢复默认，个人图片清除失败，请重试。') } } }} className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-xs font-medium"><RotateCcw size={13} />恢复默认</button>
             <button onClick={onClose} className="flex-1 rounded-xl bg-[var(--accent)] px-4 py-2.5 text-xs font-medium text-white">完成</button>
           </div>
         </footer>

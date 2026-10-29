@@ -4,12 +4,13 @@ import starlight from '@astrojs/starlight'
 // GitHub Pages project sites serve the build from a repository subpath, so base has to be
 // explicit; scripts/check_docs_site.py fails CI if site, base and the app's VITE_DOCS_BASE_URL drift.
 export default defineConfig({
-  site: 'https://159357yangjun.github.io/image-hosting-platform/',
-  base: '/image-hosting-platform',
+  site: 'https://159357yangjun.github.io/Mirror_Cloud/',
+  base: '/Mirror_Cloud',
   integrations: [
     starlight({
       title: '镜云 · Mirror Cloud',
       description: 'A multi-cloud image hosting, management and publishing platform.',
+      customCss: ['./src/styles/custom.css'],
       sidebar: [
         { label: '开始', items: [{ label: '5 分钟上手', slug: 'index' }] },
         {

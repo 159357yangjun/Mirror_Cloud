@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { BookOpen, Boxes, Cloud, Images, ListTodo, Palette, Plug, Settings, Upload, Zap } from 'lucide-react'
+import { BookOpen, Boxes, Cloud, Images, ListTodo, Palette, Plug, Settings, Upload } from 'lucide-react'
 import { checkForUpdates, getDocsBaseUrl, getUpdateStatus, openExternalUrlOrReport } from '../lib/desktop'
 import {
   applyThemePreferences,
@@ -12,6 +12,7 @@ import { useAppStore } from '../store/useAppStore'
 import type { PageKey } from '../types'
 import { HelpCenterDialog } from './HelpCenterDialog'
 import { ThemePanel } from './ThemePanel'
+import { notifyError } from '../store/useToastStore'
 
 const items: Array<{ key: PageKey; label: string; icon: typeof Boxes }> = [
   { key: 'publish', label: '发布', icon: Upload },
@@ -63,8 +64,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [setUpdateAvailableVersion])
 
   function updateAppearance(next: ThemePreferences) {
-    setAppearance(next)
-    persistThemePreferences(next)
+    try {
+      persistThemePreferences(next)
+      setAppearance(next)
+      return true
+    } catch {
+      notifyError('外观设置未保存，本机存储空间可能不足。原设置已保留。')
+      return false
+    }
   }
 
   function closeHelp() {
@@ -78,7 +85,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside aria-label="应用导航" className="app-sidebar theme-glass fixed inset-y-0 left-0 z-30 w-[220px] border-r">
         <div className="flex min-h-full flex-col p-4">
           <div className="flex items-center gap-3 px-2 py-3">
-            <div className="grid size-9 place-items-center rounded-2xl bg-slate-950 text-white shadow-sm"><Zap size={17} /></div>
+            <div className="app-brand-mark grid size-9 place-items-center rounded-2xl bg-slate-950 text-white shadow-sm"><Cloud size={20} /></div>
             <div className="app-brand-copy">
               <div className="text-[15px] font-semibold tracking-[-0.02em]">镜云</div>
               <div className="text-[11px] text-[var(--text-muted)]">Mirror Cloud</div>
@@ -102,7 +109,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 aria-label={`切换到${label}页面`}
                 aria-current={page === key ? 'page' : undefined}
                 title={label}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                className={`app-nav-item flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
                   page === key
                     ? 'bg-[var(--surface-soft)] font-semibold text-[var(--text-primary)] ring-1 ring-[var(--border)]'
                     : 'text-[var(--text-secondary)] hover:bg-[var(--surface-soft)] hover:text-[var(--text-primary)]'

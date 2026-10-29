@@ -1,28 +1,35 @@
 ---
 title: 连接 WebDAV
-description: NAS、自建服务和通用 WebDAV 的完整接入流程。
+description: 连接 NAS 或自建服务，并正确设置文件公开地址。
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components'
 
-WebDAV 解决“怎么读写文件”，但**不天然解决“别人怎么通过公网 URL 看图片”**。因此 Publisher 把 Endpoint 和 Public Base URL 分开。
+## 准备什么
+
+在 NAS 或自建服务开启 WebDAV，准备 **Endpoint、用户名、密码 / App Password**。账号应能列举、读取、写入并删除目标目录内的文件。使用 HTTPS；本机服务可用回环 HTTP，普通局域网 HTTP 不在当前允许范围内。
+
+## 在镜云填写
 
 <Steps>
-1. 在 NAS/云盘/自建服务中开启 WebDAV，记录 Endpoint。
-2. 创建独立用户名与密码；如果服务支持 App Password，优先使用 App Password。
-3. 确认你有一个能直接访问这些文件的公网地址，例如反向代理或静态文件域名。
-4. Publisher 选择 **WebDAV**，填写 Endpoint、用户名、密码、可选 Root。
-5. 在“公开访问域名”填写真正给别人访问的 URL 前缀。
-6. 点击 **测试并保存**，再上传一张测试图确认公网 URL 可访问。
+1. 进入 **云端 → 添加存储 → WebDAV**。
+2. 填 Endpoint、用户名、密码，资源目录可选，例如 `images`。
+3. 填写真正可直接读取图片的“公开访问域名”，当前添加界面要求此项必填。
+4. 点击 **测试并保存**；到**图库**验证远端浏览，再发布一张测试图片。
 </Steps>
 
-<Aside type="caution" title="不要直接假设 Endpoint 就是公开 URL">
-很多 WebDAV Endpoint 需要 Basic Auth 或登录 Cookie。这样的地址不适合作为公开图床 URL。可以让 WebDAV 只承担 Backup，Primary 使用对象存储。
+<Aside type="caution" title="WebDAV 地址通常需要登录">
+需要账号、Cookie 或 Basic Auth 的 Endpoint 不能直接当公开图片地址。应另外提供静态文件域名 / 代理；尚无公开图片地址时，当前界面无法保存该连接，请先配置访问入口。
 </Aside>
 
-## 推荐场景
+## 如何确认成功
 
-- NAS 备份
-- 自建服务器资源同步
-- Storage Group 的 Backup
-- 已经有独立静态文件网关的团队
+文件确实出现在目标目录中；若配置公开发布，用未登录的浏览器打开资源链接，确认不要求登录。
+
+## 常见错误
+
+| 现象 | 先检查 |
+| --- | --- |
+| 401 / 403 | 用户名、密码 / App Password、目录权限 |
+| 404 / 无法列举 | Endpoint 是否包含服务要求的 WebDAV 路径、资源目录是否正确 |
+| 链接要求登录 | 填成了 WebDAV Endpoint，需要独立公开图片地址 |

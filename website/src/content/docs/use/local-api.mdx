@@ -1,119 +1,78 @@
 ---
 title: 本机 HTTP API
-summary: 让 ShareX、脚本和编辑器直接调用镜云的默认上传链。
+description: 供 ShareX、脚本和编辑器使用的本机上传接口。
 ---
 
-import { Steps, Aside } from '@astrojs/starlight/components'
+import { Aside } from '@astrojs/starlight/components'
 
-镜云桌面版内置一个**只监听本机回环地址**的 HTTP 服务。它不是一个独立的上传器：请求最终进入的是与 Typora、命令行和全局快捷键完全相同的 `PublisherCore` 默认上传链，所以 Resize / WebP / 重命名 / 多云策略 / 已启用插件全部照常生效。
+## 开始前
 
-## 基本信息
+镜云需正在运行，已连接可写云端并设置能返回公开链接的默认目标。请求使用与桌面相同的处理链；Token 和现成示例在**设置 → Local HTTP API**中复制。重置 Token 后，旧值立即失效。
 
-| 项目 | 值 |
+| 项目 | 当前行为 |
 | --- | --- |
-| 基地址 | `http://127.0.0.1:36677` |
-| 监听 | 仅 `127.0.0.1`，端口为内置常量，不可配置 |
-| 启动 | 应用启动时即监听，当前版本没有开关可以关闭 |
-| 鉴权 | 请求头 `Authorization: Bearer <token>` |
-| Token 存放 | 操作系统凭据库，键名 `integration:local-api-token` |
-| 请求体上限 | 32 MiB（按 `Content-Length` 判断）|
-| 响应 | `Connection: close`、`Cache-Control: no-store` |
+| 地址 | `http://127.0.0.1:36677`，仅本机回环，端口不可配置 |
+| 启动 | 随应用启动，目前没有独立关闭开关 |
+| 鉴权 | 除健康检查外，使用 `Authorization: Bearer <token>` |
+| 限制 | 请求体最多 32 MiB，路径上传每次 1–100 个 |
+| 响应 | JSON；关闭连接，不缓存 |
 
-Token 与复制好的 curl 示例都在 **设置 → Local HTTP API** 面板里，可以随时「重置 Token」；重置后旧 Token 立刻失效。
-
-## 先决条件
-
-<Steps>
-1. 已连接至少一个可写的 Storage（在「云端」页点「测试并保存」通过）。
-2. 已设置默认发布目标：单个 Storage 或一个 Storage Group。
-3. 桌面应用正在运行（服务随应用启动，应用退出即不可用）。
-</Steps>
-
-没有默认目标时接口仍然会正常应答，但发布失败会以 `422` 返回原因，而不是静默丢图。
-
-## 1. 健康检查（不需要 Token）
-
-```bash
-curl.exe -s http://127.0.0.1:36677/health
-```
-
-```json
-{ "ok": true, "service": "Multi-cloud Publisher", "api": "v1" }
-```
-
-用它确认端口通不通，再排查 Token 与路径问题。
-
-## 2. `POST /v1/upload-paths`：提交本机路径
-
-适合编辑器插件和批处理脚本——文件已经在磁盘上，只把路径交给镜云。一次 1 到 100 条。
-
-```bash
-curl.exe -s -X POST "http://127.0.0.1:36677/v1/upload-paths" ^
-  -H "Authorization: Bearer <token>" ^
-  -H "Content-Type: application/json" ^
-  -d "{\"paths\":[\"C:/Users/you/Pictures/screenshot.png\"]}"
-```
-
-```json
-{ "ok": true, "urls": ["https://raw.githubusercontent.com/.../screenshot.png"] }
-```
-
-PowerShell 写法：
+## 1. 检查服务
 
 ```powershell
-$body = @{ paths = @('C:\Users\you\Pictures\screenshot.png') } | ConvertTo-Json -Compress
+Invoke-RestMethod 'http://127.0.0.1:36677/health'
+```
+
+正常返回 `ok: true`，服务名为 `Multi-cloud Publisher`，API 版本为 `v1`。不需要 Token。
+
+## 2. 上传本机文件路径
+
+将下例 Token 和文件路径换成自己的值，在 PowerShell 执行：
+
+```powershell
+$token = '<从设置复制的 Token>'
+$headers = @{ Authorization = "Bearer $token" }
+$body = @{ paths = @('C:/Users/you/Pictures/screenshot.png') } | ConvertTo-Json -Compress
 Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:36677/v1/upload-paths' `
-  -Headers @{ Authorization = "Bearer $token" } -ContentType 'application/json' -Body $body
+  -Headers $headers -ContentType 'application/json' -Body $body
 ```
 
-## 3. `POST /v1/upload`：直接发送二进制
+成功响应：
 
-适合 ShareX 之类只会在内存里生成图片、不落盘的工具。请求体就是图片原始字节，文件名放在 `X-Publisher-Filename`（省略时按 `upload.png` 处理）。
-
-```bash
-curl.exe -s -X POST "http://127.0.0.1:36677/v1/upload" ^
-  -H "Authorization: Bearer <token>" ^
-  -H "X-Publisher-Filename: sharex-capture.png" ^
-  --data-binary "@C:/path/image.png"
+```json
+{ "ok": true, "urls": ["https://img.example.com/screenshot.png"] }
 ```
 
-返回结构与上面一致，公网 URL 始终在 `urls` 数组里。
+## 3. 直接上传图片字节
 
-<Aside type="note">
-`Content-Type` 不参与判断，也不接受 `multipart/form-data`。请直接发送裸二进制。
+适合 ShareX 等集成。用上面的 `$token`，请求体为原始图片，不使用表单：
+
+```powershell
+curl.exe -s -X POST 'http://127.0.0.1:36677/v1/upload' `
+  -H "Authorization: Bearer $token" `
+  -H 'X-Publisher-Filename: capture.png' `
+  --data-binary '@C:/Users/you/Pictures/screenshot.png'
+```
+
+文件名头可省略，默认 `upload.png`。返回格式相同，从 `urls` 数组获取链接；本机 API 不触发桌面“发布后自动复制”。
+
+## 排错
+
+| 结果 | 检查 |
+| --- | --- |
+| 连接失败 | 应用是否运行、36677 是否被占用；设置中可查看服务状态 |
+| 400 | 路径数组是否为 1–100 条 |
+| 401 | Token 是否正确，是否刚被重置 |
+| 404 / 405 | 路径或请求方法错误；上传接口必须 POST |
+| 422 | 发布失败，读取 `error`，到**任务**检查默认目标与凭据 |
+| 有链接但打不开 | 公开访问地址或图床读取策略 |
+
+<Aside type="caution" title="超限时会直接断开">
+请求体超过 32 MiB、头部超过 64 KiB 或请求行无法解析时，服务直接关闭连接，没有 413 响应。请在发送前控制大小。
 </Aside>
 
-## 状态码
+## 集成注意
 
-| 状态 | 响应体 | 含义 |
-| --- | --- | --- |
-| 200 | `{"ok":true,"urls":[...]}` | 远端 Provider 已确认写入，URL 即公网地址 |
-| 400 | `{"error":"paths must contain 1..100 local image paths"}` | 路径数组为空或超过 100 条 |
-| 401 | `{"error":"unauthorized"}` | Token 缺失或不匹配 |
-| 404 | `{"error":"not_found"}` | Token 正确，但路径不在上表之内 |
-| 405 | `{"error":"method_not_allowed"}` | 除 `/health` 之外的非 POST 请求 |
-| 422 | `{"ok":false,"error":"<原因>"}` | 已进入发布链但失败，原因见 `error` |
-
-## 已知限制
-
-<Aside type="caution" title="超限请求不会返回 413">
-当 `Content-Length` 超过 32 MiB，或者头部超过 64 KiB、请求行无法解析时，服务会**直接关闭连接且不返回任何 HTTP 响应**。调用方看到的是连接被重置，而不是一个状态码。请在发送前自行控制大小。
-</Aside>
-
-- **浏览器网页里的 JS 调不动它。** 服务不返回 CORS 头，也没有 `OPTIONS` 分支，因此只能在本地脚本、命令行或 ShareX 这类原生程序里使用。
-- **只能从本机访问。** 绑定 `127.0.0.1`，并且对端地址不是回环时连接会被丢弃；它不是局域网或公网 API。
-- **每条响应都关闭连接。** 不要复用 keep-alive 连接池。
-
-## 与桌面端点"发布"的差别
-
-上传链完全相同，但**通知方式**不同，有两件事需要你预期到：
-
-- **界面不是即时刷新。** 这条路径会写入持久任务记录（类型为 `typora_publish`），所以任务页、资源页和图库最终都会看到它；但它不发送 `task://updated` 事件，因此打开着的桌面界面要等下一次自动刷新（约 1.5–2.5 秒）才更新进度。
-- **"发布后自动复制"不会触发。** 那个行为由 `asset://published` 事件驱动，只有桌面端发布命令会发这个事件。通过本机 API 发布时，请自己使用响应里的 `urls`。
-
-## 排错顺序
-
-1. `GET /health` 不通 → 桌面应用没在运行，或 36677 被其他程序占用（占用时应用只在日志里记录绑定失败，界面显示为未运行）。
-2. `401` → 从设置页重新复制 Token；刚点过「重置 Token」的话旧值一定失效。
-3. `422` → 到「任务」页看失败原因，通常是默认发布目标未设置或凭据过期。
-4. 拿到了 URL 但打不开 → 检查该 Storage 的公开访问域名配置，与本机 API 无关。
+- 仅供本机脚本和原生应用使用；不提供 CORS / OPTIONS，网页脚本无法直接跨域调用。
+- 每次响应关闭连接，调用方不要复用长连接。界面状态约 1.5–2.5 秒后刷新，以接口响应为准。
+- URL 由服务端发布结果返回；返回成功仍需单独核对实际公开访问。不要将 Token 写入公开脚本、截图或日志。

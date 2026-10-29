@@ -132,7 +132,7 @@ export function PublishPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1320px] px-5 py-6 sm:px-7 lg:px-10 lg:py-9">
+    <div className="publish-workspace mx-auto max-w-[1320px] px-5 py-6 sm:px-7 lg:px-10 lg:py-9">
       <PageHeader
         title="发布"
         description="上传本地图片、截图或图片链接；Typora 也使用相同的默认云端和插件处理设置。"
@@ -142,6 +142,16 @@ export function PublishPage() {
           </div>
         }
       />
+
+      <section className="sky-welcome" aria-label="镜云发布工作台">
+        <div className="sky-welcome-copy">
+          <span className="sky-eyebrow">MIRROR CLOUD / YOUR CREATIVE SPACE</span>
+          <h2>把灵感，寄给云端<span aria-hidden="true"> ✧</span></h2>
+          <p>一张图片，一个故事。连接喜欢的云端，让分享轻盈一点。</p>
+          <button onClick={() => openUpload('files')} className="sky-welcome-action"><UploadCloud size={16} />开始发布<span aria-hidden="true"> ↗</span></button>
+        </div>
+        <div className="sky-welcome-art" aria-hidden="true"><span>晴空放映中</span></div>
+      </section>
 
       {needsFirstStorage && (
         <section className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-indigo-200 bg-indigo-50/70 p-5">

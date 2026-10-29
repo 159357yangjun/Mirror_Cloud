@@ -1,0 +1,39 @@
+:root {
+  --sl-font: 'Trebuchet MS', 'Yu Gothic UI', 'Microsoft YaHei UI', sans-serif;
+  --sl-color-accent-low: #3b203d;
+  --sl-color-accent: #eb9fbd;
+  --sl-color-accent-high: #ffe3ee;
+  --sl-color-bg: #111b30;
+  --sl-color-bg-nav: #17213a;
+  --sl-color-bg-sidebar: #111b30;
+  --sl-color-hairline-light: #34415b;
+}
+:root[data-theme='light'] {
+  --sl-color-accent-low: #fceaf2;
+  --sl-color-accent: #ac2e60;
+  --sl-color-accent-high: #702040;
+  --sl-color-bg: #fcfbff;
+  --sl-color-bg-nav: #fffafddd;
+  --sl-color-bg-sidebar: #f6f8ff;
+  --sl-color-hairline-light: #e6dfec;
+  --sl-color-text: #354363;
+}
+header.header { backdrop-filter: blur(18px); }
+.site-title { letter-spacing: -.04em; font-weight: 800; }
+.hero { padding-block: clamp(2rem, 5vw, 4rem); gap: 2rem; }
+.hero h1 { font-size: clamp(2.4rem, 5vw, 4.6rem); letter-spacing: -.06em; line-height: 1.12; }
+.hero .tagline { max-width: 32rem; font-size: 1.1rem; line-height: 1.8; }
+.hero img { border-radius: 36px 36px 90px 36px; box-shadow: 0 24px 65px #133e6c28; transform: rotate(2deg); object-fit: cover; aspect-ratio: 1.35; }
+.sl-link-button { border-radius: 999px; font-weight: 700; }
+.card { border-radius: 22px; background: var(--sl-color-bg-nav); border-color: var(--sl-color-hairline-light); transition: transform .2s ease, box-shadow .2s ease; }
+.card:hover { transform: translateY(-3px); box-shadow: 0 10px 35px #19345112; }
+.card .title { letter-spacing: -.025em; }
+.sl-markdown-content h2 { letter-spacing: -.035em; margin-top: 2.4rem; }
+.sl-markdown-content h3 { letter-spacing: -.02em; }
+.sl-markdown-content table { font-size: .9rem; border-radius: 14px; }
+.sl-markdown-content th { background: var(--sl-color-bg-sidebar); }
+.starlight-aside { border-radius: 16px; }
+.expressive-code .frame { border-radius: 14px; }
+.sidebar-content a[aria-current='page'] { border-radius: 10px; font-weight: 700; }
+@media (max-width: 50rem) { .hero img { max-width: 100%; max-height: 16rem; transform: none; border-radius: 24px; } .hero { text-align: left; } }
+@media (prefers-reduced-motion: reduce) { .card { transition: none; } .card:hover { transform: none; } }
