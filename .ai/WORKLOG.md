@@ -114,6 +114,6 @@
 
 **验证**：主题行为先观察到新增功能预期失败，实施后 10/0；16 套单元检查全通过，前端 build 通过（仍有包大小及动态导入警告）；命令契约 97/97/97、用户流程 640/0、文档契约 16/0、validate.py 与 diff --check 通过。浏览器七页 36/0，PNG 真实文件选择、坏图保留、重载、清除保留预设、恢复、640px 无横溢和格式/大小拒绝等共 9/0。独立审查重查无遗留发现。浏览器验证不代表原生 WebView 或真实云端验收。
 
-**已知缺口**：网站无 node_modules，未安装，未运行 Astro build 或网站渲染；Rust 仍由云端构建。本轮主题统计 --verify 为 mismatch=12，历史记录为 11；发布欢迎区新增计数，未重签或绕过。当前 GitHub 仓库元数据为 Mirror_Cloud、homepage /Mirror_Cloud/、has_pages=true；最新可见历史 Pages 作业 39604555498 对旧远端 SHA 成功，不是本轮 CI。新旧首页与 R2 页面实际 404；公开 Pages 配置接口 403，根因未确认。已修正本地站点 / 构建候选 / 示例路径，部署检查改读 page_url；未远端推送、部署或发布。
+**已知缺口**：网站无 node_modules，未安装，未运行 Astro build 或网站渲染；Rust 仍由云端构建。本轮主题统计 --verify 为 mismatch=12，历史记录为 11；发布欢迎区新增计数，未重签或绕过。当前 GitHub 仓库元数据为 Mirror_Cloud、homepage /Mirror_Cloud/、has_pages=true；最新可见历史 Pages 作业 39604555498 对旧远端 SHA 成功，不是本轮 CI。新旧首页与 R2 页面实际 404；公开 Pages 配置接口 403；随后直接核对作业 39604555498/jobs，build 步骤为 Pull jekyll-build-pages 与 Build with Jekyll，最近 100 条作业没有 Docs Site，说明实际部署链未构建 Astro 教程产物。完整后台配置仍未读到，不声称排除其他问题。已修正本地站点 / 构建候选 / 示例路径，部署检查改读 page_url；未远端推送、部署或发布。
 
 **清理**：一次性代码只经标准输入执行，没有落盘脚本；被放弃的外部素材已删除。两处浏览器 profile 递归清理请求被自动执行策略拒绝，仅返回 blocked by policy，完整路径与证据在工作区交付报告；未绕过或声称清理成功。
