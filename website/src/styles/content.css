@@ -9,7 +9,7 @@
 .guide-outline a { color: var(--sl-color-text); text-decoration-thickness: 1px; text-underline-offset: .3em; }
 .hero { padding-block: .25rem 1.1rem; gap: 0; grid-template-columns: 1fr; }
 .hero h1 { max-width: 15ch; font-size: clamp(2rem, 3.2vw, 2.65rem); letter-spacing: -.035em; line-height: 1.25; }
-.guide-main .hero .stack { align-items: flex-start; text-align: left; gap: .8rem; }
+.guide-main .hero .stack, .guide-main .hero .copy { align-items: flex-start; text-align: left; gap: .8rem; }
 .hero .tagline { max-width: 46rem; font-size: 1rem; line-height: 1.8; }
 .sl-link-button { border-radius: .7rem; font-weight: 700; }
 .card { border-radius: 1rem; background: var(--guide-field); border-color: var(--sl-color-hairline-light); transition: border-color .2s ease, transform .2s ease; }

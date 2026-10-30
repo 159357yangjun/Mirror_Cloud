@@ -294,3 +294,6 @@ UI40994185267第1次browser job123863353921实际页面36/0、确认19/0、布�
 
 
 0901的Docs41069957244/build124111113328构建成功，Enter关闭/焦点与资源Tab检查已通过；新减少动画断言失败，deploy跳过。源码确认content.css的资源链接规则有.sl-markdown-content限定（0,2,1），responsive.css原覆盖少该限定（0,1,1），后加载仍无法覆盖。补相同限定使reduce下transition:none真正生效；不改变用户正常动效或删断言。浏览器检查补打印真实matchMedia与各duration，便于以后区分媒体模拟与样式。新SHA实际结果待复查。
+
+
+7b3210d的Docs41070393865/build124112623548实际reduce匹配true且10个目标duration全0，通过；随后390首页左轴断言失败，deploy跳过。读取真实HTML发现.hero > .stack > .copy > h1，内层.copy在手机仍align-items:center；此前只覆盖外层.stack不足。现同一左对齐规则扩到.copy，保留原1px阈值，并打印实际左右坐标。归档12983044409已下载核对3056347字节、SHA256 092d0a75d9aa1f1dbf901a185f5ed66496a00dad5cc87e64af5228b00952bd13；新SHA截图仍待全量通过，不把此失败源码当作已部署。

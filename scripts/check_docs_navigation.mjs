@@ -216,11 +216,9 @@ try {
   check(await evaluate(() => document.querySelector('.provider-directory').open), 'homepage storage selector opens on request')
   for (const width of [390, 320]) {
     await size(width, 844)
-    check(await evaluate(() => {
-      const heading = document.querySelector('.hero h1').getBoundingClientRect();
-      const section = document.querySelector('.sl-markdown-content h2').getBoundingClientRect();
-      return Math.abs(heading.left - section.left) <= 1;
-    }), `${width}px homepage title and content share a left alignment`)
+    const alignment = await evaluate(() => ({ heading: document.querySelector('.hero h1').getBoundingClientRect().left, section: document.querySelector('.sl-markdown-content h2').getBoundingClientRect().left }))
+    console.log('HOME_ALIGNMENT ' + JSON.stringify({ width, ...alignment }))
+    check(Math.abs(alignment.heading - alignment.section) <= 1, `${width}px homepage title and content share a left alignment`)
     check(await evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}px homepage and its open selector do not overflow`)
   }
   await size(390, 844)
