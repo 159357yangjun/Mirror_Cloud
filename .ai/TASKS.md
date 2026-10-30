@@ -34,3 +34,8 @@
 沿用用户批准的顶部导航、整页JPG、透明度和简单实用文案。本轮只改网站：6px轻磨砂、明暗边缘/内高光/阴影、中文字体优先与适度标题字距、移动标题左对齐、字段两列wrapper清零margin、编号和分隔线；主页7个原使用入口变整行可点击，文字/目标保持。没有改桌面、Provider字段/指南正文或依赖。
 
 已有check_docs_navigation保留31条断言，新增实际字段两列dt几何、320/390首页对齐、7个资源目标/触达尺寸、details Space/Enter、资源Tab/focus和reduced-motion。浏览器只在Linux CI自有loopback，不重试先前停止的本机控制。Node语法、7平台52字段canonical hash与16文档契约通过；独立只读复核及新SHA云端构建/截图/部署待完成，不用旧CI代替。本次脚本比较和编辑均stdin，无保存一次性探针。
+
+
+本轮云端纠正：f0de9d7bf7ce3bf7c3d0e29219e8eb7eb37c5ad3的Docs41069429150/build124109320775已完成构建，但新增Enter检查超时，deploy跳过；report检查31条已通过（包含字段dt同线和Space），并非完整41通过。官方Chromium HTMLSummaryElement/HTMLElement及Puppeteer输入实现表明Enter激活依赖keypress的回车字符；本测具原keydown/up没有text，Space在keyup激活所以通过。现只给Enter keyDown补text/unmodifiedText=回车，不另发char、不改产品或任何断言/等待。待新SHA云端实际证明，不将源码推断记为已通过。
+
+失败归档12984526937已下载核对1221749字节、SHA256 a078cc8b74d1e857ebfb8e440b38d376df9cd747b970e485417ba1b9b596a8c6，保留report和截图到outputs/guide-quality-2026-10-30/cloud-f0de9d7；此批尚未上线，不能称最终网站证据。

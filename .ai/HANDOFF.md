@@ -28,3 +28,8 @@
 仍待用户真实验收：实际显示器/DPI、原生WebView图片/MP4、G3旧数据/真实凭据/图床/Typora/插件/新上传，以及正式发布后的自动更新闭环。现有候选仍 `D:/image-hosting-builds/1.4.10-candidate-9cc88524d034`，未包含本轮源码变更；本轮原生workflow内部测试安装器未向用户交付为新候选。未正式发版/tag、未代安装、未操作真实云端或数据库、未安装本机SDK/网站依赖。MP4仅本机，JPG按用户授权公开。
 
 本地浏览器控制此前因URL无法可靠确认停止，未重试或绕过；本轮截图仅云端隔离runner自有loopback。一次性对照代码均stdin，用后没有保存；outputs保留交付证据。旧批次被策略拒绝的清理残留以旧报告为准，未宣称本轮清除。
+
+
+本轮云端纠正：f0de9d7bf7ce3bf7c3d0e29219e8eb7eb37c5ad3的Docs41069429150/build124109320775已完成构建，但新增Enter检查超时，deploy跳过；report检查31条已通过（包含字段dt同线和Space），并非完整41通过。官方Chromium HTMLSummaryElement/HTMLElement及Puppeteer输入实现表明Enter激活依赖keypress的回车字符；本测具原keydown/up没有text，Space在keyup激活所以通过。现只给Enter keyDown补text/unmodifiedText=回车，不另发char、不改产品或任何断言/等待。待新SHA云端实际证明，不将源码推断记为已通过。
+
+失败归档12984526937已下载核对1221749字节、SHA256 a078cc8b74d1e857ebfb8e440b38d376df9cd747b970e485417ba1b9b596a8c6，保留report和截图到outputs/guide-quality-2026-10-30/cloud-f0de9d7；此批尚未上线，不能称最终网站证据。

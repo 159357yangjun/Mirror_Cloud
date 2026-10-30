@@ -193,7 +193,8 @@ try {
   for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: ' ', code: 'Space', windowsVirtualKeyCode: 32 })
   await waitFor(() => document.querySelector('.provider-directory').open)
   check(await evaluate(() => document.activeElement === document.querySelector('.provider-directory summary')), 'Space opens the native storage selector without losing focus')
-  for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+  // Enter activation needs the keypress text, matching Chromium/Puppeteer's keyDown sequence.
+  for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, ...(type === 'keyDown' ? { text: '\r', unmodifiedText: '\r' } : {}) })
   await waitFor(() => !document.querySelector('.provider-directory').open)
   check(await evaluate(() => document.activeElement === document.querySelector('.provider-directory summary')), 'Enter closes the native storage selector without losing focus')
   await evaluate(() => document.querySelector('.guide-resources a').focus())
