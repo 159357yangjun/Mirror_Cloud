@@ -24,7 +24,7 @@ function setup(mode = 'native') {
     pluginOutputs: [{ pluginId: 'plugin-1', pluginName: 'Caption', pluginKind: 'ai', text: 'caption', data: { preserved: true } }],
   }]
   const state = { coreLoads: 0, reject: false, reason: undefined, loadFailure: undefined }
-  const browserWindow = mode === 'native' ? { __TAURI_INTERNALS__: {} } : mode === 'no-window' ? undefined : {}
+  const browserWindow = mode === 'native' ? { __TAURI_INTERNALS__: { invoke() {} } } : mode === 'no-window' ? undefined : {}
   const taskIds = { repair_asset: 'synthetic-repair-task', delete_asset: 'synthetic-delete-task' }
   const core = { invoke: async (command, args) => {
     calls.push({ command, args })

@@ -1,5 +1,7 @@
 export function isTauriRuntime() {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+  if (typeof window === 'undefined') return false
+  const bridge = (window as Window & { __TAURI_INTERNALS__?: { invoke?: unknown } | null }).__TAURI_INTERNALS__
+  return typeof bridge?.invoke === 'function'
 }
 
 export async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {

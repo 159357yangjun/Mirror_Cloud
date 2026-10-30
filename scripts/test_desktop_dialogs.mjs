@@ -17,7 +17,7 @@ const expectedOpen = { multiple: true, directory: false, filters: [{ name: 'Imag
 function setup(mode = 'native') {
   const loaded = new Map(), calls = []
   const state = { loads: 0, result: null, reason: undefined, loadFailure: undefined }
-  const window = mode === 'native' ? { __TAURI_INTERNALS__: {} } : mode === 'browser' ? {} : undefined
+  const window = mode === 'native' ? { __TAURI_INTERNALS__: { invoke() {} } } : mode === 'browser' ? {} : undefined
   const plugin = {}
   for (const name of ['open', 'save']) plugin[name] = async (options) => {
     calls.push({ name, options })

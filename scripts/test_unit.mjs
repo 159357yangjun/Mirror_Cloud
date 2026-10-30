@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 // Offline calculations, subscription ownership and simulated IPC only. No browser, cloud,
 // dependency installation or mutation suite is started by this entry point.
 const suites = [
+  'test_desktop_runtime.mjs',
   'test_desktop_subscription.mjs',
   'test_desktop_dialogs.mjs',
   'test_desktop_clipboard.mjs',

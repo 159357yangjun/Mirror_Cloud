@@ -16,7 +16,7 @@ const syntheticText = 'fixture' + '-only'
 function setup(mode = 'native', missingClipboard = false) {
   const loaded = new Map(), calls = []
   const state = { pluginLoads: 0, reason: undefined, loadFailure: undefined, gate: undefined }
-  const window = mode === 'native' ? { __TAURI_INTERNALS__: {} } : mode === 'browser' ? {} : undefined
+  const window = mode === 'native' ? { __TAURI_INTERNALS__: { invoke() {} } } : mode === 'browser' ? {} : undefined
   const write = (channel) => async (text) => {
     calls.push({ channel, text })
     if (state.gate) await state.gate

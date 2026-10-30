@@ -53,7 +53,7 @@ function setup(native) {
     if (reject) throw rejection
     return result
   }
-  const window = native ? { __TAURI_INTERNALS__: {} } : {}
+  const window = native ? { __TAURI_INTERNALS__: { invoke() {} } } : {}
   let api
   if (hasFile(apiPath) && hasFile(runtimePath)) {
     const runtime = evaluate(source(runtimePath), { window, require: (name) => {

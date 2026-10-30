@@ -15,3 +15,6 @@
 - [ ] 更新docs/ARCHITECTURE.md、README及.ai/CHANGELOG；每提交完整路径/风险/源码SHA/CI在outputs交付报告记录。桌面不重打候选/正式发布，已安装候选与源码区分；网站按既有授权部署。
 
 预期验证命令：既有Node `scripts/test_unit.mjs`、Python `scripts/check_contracts.py`/`check_user_flow.py`/`check_docs_site.py`、桌面npm run build。本机只用现有工具和依赖；Rust cargo fmt只校验语法格式，编译与单测结果以新SHA云端为准。
+
+
+追加验收修正：runtime以可调用invoke判断原生桥，保留原IPC包装；新11项对旧源码7失败、新源码0失败，19套单元通过。1e7网站31项与15路由/52字段已通过；最终runtime源码需新SHA CI/UI后收口。

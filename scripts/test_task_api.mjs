@@ -55,7 +55,7 @@ function setup(native) {
     if (command === 'cancel_task') return undefined
     throw new Error(`Unexpected command ${command}`)
   }
-  const window = native ? { __TAURI_INTERNALS__: {} } : {}
+  const window = native ? { __TAURI_INTERNALS__: { invoke() {} } } : {}
   let api
   if (hasFile(apiPath)) {
     const runtime = evaluate(source(runtimePath), { window, require: (name) => {
