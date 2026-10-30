@@ -85,7 +85,7 @@ assert.ok(Panel, 'the actual diagnostics JSX was not found')
 
 function view(props) {
   if (!pageCall) return React.createElement(Panel, props)
-  const names = ['diagnostics', 'diagnosticsError', 'diagnosticsChecking', 'refreshDiagnostics']
+  const names = ['diagnostics', 'diagnosticsError', 'diagnosticsChecking', 'refreshDiagnostics', 'desktopAvailable']
   const factory = compile(`function make(${names.join(', ')}) { return (${pageCall.getText(ast)}) }\nmodule.exports = make`, { SystemDiagnosticsPanel: Panel })
   return factory(...names.map((name) => props[name]))
 }
@@ -94,8 +94,15 @@ const healthy = {
   enabledStorageCount: 2, storageCount: 3, enabledPluginCount: 1, pluginCount: 4,
   activeTaskCount: 5, failedTaskCount: 6, warnings: [],
 }
-const base = { diagnostics: undefined, diagnosticsError: null, diagnosticsChecking: false, refreshDiagnostics: () => {} }
+const base = { diagnostics: undefined, diagnosticsError: null, diagnosticsChecking: false, refreshDiagnostics: () => {}, desktopAvailable: true }
 const markup = (props) => renderToStaticMarkup(view({ ...base, ...props }))
+
+await check('browser preview explains availability without a perpetual loading status', () => {
+  const html = markup({ desktopAvailable: false })
+  assert.match(html, /系统诊断仅在桌面应用中可用/)
+  assert.match(html, /<button[^>]*disabled/)
+  assert.ok(!html.includes('正在检查核心状态'))
+})
 
 await check('pending state shows placeholders and original loading caption', () => {
   const html = markup({})

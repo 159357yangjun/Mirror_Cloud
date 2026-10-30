@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { aiPlanWorkflow, deletePlugin, getAiSettings, installMarketplacePlugin, listMarketplacePlugins, listPluginExecutionLogs, listPlugins, saveAiSettings, savePluginConfig, setPluginEnabled, setPluginHooks, setPluginPermissions } from '../lib/desktop'
 import { PageHeader } from '../components/PageHeader'
 import { PageLayout } from '../components/PageLayout'
+import { isTauriRuntime } from '../platform/desktop/runtime'
 import { ReadFailurePanel } from '../components/ReadFailurePanel'
 import type { AiSettings, PluginView } from '../types'
 import { notifyError } from '../store/useToastStore'
@@ -15,10 +16,11 @@ const ignoreReportedFailure = () => undefined
 
 export function PluginsPage() {
   const qc = useQueryClient()
-  const { data: market = [] } = useQuery({ queryKey: ['plugin-market'], queryFn: listMarketplacePlugins })
-  const { data: installed = [], error: pluginsError, isLoading: pluginsLoading } = useQuery({ queryKey: ['plugins'], queryFn: listPlugins })
-  const { data: executionLogs = [] } = useQuery({ queryKey: ['plugin-execution-logs'], queryFn: () => listPluginExecutionLogs(40), refetchInterval: 2500 })
-  const { data: ai } = useQuery({ queryKey: ['ai-settings'], queryFn: getAiSettings })
+  const desktopAvailable = isTauriRuntime()
+  const { data: market = [] } = useQuery({ queryKey: ['plugin-market'], queryFn: listMarketplacePlugins, enabled: desktopAvailable })
+  const { data: installed = [], error: pluginsError, isLoading: pluginsLoading } = useQuery({ queryKey: ['plugins'], queryFn: listPlugins, enabled: desktopAvailable })
+  const { data: executionLogs = [] } = useQuery({ queryKey: ['plugin-execution-logs'], queryFn: () => listPluginExecutionLogs(40), refetchInterval: 2500, enabled: desktopAvailable })
+  const { data: ai } = useQuery({ queryKey: ['ai-settings'], queryFn: getAiSettings, enabled: desktopAvailable })
   const [settings, setSettings] = useState<AiSettings>({ baseUrl: 'https://api.openai.com/v1', model: '', apiKey: '' })
   const [request, setRequest] = useState('')
   const [plan, setPlan] = useState('')
@@ -82,6 +84,7 @@ export function PluginsPage() {
   return (
     <PageLayout width="plugins">
       <PageHeader title="插件" description="安装和配置插件，管理启用状态、权限及执行记录。" />
+      {!desktopAvailable && <p className="mt-4 text-sm text-[var(--text-secondary)]">当前为浏览器预览，插件和 AI 功能请在桌面应用中使用。</p>}
 
       <section className="mt-8 rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_10px_40px_rgba(15,23,42,.04)]">
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -159,8 +162,8 @@ export function PluginsPage() {
           {showAi ? <ChevronUp size={17} className="text-indigo-400" /> : <ChevronDown size={17} className="text-indigo-400" />}
         </button>
         {showAi && <div className="grid grid-cols-2 gap-5 border-t border-indigo-100 p-5">
-          <div className="rounded-2xl bg-white p-4"><div className="flex items-center gap-2 text-sm font-semibold"><Bot size={15} />AI Provider</div><div className="mt-1 text-[10px] leading-5 text-slate-400">AI Image Caption 会把真实图片作为 image_url 视觉输入发送给模型，请选择支持视觉能力的 OpenAI-compatible 模型。</div><div className="mt-3 space-y-3">{(['baseUrl', 'model', 'apiKey'] as const).map((key) => <input key={key} type={key === 'apiKey' ? 'password' : 'text'} value={settings[key]} onChange={(e) => setSettings({ ...settings, [key]: e.target.value })} placeholder={key} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none" />)}<button onClick={() => saveAi.mutate(settings)} className="w-full rounded-xl bg-indigo-600 py-2.5 text-xs font-medium text-white">保存 AI 配置</button>{saveAi.isSuccess && <div className="text-[10px] text-emerald-600">已保存；API Key 存入系统凭据库。</div>}{saveAi.error && <div className="text-[10px] text-red-600">{String(saveAi.error)}</div>}</div></div>
-          <div className="rounded-2xl bg-white p-4"><div className="flex items-center gap-2 text-sm font-semibold"><Sparkles size={15} />AI Planner</div><div className="mt-3 flex gap-2"><input value={request} onChange={(e) => setRequest(e.target.value)} placeholder="例如：上传后调用 Webhook 通知博客" className="h-10 flex-1 rounded-xl border border-slate-200 px-3 text-xs" /><button disabled={!request || planMut.isPending} onClick={() => planMut.mutate(request)} className="grid size-10 place-items-center rounded-xl bg-slate-950 text-white disabled:opacity-30">{planMut.isPending ? <LoaderCircle className="animate-spin" size={14} /> : <Send size={14} />}</button></div>{plan && <pre className="mt-3 max-h-52 overflow-auto rounded-xl bg-slate-950 p-3 text-[10px] leading-5 text-slate-100">{plan}</pre>}{planMut.error && <div className="mt-2 text-xs text-red-600">{String(planMut.error)}</div>}</div>
+          <div className="rounded-2xl bg-white p-4"><div className="flex items-center gap-2 text-sm font-semibold"><Bot size={15} />AI Provider</div><div className="mt-1 text-[10px] leading-5 text-slate-400">AI Image Caption 会把真实图片作为 image_url 视觉输入发送给模型，请选择支持视觉能力的 OpenAI-compatible 模型。</div><div className="mt-3 space-y-3">{(['baseUrl', 'model', 'apiKey'] as const).map((key) => <input key={key} type={key === 'apiKey' ? 'password' : 'text'} value={settings[key]} onChange={(e) => setSettings({ ...settings, [key]: e.target.value })} placeholder={key} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none" />)}<button disabled={!desktopAvailable} onClick={() => saveAi.mutate(settings)} className="w-full rounded-xl bg-indigo-600 py-2.5 text-xs font-medium text-white">保存 AI 配置</button>{saveAi.isSuccess && <div className="text-[10px] text-emerald-600">已保存；API Key 存入系统凭据库。</div>}{saveAi.error && <div className="text-[10px] text-red-600">{String(saveAi.error)}</div>}</div></div>
+          <div className="rounded-2xl bg-white p-4"><div className="flex items-center gap-2 text-sm font-semibold"><Sparkles size={15} />AI Planner</div><div className="mt-3 flex gap-2"><input value={request} onChange={(e) => setRequest(e.target.value)} placeholder="例如：上传后调用 Webhook 通知博客" className="h-10 flex-1 rounded-xl border border-slate-200 px-3 text-xs" /><button disabled={!desktopAvailable || !request || planMut.isPending} onClick={() => planMut.mutate(request)} className="grid size-10 place-items-center rounded-xl bg-slate-950 text-white disabled:opacity-30">{planMut.isPending ? <LoaderCircle className="animate-spin" size={14} /> : <Send size={14} />}</button></div>{plan && <pre className="mt-3 max-h-52 overflow-auto rounded-xl bg-slate-950 p-3 text-[10px] leading-5 text-slate-100">{plan}</pre>}{planMut.error && <div className="mt-2 text-xs text-red-600">{String(planMut.error)}</div>}</div>
         </div>}
       </section>
     </PageLayout>

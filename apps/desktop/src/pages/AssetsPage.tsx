@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { PageLayout } from '../components/PageLayout'
+import { isTauriRuntime } from '../platform/desktop/runtime'
 import { ReadFailurePanel } from '../components/ReadFailurePanel'
 import { CloudIndexSyncBanner } from '../components/CloudIndexSyncBanner'
 import {
@@ -71,6 +72,7 @@ function errorHint(deployment: AssetView['deployments'][number]): string {
 
 
 export function AssetsPage() {
+  const desktopAvailable = isTauriRuntime()
   const openUpload = useAppStore((state) => state.openUpload)
   const setPage = useAppStore((state) => state.setPage)
   const queryClient = useQueryClient()
@@ -81,7 +83,7 @@ export function AssetsPage() {
     refetchInterval: 2500,
   })
   const { data: storages = [] } = useQuery({ queryKey: ['storages'], queryFn: listStorages })
-  const { data: plugins = [] } = useQuery({ queryKey: ['plugins'], queryFn: listPlugins })
+  const { data: plugins = [] } = useQuery({ queryKey: ['plugins'], queryFn: listPlugins, enabled: desktopAvailable })
   const {
     data: preferences = {
       defaultFormat: 'markdown',

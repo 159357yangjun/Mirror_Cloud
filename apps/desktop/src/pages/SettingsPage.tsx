@@ -20,6 +20,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { PageLayout } from '../components/PageLayout'
+import { isTauriRuntime } from '../platform/desktop/runtime'
 import { StorageSetupDialog } from '../components/StorageSetupDialog'
 import { portableProviderKey, portableReconnectConflict } from '../lib/portableReconnect'
 import {
@@ -135,6 +136,7 @@ function sweepTimeLabel(raw: string): string {
 }
 
 export function SettingsPage() {
+  const desktopAvailable = isTauriRuntime()
   const queryClient = useQueryClient()
   const setPage = useAppStore((state) => state.setPage)
   const localApiGuideUrl = getLocalApiGuideUrl()
@@ -218,6 +220,7 @@ export function SettingsPage() {
   const { data: diagnostics, error: diagnosticsError, isFetching: diagnosticsChecking, refetch: refreshDiagnostics } = useQuery({
     queryKey: ['system-diagnostics'],
     queryFn: getSystemDiagnostics,
+    enabled: desktopAvailable,
     refetchOnWindowFocus: false,
   })
   const { data: globalShortcut, error: shortcutError } = useQuery({
@@ -1621,7 +1624,7 @@ export function SettingsPage() {
         </button>
       </section>
 
-      <SystemDiagnosticsPanel diagnostics={diagnostics} diagnosticsError={diagnosticsError} diagnosticsChecking={diagnosticsChecking} refreshDiagnostics={refreshDiagnostics} />
+      <SystemDiagnosticsPanel diagnostics={diagnostics} diagnosticsError={diagnosticsError} diagnosticsChecking={diagnosticsChecking} refreshDiagnostics={refreshDiagnostics} available={desktopAvailable} />
 
       <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50/70 p-5">
         <div className="flex items-center gap-2 text-sm font-medium"><Shield size={16} /> 安全说明</div>
