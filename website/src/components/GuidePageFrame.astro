@@ -5,7 +5,6 @@ import wallpaper from '../assets/art/user-wallpaper.jpg';
 
 <div class="guide-page" style={`--guide-wallpaper: url("${wallpaper.src}")`}>
   <div class="guide-wallpaper" aria-hidden="true"></div>
-  <header class="guide-site-header"><slot name="header" /></header>
-  <GuideNavigation />
+  <header class="guide-site-header"><div class="guide-header-inner"><slot name="header" /><GuideNavigation /></div></header>
   <div class="guide-main"><slot /></div>
 </div>

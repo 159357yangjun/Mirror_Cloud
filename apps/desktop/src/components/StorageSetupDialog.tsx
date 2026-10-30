@@ -38,60 +38,6 @@ const providerNames: Record<SupportedProviderKey, string> = {
   webdav: 'WebDAV',
 }
 
-const providerGuideSteps: Record<SupportedProviderKey, string[]> = {
-  github: [
-    '准备一个用于图片托管的 GitHub 仓库，并确认目标分支（通常是 main）。',
-    '创建 Fine-grained Personal Access Token，只授权目标仓库，并授予 Contents: Read and write。',
-    '填写 Owner、仓库名、分支和资源目录。资源目录默认 assets，不需要提前创建，第一次上传后会自动出现。',
-    '公开仓库可以把“自定义公开域名”留空，应用会生成 Raw URL；私有仓库需要额外的公开代理/CDN。',
-    '点击“测试并保存”。保存后先到“图库”刷新一次，确认可以直接浏览远端真实文件，再上传第一张图片。',
-  ],
-  gitee: [
-    '准备一个用于图片托管的 Gitee 仓库，并确认目标分支。',
-    '在 Gitee 创建具备仓库读写权限的 Access Token。',
-    '填写 Owner、仓库名、分支、资源目录和 Token。',
-    '若图片要公开访问，请确认仓库或自定义公开地址可以被外部访问。',
-    '点击“测试并保存”，随后到“图库”验证远端文件浏览。',
-  ],
-  r2: [
-    '先在 Cloudflare R2 创建桶，复制 Bucket 名和 Account ID。桶名不是图片路径，也不是访问域名。',
-    '默认桶使用 Region auto。镜云目前的后端只生成默认辖区 Endpoint；EU / US / FedRAMP 专用辖区暂不支持，请勿误用。',
-    '区分公开发布与私有访问意图。S3 API Endpoint 不能当作公开图片 URL，选择私有也不会自动关闭桶的公网入口。',
-    '在 R2 Manage API Tokens 创建限定目标桶的 Object Read & Write 密钥，取得 Access Key ID 和 Secret Access Key。不要填写普通 API Token。',
-    '向导前三步只执行本地字段校验；最后一步会明确请求你授权临时对象写入、元数据校验及删除，清理失败可能留存临时对象。',
-    '远端测试成功后，再单独验证实际发布、公开地址或匿名访问拒绝。不要把连接通过当作私有权限已验收。',
-  ],
-  s3: [
-    '准备兼容 S3 的 Bucket、Endpoint 和 Region。',
-    '选择“公开发布”或“私有存储目标”；私有模式不会自动修改 Bucket 的权限。',
-    '创建具备对象读写权限的 Access Key ID / Secret Access Key。',
-    '填写 Endpoint、Region、Bucket 和密钥；资源目录可选。',
-    '公开模式填写能让别人访问图片的 URL 前缀；私有模式不填写公开 URL，通过认证预览与限时分享操作读取。',
-    '临时分享链接是否能打开、何时到期取决于 S3 兼容服务商实现，最终需真实验收。',
-  ],
-  oss: [
-    '在阿里云 OSS 创建 Bucket，并确认区域对应的 Endpoint。',
-    '创建具备该 Bucket 读写权限的 AccessKey ID / AccessKey Secret。',
-    '填写 Bucket、Endpoint、密钥和可选资源目录。',
-    '填写公开访问域名；应用不会从 Endpoint 推导图片地址。留空时该云端只能作为镜像 / 备份成员，作为发布目标会失败并回滚。',
-    '点击“测试并保存”，再上传测试图片。',
-  ],
-  cos: [
-    '在腾讯云 COS 创建 Bucket，并确认区域对应的 Endpoint。',
-    '创建具备该 Bucket 读写权限的 SecretId / SecretKey。',
-    '填写 Bucket、Endpoint、密钥和可选资源目录。',
-    '填写公开访问域名；应用不会从 Endpoint 推导图片地址。留空时该云端只能作为镜像 / 备份成员，作为发布目标会失败并回滚。',
-    '点击“测试并保存”，再上传测试图片。',
-  ],
-  webdav: [
-    '准备 WebDAV Endpoint、用户名与密码 / App Password。',
-    '确认账号对目标目录具备读取、写入和删除权限。',
-    '填写可选资源目录。',
-    'WebDAV 地址通常不是公网图片地址，因此要填写别人可以直接访问文件的公开 URL 前缀；留空时该云端只能作为镜像 / 备份成员。',
-    '点击“测试并保存”，再到图库验证远端浏览。',
-  ],
-}
-
 function defaultObjectEndpoint(provider: 'oss' | 'cos') {
   return provider === 'oss'
     ? 'https://oss-cn-hangzhou.aliyuncs.com'
@@ -127,7 +73,6 @@ export function StorageSetupDialog({
           ? Server
           : Cloud
 
-  const [showGuide, setShowGuide] = useState(false)
   const [r2Step, setR2Step] = useState<0 | 1 | 2 | 3>(0)
   // An older manifest's 'unknown' access intent must never silently become public
   // just because public was the historical default in the setup form.
@@ -446,9 +391,11 @@ export function StorageSetupDialog({
             </p>
           </div>
           <div className="ml-auto flex items-center gap-1.5">
-            <button type="button" onClick={() => setShowGuide((value) => !value)} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-100">
-              <BookOpen size={14} /> {showGuide ? '收起教程' : '配置教程'}
-            </button>
+            {guideUrl ? (
+              <button type="button" onClick={() => openExternalUrlOrReport(guideUrl)} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-100">
+                <BookOpen size={14} /> 配置教程 <ExternalLink size={11} />
+              </button>
+            ) : <span data-guide-unavailable className="text-[11px] text-slate-400">在线教程地址未配置</span>}
             <button onClick={requestClose} className="rounded-full p-2 text-slate-400 hover:bg-slate-100" aria-label="关闭"><X size={18} /></button>
           </div>
         </div>
@@ -457,30 +404,6 @@ export function StorageSetupDialog({
           <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-6 text-amber-900">
             <strong>迁移重连模式：</strong>已预填清单中的非敏感字段，云端 Endpoint、公开域名、账户 ID 与所有凭据必须重新确认。
             测试成功后只会<strong>新增一条连接</strong>，不会覆盖同名存储，也不会恢复图片索引或工作流。
-          </div>
-        )}
-
-        {showGuide && (
-          <div className="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold text-indigo-950">{providerNames[provider]} 配置教程</div>
-                <div className="mt-1 text-[11px] leading-5 text-indigo-700">教程内置在应用里，不依赖文档网站。按顺序完成即可。</div>
-              </div>
-              {guideUrl && (
-                <button type="button" onClick={() => openExternalUrlOrReport(guideUrl)} className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-medium text-indigo-700">
-                  在线文档 <ExternalLink size={11} />
-                </button>
-              )}
-            </div>
-            <div className="mt-4 space-y-2">
-              {providerGuideSteps[provider].map((step, index) => (
-                <div key={step} className="flex gap-3 rounded-xl bg-white/80 p-3">
-                  <div className="grid size-6 shrink-0 place-items-center rounded-full bg-indigo-100 text-[11px] font-semibold text-indigo-700">{index + 1}</div>
-                  <div className="text-xs leading-6 text-slate-600">{step}</div>
-                </div>
-              ))}
-            </div>
           </div>
         )}
 

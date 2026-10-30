@@ -8,17 +8,48 @@ function flatten(entries: Entry[]): { label: string; href: string; current: bool
 }
 ---
 
-<nav class="guide-navigation print:hidden" aria-label="教程分类">
-  <div class="guide-navigation-inner">
-    {sidebar.map((entry) => (
-      <div class="guide-navigation-group">
-        <span class="guide-navigation-label">{entry.label}</span>
-        <div class="guide-navigation-links">
-          {flatten(entry.type === 'group' ? entry.entries : [entry]).map((link) => (
-            <a href={link.href} aria-current={link.current ? 'page' : undefined}>{link.label}</a>
+<nav class="guide-navigation print:hidden" aria-label="教程分类" data-guide-navigation>
+  {sidebar.map((entry) => {
+    const links = flatten(entry.type === 'group' ? entry.entries : [entry]);
+    const current = links.find((link) => link.current);
+    return links.length === 1 ? (
+      <a class="guide-navigation-direct" href={links[0].href} aria-current={current ? 'page' : undefined} title={links[0].label}>{entry.label}</a>
+    ) : (
+      <details class="guide-navigation-dropdown" name="guide-category" data-current={current ? 'true' : undefined}>
+        <summary><span>{entry.label}</span><span class="guide-chevron" aria-hidden="true">⌄</span></summary>
+        <div class="guide-navigation-menu">
+          <span class="guide-menu-caption">选择{entry.label === '连接云端' ? '存储平台' : '使用教程'}</span>
+          {links.map((link) => (
+            <a href={link.href} aria-current={link.current ? 'page' : undefined}><span>{link.label}</span><span class="guide-menu-current" aria-hidden="true">{link.current ? '当前页' : '→'}</span></a>
           ))}
         </div>
-      </div>
-    ))}
-  </div>
+      </details>
+    );
+  })}
 </nav>
+
+<script>
+  for (const nav of document.querySelectorAll<HTMLElement>('[data-guide-navigation]')) {
+    const menus = Array.from(nav.querySelectorAll<HTMLDetailsElement>('details'));
+    const closeMenus = () => menus.forEach((menu) => { menu.open = false; });
+    for (const menu of menus) {
+      menu.addEventListener('toggle', () => {
+        if (menu.open) menus.forEach((other) => { if (other !== menu) other.open = false; });
+      });
+    }
+    nav.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      const open = menus.find((menu) => menu.open);
+      if (!open) return;
+      event.preventDefault();
+      closeMenus();
+      open.querySelector('summary')?.focus();
+    });
+    document.addEventListener('click', (event) => {
+      if (event.target instanceof Node && !nav.contains(event.target)) closeMenus();
+    });
+    nav.addEventListener('click', (event) => {
+      if (event.target instanceof Element && event.target.closest('a')) closeMenus();
+    });
+  }
+</script>

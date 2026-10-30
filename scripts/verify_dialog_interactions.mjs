@@ -620,8 +620,8 @@ function linksVerdict(out) {
     if (thrown.length) failures.push(`${key}: clicking the docs entry threw ${JSON.stringify(thrown[0]).slice(0, 120)}`)
   }
   checked += 1
-  if (!configured && !(sites.C_storageSetupDialog?.panelCopy || '').length) {
-    failures.push('C_storageSetupDialog: with no docs base URL there is no online link, and the built-in tutorial copy did not render either - the user would get neither')
+  if (!configured && !(sites.C_storageSetupDialog?.fallbackNotice || '').length) {
+    failures.push('C_storageSetupDialog: with no docs base URL there is no online link, and the unavailable notice did not render either - the user would get neither')
   }
   return { checked, failures }
 }
@@ -631,20 +631,20 @@ const LINKS_FIXTURE = (over = {}) => ({
   sites: {
     A_helpCenterDialog: { found: false },
     B_settingsPage: { found: false },
-    C_storageSetupDialog: { found: false, panelCopy: 'GitHub 配置教程 教程内置在应用里，不依赖文档网站' },
+    C_storageSetupDialog: { found: false, fallbackNotice: '在线教程地址未配置' },
   },
   ...over,
 })
 
 const LINKS_CASES = [
   { name: 'links: no base URL and no online entry is clean', out: LINKS_FIXTURE(), want: 0 },
-  { name: 'links: an online entry with no base URL is caught', out: LINKS_FIXTURE({ sites: { A_helpCenterDialog: { found: true }, B_settingsPage: { found: false }, C_storageSetupDialog: { found: false, panelCopy: 'x' } } }), want: 1 },
-  { name: 'links: a missing entry while a base URL is set is caught', out: LINKS_FIXTURE({ baseEnv: { docsBaseUrl: 'https://example.test/docs' }, sites: { A_helpCenterDialog: { found: false }, B_settingsPage: { found: false }, C_storageSetupDialog: { found: false, panelCopy: 'x' } } }), want: 3 },
-  { name: 'links: a click that opens nothing and says nothing is caught', out: LINKS_FIXTURE({ baseEnv: { docsBaseUrl: 'https://example.test/docs' }, sites: { A_helpCenterDialog: { found: true, afterClick: { newWindowOpenEvents: 0, newTabs: 0, urlsOpened: [], toastTexts: [], consoleErrors: [] } }, B_settingsPage: { found: true, afterClick: { newWindowOpenEvents: 1, newTabs: 0, urlsOpened: ['https://example.test/docs'], toastTexts: [], consoleErrors: [] } }, C_storageSetupDialog: { found: true, panelCopy: 'x', afterClick: { newWindowOpenEvents: 0, newTabs: 1, urlsOpened: ['https://example.test/g'], toastTexts: [], consoleErrors: [] } } } }), want: 1 },
-  { name: 'links: a non-http target is caught', out: LINKS_FIXTURE({ sites: { A_helpCenterDialog: { found: false }, B_settingsPage: { found: false }, C_storageSetupDialog: { found: false, panelCopy: 'x', afterClick: { newWindowOpenEvents: 1, newTabs: 0, urlsOpened: ['javascript:alert(1)'], toastTexts: [], consoleErrors: [] } } } }), want: 1 },
-  { name: 'links: an uncaught error on click is caught', out: LINKS_FIXTURE({ sites: { A_helpCenterDialog: { found: false }, B_settingsPage: { found: false }, C_storageSetupDialog: { found: false, panelCopy: 'x', afterClick: { newWindowOpenEvents: 0, newTabs: 1, urlsOpened: ['https://ok.test'], toastTexts: [], consoleErrors: ['Uncaught TypeError: Cannot read properties of undefined (reading open)'] } } } }), want: 1 },
-  { name: 'links: a site that was never probed is caught', out: LINKS_FIXTURE({ sites: { B_settingsPage: { found: false }, C_storageSetupDialog: { found: false, panelCopy: 'x' } } }), want: 1 },
-  { name: 'links: the built-in tutorial copy is required when there is no link', out: LINKS_FIXTURE({ sites: { A_helpCenterDialog: { found: false }, B_settingsPage: { found: false }, C_storageSetupDialog: { found: false, panelCopy: null } } }), want: 1 },
+  { name: 'links: an online entry with no base URL is caught', out: LINKS_FIXTURE({ sites: { A_helpCenterDialog: { found: true }, B_settingsPage: { found: false }, C_storageSetupDialog: { found: false, fallbackNotice: 'x' } } }), want: 1 },
+  { name: 'links: a missing entry while a base URL is set is caught', out: LINKS_FIXTURE({ baseEnv: { docsBaseUrl: 'https://example.test/docs' }, sites: { A_helpCenterDialog: { found: false }, B_settingsPage: { found: false }, C_storageSetupDialog: { found: false, fallbackNotice: 'x' } } }), want: 3 },
+  { name: 'links: a click that opens nothing and says nothing is caught', out: LINKS_FIXTURE({ baseEnv: { docsBaseUrl: 'https://example.test/docs' }, sites: { A_helpCenterDialog: { found: true, afterClick: { newWindowOpenEvents: 0, newTabs: 0, urlsOpened: [], toastTexts: [], consoleErrors: [] } }, B_settingsPage: { found: true, afterClick: { newWindowOpenEvents: 1, newTabs: 0, urlsOpened: ['https://example.test/docs'], toastTexts: [], consoleErrors: [] } }, C_storageSetupDialog: { found: true, fallbackNotice: 'x', afterClick: { newWindowOpenEvents: 0, newTabs: 1, urlsOpened: ['https://example.test/g'], toastTexts: [], consoleErrors: [] } } } }), want: 1 },
+  { name: 'links: a non-http target is caught', out: LINKS_FIXTURE({ sites: { A_helpCenterDialog: { found: false }, B_settingsPage: { found: false }, C_storageSetupDialog: { found: false, fallbackNotice: 'x', afterClick: { newWindowOpenEvents: 1, newTabs: 0, urlsOpened: ['javascript:alert(1)'], toastTexts: [], consoleErrors: [] } } } }), want: 1 },
+  { name: 'links: an uncaught error on click is caught', out: LINKS_FIXTURE({ sites: { A_helpCenterDialog: { found: false }, B_settingsPage: { found: false }, C_storageSetupDialog: { found: false, fallbackNotice: 'x', afterClick: { newWindowOpenEvents: 0, newTabs: 1, urlsOpened: ['https://ok.test'], toastTexts: [], consoleErrors: ['Uncaught TypeError: Cannot read properties of undefined (reading open)'] } } } }), want: 1 },
+  { name: 'links: a site that was never probed is caught', out: LINKS_FIXTURE({ sites: { B_settingsPage: { found: false }, C_storageSetupDialog: { found: false, fallbackNotice: 'x' } } }), want: 1 },
+  { name: 'links: the unavailable notice is required when there is no link', out: LINKS_FIXTURE({ sites: { A_helpCenterDialog: { found: false }, B_settingsPage: { found: false }, C_storageSetupDialog: { found: false, fallbackNotice: null } } }), want: 1 },
 ]
 
 for (const c of LINKS_CASES) VERDICT_CASES.push({ name: c.name, run: () => linksVerdict(c.out).failures.length === c.want })
@@ -1352,7 +1352,7 @@ async function main() {
     }
     await shot(`lB-${TAG}`)
 
-    // C: StorageSetupDialog (guide panel is collapsed until 配置教程 is clicked)
+    // C: StorageSetupDialog opens the provider guide directly with one click.
     consoleErrors.length = 0
     wo = woCount(); tc = tcCount()
     await goto('云端')
@@ -1361,17 +1361,15 @@ async function main() {
     await sleep(500)
     await clickEl("(function(){return Array.from(document.querySelectorAll('button')).find(x=>(x.textContent||'').trim().startsWith('GitHub'))})()")
     await sleep(600)
-    await clickEl(`(function(){const top=Array.from(document.querySelectorAll('div.fixed.inset-0')).filter(o=>getComputedStyle(o).zIndex==='70').pop();return Array.from(top.querySelectorAll('button')).find(x=>(x.textContent||'').trim()==='配置教程')})()`)
-    await sleep(500)
-    out.sites.C_storageSetupDialog = await locate(`(function(){const top=Array.from(document.querySelectorAll('div.fixed.inset-0')).filter(o=>getComputedStyle(o).zIndex==='70').pop();return top?Array.from(top.querySelectorAll('button')).find(x=>(x.textContent||'').trim()==='在线文档'):null})()`)
-    out.sites.C_storageSetupDialog.panelCopy = await evaluate(`(function(){
+    out.sites.C_storageSetupDialog = await locate(`(function(){const top=Array.from(document.querySelectorAll('div.fixed.inset-0')).filter(o=>getComputedStyle(o).zIndex==='70').pop();return top?Array.from(top.querySelectorAll('button')).find(x=>(x.textContent||'').trim()==='配置教程'):null})()`)
+    out.sites.C_storageSetupDialog.fallbackNotice = await evaluate(`(function(){
       const top = Array.from(document.querySelectorAll('div.fixed.inset-0')).filter(o=>getComputedStyle(o).zIndex==='70').pop();
       if (!top) return null;
-      const el = Array.from(top.querySelectorAll('div,p')).find(x=>(x.textContent||'').includes('教程内置在应用里'));
+      const el = top.querySelector('[data-guide-unavailable]');
       return el ? (el.textContent||'').trim() : null;
     })()`)
     if (out.sites.C_storageSetupDialog.found) {
-      await clickEl(`(function(){const top=Array.from(document.querySelectorAll('div.fixed.inset-0')).filter(o=>getComputedStyle(o).zIndex==='70').pop();return Array.from(top.querySelectorAll('button')).find(x=>(x.textContent||'').trim()==='在线文档')})()`)
+      await clickEl(`(function(){const top=Array.from(document.querySelectorAll('div.fixed.inset-0')).filter(o=>getComputedStyle(o).zIndex==='70').pop();return Array.from(top.querySelectorAll('button')).find(x=>(x.textContent||'').trim()==='配置教程')})()`)
       await sleep(1600)
       out.sites.C_storageSetupDialog = await sample('C_storageSetupDialog', wo, tc).then((r) => ({ ...out.sites.C_storageSetupDialog, ...r }))
     }
@@ -3686,7 +3684,7 @@ async function main() {
     }
     await shot('11-settings-local-api-link')
 
-    // ---- site C: StorageSetupDialog.tsx:256 "在线文档" inside the provider setup panel ----
+    // ---- site C: direct provider-guide button in StorageSetupDialog ----
     consoleErrors.length = 0
     const cWo = woCount(); const cTc = tcCount()
     await goto('云端')
@@ -3698,20 +3696,16 @@ async function main() {
     await sleep(600)
     results.C_afterProviderCard = await evaluate(`(function(){
       const top = Array.from(document.querySelectorAll('div.fixed.inset-0')).filter(o=>getComputedStyle(o).zIndex==='70').pop();
-      return { overlay: !!top, heading: top ? (top.querySelector('h2,h3')||{}).textContent : null, hasGuideToggle: !!(top && Array.from(top.querySelectorAll('button')).some(x=>(x.textContent||'').trim()==='配置教程')) };
+      return { overlay: !!top, heading: top ? (top.querySelector('h2,h3')||{}).textContent : null, hasGuideButton: !!(top && Array.from(top.querySelectorAll('button')).some(x=>(x.textContent||'').trim()==='配置教程')) };
     })()`)
-    if (results.C_afterProviderCard.hasGuideToggle) {
-      await scrollToAndClick(`(function(){const top=Array.from(document.querySelectorAll('div.fixed.inset-0')).filter(o=>getComputedStyle(o).zIndex==='70').pop();return Array.from(top.querySelectorAll('button')).find(x=>(x.textContent||'').trim()==='配置教程');})()`)
-      await sleep(500)
-    }
     results.C_guide = await evaluate(`(function(){
       const overlays = Array.from(document.querySelectorAll('div.fixed.inset-0'));
       const top = overlays.filter(o=>getComputedStyle(o).zIndex==='70').pop();
-      const b = top ? Array.from(top.querySelectorAll('button')).find(x=>(x.textContent||'').trim()==='在线文档') : null;
+      const b = top ? Array.from(top.querySelectorAll('button')).find(x=>(x.textContent||'').trim()==='配置教程') : null;
       return { setupOverlayFound: !!top, guideButtonFound: !!b, heading: top ? (top.querySelector('h2,h3')||{}).textContent : null };
     })()`)
     if (results.C_guide.guideButtonFound) {
-      await scrollToAndClick(`(function(){const overlays=Array.from(document.querySelectorAll('div.fixed.inset-0'));const top=overlays.filter(o=>getComputedStyle(o).zIndex==='70').pop();return Array.from(top.querySelectorAll('button')).find(x=>(x.textContent||'').trim()==='在线文档');})()`)
+      await scrollToAndClick(`(function(){const overlays=Array.from(document.querySelectorAll('div.fixed.inset-0'));const top=overlays.filter(o=>getComputedStyle(o).zIndex==='70').pop();return Array.from(top.querySelectorAll('button')).find(x=>(x.textContent||'').trim()==='配置教程');})()`)
       await sleep(1500)
       results.C_guide.afterClick = {
         newWindowOpenEvents: woCount() - cWo,
@@ -3720,7 +3714,7 @@ async function main() {
         consoleErrors: consoleErrors.slice(0, 6),
         ...(await evaluate(feedback)),
       }
-      results.C_guide.hrefShape = await evaluate(`(function(){const overlays=Array.from(document.querySelectorAll('div.fixed.inset-0'));const top=overlays.filter(o=>getComputedStyle(o).zIndex==='70').pop();const b=Array.from(top.querySelectorAll('button')).find(x=>(x.textContent||'').trim()==='在线文档');const r=b.getBoundingClientRect();return {x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width)};})()`)
+      results.C_guide.hrefShape = await evaluate(`(function(){const overlays=Array.from(document.querySelectorAll('div.fixed.inset-0'));const top=overlays.filter(o=>getComputedStyle(o).zIndex==='70').pop();const b=Array.from(top.querySelectorAll('button')).find(x=>(x.textContent||'').trim()==='配置教程');const r=b.getBoundingClientRect();return {x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width)};})()`)
     }
     await shot('13-provider-guide')
 

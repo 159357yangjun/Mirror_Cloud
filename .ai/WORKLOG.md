@@ -199,3 +199,11 @@
 用户明确答复网站公开使用JPG、MP4仍仅桌面本机导入。修改前核对干净main，HEAD8e81932cb296599da0bc7b86a3f3d55711b39ad4、远端10ceab2fdf68759300d741939856b0e5a1b1520c。将提供的2560×1440/1100598字节JPEG原样复制为website/src/assets/art/user-wallpaper.jpg，源/目标SHA256均f245f6f33699e7a5197a95f704805f874049a8931d7dc3ded32f869d82ca7919。GuidePageFrame从两张天空图改同一用户JPG，CSS仅合并为一个背景变量，保留fixed/cover、阅读遮罩和明暗主题，不增加独立展示图片。MP4未拷入仓库，原文件/桌面源码/候选包未改；本批实际构建/部署另记。
 
 **本批完成**：源码b1eda34fd6c99a6800bdb55b4bf412e783369d9c的Docs Site 40887051140（build123493489490/deploy123493697979）、CI40887051000和七页契约40887051075均completed/success。独立HTTP14页共用用户JPG，52字段保留；线上图片1100598字节，SHA256 f245f6f33699e7a5197a95f704805f874049a8931d7dc3ded32f869d82ca7919，与源文件/仓库副本逐字节一致。首页1280×720浅色与390×844深色fixed/cover背景、无hero img、顶部14链接、无横溢已核对，截图和JSON在工作区outputs/user-jpg-wallpaper-2026-10-29。 初次图片字节检查错误拼成站点根/_astro返回404，是校验脚本遗漏/Mirror_Cloud基址，修正到页面实际资源URL后匹配，并非网站图片故障。原Auto主题/viewport恢复，临时7页关闭，用户2/3页保留；未建本地服务、独立profile或一次性脚本。记录提交只改Markdown，不冒充新部署；真实账号配置/桌面G3仍按既有范围待用户实测。
+
+## 2026-10-29 — 紧凑导航与删除内置教程
+
+用户截图指出全展开多行导航占屏，要求顶层布局在上、多项分类只给一个选择入口；新增指令删除桌面连接窗口简略教程，直接跳对应云端文档。修改前HEAD5a8efe5ff336207e6b1b94c2a87a742e104c54b6、远端b1eda34fd6c99a6800bdb55b4bf412e783369d9c。核对线上Starlight header实际DOM后，PageFrame同一sticky页头，导航从配置派生四一级/两details菜单，电脑flex顺序、小屏grid两行，菜单外点/Escape关闭，首页密度调小。JPG背景和教程数据保留。
+
+桌面删除providerGuideSteps/showGuide及大块内置教程，配置教程直接用provider URL/opener错误反馈，缺基址简短提示。现有verify_dialog_interactions两处C从两次点击改一次，panelCopy语义改fallbackNotice，三站点及无基址/错误守卫保留，指纹只改该脚本一行，其余20行不变。build/17套单元/文档16/gate-unit29通过；浏览器Gitee表单未填凭据，单击打开https://159357yangjun.github.io/Mirror_Cloud/guides/gitee/，原表单保留、无内置教程。640检查暂639通过/1旧HEAD指纹失败，提交后再跑；不改检查器绕过。独立只读审查无实质问题，网站编译和实际窄屏待云端结果。
+
+gate-unit默认产物C:/Users/yyyy/AppData/Local/Temp/image-hosting-probes/2026-10-30/report-gate-unit.json用后已删除并核对False；当前用户日期按客户端为2026-10-29，不以主机日期命名报告。无一次性代码落盘；其余红绿检查输出定向本轮outputs作为保留证据，不安装工具/网站依赖、不改真实数据/云端、不制作正式Release或新候选包。
