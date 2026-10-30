@@ -252,3 +252,8 @@ gate-unit默认产物C:/Users/yyyy/AppData/Local/Temp/image-hosting-probes/2026-
 **预览后台查询修正**：c9dd996d891b578a1fa7cea33d233cdb0f819e7c的六条云端工作流全部成功，但新UI截图仍有原TypeError。复核发现独立于桥判定的实际来源：Plugins四个query和系统诊断无可用性门控，Assets也订阅同plugins键，浏览器自动请求native-only API后由全局QueryCache通知跨页显示。没有删除toast或更改测具来遮住问题。现将当前6个observer统一enabled:desktopAvailable，插件页明确预览限制并禁用AI保存/规划，诊断browser不请求/不刷新/不显示永久加载；原生true分支维持原请求。独立审查发现的Assets同键遗漏已补。
 
 新增实际TanStack QueryClient/QueryObserver生命周期测试覆盖5类API的6个consumer，native/browser各挂载及invalidate：漏Assets时12项1失败，补后12/0（native实际请求两次，browser0且不loading）。诊断真实渲染用例先17项1失败，修正后17/0；20套单元、build、97命令、640流程通过。只读复审无遗留。云端/干净截图待最终源码实际运行；网站源文件仍与已部署1e7一致。新增回归及其JSON/文本为保留验证证据，比较代码均stdin，不留一次性探针。
+
+
+**通知叠放测具修正**：2122f25e3eb865b2e77182b5e91b5fa4e31e5aaf的Windows UI40992358645实际pages36/0、layout21/0无跳过、keyboard42/0；confirm失败为toast co-occurrence present=false。原fixture通过后台原生API报错生成toast，本轮已阻止错误自动请求，故测试前提失效，并非放行确认或产品层级回归。修正仅测具：通过实际useToastStore.notifyError发送受控通知，保留present、hitTest、确认框仍开和层级等全部断言，新增通知文案命中。没有删除错误通知或更改产品。
+
+fingerprint_rows --patch只更新verify_dialog_interactions一行，21行其余20不变；新脚本3797行/312141字节/SHA256 8cb0e7eb13ea840bcb698bb06d4f30d58a53b59cae4fca378d3a3adf96a612cc，不重签视觉基线。本地语法及gate-unit29/29通过，结果定向outputs/harness-unit，无默认Temp报告残留；640须提交后按HEAD重新核对，最终云端UI需该源码实际通过。

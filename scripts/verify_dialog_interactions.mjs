@@ -1164,19 +1164,19 @@ async function main() {
     await shot('08-confirm-open')
     z.confirmAt95 = true
 
-    // Toast layer while the confirm is open. Plugins/Tasks call `invoke` unconditionally, so in a
-    // plain browser they always fail and always raise a toast; a direct DOM click is used because
-    // the confirm overlay would swallow a real pointer event on the sidebar.
-    z.toastTrigger = []
-    for (const route of ['插件', '任务']) {
-      const fired = await evaluate(`(function(){const b=Array.from(document.querySelectorAll('nav button')).find(x=>(x.textContent||'').trim()===${JSON.stringify(route)});if(!b)return 'nav missing';b.click();return 'clicked';})()`)
-      z.toastTrigger.push(`${route}:${fired}`)
-      await sleep(800)
-      if (await evaluate(`(function(){const t=document.querySelector('.pointer-events-none.fixed.bottom-4');return !!t && t.children.length > 0})()`)) break
-    }
+    // Produce the real toast through its public store API. This stacking test must
+    // not depend on an unrelated page making a failing native request in a browser.
+    z.toastTrigger = await evaluate(`(async function(){
+      const m = await import('/src/store/useToastStore.ts');
+      if (typeof m.notifyError !== 'function') throw new Error('real toast producer is unavailable');
+      m.notifyError('确认框通知层级测试');
+      return { source: 'useToastStore.notifyError', message: '确认框通知层级测试' };
+    })()`)
+    await sleep(100)
     await assertRealViewport('6-toast-hit-test')
     z.toast = await evaluate(`(function(){const t=document.querySelector('.pointer-events-none.fixed.bottom-4');if(!t||!t.children.length)return {present:false, containerExists:!!t};const cs=getComputedStyle(t);const r=t.getBoundingClientRect();const el=document.elementFromPoint(r.x+r.width/2, Math.min(r.y+r.height/2, window.innerHeight-1));const o=window.__H.overlay();return {present:true,z:cs.zIndex,toasts:Array.from(t.children).map(c=>(c.textContent||'').trim().slice(0,90)),hitTestAtToastCenter:{tag:el&&el.tagName,isToastOrChild:t.contains(el),isConfirmOrChild:!!(o&&o.contains(el))},pointerEvents:cs.pointerEvents,confirmStillOpen:!!o,veilOverToast:o?{backgroundColor:getComputedStyle(o).backgroundColor,backdropFilter:getComputedStyle(o).backdropFilter||getComputedStyle(o).webkitBackdropFilter}:null};})()`)
     if (!z.toast.present) throw new Error('toast co-occurrence not reproduced: ' + JSON.stringify(z.toast))
+    if (!z.toast.toasts.some((text) => text.includes(z.toastTrigger.message))) throw new Error('controlled real toast was not rendered: ' + JSON.stringify(z.toast))
     await shot('10-toast-behind-confirm')
     z.confirmStillOpen = await evaluate(`!!window.__H.dialog()`)
 
