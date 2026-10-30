@@ -1,53 +1,22 @@
 # HANDOFF
 
-## 2026-10-29 — 项目结构、页框与实用教程
+## 2026-10-30 — 本轮结构与布局收尾
 
-用户要求优化整个项目结构和布局，并明确网页内容简单实用、不文艺。沿用已批准结构设计和技术栈，本轮实现共享页框、共享存储工厂及教程模块化；不变更IPC、数据库/凭据定位、发布策略或正式版本。修改前本地4ee3b19与远端1d3c763分叉均为文档，正常合并63e152e53a76319b635bf8ed803e6494db801986保留全部内容，仅纳入远端新增历史分支审计文件，不执行其中分支清理。
+入口和长期规则见根目录 `AGENTS.md`；继续修改前读取实际Git状态和远端main。
 
-- 桌面PageLayout统一七主页面及旧Workflows页的宽度/留白，PageHeader主题token、标题与操作换行；发布欢迎区和页头改直接说明用途。未改变页面业务状态，未引入fixed包含块。
-- 已保存连接的Provider构造抽到services/provider_factory.rs；commands/cli保留薄包装和各自未知Provider错误，保持缺引用→配置解析→typed凭据读取→构造顺序。7项离线Rust测试覆盖七Provider、读取次数、失败顺序/透传和私有S3冲突；只用内存假凭据，不访问用户keyring或真实云端。Rust执行待新SHA云端，不以rustfmt冒充编译。
-- 七平台说明拆data/providers，统一导出保持。52字段canonical JSON SHA256前后同为1149d216d039676d099e1877a9bbef5640652c92a2a41ef92ae6137d2b1d6cb7；新增真实TS模块校验加入既有单元入口。
-- 网站CSS拆theme/layout/navigation/content/providers/responsive，custom仅有序import；保留JPG整页背景与已验证透明度。首页改简短用途/选择平台/三步上传/使用链接；选择平台默认收起。压缩配置入口面板留白；图片处理说明简化，外观独立页面准确说明PNG/JPG/WebP/MP4限制、暂停及本机保存。现为15教程路由，52字段未删。
-- README修正过期dev/feature约定、npm install与必须本机SDK表述，开发线对齐源码1.4.10候选；ARCHITECTURE补真实目录和调用方向。详细规则仍只在AGENTS，未新添框架或依赖。
-- 本地桌面build、18套单元、97命令契约、640用户流程、16文档契约、46 Actions pin及Rust格式通过；独立只读审查无实质问题。现有大chunk/无效动态导入警告保留；未重签主题统计历史基线。网站Astro、Rust执行、原生/UI及新增首页浏览器检查待新SHA云端；不使用旧SHA成功代替。
-- 当前不重打桌面候选或正式发布，旧9cc安装包不含这些源码变化；网站按既有授权部署。15路由/52字段/截图及新SHA CI结果完成后补录。临时代码均stdin，无本地浏览器控制/新profile，无真实账号操作；outputs仅保留交付证据。
+本轮共享页框、共享Provider工厂和教程模块化已实现。用户要求网页文字简单实用：网站首页只保留配置选择、三步上传和使用链接，七平台52项填写说明保留，新增独立外观说明，现15路由。顶部分类、整页JPG、透明度与明暗文字对比保留。
 
+- 桌面七主页面及旧Workflows页复用PageLayout/PageHeader，统一宽度、留白和操作换行；原生连接工厂集中在services/provider_factory.rs，保留桌面/CLI错误差异、解析和凭据读取顺序。React/Tauri/Rust/Astro、命令合同和数据定位保持。
+- 浏览器预览修正：原生桥需invoke可调用；当前10个原生后台query均有可用性门控并保留选择条件。真实QueryObserver回归22/0，runtime11/0，诊断17/0，完整单元20套通过。IPC包装合同保持，原生业务未改成浏览器模拟成功。
+- 最终产品源码 `0c3a340fc50ead34127d6b37526b2db7e7499e14` 已推送。CI40994185177成功，Rust221通过/0失败/1项真实R2 E2E忽略；新增7工厂测试全部通过。原生40994185266成功，两次窗口宽0.7998046875/高0.8、均在工作区，SQLite重启持久化及NSIS/MSI安装卸载通过。R2离线40994185289、候选标记40994185283、七页契约40994185171成功。
+- UI40994185267首次pages36/0、confirm19/0、layout21/0无跳过；keyboard因App mount超时未完成；同SHA第2次已completed/success，页面36/0、确认19/0、布局21/0无跳过、键盘42/0。首次归档12950223849的SHA256为300dd7a2c4418368e8ca57c1966bdd7d92b6f4a9111e29c349d221ba9cf94f6e，9716542字节，已下载核对；目视云端/设置/插件640截图无旧TypeError。首次超时如实保留，不解释为首轮成功。最终归档12965420156已下载核对：9717143字节、SHA256 9e0ff846150c9649b112716b95af8509f19fc4f83fe8e53120d3cfb0f77ee89d；目视最终云端/设置/插件640与发布1440无旧TypeError，截图在windows-ui-0c3a340-final。
+- 网站部署源码 `1e7d2c77b660bcc25e6ac974d976850b93d09052`，Docs40989020969成功，31浏览器检查、15路由/52字段/锚点/背景字节核对通过。后续提交没有网站源文件差异，不冒称网站由0c3重新部署。线上 https://159357yangjun.github.io/Mirror_Cloud/ 。
+- 本地build、20套单元、97命令契约、640流程、16文档契约、46Actions pin、Rust格式通过；不重签历史主题统计基线。现有大chunk和无效动态导入警告保留。
 
-入口与长期约束见根目录AGENTS.md；继续工作前重读Git状态与远端main。
+本轮证据与逐提交完整路径：`C:/Users/yyyy/Documents/Codex/2026-10-24/d-image-hosting-platform/outputs/project-structure-layout-2026-10-29/交付报告.md`。旧截图错误和测试前提失效的过程保留WORKLOG及报告，不能再当最终无错误证据。通知hit-test是取证字段，现有判定未断言命中归属。
 
-## 2026-10-29 — 紧凑导航、透明度与在线教程收口
+仍待后续批次：设置页其余领域API/大组件拆分、Rust发布生命周期和仓储职责；本轮没有宣称所有未来结构改造完成。主题统计历史11/12行漂移未重签，当前数未重新测定。自动扫描覆盖当前直接invoke函数/现有useQuery形式，未来新增别名或其他hook需扩展解析。
 
-- 已完成并上线：四个顶部一级入口、两组收起的分类选择；电脑一行/手机两行，当前页、单开、Escape回焦、外点/焦点移出关闭。中文root UI、折叠本页目录、明确字段获取入口与中文字体回退。
-- JPG仍为用户授权的全站固定背景；主面板浅色72%/深色74%不透明，字段82%/85%，降低壁纸遮罩。正文实色、标题/字段加重，浅色链接深莓红、深色浅粉；最差背景实测浅色正文7.7929/链接4.7871，深色正文6.3775/链接5.5597，均大于4.5:1。
-- 最终部署源码06d1d60f5a2a01faae68392fc67e5a0160c84fa0，Docs Site40986288329的build123837982590/deploy123838192005均成功；实际CJK字形及24项浏览器断言通过，临时profile清理正常。七页契约40986288382成功；主CI40986288525已completed/success（Rust214通过/0失败/1项真实R2忽略）。
-- 独立线上HTTP14路由/52字段/4一级入口与14链接/目录锚点/新CSS通过，JPG1100598字节及SHA256 f245f6f33699e7a5197a95f704805f874049a8931d7dc3ded32f869d82ca7919匹配。最终截图与report归档12946977859的digest 88e623d07e9fe1493fdf76297e2d26adfe232bf4fa46198d33376387743234a6，1864330字节，已下载校验并目视检查。
-- 桌面StorageSetupDialog删除简略内置教程，配置教程单击对应在线文档；现有缺基址/opener错误/R2确认保留，实际Gitee点击已测。对应源码7fd7019的七条相关云端工作流均成功；17套本地单元、build、文档16、gate-unit29、Actions46与640用户流程通过。最新改动仅网站/CI，未新打桌面包，现有候选仍9cc88524d034；不能称用户现装程序已有教程入口变更。
-- 边界：本地浏览器控制因当前URL无法可靠确认而停止；云端测试仅自有构建loopback与独立Chrome，不操作用户浏览器/账户。不安装本机依赖、不做真实云端写入、G3升级保真或正式发布。MP4仅桌面本机，未公开。
+仍待用户真实验收：实际显示器/DPI、原生WebView图片/MP4、G3旧数据/真实凭据/图床/Typora/插件/新上传，以及正式发布后的自动更新闭环。现有候选仍 `D:/image-hosting-builds/1.4.10-candidate-9cc88524d034`，未包含本轮源码变更；本轮原生workflow内部测试安装器未向用户交付为新候选。未正式发版/tag、未代安装、未操作真实云端或数据库、未安装本机SDK/网站依赖。MP4仅本机，JPG按用户授权公开。
 
-证据与逐提交完整文件清单：C:/Users/yyyy/Documents/Codex/2026-10-24/d-image-hosting-platform/outputs/compact-navigation-2026-10-29/交付报告.md；发布HTTP核对published-verification-06d1d60.json；最终隔离浏览器截图cloud-browser-06d1d60。旧方框截图cloud-browser、183清理失败截图cloud-browser-183c0c3仅供追溯，不当作最终部署证据。
-
-仍待用户实测：9cc候选在实际显示器/DPI与原生WebView的图片/MP4；旧数据、真实凭据、图床、Typora/插件、新上传的G3矩阵；正式发布后从1.4.9的自动更新闭环。9cc候选路径D:/image-hosting-builds/1.4.10-candidate-9cc88524d034，之前已交付，不自动代用户安装。本轮不创建正式tag/Release，不更改应用identifier或真实数据库。
-
-本轮未创建一次性探针代码；临时1421无监听，Temp report-gate-unit.json已删除核对。用户浏览器工具停止后旧测试页不能再次核对，不声称已关闭。更早批次清理策略拒绝残留以旧报告为准，不重试绕过。结构统一其余批次、真实R2 E2E与主题历史12行基线漂移仍按原任务范围保留，不宣称本轮解决。
-
-
-**验收追加的运行环境修正**：1e7d2c77b660bcc25e6ac974d976850b93d09052的CI40989020964/Rust221通过0失败1真实R2忽略（新工厂7项全通过）、Docs40989020969/31浏览器断言与部署、七页契约40989021182成功；线上15路由/52字段/锚点/直接文案和MP4限制复查通过。88原生40988973809、Windows UI40988973758成功，但检查其640云端截图发现浏览器原生调用TypeError提示，因此旧布局PASS不当作“截图无错误”证明。
-
-进一步源码/单测证实runtime旧判定只看__TAURI_INTERNALS__属性是否存在，undefined/null/空对象/非函数也被认原生。修正只要求invoke可调用，保留直接invoke包装与所有原API命令合同；不扩大为全局浏览器调用拒绝政策。5个既有native fixture补成真实可调用桥形状，原正反断言保留。最终同一11项runtime/实际四个存储读取函数用例对git show 1e7旧源码内存执行11项7失败，对新源码11/0；19套单元/build/640通过，独立复审无问题。原截图错误与所有预览原生依赖的关系仍需新SHA截图核对，不预先宣布全部清除；真实WebView/图床结论仍以原生/真实验收边界为准。
-
-
-**预览后台查询修正**：c9dd996d891b578a1fa7cea33d233cdb0f819e7c的六条云端工作流全部成功，但新UI截图仍有原TypeError。复核发现独立于桥判定的实际来源：Plugins四个query和系统诊断无可用性门控，Assets也订阅同plugins键，浏览器自动请求native-only API后由全局QueryCache通知跨页显示。没有删除toast或更改测具来遮住问题。现将当前6个observer统一enabled:desktopAvailable，插件页明确预览限制并禁用AI保存/规划，诊断browser不请求/不刷新/不显示永久加载；原生true分支维持原请求。独立审查发现的Assets同键遗漏已补。
-
-新增实际TanStack QueryClient/QueryObserver生命周期测试覆盖5类API的6个consumer，native/browser各挂载及invalidate：漏Assets时12项1失败，补后12/0（native实际请求两次，browser0且不loading）。诊断真实渲染用例先17项1失败，修正后17/0；20套单元、build、97命令、640流程通过。只读复审无遗留。云端/干净截图待最终源码实际运行；网站源文件仍与已部署1e7一致。新增回归及其JSON/文本为保留验证证据，比较代码均stdin，不留一次性探针。
-
-
-**通知叠放测具修正**：2122f25e3eb865b2e77182b5e91b5fa4e31e5aaf的Windows UI40992358645实际pages36/0、layout21/0无跳过、keyboard42/0；confirm失败为toast co-occurrence present=false。原fixture通过后台原生API报错生成toast，本轮已阻止错误自动请求，故测试前提失效，并非放行确认或产品层级回归。修正仅测具：通过实际useToastStore.notifyError发送受控通知，保留present、hitTest、确认框仍开和层级等全部断言，新增通知文案命中。没有删除错误通知或更改产品。
-
-fingerprint_rows --patch只更新verify_dialog_interactions一行，21行其余20不变；新脚本3797行/312141字节/SHA256 8cb0e7eb13ea840bcb698bb06d4f30d58a53b59cae4fca378d3a3adf96a612cc，不重签视觉基线。本地语法及gate-unit29/29通过，结果定向outputs/harness-unit，无默认Temp报告残留；640须提交后按HEAD重新核对，最终云端UI需该源码实际通过。
-
-
-**全原生读取扫描补漏**：3645最终UI门禁40992999797成功，受控通知已真实出现；但逐张审阅截图仍有1条旧TypeError，不能仅据门禁PASS宣布无错误。全src逐项检查useQuery后定位Settings的listPortableAssetStaging自动读取（另有按批次读取），并发现Gallery和StorageBrowser的原生browseStorage两个有条件入口。新增门控保留原storageId/批次选择条件；没有清通知或更改API合同。
-
-查询回归现在从desktop.ts自动发现直接invoke且无browser fallback的API，递归扫描整个src实际useQuery，共10个observer；真实QueryObserver覆盖原生/浏览器以及图库/暂存无选择两种情况，补前22项4失败，补后22/0。20套单元、build、640流程通过，独立复审查询22/0及云端浏览工具61/0，无其余当前原生observer漏门控。最终截图需新SHA确认；之前12项测试只覆盖枚举的5种API，已明确扩展而不将旧结果当全量覆盖。
-
-报告措辞校正：通知中心hit-test在现有测具里是采集字段，未在confirmVerdict判定命中归属；应称保留hit-test取证，不能称其命中归属断言通过。本轮未伪造或减少原断言，受控文案额外断言已实际云端通过。
+本地浏览器控制此前因URL无法可靠确认停止，未重试或绕过；本轮截图仅云端隔离runner自有loopback。一次性对照代码均stdin，用后没有保存；outputs保留交付证据。旧批次被策略拒绝的清理残留以旧报告为准，未宣称本轮清除。

@@ -1,36 +1,16 @@
 # Changelog
 
-## 项目结构与页面布局 — 2026-10-29（源码已实现，云端验收待完成）
+## 项目结构与页面布局 — 2026-10-30（源码完成，教程已上线）
 
-桌面八页复用PageLayout/PageHeader，自适应留白与操作换行；已保存连接的Provider构造由桌面/CLI两份合并为共享服务，保留原错误及凭据边界。教程52字段按平台拆分、CSS按六项职责拆分；首页删宣传文案，保留配置选择和三步使用，外观单独成页，现15路由。README和架构说明对齐main-only、显式依赖和云端编译流程。
+桌面八页复用PageLayout/PageHeader，统一宽度、留白与操作换行；桌面/CLI的已保存连接Provider构造合并为共享服务。教程52字段按平台拆分、CSS按职责拆分；首页用“配置存储→上传图片→复制链接”直接说明用途，保留详细填写方法和入口，外观独立成页，现15路由。README和架构说明对齐main-only与云端编译流程。
 
-本地build、18套单元、97命令契约、640流程、16文档、46 Actions pin与Rust格式通过；字段内容canonical hash完全一致，独立审查无遗留。Rust7项新增测试及网站/原生UI须等对应源码CI，不冒充本机执行；不重打安装包或正式发布。
+修正浏览器预览原生桥误判和10个原生后台查询误请求；保留原生调用与选择条件。新增runtime11项、查询22项回归，完整20套单元、本地build、97命令契约、640流程、16文档、46Actions pin及Rust格式通过。独立只读审查无实质遗留；原主题统计基线未重签，大chunk/动态导入警告仍在。
 
+产品源码 `0c3a340fc50ead34127d6b37526b2db7e7499e14` 的[CI40994185177](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/40994185177)成功，Rust221通过/0失败/1项真实R2忽略，新增7工厂测试全通过。[原生40994185266](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/40994185266)窗口约80%工作区、SQLite重启持久化和NSIS/MSI安装卸载成功；R2离线、身份和七页契约成功。UI40994185267首次页面36/0、确认19/0、布局21/0，键盘App mount超时；[同SHA第2次](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/40994185267)已completed/success，页面36/0、确认19/0、布局21/0无跳过、键盘42/0。最终归档SHA256 `9e0ff846150c9649b112716b95af8509f19fc4f83fe8e53120d3cfb0f77ee89d`已核对，目视最终截图无原TypeError；首轮超时保留，不记成首轮通过。
 
+网站部署仍以源码 `1e7d2c77b660bcc25e6ac974d976850b93d09052` 的[Docs40989020969](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/40989020969)为准：31浏览器检查、15路由/52字段及JPG一致性通过；后续提交未改网站。线上 https://159357yangjun.github.io/Mirror_Cloud/ 。本轮不重新交付桌面候选或正式发布；现有9cc安装包不含本轮代码，G3真实数据/图床和正式更新闭环仍待用户实测。
 
-**验收追加的运行环境修正**：1e7d2c77b660bcc25e6ac974d976850b93d09052的CI40989020964/Rust221通过0失败1真实R2忽略（新工厂7项全通过）、Docs40989020969/31浏览器断言与部署、七页契约40989021182成功；线上15路由/52字段/锚点/直接文案和MP4限制复查通过。88原生40988973809、Windows UI40988973758成功，但检查其640云端截图发现浏览器原生调用TypeError提示，因此旧布局PASS不当作“截图无错误”证明。
-
-进一步源码/单测证实runtime旧判定只看__TAURI_INTERNALS__属性是否存在，undefined/null/空对象/非函数也被认原生。修正只要求invoke可调用，保留直接invoke包装与所有原API命令合同；不扩大为全局浏览器调用拒绝政策。5个既有native fixture补成真实可调用桥形状，原正反断言保留。最终同一11项runtime/实际四个存储读取函数用例对git show 1e7旧源码内存执行11项7失败，对新源码11/0；19套单元/build/640通过，独立复审无问题。原截图错误与所有预览原生依赖的关系仍需新SHA截图核对，不预先宣布全部清除；真实WebView/图床结论仍以原生/真实验收边界为准。
-
-
-
-**预览后台查询修正**：c9dd996d891b578a1fa7cea33d233cdb0f819e7c的六条云端工作流全部成功，但新UI截图仍有原TypeError。复核发现独立于桥判定的实际来源：Plugins四个query和系统诊断无可用性门控，Assets也订阅同plugins键，浏览器自动请求native-only API后由全局QueryCache通知跨页显示。没有删除toast或更改测具来遮住问题。现将当前6个observer统一enabled:desktopAvailable，插件页明确预览限制并禁用AI保存/规划，诊断browser不请求/不刷新/不显示永久加载；原生true分支维持原请求。独立审查发现的Assets同键遗漏已补。
-
-新增实际TanStack QueryClient/QueryObserver生命周期测试覆盖5类API的6个consumer，native/browser各挂载及invalidate：漏Assets时12项1失败，补后12/0（native实际请求两次，browser0且不loading）。诊断真实渲染用例先17项1失败，修正后17/0；20套单元、build、97命令、640流程通过。只读复审无遗留。云端/干净截图待最终源码实际运行；网站源文件仍与已部署1e7一致。新增回归及其JSON/文本为保留验证证据，比较代码均stdin，不留一次性探针。
-
-
-
-**通知叠放测具修正**：2122f25e3eb865b2e77182b5e91b5fa4e31e5aaf的Windows UI40992358645实际pages36/0、layout21/0无跳过、keyboard42/0；confirm失败为toast co-occurrence present=false。原fixture通过后台原生API报错生成toast，本轮已阻止错误自动请求，故测试前提失效，并非放行确认或产品层级回归。修正仅测具：通过实际useToastStore.notifyError发送受控通知，保留present、hitTest、确认框仍开和层级等全部断言，新增通知文案命中。没有删除错误通知或更改产品。
-
-fingerprint_rows --patch只更新verify_dialog_interactions一行，21行其余20不变；新脚本3797行/312141字节/SHA256 8cb0e7eb13ea840bcb698bb06d4f30d58a53b59cae4fca378d3a3adf96a612cc，不重签视觉基线。本地语法及gate-unit29/29通过，结果定向outputs/harness-unit，无默认Temp报告残留；640须提交后按HEAD重新核对，最终云端UI需该源码实际通过。
-
-
-
-**全原生读取扫描补漏**：3645最终UI门禁40992999797成功，受控通知已真实出现；但逐张审阅截图仍有1条旧TypeError，不能仅据门禁PASS宣布无错误。全src逐项检查useQuery后定位Settings的listPortableAssetStaging自动读取（另有按批次读取），并发现Gallery和StorageBrowser的原生browseStorage两个有条件入口。新增门控保留原storageId/批次选择条件；没有清通知或更改API合同。
-
-查询回归现在从desktop.ts自动发现直接invoke且无browser fallback的API，递归扫描整个src实际useQuery，共10个observer；真实QueryObserver覆盖原生/浏览器以及图库/暂存无选择两种情况，补前22项4失败，补后22/0。20套单元、build、640流程通过，独立复审查询22/0及云端浏览工具61/0，无其余当前原生observer漏门控。最终截图需新SHA确认；之前12项测试只覆盖枚举的5种API，已明确扩展而不将旧结果当全量覆盖。
-
-报告措辞校正：通知中心hit-test在现有测具里是采集字段，未在confirmVerdict判定命中归属；应称保留hit-test取证，不能称其命中归属断言通过。本轮未伪造或减少原断言，受控文案额外断言已实际云端通过。
+验收中旧通知测具依靠后台错误造toast，改为真实useToastStore.notifyError受控通知并增加文案断言，保留原断言和hit-test取证；hit-test命中归属未纳入现有判定。fingerprint_rows仅更新verify_dialog_interactions一行，其余20行不变；该脚本3797行/312141字节/SHA256 `8cb0e7eb13ea840bcb698bb06d4f30d58a53b59cae4fca378d3a3adf96a612cc`，gate-unit29/0。历史错误截图、失败原因、红绿测试和逐提交完整路径保留WORKLOG及outputs/project-structure-layout-2026-10-29/交付报告.md，不当作最终通过证据。
 
 ## 紧凑顶栏、在线教程直达与壁纸可读性 — 2026-10-29（网站已上线）
 
