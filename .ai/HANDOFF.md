@@ -1,26 +1,16 @@
 # HANDOFF
 
+入口与长期规则见AGENTS.md。修改前重读Git及远端。
 
-## 2026-10-30 — DeepSeek网站壁纸与本机换壁纸展示
+## 2026-10-30 — DeepSeek网站壁纸与桌面预览
 
-用户明确网站改用C:/Users/yyyy/Downloads/【哲风壁纸】AI拟人-DeepSeek娘.jpg；允许该JPG公开作为整页背景。两段新MP4仅供桌面本机导入，不提交/上传/打包。网站只原样替换website/src/assets/art/user-wallpaper.jpg，2560×1440、574196字节、SHA256 c2069e77410a7ca8047e3875adbb0a404495d13f3b8a7083f6f22141adab58e1；源/目标逐字节相同。CSS、透明度、布局和文案保持。独立核对文档16/0、平台7/字段52及diff通过；新SHA云端和实际线上待验。
+网站壁纸已按用户明确要求换为DeepSeek娘JPG（网站可公开），原样2560×1440/574196字节，SHA256 c2069e77410a7ca8047e3875adbb0a404495d13f3b8a7083f6f22141adab58e1。布局、透明度和文案不变。最终产品源3292fedee22e4a28945c82273a8f931e9f816535已推送；CI41073871719、Docs41073871728、七页41073871866全部completed/success。Docs build124124739937的41浏览器检查通过，deploy124125248016的15路由通过；主代理目视明暗首页为新壁纸。独立HTTP首页/Gitee引用同一新JPG，实际574196字节及SHA与用户源相同。
 
-桌面请求仍在进行：Computer Use主工具初始化两次均“failed to write kernel assets: 系统找不到指定的路径。 (os error 3)”，重置后仍失败；备用CUA入口同错。尚未取得可操作窗口，不能称完成图片/MP4实际导入播放。先准备本机当前前端预览，不要求安装SDK/软件；不尝试绕过先前浏览器控制停止条件。素材未改原件。
+浏览器归档12985893014已本机下载核对2901931字节、SHA256 722e6498a43bb5beff7aab22199cda0cf50d935401893d23ad2f04b5bf1247c3。截图/report和线上核对位于C:/Users/yyyy/Documents/Codex/2026-10-24/d-image-hosting-platform/outputs/deepseek-wallpaper-2026-10-30，逐提交文件/CI见其中交付报告。本地docs16/0、7平台52字段/0/canonical内容不变、主题19/0、视频14/0及diff通过；原主题/视频测试只验证边界、配置和事件顺序，不冒充真实媒体解码。
 
+桌面展示完成到前端预览启动：现有npm.cmd dev运行 http://127.0.0.1:1420/ ，HTTP200及Vite/app入口已核对，服务保留供用户使用。不是安装版/原生WebView；浏览器外观和媒体仅存在该浏览器本机，不与安装版同步。入口为左下“皮肤”→“导入图片/MP4”。主Computer Use两次初始化（含reset）与备用CUA均failed to write kernel assets: 系统找不到指定的路径。(os error3)，未取得可操作窗口；实际点击导入、播放/暂停/刷新保存及原生WebView仍没跑完，具体缺口由工具故障造成，不能称功能失败或实操通过。ui.ps1另因未签名被系统策略拒绝，直接使用已安装npm.cmd的既有dev任务启动，没有更改系统安全/执行策略或安装工具。
 
-入口与长期规则见AGENTS.md；修改前重新读取Git和远端。
-
-## 2026-10-30 — 教程网站质感细化完成
-
-沿用用户批准的顶部选择、整页JPG、原透明度与简单实用文案，增加6px轻磨砂/柔边/内高光、中文字体优先和适度标题字距、字段两列对齐与编号；原7使用入口改为整行链接，手机单列。没有改桌面、依赖、Provider52字段或指南正文。
-
-- 最终产品源码 `ac20ece3f692b76bf9e883d2016d46233f57270c` 已推送。CI41070881002成功，Rust221通过/0失败/1真实R2 E2E忽略；七页契约41070880971成功。Docs41070880980构建和浏览器41/0成功，含原31及实际字段几何/键盘/低运动/320与390检查；两个窄屏h1/正文left均26.59375。
-- **发布状态与实际网站分开**：该Docs作业三次创建Pages部署API均500，整体failure，不写PASS。只读Pages配置仍build_type=workflow/status=built；官网组件operational，不能称全站公告故障。独立HTTP已证实新版实际在服务：36个HTML/CSS/JS/JPG与该SHA Pages归档逐字节一致，0不匹配。网页可刷新使用，不把发布状态回报失败解释成旧版仍在。
-- 证据：Pages归档12983254792为1487095字节、SHA256 5276a2c2ea9d11acedb6a6215c3c0e6b23bd6d83b8cc3d0e188784fde93086c4；浏览器归档12983204859为3665434字节、SHA256 e140f751e5cee0612b9131065cd8460bd3fe5b60abf551592451a5e2e2ec56d0，均本机下载核对。9截图与report在本轮outputs/cloud-ac20ece，主代理/独立复核手机/字段/资源无可用性阻断。
-- 本地Node语法、52字段canonical hash、16文档、640流程与diff通过。磨砂不增加面板不透明度；明暗最差正文7.7929/6.3775、链接4.7871/5.5597均>=4.5。无新增下载字体或依赖，无本机浏览器控制重试/SDK安装，stdin对照无探针脚本。
-
-报告和线上36文件逐字节核对：`C:/Users/yyyy/Documents/Codex/2026-10-24/d-image-hosting-platform/outputs/guide-quality-2026-10-30/交付报告.md`、`published-byte-verification-ac20ece.json`。先前Enter事件测具、低运动优先级、内层copy居中三个问题均修复并被最终41检查覆盖；失败过程仅保留WORKLOG/报告供追溯，不作为待执行指令。
-
+两段MP4仅用户本机，未上传/提交/打包：人物特写8260135字节、5秒、2560×1440/24fps；五条悟26732140字节、4秒、3830×1900/60fps。Windows Shell只读元数据均满足64MiB/600秒/16777216像素限制，不能替代真实播放。比较/编辑/下载和键码检查均stdin，无一次性探针脚本；新JPG公开范围不扩到视频。
 
 ## 桌面和后续边界
 
