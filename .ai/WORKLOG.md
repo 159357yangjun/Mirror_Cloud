@@ -211,3 +211,6 @@ gate-unit默认产物C:/Users/yyyy/AppData/Local/Temp/image-hosting-probes/2026-
 **7fd7019收口与新增要求**：提交后640/0通过，7fd7019e91e5e5af5f0676cd8e6ee6677039e5c8正常推送main。用户又要求整体细节、背景透明度与文字对比。追加中文root locale（查Starlight官方单语言root配置，URL不加语言前缀）、目录按需收起、字段链接读屏名、小屏省略/44px点按、焦点移出关闭及导航DOM移位匹配视觉键盘顺序；主面板浅色72%/深色74%，字段82%/85%，降低遮罩，正文/标题实色加重。
 
 本地Cua工具撤除，改用已更新computer-use技能/Node @oai/sky后，其因无法可靠识别当前浏览器URL而停止；未继续输入或换工具控制用户浏览器。后续只做代码/HTTP/隔离CI：新增check_docs_navigation.mjs，只允许Linux CI且只服务本构建loopback，使用runner已装Chrome测试顶栏、单开/Escape/外点/跳转/320和390视口/深色，截图和report作为artifact，finally关浏览器/服务器/删自己的tmp profile。独立审查指出菜单覆盖h1会误点、信号退出exitCode为null会挂清理及可见标签不在aria-label，均已修正；实际云端结果待对应SHA。没有本机网站依赖安装或新浏览器profile，原1421当前无监听。临时检查代码均stdin；永久CI测试为后续导航回归检查，不是一次性探针。
+
+
+**1f4ffc4实际结果与字形验收修正**：源码1f4ffc411027284775025e79f7f9263bd1d7edf9的CI40985323077、Docs Site40985323400（build123834878127/deploy123835122199）、七页契约40985323115均completed/success；本地提交后640/0通过。隔离云端浏览器21/0、部署14路由成功。归档12946134647的SHA256为85d596bf11eb18cdb00dc802f2bc15d361773531837518d298b7a8a9ae4eb08c，已下载核对并检查截图：布局/壁纸正确，但runner缺中文字库，中文为方框，因此不能用此截图宣布文字验收完成。修正仅云端浏览器步骤安装fonts-noto-cjk，网站中文字体回退改为微软雅黑/PingFang/Noto；增加CDP实际CJK字形与明暗两主题正文/链接最差背景4.5:1对比度验收，报告保留实测比值。正文链接明确浅色深莓红、深色浅粉。未安装本机依赖，未重试已停止的用户浏览器操作；修正后的云端结果仍待实际运行。

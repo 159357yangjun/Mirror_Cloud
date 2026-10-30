@@ -4,11 +4,13 @@
 
 **设计**：保留已授权JPG整页背景、七平台52字段和现有框架。顶部品牌/分类/搜索/主题在电脑一行，小屏两行；开始与进阶单页直达，连接云端与使用为原生details选择面板，当前项高亮。支持键盘、Escape、点外部关闭，菜单不会成为固定侧栏。首页标题与留白缩小。导航从现有Starlight路由配置派生，不复制路由表。
 
-- [ ] GuideNavigation.astro改四个顶层入口、两组收起的原生选择面板；GuidePageFrame放入同一页头，CSS配置电脑/手机布局与菜单边界。
-- [ ] StorageSetupDialog.tsx删providerGuideSteps/showGuide/大块内置教程，配置教程调用现有getProviderGuideUrl和openExternalUrlOrReport。保留表单/R2安全确认；没有在线基址时显示简短不可用说明，不显示坏链接。
-- [ ] 现有verify_dialog_interactions.mjs两处C站点改为单击配置教程直接打开，保留三站点/错误反馈/无基址守卫并同步旧字段说明，不删除功能检查。更新其一行指纹，不重签视觉基线。
+- [x] GuideNavigation.astro改四个顶层入口、两组收起的原生选择面板；GuidePageFrame放入同一页头，CSS配置电脑/手机布局与菜单边界。
+- [x] StorageSetupDialog.tsx删providerGuideSteps/showGuide/大块内置教程，配置教程调用现有getProviderGuideUrl和openExternalUrlOrReport。保留表单/R2安全确认；没有在线基址时显示简短不可用说明，不显示坏链接。
+- [x] 现有verify_dialog_interactions.mjs两处C站点改为单击配置教程直接打开，保留三站点/错误反馈/无基址守卫并同步旧字段说明，不删除功能检查。更新其一行指纹，不重签视觉基线。
 - [ ] 现有build、17套单元、文档16、640用户流程和差异检查；云端对应SHA的CI/网站构建部署/UI门禁，浏览器实测顶栏高度/菜单打开与关闭/页面跳转、桌面与手机截图。
 - [ ] 独立只读审查；更新.ai/CHANGELOG和完整文件报告。桌面已安装包与源码变更区分，正式tag/Release仍不创建。
 
 
 用户追加细节与透明度：中文root界面、不增加语言URL前缀；目录按需展开、字段获取链接具体可达名称、小屏省略/44px点按、菜单焦点移出关闭与DOM键盘顺序；主面板浅色72%/深色74%、字段82%/85%，高对比实色文字。已有本地浏览器工具因当前URL不可验证停止，不重试绕过；由仅Linux CI的本构建loopback浏览器检查菜单/窄屏并保存截图，校验成功才部署。不安装本机或新增第三方浏览器依赖。
+
+1f4ffc4云端CI/Docs/契约和21浏览器交互通过，但截图中文字库缺失。追加云端CJK字体、实际字形及明暗最差背景4.5:1验收，重跑后才能关闭阅读效果验收；不以方框截图交付。

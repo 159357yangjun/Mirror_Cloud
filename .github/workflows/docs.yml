@@ -41,7 +41,10 @@ jobs:
           npm ci
           npm run build
       - name: Check compact navigation in an isolated browser
-        run: node scripts/check_docs_navigation.mjs
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          node scripts/check_docs_navigation.mjs
       - name: Upload docs browser evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -1,5 +1,5 @@
 :root {
-  --sl-font: 'Trebuchet MS', 'Yu Gothic UI', 'Microsoft YaHei UI', sans-serif;
+  --sl-font: 'Trebuchet MS', 'Microsoft YaHei UI', 'PingFang SC', 'Noto Sans CJK SC', sans-serif;
   --sl-color-accent-low: #47273e;
   --sl-color-accent: #e6a6bd;
   --sl-color-accent-high: #ffe0eb;
@@ -11,6 +11,7 @@
   --guide-field: #152237d9;
   --guide-scrim: #0c172933;
   --guide-muted: #c9d2e2;
+  --guide-link: #ffd4e5;
   --sl-color-text: #f0edf4;
   --sl-content-width: 64rem;
   --sl-content-margin-inline: auto;
@@ -28,6 +29,7 @@
   --guide-field: #fffdfbd1;
   --guide-scrim: #fff8f314;
   --guide-muted: #513e4d;
+  --guide-link: #7c2048;
 }
 body { background: var(--sl-color-bg); }
 .guide-page { min-height: 100vh; isolation: isolate; }
@@ -79,6 +81,7 @@ html { scroll-padding-top: 9rem; }
 .card:hover { transform: translateY(-2px); border-color: var(--sl-color-accent); }
 .card .title { letter-spacing: -.025em; }
 .sl-markdown-content { line-height: 1.85; color: var(--sl-color-text); overflow-wrap: anywhere; }
+.sl-markdown-content a:not(.sl-link-button) { color: var(--guide-link); text-underline-offset: .25em; }
 .sl-markdown-content h2 { letter-spacing: -.035em; margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid var(--sl-color-hairline-light); font-size: clamp(1.4rem, 3vw, 1.9rem); }
 .sl-markdown-content h3 { letter-spacing: -.02em; font-weight: 700; }
 .sl-markdown-content :not(pre) > code { display: inline; position: static; white-space: normal; overflow-wrap: anywhere; border-radius: .3rem; }

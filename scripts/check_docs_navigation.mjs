@@ -29,6 +29,7 @@ const profile = await mkdtemp(join(tmpdir(), 'mirror-docs-navigation-'))
 let chrome, ws
 let checked = 0
 const observations = []
+const contrast = []
 const pause = (ms) => new Promise((done) => setTimeout(done, ms))
 try {
   let executable
@@ -100,10 +101,35 @@ try {
     for (const type of ['mousePressed', 'mouseReleased']) await send('Input.dispatchMouseEvent', { type, button: 'left', clickCount: 1, ...result.result.value })
   }
   const size = async (width, height) => { await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false }); await pause(100) }
+  const checkContrast = async (theme) => {
+    const ratios = await evaluate(() => {
+      const rgb = (value) => value.match(/[\d.]+/g).map(Number)
+      const luminance = (channels) => channels.map((v) => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4 }).reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0)
+      const panel = rgb(getComputedStyle(document.querySelector('.guide-main')).backgroundColor)
+      // The least favorable wallpaper pixel: black behind the light panel, white behind dark.
+      const backdrop = document.documentElement.dataset.theme === 'dark' ? 255 : 0
+      const alpha = panel[3] ?? 1
+      const background = luminance(panel.slice(0, 3).map((v) => v * alpha + backdrop * (1 - alpha)))
+      return ['.sl-markdown-content', '.provider-links a'].map((selector) => {
+        const foreground = luminance(rgb(getComputedStyle(document.querySelector(selector)).color).slice(0, 3))
+        return (Math.max(foreground, background) + .05) / (Math.min(foreground, background) + .05)
+      })
+    })
+    contrast.push({ theme, body: ratios[0], link: ratios[1] })
+    check(ratios.every((ratio) => ratio >= 4.5), `${theme} body and links meet 4.5:1 contrast over the least favorable wallpaper pixel`)
+  }
   await send('Page.enable')
   await size(1280, 800)
   await send('Page.navigate', { url: base + 'guides/gitee/' })
   await waitFor(() => document.querySelector('[data-guide-navigation]')?.parentElement.classList.contains('header') && document.fonts.status === 'loaded')
+  await evaluate(() => { const select=document.querySelector('starlight-theme-select select'); select.value='light'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+  await send('DOM.enable')
+  await send('CSS.enable')
+  const { root } = await send('DOM.getDocument')
+  const { nodeId } = await send('DOM.querySelector', { nodeId: root.nodeId, selector: 'h1' })
+  const { fonts } = await send('CSS.getPlatformFontsForNode', { nodeId })
+  check(fonts.some((font) => font.glyphCount > 0 && font.familyName.includes('Noto Sans CJK')), 'Chinese heading renders with real CJK glyphs')
+  await checkContrast('light')
   check(await evaluate(() => document.documentElement.lang === 'zh-CN'), 'Chinese root locale preserves the project route')
   check(await evaluate(() => document.querySelector('.guide-navigation').children.length === 4), 'four top-level choices')
   check(await evaluate(() => document.querySelectorAll('.guide-navigation details[open]').length === 0), 'category menus start collapsed')
@@ -143,13 +169,14 @@ try {
   await size(390, 844)
   await evaluate(() => { const select=document.querySelector('starlight-theme-select select'); select.value='dark'; select.dispatchEvent(new Event('change', { bubbles: true })) })
   check(await evaluate(() => document.documentElement.dataset.theme === 'dark' && getComputedStyle(document.querySelector('.guide-wallpaper')).backgroundImage.includes('user-wallpaper')), 'dark mode keeps the authorized full-page JPG')
+  await checkContrast('dark')
   await shot('mobile-dark.png')
   await click('.guide-navigation summary', 0)
   await shot('mobile-provider-menu.png')
-  await writeFile(join(out, 'report.json'), JSON.stringify({ checked, failed: 0, observations }, null, 2))
+  await writeFile(join(out, 'report.json'), JSON.stringify({ checked, failed: 0, observations, contrast }, null, 2))
   console.log(`DOCS_NAVIGATION checked=${checked} failed=0`)
 } catch (error) {
-  await writeFile(join(out, 'report.json'), JSON.stringify({ checked, failed: 1, observations, error: String(error) }, null, 2))
+  await writeFile(join(out, 'report.json'), JSON.stringify({ checked, failed: 1, observations, contrast, error: String(error) }, null, 2))
   throw error
 } finally {
   ws?.close()
