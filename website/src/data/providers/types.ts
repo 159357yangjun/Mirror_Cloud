@@ -15,4 +15,3 @@ export interface ProviderGuide {
   links: readonly { label: string; href: string }[]
   fields: readonly SetupField[]
 }
-
