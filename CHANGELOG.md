@@ -1,22 +1,12 @@
 # Changelog
 
-## 教程网站质感细化 — 2026-10-30（本地完成，云端待验）
+## 教程网站质感细化 — 2026-10-30（线上内容已核对更新，Pages作业回报异常）
 
-保留整页壁纸、原透明度、顶部分类和实用文案，增加轻磨砂、柔和边缘与内高光；统一中文字体、标题间距、字段两列对齐和编号样式。主页使用说明为整行链接，键盘焦点和减少动画偏好保持可用。字段/正文/依赖、桌面和候选包不变。现有浏览器门禁保留并新增实际几何和键盘检查；本地语法、52字段与文档16项通过，最终SHA云端与截图待补。
+保留整页JPG、原透明度、顶部分类和实用文案，增加轻磨砂、柔边与内高光；统一中文字体、标题间距、字段对齐和编号。主页7个原使用入口变整行链接，手机左对齐与单列，低运动偏好关闭新增过渡。没有改桌面、候选、字段正文或依赖。
 
+最终源码 `ac20ece3f692b76bf9e883d2016d46233f57270c` 的[CI41070881002](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41070881002)及七页契约成功；Rust221/0/1真实R2忽略。[Docs41070880980](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41070880980)构建和41项浏览器检查通过，320/390标题左轴差0、字段两列同线、键盘/低运动与明暗对比通过。发布API三次500，整体工作流仍failure；但独立HTTP对36个HTML/CSS/JS/JPG与该SHA Pages产物逐字节核对0不匹配，证实线上新版实际在服务，不能把该作业称为PASS。Pages配置仍workflow，未修改权限或网站发布源。
 
-
-本轮云端纠正：f0de9d7bf7ce3bf7c3d0e29219e8eb7eb37c5ad3的Docs41069429150/build124109320775已完成构建，但新增Enter检查超时，deploy跳过；report检查31条已通过（包含字段dt同线和Space），并非完整41通过。官方Chromium HTMLSummaryElement/HTMLElement及Puppeteer输入实现表明Enter激活依赖keypress的回车字符；本测具原keydown/up没有text，Space在keyup激活所以通过。现只给Enter keyDown补text/unmodifiedText=回车，不另发char、不改产品或任何断言/等待。待新SHA云端实际证明，不将源码推断记为已通过。
-
-失败归档12984526937已下载核对1221749字节、SHA256 a078cc8b74d1e857ebfb8e440b38d376df9cd747b970e485417ba1b9b596a8c6，保留report和截图到outputs/guide-quality-2026-10-30/cloud-f0de9d7；此批尚未上线，不能称最终网站证据。
-
-
-
-0901的Docs41069957244/build124111113328构建成功，Enter关闭/焦点与资源Tab检查已通过；新减少动画断言失败，deploy跳过。源码确认content.css的资源链接规则有.sl-markdown-content限定（0,2,1），responsive.css原覆盖少该限定（0,1,1），后加载仍无法覆盖。补相同限定使reduce下transition:none真正生效；不改变用户正常动效或删断言。浏览器检查补打印真实matchMedia与各duration，便于以后区分媒体模拟与样式。新SHA实际结果待复查。
-
-
-
-7b3210d的Docs41070393865/build124112623548实际reduce匹配true且10个目标duration全0，通过；随后390首页左轴断言失败，deploy跳过。读取真实HTML发现.hero > .stack > .copy > h1，内层.copy在手机仍align-items:center；此前只覆盖外层.stack不足。现同一左对齐规则扩到.copy，保留原1px阈值，并打印实际左右坐标。归档12983044409已下载核对3056347字节、SHA256 092d0a75d9aa1f1dbf901a185f5ed66496a00dad5cc87e64af5228b00952bd13；新SHA截图仍待全量通过，不把此失败源码当作已部署。
+浏览器归档SHA256 `e140f751e5cee0612b9131065cd8460bd3fe5b60abf551592451a5e2e2ec56d0`，Pages归档 `5276a2c2ea9d11acedb6a6215c3c0e6b23bd6d83b8cc3d0e188784fde93086c4`，实际下载核对通过。本地语法/52字段/文档16/流程640/diff及独立复核通过。截图和线上字节记录在outputs/guide-quality-2026-10-30；此前测具Enter缺字符、低运动优先级及内层copy居中问题已修并由最终检查覆盖，原失败如实保留WORKLOG/报告。
 
 ## 项目结构与页面布局 — 2026-10-30（源码完成，教程已上线）
 

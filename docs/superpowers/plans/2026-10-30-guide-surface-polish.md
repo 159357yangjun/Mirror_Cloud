@@ -10,19 +10,20 @@
 - [x] 修改theme/layout/navigation/content/providers/responsive.css；保持阅读面板/字段原透明度和原JPG。
 - [x] GuideResources.astro复用原7项说明，链接整个行可点击；index.mdx替换原项目列表。
 - [x] 扩充现有check_docs_navigation.mjs：实际两列dt几何、320/390标题对齐、资源目标/44px触达、原生details键盘、资源Tab与focus、reduced-motion；保留31条原断言。
-- [ ] 运行本地文档16/字段52/Node语法/diff检查；只读复核完整差异。
-- [ ] 按既有授权推送main、云端Astro构建与浏览器检查后部署，核对对应SHA、截图和线上资源。不能用旧成功替代本轮。
-- [ ] 刷新TASKS/HANDOFF/WORKLOG/CHANGELOG和逐提交完整路径报告；记录所有未运行项。没有桌面新包、真实账号或正式发布。
+- [x] 运行本地文档16/字段52/Node语法/diff检查；只读复核完整差异。
+- [x] 已推送main并完成最终41浏览器检查、构建/截图与线上资源逐字节核对；Pages部署作业3次500，仍failure，但线上36个文件与最终构建一致，不将作业状态改写成成功。
+- [x] 刷新TASKS/HANDOFF/WORKLOG/CHANGELOG和逐提交完整路径报告；记录所有未运行项。没有桌面新包、真实账号或正式发布。
 
 验证命令：`node --check scripts/check_docs_navigation.mjs`、`node --experimental-strip-types scripts/test_provider_guides.mjs`、`python scripts/check_docs_site.py`、`git diff --check`；云端执行`.github/workflows/docs.yml`现有构建/隔离Chrome/部署/15路由检查。样式微调使用实际截图和既有浏览器门禁，不增加镜像CSS字面量测试或重签基线。
 
 
-本轮云端纠正：f0de9d7bf7ce3bf7c3d0e29219e8eb7eb37c5ad3的Docs41069429150/build124109320775已完成构建，但新增Enter检查超时，deploy跳过；report检查31条已通过（包含字段dt同线和Space），并非完整41通过。官方Chromium HTMLSummaryElement/HTMLElement及Puppeteer输入实现表明Enter激活依赖keypress的回车字符；本测具原keydown/up没有text，Space在keyup激活所以通过。现只给Enter keyDown补text/unmodifiedText=回车，不另发char、不改产品或任何断言/等待。待新SHA云端实际证明，不将源码推断记为已通过。
+## 2026-10-30 — 教程网站质感细化完成
 
-失败归档12984526937已下载核对1221749字节、SHA256 a078cc8b74d1e857ebfb8e440b38d376df9cd747b970e485417ba1b9b596a8c6，保留report和截图到outputs/guide-quality-2026-10-30/cloud-f0de9d7；此批尚未上线，不能称最终网站证据。
+沿用用户批准的顶部选择、整页JPG、原透明度与简单实用文案，增加6px轻磨砂/柔边/内高光、中文字体优先和适度标题字距、字段两列对齐与编号；原7使用入口改为整行链接，手机单列。没有改桌面、依赖、Provider52字段或指南正文。
 
+- 最终产品源码 `ac20ece3f692b76bf9e883d2016d46233f57270c` 已推送。CI41070881002成功，Rust221通过/0失败/1真实R2 E2E忽略；七页契约41070880971成功。Docs41070880980构建和浏览器41/0成功，含原31及实际字段几何/键盘/低运动/320与390检查；两个窄屏h1/正文left均26.59375。
+- **发布状态与实际网站分开**：该Docs作业三次创建Pages部署API均500，整体failure，不写PASS。只读Pages配置仍build_type=workflow/status=built；官网组件operational，不能称全站公告故障。独立HTTP已证实新版实际在服务：36个HTML/CSS/JS/JPG与该SHA Pages归档逐字节一致，0不匹配。网页可刷新使用，不把发布状态回报失败解释成旧版仍在。
+- 证据：Pages归档12983254792为1487095字节、SHA256 5276a2c2ea9d11acedb6a6215c3c0e6b23bd6d83b8cc3d0e188784fde93086c4；浏览器归档12983204859为3665434字节、SHA256 e140f751e5cee0612b9131065cd8460bd3fe5b60abf551592451a5e2e2ec56d0，均本机下载核对。9截图与report在本轮outputs/cloud-ac20ece，主代理/独立复核手机/字段/资源无可用性阻断。
+- 本地Node语法、52字段canonical hash、16文档、640流程与diff通过。磨砂不增加面板不透明度；明暗最差正文7.7929/6.3775、链接4.7871/5.5597均>=4.5。无新增下载字体或依赖，无本机浏览器控制重试/SDK安装，stdin对照无探针脚本。
 
-0901的Docs41069957244/build124111113328构建成功，Enter关闭/焦点与资源Tab检查已通过；新减少动画断言失败，deploy跳过。源码确认content.css的资源链接规则有.sl-markdown-content限定（0,2,1），responsive.css原覆盖少该限定（0,1,1），后加载仍无法覆盖。补相同限定使reduce下transition:none真正生效；不改变用户正常动效或删断言。浏览器检查补打印真实matchMedia与各duration，便于以后区分媒体模拟与样式。新SHA实际结果待复查。
-
-
-7b3210d的Docs41070393865/build124112623548实际reduce匹配true且10个目标duration全0，通过；随后390首页左轴断言失败，deploy跳过。读取真实HTML发现.hero > .stack > .copy > h1，内层.copy在手机仍align-items:center；此前只覆盖外层.stack不足。现同一左对齐规则扩到.copy，保留原1px阈值，并打印实际左右坐标。归档12983044409已下载核对3056347字节、SHA256 092d0a75d9aa1f1dbf901a185f5ed66496a00dad5cc87e64af5228b00952bd13；新SHA截图仍待全量通过，不把此失败源码当作已部署。
+报告和线上36文件逐字节核对：`C:/Users/yyyy/Documents/Codex/2026-10-24/d-image-hosting-platform/outputs/guide-quality-2026-10-30/交付报告.md`、`published-byte-verification-ac20ece.json`。先前Enter事件测具、低运动优先级、内层copy居中三个问题均修复并被最终41检查覆盖；失败过程仅保留WORKLOG/报告供追溯，不作为待执行指令。
