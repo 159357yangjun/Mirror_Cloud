@@ -1,0 +1,9 @@
+body { background: var(--sl-color-bg); }
+.guide-page { min-height: 100vh; isolation: isolate; }
+.guide-wallpaper { position: fixed; inset: 0; z-index: -1; pointer-events: none; background-image: linear-gradient(var(--guide-scrim), var(--guide-scrim)), var(--guide-wallpaper); background-position: center; background-size: cover; background-repeat: no-repeat; }
+html { scroll-padding-top: 9rem; }
+.guide-page a:focus-visible, .guide-page summary:focus-visible { outline: 2px solid var(--sl-color-accent); outline-offset: 4px; border-radius: .25rem; }
+.guide-main { max-width: 72rem; min-width: 0; margin: clamp(1rem, 2vw, 1.5rem) auto 3rem; padding: clamp(1rem, 2.5vw, 2rem); background: var(--guide-panel); border: 1px solid var(--sl-color-hairline-light); border-radius: 1.5rem; box-shadow: 0 20px 70px #14203422; }
+.guide-content, .guide-article { min-width: 0; max-width: 100%; }
+.guide-main .content-panel { border: 0; padding: 1rem 0; background: transparent; }
+.guide-main .sl-container { max-width: 100%; margin-inline: 0; }

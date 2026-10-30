@@ -17,6 +17,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
+import { PageLayout } from '../components/PageLayout'
 import {
   copyText,
   getDefaultPublishTarget,
@@ -132,7 +133,7 @@ export function PublishPage() {
   }
 
   return (
-    <div className="publish-workspace mx-auto max-w-[1320px] px-5 py-6 sm:px-7 lg:px-10 lg:py-9">
+    <PageLayout className="publish-workspace">
       <PageHeader
         title="发布"
         description="上传本地图片、截图或图片链接；Typora 也使用相同的默认云端和插件处理设置。"
@@ -145,9 +146,9 @@ export function PublishPage() {
 
       <section className="sky-welcome" aria-label="镜云发布工作台">
         <div className="sky-welcome-copy">
-          <span className="sky-eyebrow">MIRROR CLOUD / YOUR CREATIVE SPACE</span>
-          <h2>把灵感，寄给云端<span aria-hidden="true"> ✧</span></h2>
-          <p>一张图片，一个故事。连接喜欢的云端，让分享轻盈一点。</p>
+          <span className="sky-eyebrow">图片上传</span>
+          <h2>选择图片并上传</h2>
+          <p>支持本地文件、剪贴板和图片链接。上传前可修改目标和处理设置。</p>
           <button onClick={() => openUpload('files')} className="sky-welcome-action"><UploadCloud size={16} />开始发布<span aria-hidden="true"> ↗</span></button>
         </div>
       </section>
@@ -310,6 +311,6 @@ export function PublishPage() {
           </div>
         )}
       </section>
-    </div>
+    </PageLayout>
   )
 }

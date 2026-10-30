@@ -22,6 +22,7 @@ import { confirmAction } from '../store/useConfirmStore'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
+import { PageLayout } from '../components/PageLayout'
 import { GalleryMediaCard } from '../components/GalleryMediaCard'
 import { canPreviewCloudImage, isPrivateS3Storage, useCloudImagePreview } from '../lib/useCloudImagePreview'
 import { isImage, parentPath } from '../features/cloud-browser/entryUtils'
@@ -247,10 +248,10 @@ export function GalleryPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1320px] px-10 py-9">
+    <PageLayout>
       <PageHeader
         title="图库"
-        description="直接管理云端真实文件，不依赖本地上传历史。支持目录、预览、下载、单个/批量重命名、移动与删除。"
+        description="浏览云端文件，预览、下载、重命名、移动或删除。"
         action={
           <div className="flex items-center gap-2">
             <select
@@ -418,6 +419,6 @@ export function GalleryPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageLayout>
   )
 }

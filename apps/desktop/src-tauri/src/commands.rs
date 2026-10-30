@@ -3337,84 +3337,9 @@ async fn preflight_workflow_target(state: &AppState, workflow: &Workflow) -> Cmd
 }
 
 fn build_provider(state: &AppState, record: &StorageRecord) -> CmdResult<Arc<dyn StorageProvider>> {
-    let credential_ref = record
-        .credential_ref
-        .as_deref()
-        .ok_or("Storage credential reference missing")?;
-    match record.provider_key.as_str() {
-        "r2" | "s3" => {
-            let config: S3StorageConfig = serde_json::from_value(record.config_json.clone())
-                .map_err(|error| error.to_string())?;
-            let credentials: S3Credentials = state
-                .credentials
-                .get_json(credential_ref)
-                .map_err(|error| error.to_string())?;
-            let provider_key = if record.provider_key == "r2" {
-                "r2"
-            } else {
-                "s3"
-            };
-            Ok(Arc::new(
-                OpenDalStorage::s3(provider_key, &config, &credentials)
-                    .map_err(|error| error.to_string())?,
-            ))
-        }
-        "oss" => {
-            let config: OssStorageConfig = serde_json::from_value(record.config_json.clone())
-                .map_err(|error| error.to_string())?;
-            let credentials: OssCredentials = state
-                .credentials
-                .get_json(credential_ref)
-                .map_err(|error| error.to_string())?;
-            Ok(Arc::new(
-                OpenDalStorage::oss(&config, &credentials).map_err(|error| error.to_string())?,
-            ))
-        }
-        "cos" => {
-            let config: CosStorageConfig = serde_json::from_value(record.config_json.clone())
-                .map_err(|error| error.to_string())?;
-            let credentials: CosCredentials = state
-                .credentials
-                .get_json(credential_ref)
-                .map_err(|error| error.to_string())?;
-            Ok(Arc::new(
-                OpenDalStorage::cos(&config, &credentials).map_err(|error| error.to_string())?,
-            ))
-        }
-        "webdav" => {
-            let config: WebDavStorageConfig = serde_json::from_value(record.config_json.clone())
-                .map_err(|error| error.to_string())?;
-            let credentials: WebDavCredentials = state
-                .credentials
-                .get_json(credential_ref)
-                .map_err(|error| error.to_string())?;
-            Ok(Arc::new(
-                OpenDalStorage::webdav(&config, &credentials).map_err(|error| error.to_string())?,
-            ))
-        }
-        "github" => {
-            let config: GitHubStorageConfig = serde_json::from_value(record.config_json.clone())
-                .map_err(|error| error.to_string())?;
-            let credentials: GitHubCredentials = state
-                .credentials
-                .get_json(credential_ref)
-                .map_err(|error| error.to_string())?;
-            Ok(Arc::new(GitHubStorage::new(config, credentials)))
-        }
-        "gitee" => {
-            let config: GiteeStorageConfig = serde_json::from_value(record.config_json.clone())
-                .map_err(|error| error.to_string())?;
-            let credentials: GiteeCredentials = state
-                .credentials
-                .get_json(credential_ref)
-                .map_err(|error| error.to_string())?;
-            Ok(Arc::new(GiteeStorage::new(config, credentials)))
-        }
-        _ => Err(format!(
-            "Provider {} is not wired in this build",
-            record.provider_key
-        )),
-    }
+    crate::services::provider_factory::build_provider(&state.credentials, record, |key| {
+        format!("Provider {key} is not wired in this build")
+    })
 }
 
 fn deployment_role_from_str(value: &str) -> CmdResult<DeploymentRole> {

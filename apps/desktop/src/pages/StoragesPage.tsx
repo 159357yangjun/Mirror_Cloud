@@ -21,6 +21,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import { PageHeader } from '../components/PageHeader'
+import { PageLayout } from '../components/PageLayout'
 import { ReadFailurePanel } from '../components/ReadFailurePanel'
 import { ProviderPickerDialog } from '../components/ProviderPickerDialog'
 import { StorageBrowserDialog } from '../components/StorageBrowserDialog'
@@ -150,10 +151,10 @@ export function StoragesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1320px] px-10 py-9">
+    <PageLayout>
       <PageHeader
         title="云端"
-        description="连接存储，并把多个云端组合成一次发布即可完成的 Storage Group。"
+        description="添加存储连接，设置默认目标，或创建多云组。"
         action={
           <div className="flex items-center gap-2">
             <button disabled={storages.length < 2} onClick={() => setGroupOpen(true)} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium disabled:opacity-35">
@@ -301,6 +302,6 @@ export function StoragesPage() {
       }} />}
       {browser && <StorageBrowserDialog storage={browser} onClose={() => setBrowser(null)} />}
       {groupOpen && <StorageGroupDialog storages={storages} onClose={() => setGroupOpen(false)} />}
-    </div>
+    </PageLayout>
   )
 }

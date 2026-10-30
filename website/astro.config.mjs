@@ -37,12 +37,13 @@ export default defineConfig({
             { label: 'Typora 配置向导', slug: 'use/typora' },
             { label: '多云组与修复', slug: 'use/multicloud' },
             { label: '本机 HTTP API', slug: 'use/local-api' },
-            { label: '凭据与安全', slug: 'use/security' }
+            { label: '凭据与安全', slug: 'use/security' },
+            { label: '背景与外观', slug: 'use/appearance' }
           ]
         },
         {
           label: '进阶',
-          items: [{ label: '处理策略怎么选', slug: 'recipes/choose' }]
+          items: [{ label: '图片处理', slug: 'recipes/choose' }]
         }
       ]
     })

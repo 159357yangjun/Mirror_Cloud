@@ -1,5 +1,18 @@
 # HANDOFF
 
+## 2026-10-29 — 项目结构、页框与实用教程
+
+用户要求优化整个项目结构和布局，并明确网页内容简单实用、不文艺。沿用已批准结构设计和技术栈，本轮实现共享页框、共享存储工厂及教程模块化；不变更IPC、数据库/凭据定位、发布策略或正式版本。修改前本地4ee3b19与远端1d3c763分叉均为文档，正常合并63e152e53a76319b635bf8ed803e6494db801986保留全部内容，仅纳入远端新增历史分支审计文件，不执行其中分支清理。
+
+- 桌面PageLayout统一七主页面及旧Workflows页的宽度/留白，PageHeader主题token、标题与操作换行；发布欢迎区和页头改直接说明用途。未改变页面业务状态，未引入fixed包含块。
+- 已保存连接的Provider构造抽到services/provider_factory.rs；commands/cli保留薄包装和各自未知Provider错误，保持缺引用→配置解析→typed凭据读取→构造顺序。7项离线Rust测试覆盖七Provider、读取次数、失败顺序/透传和私有S3冲突；只用内存假凭据，不访问用户keyring或真实云端。Rust执行待新SHA云端，不以rustfmt冒充编译。
+- 七平台说明拆data/providers，统一导出保持。52字段canonical JSON SHA256前后同为1149d216d039676d099e1877a9bbef5640652c92a2a41ef92ae6137d2b1d6cb7；新增真实TS模块校验加入既有单元入口。
+- 网站CSS拆theme/layout/navigation/content/providers/responsive，custom仅有序import；保留JPG整页背景与已验证透明度。首页改简短用途/选择平台/三步上传/使用链接；选择平台默认收起。压缩配置入口面板留白；图片处理说明简化，外观独立页面准确说明PNG/JPG/WebP/MP4限制、暂停及本机保存。现为15教程路由，52字段未删。
+- README修正过期dev/feature约定、npm install与必须本机SDK表述，开发线对齐源码1.4.10候选；ARCHITECTURE补真实目录和调用方向。详细规则仍只在AGENTS，未新添框架或依赖。
+- 本地桌面build、18套单元、97命令契约、640用户流程、16文档契约、46 Actions pin及Rust格式通过；独立只读审查无实质问题。现有大chunk/无效动态导入警告保留；未重签主题统计历史基线。网站Astro、Rust执行、原生/UI及新增首页浏览器检查待新SHA云端；不使用旧SHA成功代替。
+- 当前不重打桌面候选或正式发布，旧9cc安装包不含这些源码变化；网站按既有授权部署。15路由/52字段/截图及新SHA CI结果完成后补录。临时代码均stdin，无本地浏览器控制/新profile，无真实账号操作；outputs仅保留交付证据。
+
+
 入口与长期约束见根目录AGENTS.md；继续工作前重读Git状态与远端main。
 
 ## 2026-10-29 — 紧凑导航、透明度与在线教程收口

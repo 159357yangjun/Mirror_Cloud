@@ -2,6 +2,7 @@ pub mod cli;
 mod commands;
 pub mod reconcile_cadence;
 mod rollback;
+mod services;
 mod window_layout;
 
 use std::{

@@ -131,6 +131,7 @@ function renderConsumer(consumer) {
       useQueryClient: () => ({}),
     },
     '../components/PageHeader': { PageHeader: 'PageHeader' },
+    '../components/PageLayout': { PageLayout: 'PageLayout' },
     '../components/GalleryMediaCard': { GalleryMediaCard: 'GalleryMediaCard' },
     '../lib/desktop': {},
     '../features/tasks/queryKeys': evaluate(sourceFile('apps/desktop/src/features/tasks/queryKeys.ts').text, 'apps/desktop/src/features/tasks/queryKeys.ts'),

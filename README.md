@@ -1,10 +1,10 @@
 # 镜云 | Mirror Cloud
 
-**A multi-cloud image hosting, management and publishing platform.**
+**多云图片上传与管理工具。**
 
-镜云是一个面向创作、文档与内容发布场景的多云图片托管平台。它把图片处理、云端存储、公开链接、图库管理、任务追踪、插件扩展和编辑器集成放在同一条发布链里，而不是只做“上传到某一个图床”。
+镜云支持图片上传、云端文件管理、多云副本、图片处理和编辑器集成。
 
-当前开发线：**v1.4.9（自动检查更新 + 单实例唤醒）**。本行的真值由 `scripts/project_state.py --verify` 与 Cargo/package.json 对账，不许手写漂移。
+当前开发线：**v1.4.10（候选验证中）**。版本以 Cargo/package.json 为准，`scripts/project_state.py --verify` 检查一致性；开发版本不代表已正式发布。
 
 ## 核心能力
 
@@ -57,30 +57,27 @@ Desktop / Typora / Clipboard / URL / Tray / Shortcut / HTTP API / Shell Upload
 | 任务 | 查看上传和批量云端任务，可取消或重试 |
 | 设置 | Typora、快捷键、Local API、输出格式和系统诊断 |
 
-## 分支约定
+## 项目结构
 
-- `main`：稳定、可发布版本。
-- `dev`：日常开发主分支。
-- `feature/*`：较大的独立功能。
-- `fix/*`：独立缺陷修复。
+- `apps/desktop/src`：React页面、领域API、平台桥接及共享组件。页框统一使用 `PageLayout`，页头使用 `PageHeader`。
+- `apps/desktop/src-tauri/src`：Tauri命令、CLI和桌面服务；`services/provider_factory.rs`共享已保存连接的Provider构造。
+- `crates`：领域、发布策略、Provider适配器、任务和SQLite持久化。
+- `website/src`：Astro教程站；平台说明在 `data/providers`，样式按职责分文件。
+- `scripts`：现有构建入口、契约、单元及UI检查。
 
-多人或多 Agent 协作时，任何写操作前都应重新读取远端最新 `dev` SHA 和目标文件，发生并发修改时先 reconcile；禁止 force push 覆盖别人工作。
+模块职责与调用方向见 [架构说明](docs/ARCHITECTURE.md)。协作规则统一见 [AGENTS.md](AGENTS.md)，开发只使用main，历史分支保留供审计，不创建任务分支。
 
-`main` 与 `dev` 的独立历史已经通过一个内容不变的双父提交完成安全桥接：`main` 现在是 `dev` 的祖先，后续可以正常 compare / PR；桥接过程没有改写 `main`，也没有 force push。
+## 本地查看与开发
 
-## 本地开发
+用 VS Code 打开仓库根目录即可查看代码。桌面前端预览使用已有依赖：
 
 ```powershell
-git clone https://github.com/159357yangjun/Mirror_Cloud.git
-cd Mirror_Cloud
-git switch dev
-
-cd apps/desktop
-npm install
-npm run tauri dev
+./scripts/ui.ps1
 ```
 
-项目要求 Node.js `>= 22.12`、Rust `1.98.1` / Cargo、Windows Tauri 所需的 WebView2 和 Visual Studio C++ Build Tools。`rust-toolchain.toml` 会把仓库内 Rust 命令固定到当前验证过的工具链版本，`.node-version` 把 CI 与 Release 的 Node 固定到已验证的 `22.23.2` 补丁版本。
+新环境需要依赖时，在 `apps/desktop` 显式执行 `npm ci`，消费锁文件。UI预览不要求本机安装MSVC/Windows SDK；浏览器模式不能代表原生功能验收。Rust编译、测试和桌面打包按本项目流程交给云端CI。
+
+教程站位于 `website`，独立由Docs Site工作流构建发布。原生调试入口是 `scripts/dev.ps1`，仅在已经准备好本机Tauri编译环境时使用；脚本不会隐式安装依赖。
 
 ## 验证
 

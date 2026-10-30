@@ -1,0 +1,13 @@
+---
+import { providerGuides } from '../data/providerGuides';
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<details class="provider-directory" id="storage-guides">
+  <summary>选择存储平台 <span>{Object.keys(providerGuides).length} 种</span></summary>
+  <ul>
+    {Object.entries(providerGuides).map(([key, guide]) => (
+      <li><a href={`${base}/guides/${key}/`}>{guide.title}<span aria-hidden="true">→</span></a></li>
+    ))}
+  </ul>
+</details>

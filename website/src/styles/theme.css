@@ -1,0 +1,33 @@
+:root {
+  --sl-font: 'Trebuchet MS', 'Microsoft YaHei UI', 'PingFang SC', 'Noto Sans CJK SC', sans-serif;
+  --sl-color-accent-low: #47273e;
+  --sl-color-accent: #e6a6bd;
+  --sl-color-accent-high: #ffe0eb;
+  --sl-color-bg: #142034;
+  --sl-color-bg-nav: #17243bee;
+  --sl-color-bg-sidebar: #1c2b42;
+  --sl-color-hairline-light: #43516a;
+  --guide-panel: #101b2bbd;
+  --guide-field: #152237d9;
+  --guide-scrim: #0c172933;
+  --guide-muted: #c9d2e2;
+  --guide-link: #ffd4e5;
+  --sl-color-text: #f0edf4;
+  --sl-content-width: 64rem;
+  --sl-content-margin-inline: auto;
+}
+:root[data-theme='light'] {
+  --sl-color-accent-low: #fce7ef;
+  --sl-color-accent: #9b2856;
+  --sl-color-accent-high: #752041;
+  --sl-color-bg: #fbf9fb;
+  --sl-color-bg-nav: #fffcf9ed;
+  --sl-color-bg-sidebar: #f5eff3;
+  --sl-color-hairline-light: #e2d8df;
+  --sl-color-text: #291f2b;
+  --guide-panel: #fffcf9b8;
+  --guide-field: #fffdfbd1;
+  --guide-scrim: #fff8f314;
+  --guide-muted: #513e4d;
+  --guide-link: #7c2048;
+}

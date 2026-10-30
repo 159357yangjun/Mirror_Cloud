@@ -3,6 +3,7 @@ import { Activity, Bot, CheckCircle2, ChevronDown, ChevronUp, Download, LoaderCi
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { aiPlanWorkflow, deletePlugin, getAiSettings, installMarketplacePlugin, listMarketplacePlugins, listPluginExecutionLogs, listPlugins, saveAiSettings, savePluginConfig, setPluginEnabled, setPluginHooks, setPluginPermissions } from '../lib/desktop'
 import { PageHeader } from '../components/PageHeader'
+import { PageLayout } from '../components/PageLayout'
 import { ReadFailurePanel } from '../components/ReadFailurePanel'
 import type { AiSettings, PluginView } from '../types'
 import { notifyError } from '../store/useToastStore'
@@ -79,8 +80,8 @@ export function PluginsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1240px] px-10 py-9">
-      <PageHeader title="插件" description="这里就是上传行为开关。开启的插件会在图片真正上传成功后自动执行；关闭后立即停止参与后续上传。" />
+    <PageLayout width="plugins">
+      <PageHeader title="插件" description="安装和配置插件，管理启用状态、权限及执行记录。" />
 
       <section className="mt-8 rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_10px_40px_rgba(15,23,42,.04)]">
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -162,7 +163,7 @@ export function PluginsPage() {
           <div className="rounded-2xl bg-white p-4"><div className="flex items-center gap-2 text-sm font-semibold"><Sparkles size={15} />AI Planner</div><div className="mt-3 flex gap-2"><input value={request} onChange={(e) => setRequest(e.target.value)} placeholder="例如：上传后调用 Webhook 通知博客" className="h-10 flex-1 rounded-xl border border-slate-200 px-3 text-xs" /><button disabled={!request || planMut.isPending} onClick={() => planMut.mutate(request)} className="grid size-10 place-items-center rounded-xl bg-slate-950 text-white disabled:opacity-30">{planMut.isPending ? <LoaderCircle className="animate-spin" size={14} /> : <Send size={14} />}</button></div>{plan && <pre className="mt-3 max-h-52 overflow-auto rounded-xl bg-slate-950 p-3 text-[10px] leading-5 text-slate-100">{plan}</pre>}{planMut.error && <div className="mt-2 text-xs text-red-600">{String(planMut.error)}</div>}</div>
         </div>}
       </section>
-    </div>
+    </PageLayout>
   )
 }
 

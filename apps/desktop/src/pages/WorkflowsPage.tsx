@@ -3,6 +3,7 @@ import { Check, ChevronRight, Gauge, ImageDown, Plus, Sparkles, Star, Trash2, Wo
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
+import { PageLayout } from '../components/PageLayout'
 import { WorkflowSetupDialog } from '../components/WorkflowSetupDialog'
 import { deleteWorkflow, listRecipes, listWorkflows, setDefaultWorkflow } from '../features/workflows/api'
 import { confirmAction } from '../store/useConfirmStore'
@@ -24,7 +25,7 @@ export function WorkflowsPage() {
   })
 
   return (
-    <div className="mx-auto max-w-[1320px] px-10 py-9">
+    <PageLayout>
       <PageHeader
         title="方案"
         description="把图片处理、命名和发布目标组合成一个可重复使用的 Workflow。"
@@ -76,6 +77,6 @@ export function WorkflowsPage() {
       </section>
 
       {setupRecipe !== undefined && <WorkflowSetupDialog recipe={setupRecipe} onClose={() => setSetupRecipe(undefined)} />}
-    </div>
+    </PageLayout>
   )
 }

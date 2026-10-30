@@ -18,12 +18,6 @@ use persistence_sqlite::{
 };
 use plugin_runtime::{PluginContext, PluginHook, PluginManifest, PluginPermission};
 use storage_core::StorageProvider;
-use storage_gitee::{GiteeCredentials, GiteeStorage, GiteeStorageConfig};
-use storage_github::{GitHubCredentials, GitHubStorage, GitHubStorageConfig};
-use storage_opendal::{
-    CosCredentials, CosStorageConfig, OpenDalStorage, OssCredentials, OssStorageConfig,
-    S3Credentials, S3StorageConfig, WebDavCredentials, WebDavStorageConfig,
-};
 use task_engine::TaskEngine;
 use uuid::Uuid;
 use workflow_engine::prepare_asset;
@@ -974,87 +968,9 @@ fn build_provider(
     context: &CliContext,
     record: &StorageRecord,
 ) -> Result<Arc<dyn StorageProvider>, String> {
-    let credential_ref = record
-        .credential_ref
-        .as_deref()
-        .ok_or_else(|| "Storage credential reference missing".to_string())?;
-    match record.provider_key.as_str() {
-        "r2" | "s3" => {
-            let config: S3StorageConfig = serde_json::from_value(record.config_json.clone())
-                .map_err(|error| error.to_string())?;
-            let credentials: S3Credentials = context
-                .credentials
-                .get_json(credential_ref)
-                .map_err(|error| error.to_string())?;
-            Ok(Arc::new(
-                OpenDalStorage::s3(
-                    if record.provider_key == "r2" {
-                        "r2"
-                    } else {
-                        "s3"
-                    },
-                    &config,
-                    &credentials,
-                )
-                .map_err(|error| error.to_string())?,
-            ))
-        }
-        "oss" => {
-            let config: OssStorageConfig = serde_json::from_value(record.config_json.clone())
-                .map_err(|error| error.to_string())?;
-            let credentials: OssCredentials = context
-                .credentials
-                .get_json(credential_ref)
-                .map_err(|error| error.to_string())?;
-            Ok(Arc::new(
-                OpenDalStorage::oss(&config, &credentials).map_err(|error| error.to_string())?,
-            ))
-        }
-        "cos" => {
-            let config: CosStorageConfig = serde_json::from_value(record.config_json.clone())
-                .map_err(|error| error.to_string())?;
-            let credentials: CosCredentials = context
-                .credentials
-                .get_json(credential_ref)
-                .map_err(|error| error.to_string())?;
-            Ok(Arc::new(
-                OpenDalStorage::cos(&config, &credentials).map_err(|error| error.to_string())?,
-            ))
-        }
-        "webdav" => {
-            let config: WebDavStorageConfig = serde_json::from_value(record.config_json.clone())
-                .map_err(|error| error.to_string())?;
-            let credentials: WebDavCredentials = context
-                .credentials
-                .get_json(credential_ref)
-                .map_err(|error| error.to_string())?;
-            Ok(Arc::new(
-                OpenDalStorage::webdav(&config, &credentials).map_err(|error| error.to_string())?,
-            ))
-        }
-        "github" => {
-            let config: GitHubStorageConfig = serde_json::from_value(record.config_json.clone())
-                .map_err(|error| error.to_string())?;
-            let credentials: GitHubCredentials = context
-                .credentials
-                .get_json(credential_ref)
-                .map_err(|error| error.to_string())?;
-            Ok(Arc::new(GitHubStorage::new(config, credentials)))
-        }
-        "gitee" => {
-            let config: GiteeStorageConfig = serde_json::from_value(record.config_json.clone())
-                .map_err(|error| error.to_string())?;
-            let credentials: GiteeCredentials = context
-                .credentials
-                .get_json(credential_ref)
-                .map_err(|error| error.to_string())?;
-            Ok(Arc::new(GiteeStorage::new(config, credentials)))
-        }
-        _ => Err(format!(
-            "Provider {} is not supported by the Typora bridge",
-            record.provider_key
-        )),
-    }
+    crate::services::provider_factory::build_provider(&context.credentials, record, |key| {
+        format!("Provider {key} is not supported by the Typora bridge")
+    })
 }
 
 #[cfg(test)]
