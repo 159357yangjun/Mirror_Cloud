@@ -10,6 +10,10 @@
 
 失败归档12984526937已下载核对1221749字节、SHA256 a078cc8b74d1e857ebfb8e440b38d376df9cd747b970e485417ba1b9b596a8c6，保留report和截图到outputs/guide-quality-2026-10-30/cloud-f0de9d7；此批尚未上线，不能称最终网站证据。
 
+
+
+0901的Docs41069957244/build124111113328构建成功，Enter关闭/焦点与资源Tab检查已通过；新减少动画断言失败，deploy跳过。源码确认content.css的资源链接规则有.sl-markdown-content限定（0,2,1），responsive.css原覆盖少该限定（0,1,1），后加载仍无法覆盖。补相同限定使reduce下transition:none真正生效；不改变用户正常动效或删断言。浏览器检查补打印真实matchMedia与各duration，便于以后区分媒体模拟与样式。新SHA实际结果待复查。
+
 ## 项目结构与页面布局 — 2026-10-30（源码完成，教程已上线）
 
 桌面八页复用PageLayout/PageHeader，统一宽度、留白与操作换行；桌面/CLI的已保存连接Provider构造合并为共享服务。教程52字段按平台拆分、CSS按职责拆分；首页用“配置存储→上传图片→复制链接”直接说明用途，保留详细填写方法和入口，外观独立成页，现15路由。README和架构说明对齐main-only与云端编译流程。

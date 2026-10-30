@@ -37,6 +37,6 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .card, .guide-chevron, .guide-navigation-direct, .guide-navigation-dropdown > summary,
-  .sl-heading-wrapper .sl-anchor-link, .guide-resources a, .provider-directory summary, .provider-directory a { transition: none; }
+  .sl-heading-wrapper .sl-anchor-link, .sl-markdown-content .guide-resources a, .provider-directory summary, .provider-directory a { transition: none; }
   .card:hover { transform: none; }
 }
