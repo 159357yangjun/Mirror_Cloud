@@ -1,5 +1,13 @@
 # HANDOFF
 
+
+## 2026-10-30 — DeepSeek网站壁纸与本机换壁纸展示
+
+用户明确网站改用C:/Users/yyyy/Downloads/【哲风壁纸】AI拟人-DeepSeek娘.jpg；允许该JPG公开作为整页背景。两段新MP4仅供桌面本机导入，不提交/上传/打包。网站只原样替换website/src/assets/art/user-wallpaper.jpg，2560×1440、574196字节、SHA256 c2069e77410a7ca8047e3875adbb0a404495d13f3b8a7083f6f22141adab58e1；源/目标逐字节相同。CSS、透明度、布局和文案保持。独立核对文档16/0、平台7/字段52及diff通过；新SHA云端和实际线上待验。
+
+桌面请求仍在进行：Computer Use主工具初始化两次均“failed to write kernel assets: 系统找不到指定的路径。 (os error 3)”，重置后仍失败；备用CUA入口同错。尚未取得可操作窗口，不能称完成图片/MP4实际导入播放。先准备本机当前前端预览，不要求安装SDK/软件；不尝试绕过先前浏览器控制停止条件。素材未改原件。
+
+
 入口与长期规则见AGENTS.md；修改前重新读取Git和远端。
 
 ## 2026-10-30 — 教程网站质感细化完成
