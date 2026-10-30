@@ -186,5 +186,7 @@ try {
     if (chrome.exitCode === null && chrome.signalCode === null) { chrome.kill('SIGKILL'); await exited }
   }
   await new Promise((done) => server.close(done))
-  await rm(profile, { recursive: true, force: true })
+  // Chromium children can finish profile writes just after the parent exits.
+  // Keep cleanup mandatory, with bounded retries for ENOTEMPTY/EBUSY races.
+  await rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
 }
