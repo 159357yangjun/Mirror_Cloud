@@ -8,6 +8,7 @@ on:
     paths:
       - 'website/**'
       - 'scripts/check_docs_site.py'
+      - 'scripts/check_docs_navigation.mjs'
       - '.github/workflows/docs.yml'
       - '.node-version'
   workflow_dispatch:
@@ -39,6 +40,15 @@ jobs:
         run: |
           npm ci
           npm run build
+      - name: Check compact navigation in an isolated browser
+        run: node scripts/check_docs_navigation.mjs
+      - name: Upload docs browser evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docs-navigation-evidence
+          path: qa-docs-navigation
+          if-no-files-found: warn
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:

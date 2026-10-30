@@ -30,6 +30,9 @@ function flatten(entries: Entry[]): { label: string; href: string; current: bool
 
 <script>
   for (const nav of document.querySelectorAll<HTMLElement>('[data-guide-navigation]')) {
+    // Match keyboard order to the visual brand → navigation → search → theme order.
+    const title = nav.closest('.guide-site-header')?.querySelector('.title-wrapper');
+    if (title?.parentElement?.classList.contains('header')) title.after(nav);
     const menus = Array.from(nav.querySelectorAll<HTMLDetailsElement>('details'));
     const closeMenus = () => menus.forEach((menu) => { menu.open = false; });
     for (const menu of menus) {
@@ -50,6 +53,9 @@ function flatten(entries: Entry[]): { label: string; href: string; current: bool
     });
     nav.addEventListener('click', (event) => {
       if (event.target instanceof Element && event.target.closest('a')) closeMenus();
+    });
+    nav.addEventListener('focusout', (event) => {
+      if (event.relatedTarget instanceof Node && !nav.contains(event.relatedTarget)) closeMenus();
     });
   }
 </script>

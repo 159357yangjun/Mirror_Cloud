@@ -10,6 +10,7 @@ export default defineConfig({
     starlight({
       title: '镜云 · Mirror Cloud',
       description: 'A multi-cloud image hosting, management and publishing platform.',
+      locales: { root: { label: '简体中文', lang: 'zh-CN' } },
       customCss: ['./src/styles/custom.css'],
       components: {
         PageFrame: './src/components/GuidePageFrame.astro',

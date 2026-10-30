@@ -207,3 +207,7 @@
 桌面删除providerGuideSteps/showGuide及大块内置教程，配置教程直接用provider URL/opener错误反馈，缺基址简短提示。现有verify_dialog_interactions两处C从两次点击改一次，panelCopy语义改fallbackNotice，三站点及无基址/错误守卫保留，指纹只改该脚本一行，其余20行不变。build/17套单元/文档16/gate-unit29通过；浏览器Gitee表单未填凭据，单击打开https://159357yangjun.github.io/Mirror_Cloud/guides/gitee/，原表单保留、无内置教程。640检查暂639通过/1旧HEAD指纹失败，提交后再跑；不改检查器绕过。独立只读审查无实质问题，网站编译和实际窄屏待云端结果。
 
 gate-unit默认产物C:/Users/yyyy/AppData/Local/Temp/image-hosting-probes/2026-10-30/report-gate-unit.json用后已删除并核对False；当前用户日期按客户端为2026-10-29，不以主机日期命名报告。无一次性代码落盘；其余红绿检查输出定向本轮outputs作为保留证据，不安装工具/网站依赖、不改真实数据/云端、不制作正式Release或新候选包。
+
+**7fd7019收口与新增要求**：提交后640/0通过，7fd7019e91e5e5af5f0676cd8e6ee6677039e5c8正常推送main。用户又要求整体细节、背景透明度与文字对比。追加中文root locale（查Starlight官方单语言root配置，URL不加语言前缀）、目录按需收起、字段链接读屏名、小屏省略/44px点按、焦点移出关闭及导航DOM移位匹配视觉键盘顺序；主面板浅色72%/深色74%，字段82%/85%，降低遮罩，正文/标题实色加重。
+
+本地Cua工具撤除，改用已更新computer-use技能/Node @oai/sky后，其因无法可靠识别当前浏览器URL而停止；未继续输入或换工具控制用户浏览器。后续只做代码/HTTP/隔离CI：新增check_docs_navigation.mjs，只允许Linux CI且只服务本构建loopback，使用runner已装Chrome测试顶栏、单开/Escape/外点/跳转/320和390视口/深色，截图和report作为artifact，finally关浏览器/服务器/删自己的tmp profile。独立审查指出菜单覆盖h1会误点、信号退出exitCode为null会挂清理及可见标签不在aria-label，均已修正；实际云端结果待对应SHA。没有本机网站依赖安装或新浏览器profile，原1421当前无监听。临时检查代码均stdin；永久CI测试为后续导航回归检查，不是一次性探针。
