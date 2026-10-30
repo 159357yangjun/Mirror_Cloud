@@ -264,11 +264,12 @@ export function SettingsPage() {
   const { data: stagedAssetBatches = [], error: stagedBatchError } = useQuery({
     queryKey: ['portable-asset-staging'],
     queryFn: listPortableAssetStaging,
+    enabled: desktopAvailable,
   })
   const { data: selectedStagedItems = [] } = useQuery({
     queryKey: ['portable-asset-staging-items', selectedStagedBatch],
     queryFn: () => listPortableStagedItems(selectedStagedBatch!),
-    enabled: selectedStagedBatch !== null,
+    enabled: desktopAvailable && selectedStagedBatch !== null,
   })
   const visibleStagedItems = selectedStagedItems.filter((item) => {
     const query = stagedSearch.trim().toLocaleLowerCase()

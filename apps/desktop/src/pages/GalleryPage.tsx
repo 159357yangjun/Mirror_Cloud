@@ -23,6 +23,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { PageLayout } from '../components/PageLayout'
+import { isTauriRuntime } from '../platform/desktop/runtime'
 import { GalleryMediaCard } from '../components/GalleryMediaCard'
 import { canPreviewCloudImage, isPrivateS3Storage, useCloudImagePreview } from '../lib/useCloudImagePreview'
 import { isImage, parentPath } from '../features/cloud-browser/entryUtils'
@@ -47,6 +48,7 @@ const GALLERY_PAGE_SIZE = 120
 const GALLERY_RENDER_CAP = 600
 
 export function GalleryPage() {
+  const desktopAvailable = isTauriRuntime()
   const queryClient = useQueryClient()
   const { data: storages = [], isLoading: loadingStorages } = useQuery({ queryKey: ['storages'], queryFn: listStorages })
   const [storageId, setStorageId] = useState('')
@@ -81,7 +83,7 @@ export function GalleryPage() {
   const { data: entries = [], isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['gallery-storage', storageId, path],
     queryFn: () => browseStorage(storageId, path),
-    enabled: Boolean(storageId),
+    enabled: desktopAvailable && Boolean(storageId),
   })
 
   const filtered = useMemo(() => {

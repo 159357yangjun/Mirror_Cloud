@@ -132,6 +132,7 @@ function renderConsumer(consumer) {
     },
     '../components/PageHeader': { PageHeader: 'PageHeader' },
     '../components/PageLayout': { PageLayout: 'PageLayout' },
+    '../platform/desktop/runtime': { isTauriRuntime: () => true },
     '../components/GalleryMediaCard': { GalleryMediaCard: 'GalleryMediaCard' },
     '../lib/desktop': {},
     '../features/tasks/queryKeys': evaluate(sourceFile('apps/desktop/src/features/tasks/queryKeys.ts').text, 'apps/desktop/src/features/tasks/queryKeys.ts'),

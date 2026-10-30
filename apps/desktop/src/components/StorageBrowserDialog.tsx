@@ -1,4 +1,5 @@
 import { assetQueryKeys } from '../features/assets/queryKeys'
+import { isTauriRuntime } from '../platform/desktop/runtime'
 import {
   ChevronLeft,
   Copy,
@@ -32,6 +33,7 @@ function sizeLabel(size?: number | null) {
 }
 
 export function StorageBrowserDialog({ storage, onClose }: { storage: StorageView; onClose: () => void }) {
+  const desktopAvailable = isTauriRuntime()
   const queryClient = useQueryClient()
   const [path, setPath] = useState('')
   const [search, setSearch] = useState('')
@@ -50,6 +52,7 @@ export function StorageBrowserDialog({ storage, onClose }: { storage: StorageVie
   const { data: entries = [], isLoading, error, refetch, isFetching } = useQuery({
     queryKey,
     queryFn: () => browseStorage(storage.id, path),
+    enabled: desktopAvailable,
   })
   const filtered = useMemo(() => {
     const keyword = search.trim().toLowerCase()

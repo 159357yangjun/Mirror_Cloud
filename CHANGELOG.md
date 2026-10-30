@@ -24,6 +24,14 @@
 
 fingerprint_rows --patch只更新verify_dialog_interactions一行，21行其余20不变；新脚本3797行/312141字节/SHA256 8cb0e7eb13ea840bcb698bb06d4f30d58a53b59cae4fca378d3a3adf96a612cc，不重签视觉基线。本地语法及gate-unit29/29通过，结果定向outputs/harness-unit，无默认Temp报告残留；640须提交后按HEAD重新核对，最终云端UI需该源码实际通过。
 
+
+
+**全原生读取扫描补漏**：3645最终UI门禁40992999797成功，受控通知已真实出现；但逐张审阅截图仍有1条旧TypeError，不能仅据门禁PASS宣布无错误。全src逐项检查useQuery后定位Settings的listPortableAssetStaging自动读取（另有按批次读取），并发现Gallery和StorageBrowser的原生browseStorage两个有条件入口。新增门控保留原storageId/批次选择条件；没有清通知或更改API合同。
+
+查询回归现在从desktop.ts自动发现直接invoke且无browser fallback的API，递归扫描整个src实际useQuery，共10个observer；真实QueryObserver覆盖原生/浏览器以及图库/暂存无选择两种情况，补前22项4失败，补后22/0。20套单元、build、640流程通过，独立复审查询22/0及云端浏览工具61/0，无其余当前原生observer漏门控。最终截图需新SHA确认；之前12项测试只覆盖枚举的5种API，已明确扩展而不将旧结果当全量覆盖。
+
+报告措辞校正：通知中心hit-test在现有测具里是采集字段，未在confirmVerdict判定命中归属；应称保留hit-test取证，不能称其命中归属断言通过。本轮未伪造或减少原断言，受控文案额外断言已实际云端通过。
+
 ## 紧凑顶栏、在线教程直达与壁纸可读性 — 2026-10-29（网站已上线）
 
 顶部分类收为四个入口，多选分类展开后跳对应页面；电脑一行、手机两行，支持当前页、Escape/外点/焦点离开关闭。界面中文、本页目录按需展开、字段获取链接更明确。用户JPG继续整页固定背景；主阅读面浅色72%/深色74%不透明，字段82%/85%，降低背景遮罩，正文/标题实色加重，链接深浅主题分别用深莓红/浅粉；正文与链接最差背景实测对比度均超过4.5:1。
