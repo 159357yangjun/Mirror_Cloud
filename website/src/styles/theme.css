@@ -1,5 +1,5 @@
 :root {
-  --sl-font: 'Trebuchet MS', 'Microsoft YaHei UI', 'PingFang SC', 'Noto Sans CJK SC', sans-serif;
+  --sl-font: 'Microsoft YaHei UI', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif;
   --sl-color-accent-low: #47273e;
   --sl-color-accent: #e6a6bd;
   --sl-color-accent-high: #ffe0eb;
@@ -12,6 +12,10 @@
   --guide-scrim: #0c172933;
   --guide-muted: #c9d2e2;
   --guide-link: #ffd4e5;
+  --guide-edge: #d9e3ff1f;
+  --guide-highlight: #ffffff14;
+  --guide-shadow: #03091638;
+  --guide-hover: #ffffff0d;
   --sl-color-text: #f0edf4;
   --sl-content-width: 64rem;
   --sl-content-margin-inline: auto;
@@ -30,4 +34,8 @@
   --guide-scrim: #fff8f314;
   --guide-muted: #513e4d;
   --guide-link: #7c2048;
+  --guide-edge: #6e4c681f;
+  --guide-highlight: #ffffffb3;
+  --guide-shadow: #35263814;
+  --guide-hover: #9b28560a;
 }

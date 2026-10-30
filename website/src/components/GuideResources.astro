@@ -1,0 +1,18 @@
+---
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const resources = [
+  { slug: 'use/publish', title: '图片发布', description: '文件、URL、剪贴板上传与结果检查。' },
+  { slug: 'use/typora', title: 'Typora', description: '配置编辑器自动上传。' },
+  { slug: 'use/multicloud', title: '多云组与修复', description: '配置副本、处理部分失败。' },
+  { slug: 'use/local-api', title: '本机 API', description: '连接其他应用。' },
+  { slug: 'use/appearance', title: '背景与外观', description: '导入图片或 MP4，调整透明度。' },
+  { slug: 'use/security', title: '凭据与安全', description: '公开、私有、密钥和权限。' },
+  { slug: 'recipes/choose', title: '图片处理', description: '缩放、格式和压缩设置。' },
+];
+---
+
+<ul class="guide-resources" role="list">
+  {resources.map((resource) => (
+    <li><a href={`${base}/${resource.slug}/`}><span><strong>{resource.title}</strong><small>{resource.description}</small></span></a></li>
+  ))}
+</ul>

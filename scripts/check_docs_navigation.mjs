@@ -135,6 +135,10 @@ try {
   check(await evaluate(() => document.querySelectorAll('.guide-navigation details[open]').length === 0), 'category menus start collapsed')
   check(await evaluate(() => document.querySelector('.guide-site-header').getBoundingClientRect().height < 90), 'desktop header uses one compact row')
   check(await evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'desktop has no horizontal overflow')
+  check(await evaluate(() => {
+    const columns = [...document.querySelector('.setup-field-details').children].map((column) => column.querySelector('dt').getBoundingClientRect());
+    return columns.length === 2 && Math.abs(columns[0].top - columns[1].top) <= 1;
+  }), 'desktop field source and fill labels align on the same row')
   await shot('desktop-closed.png')
   await click('.guide-navigation summary', 0)
   await waitFor(() => document.querySelector('.guide-navigation details').open)
@@ -180,9 +184,42 @@ try {
   check(await evaluate(() => document.querySelectorAll('.provider-directory a').length === 7), 'homepage selector retains all seven providers')
   check(await evaluate(() => [...document.querySelectorAll('.provider-directory a')].every((link) => /^\/Mirror_Cloud\/guides\/[a-z0-9]+\/$/.test(link.pathname))), 'homepage guide links retain the project base')
   check(await evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'desktop homepage does not overflow')
+  check(await evaluate(() => {
+    const expected = ['use/publish', 'use/typora', 'use/multicloud', 'use/local-api', 'use/appearance', 'use/security', 'recipes/choose'];
+    const links = [...document.querySelectorAll('.guide-resources a')];
+    return links.length === expected.length && links.every((link, i) => link.pathname === `/Mirror_Cloud/${expected[i]}/` && link.getBoundingClientRect().height >= 44);
+  }), 'seven whole-row resource links preserve their destination and touch size')
+  await evaluate(() => document.querySelector('.provider-directory summary').focus())
+  for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: ' ', code: 'Space', windowsVirtualKeyCode: 32 })
+  await waitFor(() => document.querySelector('.provider-directory').open)
+  check(await evaluate(() => document.activeElement === document.querySelector('.provider-directory summary')), 'Space opens the native storage selector without losing focus')
+  for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+  await waitFor(() => !document.querySelector('.provider-directory').open)
+  check(await evaluate(() => document.activeElement === document.querySelector('.provider-directory summary')), 'Enter closes the native storage selector without losing focus')
+  await evaluate(() => document.querySelector('.guide-resources a').focus())
+  for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+  check(await evaluate(() => document.activeElement === document.querySelectorAll('.guide-resources a')[1] && getComputedStyle(document.activeElement).outlineStyle !== 'none'), 'resource links follow DOM keyboard order with a visible focus outline')
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
+  check(await evaluate(() => [...document.querySelectorAll('.provider-directory summary, .guide-resources a, .guide-navigation summary')].every((el) => getComputedStyle(el).transitionDuration.split(',').every((value) => parseFloat(value) === 0))), 'reduced motion disables the added interaction transitions')
+  await send('Emulation.setEmulatedMedia', { features: [] })
+  await evaluate(() => { document.activeElement.blur(); scrollTo(0, 0) })
   await shot('home-desktop.png')
+  await evaluate(() => { const select = document.querySelector('starlight-theme-select select'); select.value = 'light'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+  await shot('home-desktop-light.png')
+  await evaluate(() => document.querySelector('.guide-resources').scrollIntoView())
+  await shot('home-resources-light.png')
+  await evaluate(() => scrollTo(0, 0))
   await click('.provider-directory summary')
   check(await evaluate(() => document.querySelector('.provider-directory').open), 'homepage storage selector opens on request')
+  for (const width of [390, 320]) {
+    await size(width, 844)
+    check(await evaluate(() => {
+      const heading = document.querySelector('.hero h1').getBoundingClientRect();
+      const section = document.querySelector('.sl-markdown-content h2').getBoundingClientRect();
+      return Math.abs(heading.left - section.left) <= 1;
+    }), `${width}px homepage title and content share a left alignment`)
+    check(await evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}px homepage and its open selector do not overflow`)
+  }
   await size(390, 844)
   check(await evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'mobile homepage and its open selector do not overflow')
   await shot('home-mobile.png')
