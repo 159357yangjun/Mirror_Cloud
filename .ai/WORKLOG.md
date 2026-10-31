@@ -359,3 +359,14 @@ CUA已恢复，受支持的新标签页实际运行1420：选择预设、经文�
 最终npm run build、完整20套unit、主题27/0、视频14/0（模拟边界）、97契约、16文档、640流程、node --check及diff通过，构建既有大chunk和动态导入警告保留。独立源码/截图复审未发现遗留P1/P2。Windows UI在原42项基础保留真实JPG导入、四视口滚动/几何检查并增加真实预设/End/Home/浅主题回退和局部材质/祖先检查，预期77项；此处尚未取得云端同SHA结果。证据/日志在outputs/desktop-glass-2026-10-30，等待提交后按授权推送验证。
 
 没有新用户安装包、正式tag/Release、依赖/SDK安装、真实云端写入或个人MP4上传。原生WebView和MP4真实播放/保存、用户G3升级保真仍缺。此前日志“CUA故障不重试”是旧轮次事实，不再作为本轮已恢复工具的执行约束；旧失败不会被改成成功。
+
+
+### e141cd1同源码云端闭环
+
+产品提交e141cd1b953c15eeb2a82fc25c03c4410e616f5d与前序a6abf82记录一同推送main，未改分支或正式tag。该SHA的六条工作流全部completed/success：Windows UI41161777013/browser124420677487，CI41161776970/desktop-check124420677841，原生41161776967/native124420677616，R2离线41161776939、身份41161776943、七页41161776983。UI一手作业日志及JSON确认页面36/0、确认19/0、布局21/0且skipped0、键盘/材质77/0；本批没有失败后重跑。
+
+CI Rust汇总221通过/0失败/1项real_r2_private_object_e2e按真实凭据和显式写入条件忽略，未称真实R2验收。原生两次窗口宽0.7998046875/高0.8且在工作区内、SQLite写入后重启读取通过；NSIS与MSI在临时runner安装卸载成功。该流程的安装器仅临时测试，未向用户下载交付，也没有发布Release。
+
+浏览器工件13028065439，29897262字节，实算SHA256 fb9da10225317f7d04a0174d276a0c5a5b5fb727491cd2b28180d90a0bc53a19与GitHub digest一致；安全解包JSON及指定PNG到outputs/desktop-glass-2026-10-30/windows-ui-e141cd1，已目视1440/640截图确认为真实导入的单张DeepSeek背景、局部模糊、标题完整，640下正文可滚动。外部ci-results.json、artifact-proof.json与交付报告保留完整SHA/run/job/工件映射和16文件改动范围；本地真实操作截图local-publish/local-settings.jpg单独标记为浏览器层证据。
+
+此后只修改HANDOFF、TASKS、WORKLOG、CHANGELOG和实施计划五份Markdown进行本地提交，不再推送触发重复CI；对应记录SHA待提交后补入外部报告。新用户默认与旧外观保存值原义保留；本机1420仍运行，用户可在皮肤选择通透磨砂。原生个人JPG/MP4完整播放与保存、用户实际DPI、G3真实旧数据和图床/编辑器/插件/更新闭环仍未做，本批不隐藏这些缺口。
