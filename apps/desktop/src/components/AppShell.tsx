@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { BookOpen, Boxes, Cloud, Images, ListTodo, Palette, Plug, Settings, Upload } from 'lucide-react'
 import { checkForUpdates, getDocsBaseUrl, getUpdateStatus, openExternalUrlOrReport } from '../lib/desktop'
 import {
@@ -29,6 +29,11 @@ const FIRST_RUN_HELP_KEY = 'image-hosting-platform.help.seen-v1'
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { page, setPage, openUpload, updateAvailableVersion } = useAppStore()
+  const mainRef = useRef<HTMLElement>(null)
+  useLayoutEffect(() => {
+    // A new page starts at its heading; never carry a long settings-page offset into it.
+    if (mainRef.current) mainRef.current.scrollTop = 0
+  }, [page])
   const docsUrl = getDocsBaseUrl()
   const [showHelp, setShowHelp] = useState(() => window.localStorage.getItem(FIRST_RUN_HELP_KEY) !== '1')
   const [showTheme, setShowTheme] = useState(false)
@@ -161,8 +166,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       </aside>
-      <main id="mirror-main" tabIndex={-1} className="app-main ml-[220px] min-h-screen">
-        <div className="app-page-backdrop" aria-hidden="true" />
+      <main ref={mainRef} id="mirror-main" tabIndex={-1} className="app-main ml-[220px] min-h-screen">
         <div className="app-page-surface">{children}</div>
       </main>
       {showHelp && (

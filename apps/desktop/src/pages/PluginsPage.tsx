@@ -84,7 +84,7 @@ export function PluginsPage() {
   return (
     <PageLayout width="plugins">
       <PageHeader title="插件" description="安装和配置插件，管理启用状态、权限及执行记录。" />
-      {!desktopAvailable && <p className="mt-4 text-sm text-[var(--text-secondary)]">当前为浏览器预览，插件和 AI 功能请在桌面应用中使用。</p>}
+      {!desktopAvailable && <p className="workspace-caption mt-4 text-sm text-[var(--text-secondary)]">当前为浏览器预览，插件和 AI 功能请在桌面应用中使用。</p>}
 
       <section className="mt-8 rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_10px_40px_rgba(15,23,42,.04)]">
         <div className="flex flex-wrap items-center justify-between gap-4">

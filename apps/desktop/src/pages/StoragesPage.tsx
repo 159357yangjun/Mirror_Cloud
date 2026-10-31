@@ -184,7 +184,7 @@ export function StoragesPage() {
       )}
 
       <div className="mt-8 flex items-center justify-between">
-        <div>
+        <div className="workspace-caption">
           <h2 className="text-base font-semibold">多云组</h2>
           <p className="mt-1 text-xs text-slate-400">定义 Primary / Mirror / Backup，一张图片可以自动发布到多个云端。</p>
         </div>
@@ -220,12 +220,12 @@ export function StoragesPage() {
         )}
       </section>
 
-      <div className="mt-10 flex items-center justify-between">
-        <div>
+      <div className="mt-10 flex items-center justify-between gap-3">
+        <div className="workspace-caption">
           <h2 className="text-base font-semibold">我的存储</h2>
           <p className="mt-1 text-xs text-slate-400">Token 与 Secret 保存在系统凭据库；SQLite 只保存非敏感配置和引用。</p>
         </div>
-        <button onClick={() => refetch()} className="flex items-center gap-2 text-xs text-slate-400"><RefreshCw size={13} /> 刷新</button>
+        <button onClick={() => refetch()} className="workspace-caption flex shrink-0 items-center gap-2 text-xs text-slate-400"><RefreshCw size={13} /> 刷新</button>
       </div>
 
       <section className="mt-4 grid grid-cols-3 gap-4">
@@ -266,7 +266,7 @@ export function StoragesPage() {
         )}
       </section>
 
-      <div className="mt-10">
+      <div className="workspace-caption mt-10">
         <h2 className="text-base font-semibold">官方 Provider</h2>
         <p className="mt-1 text-xs text-slate-400">R2 / S3 / OSS / COS / GitHub / Gitee / WebDAV 都可以作为默认上传目标或多云组成员。</p>
       </div>

@@ -137,42 +137,29 @@ export function PublishPage() {
       <PageHeader
         title="发布"
         description="上传本地图片、截图或图片链接；Typora 也使用相同的默认云端和插件处理设置。"
-        action={
-          <div className="flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-medium text-slate-600">
-            <UploadCloud size={14} /> 多种来源，统一发布流程
-          </div>
-        }
       />
 
-      <section className="sky-welcome" aria-label="镜云发布工作台">
-        <div className="sky-welcome-copy">
-          <span className="sky-eyebrow">图片上传</span>
-          <h2>选择图片并上传</h2>
-          <p>支持本地文件、剪贴板和图片链接。上传前可修改目标和处理设置。</p>
-          <button onClick={() => openUpload('files')} className="sky-welcome-action"><UploadCloud size={16} />开始发布<span aria-hidden="true"> ↗</span></button>
-        </div>
-      </section>
-
       {needsFirstStorage && (
-        <section className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-indigo-200 bg-indigo-50/70 p-5">
+        <section className="publish-support-surface mt-6 flex flex-wrap items-center justify-between gap-4 p-5">
           <div>
-            <h2 className="text-sm font-semibold text-indigo-950">先连接一个云端，再发布第一张图片</h2>
-            <p className="mt-1 text-xs leading-5 text-indigo-800">
+            <h2 className="text-sm font-semibold text-[var(--text-primary)]">先连接一个云端，再发布第一张图片</h2>
+            <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
               在“云端”添加并测试存储连接，设为默认目标后上传测试图片。上传成功后，请在“资源”或“图库”核对图片及访问方式。
             </p>
           </div>
-          <button onClick={() => setPage('storages')} className="rounded-xl bg-indigo-950 px-4 py-2.5 text-xs font-semibold text-white">
+          <button onClick={() => setPage('storages')} className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white">
             去添加存储 →
           </button>
         </section>
       )}
-      <div className="mt-8 grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <section className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_10px_40px_rgba(15,23,42,.04)]">
+      <div className="publish-layout-grid mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <section className="publish-upload-surface">
           <button
             onClick={() => openUpload('files')}
-            className={`group m-5 grid min-h-[300px] w-[calc(100%-2.5rem)] place-items-center rounded-[28px] border-2 border-dashed p-8 text-center transition ${dragging ? 'border-blue-400 bg-blue-50 ring-8 ring-blue-50/70' : 'border-slate-200 bg-slate-50/55 hover:border-indigo-300 hover:bg-indigo-50/35'}`}
+            className="group publish-drop-target text-center transition"
+            data-dragging={dragging}
           >
-            <div>
+            <div className="publish-drop-copy">
               <div className={`mx-auto grid size-20 place-items-center rounded-[28px] text-white shadow-xl transition group-hover:-translate-y-1 group-hover:rotate-3 ${dragging ? 'bg-blue-500' : 'bg-gradient-to-br from-slate-950 to-indigo-600'}`}>
                 <UploadCloud size={34} />
               </div>
@@ -182,12 +169,12 @@ export function PublishPage() {
             </div>
           </button>
 
-          <div className="grid gap-3 border-t border-slate-100 p-5 sm:grid-cols-2">
-            <button onClick={() => openUpload('clipboard')} className="flex items-center gap-3 rounded-2xl border border-slate-200 p-4 text-left transition hover:-translate-y-0.5 hover:bg-slate-50">
+          <div className="publish-source-actions grid gap-3 sm:grid-cols-2">
+            <button onClick={() => openUpload('clipboard')} className="publish-source-action flex items-center gap-3 p-4 text-left transition hover:-translate-y-0.5">
               <div className="grid size-10 place-items-center rounded-xl bg-violet-50 text-violet-600"><ClipboardPaste size={17} /></div>
               <div><div className="text-sm font-medium">剪贴板</div><div className="mt-0.5 text-[11px] text-slate-400">从剪贴板选择图片</div></div>
             </button>
-            <button onClick={() => openUpload('urls')} className="flex items-center gap-3 rounded-2xl border border-slate-200 p-4 text-left transition hover:-translate-y-0.5 hover:bg-slate-50">
+            <button onClick={() => openUpload('urls')} className="publish-source-action flex items-center gap-3 p-4 text-left transition hover:-translate-y-0.5">
               <div className="grid size-10 place-items-center rounded-xl bg-blue-50 text-blue-600"><Link2 size={17} /></div>
               <div><div className="text-sm font-medium">图片 URL</div><div className="mt-0.5 text-[11px] text-slate-400">批量下载再发布</div></div>
             </button>
@@ -195,7 +182,7 @@ export function PublishPage() {
         </section>
 
         <aside className="space-y-5" aria-label="发布辅助配置">
-          <section aria-label="发布目标" className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,.03)]">
+          <section aria-label="发布目标" className="publish-support-surface overflow-hidden">
           <div className="p-5">
             {(storagesLoading || groupsLoading) && <p role="status" className="mb-3 text-xs text-slate-600">正在读取可用云端…</p>}
             {(storagesError || groupsError) && <p role="alert" className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">云端列表读取失败，请到「云端」页面检查连接。</p>}
@@ -231,7 +218,7 @@ export function PublishPage() {
             )}
           </div>
           </section>
-          <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,.03)]">
+          <section className="publish-support-surface p-5">
             <div className="flex items-center gap-2 text-sm font-semibold"><Zap size={15} className="text-amber-500" />输出与复制</div>
             <p className="mt-1 text-xs leading-5 text-slate-400">公开图片上传后可复制链接或 Markdown；私有图片请到“资源”生成限时分享。</p>
             {preferences && (
@@ -269,7 +256,7 @@ export function PublishPage() {
         </div>
         {recentView === 'assets' && (
           <div role="region" id="recent-assets-panel" aria-label="最近发布列表">
-          <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,.03)]">
+          <section className="publish-support-surface p-5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm font-semibold"><GalleryHorizontalEnd size={15} className="text-indigo-500" />最近发布</div>
               <button onClick={() => setPage('assets')} className="text-[11px] font-medium text-indigo-600">全部资源</button>
@@ -292,7 +279,7 @@ export function PublishPage() {
         )}
         {recentView === 'tasks' && (
           <div role="region" id="recent-tasks-panel" aria-label="最近任务列表">
-          <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,.03)]">
+          <section className="publish-support-surface p-5">
             <div className="flex items-center justify-between"><div className="text-sm font-semibold">最近任务</div><button onClick={() => setPage('tasks')} className="text-[11px] font-medium text-indigo-600">任务中心</button></div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               {tasksLoading && <p role="status" className="text-xs text-slate-600">正在读取最近任务…</p>}

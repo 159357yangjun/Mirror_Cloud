@@ -6,6 +6,7 @@ import {
   DEFAULT_THEME_PREFERENCES,
   THEME_PRESETS,
   WALLPAPER_PRESETS,
+  withFrostedGlass,
   safeWallpaperUrl,
   storeLocalWallpaper,
   clearLocalWallpaper,
@@ -76,7 +77,7 @@ export function ThemePanel({
           <div className="grid size-10 place-items-center rounded-2xl bg-[var(--accent-soft)] text-[var(--accent)]"><Palette size={18} /></div>
           <div className="min-w-0 flex-1">
             <h2 className="text-base font-semibold">界面皮肤</h2>
-            <p className="mt-1 text-xs leading-5 text-[var(--text-muted)]">像手机壁纸一样换氛围，但不改变功能布局。设置会立即预览并自动保存。</p>
+            <p className="mt-1 text-xs leading-5 text-[var(--text-muted)]">主题、壁纸和面板透明度会立即预览并自动保存。</p>
           </div>
           <button onClick={onClose} className="rounded-full p-2 text-[var(--text-muted)] hover:bg-[var(--surface-soft)]" aria-label="关闭皮肤设置"><X size={17} /></button>
         </header>
@@ -90,7 +91,11 @@ export function ThemePanel({
                 return (
                   <button
                     key={preset.key}
-                    onClick={() => update('theme', preset.key)}
+                    onClick={() => onChange({
+                      ...value,
+                      theme: preset.key,
+                      glass: preset.key !== 'midnight' && value.glass < 45 ? DEFAULT_THEME_PREFERENCES.glass : value.glass,
+                    })}
                     className={`relative rounded-2xl border p-3 text-left transition hover:-translate-y-0.5 ${active ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--border)] bg-[var(--surface)]'}`}
                     title={preset.description}
                   >
@@ -101,6 +106,17 @@ export function ThemePanel({
                 )
               })}
             </div>
+            <p className="mt-2 text-[11px] leading-5 text-[var(--text-muted)]">切换浅色主题时，高透明面板恢复阅读底色。</p>
+            <button
+              type="button"
+              aria-label="应用通透磨砂"
+              aria-pressed={value.theme === 'midnight' && value.glass === 18 && value.blur === 10}
+              onClick={() => onChange(withFrostedGlass(value))}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-3 text-xs font-medium"
+            >
+              <Sparkles size={14} />通透磨砂
+            </button>
+            <p className="mt-2 text-[11px] leading-5 text-[var(--text-muted)]">深色面板，透明度 82%，磨砂 10px。透出壁纸图案，模糊背景细节。</p>
           </section>
 
           <section className="mt-7">
@@ -161,8 +177,8 @@ export function ThemePanel({
             </label>
             <label className="block">
               <div className="flex items-center justify-between text-xs"><span className="font-medium">面板透明度</span><span className="text-[var(--text-muted)]">{100 - value.glass}%</span></div>
-              <input type="range" aria-label="面板透明度" min="0" max="55" value={100 - value.glass} onChange={(event) => update('glass', 100 - Number(event.target.value))} className="mt-3 w-full accent-[var(--accent)]" />
-              <div className="mt-1 text-[10px] text-[var(--text-muted)]">越高越透明，影响侧栏与内容卡片。设置和确认弹窗保持清晰。</div>
+              <input type="range" aria-label="面板透明度" min="0" max="90" value={100 - value.glass} onChange={(event) => update('glass', 100 - Number(event.target.value))} className="mt-3 w-full accent-[var(--accent)]" />
+              <div className="mt-1 text-[10px] text-[var(--text-muted)]">越高越能透出壁纸图案。亮色壁纸可调低透明度；设置和确认弹窗保持清晰。</div>
             </label>
             <label className="block">
               <div className="flex items-center justify-between text-xs"><span className="font-medium">毛玻璃模糊</span><span className="text-[var(--text-muted)]">{value.blur}px</span></div>

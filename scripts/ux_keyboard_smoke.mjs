@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createServer } from 'node:net'
 
 const out = process.argv[2] || join(tmpdir(), 'mirror-cloud-ux-keyboard')
@@ -162,6 +163,223 @@ try {
           Math.abs(geom.dpr - scale) < .02 && geom.body <= geom.width + 1 && geom.nav > 0, geom)
       }
     }
+  }
+  await call('Emulation.clearDeviceMetricsOverride')
+
+  // Use the same image the user explicitly authorized for the public website.
+  // It already exists in this checkout; private local MP4s are never uploaded.
+  // Exercise the real file input and import pipeline, not localStorage or CSS injection.
+  const wallpaperFile = fileURLToPath(new URL('../website/src/assets/art/user-wallpaper.jpg', import.meta.url))
+  if (!existsSync(wallpaperFile)) throw new Error('The authorized wallpaper is missing from the checkout')
+  const skinPoint = await evalJS(`(() => {
+    const button = document.querySelector('button[aria-label^="打开皮肤设置"]');
+    if (!button || !button.closest('aside.app-sidebar')) throw new Error('Missing sidebar appearance control');
+    const main = document.querySelector('#mirror-main');
+    const mainOffset = main.scrollTop;
+    button.scrollIntoView({ block:'nearest', inline:'nearest', behavior:'instant' });
+    if (main.scrollTop !== mainOffset) throw new Error('Revealing appearance control changed work-area scrolling');
+    const box = button.getBoundingClientRect();
+    if (box.top < 0 || box.bottom > innerHeight || box.width <= 0 || box.height <= 0) throw new Error('Appearance control is outside the viewport');
+    return { x:box.left + box.width / 2, y:box.top + box.height / 2 };
+  })()`)
+  for (const type of ['mousePressed', 'mouseReleased']) {
+    await call('Input.dispatchMouseEvent', { type, button:'left', clickCount:1, ...skinPoint })
+  }
+  await waitFor(`Boolean(document.querySelector('input[aria-label="导入本机壁纸"]'))`, 'Appearance file input')
+  await call('DOM.enable')
+  const { root:wallpaperDocument } = await call('DOM.getDocument')
+  const { nodeId:wallpaperInput } = await call('DOM.querySelector', { nodeId:wallpaperDocument.nodeId, selector:'input[aria-label="导入本机壁纸"]' })
+  if (!wallpaperInput) throw new Error('The appearance file input has no CDP node')
+  await call('DOM.setFileInputFiles', { nodeId:wallpaperInput, files:[wallpaperFile] })
+  await waitFor(`(() => {
+    const input = document.querySelector('input[aria-label="导入本机壁纸"]');
+    return input && !input.disabled && document.documentElement.dataset.wallpaper === 'true' && getComputedStyle(document.documentElement).getPropertyValue('--wallpaper').includes('data:image/jpeg;base64,');
+  })()`, 'Real JPG wallpaper import')
+  const importedWallpaper = await evalJS(`(() => {
+    const input = document.querySelector('input[aria-label="导入本机壁纸"]');
+    const panel = input.closest('aside');
+    return { finished:!input.disabled, active:document.documentElement.dataset.wallpaper === 'true', jpeg:getComputedStyle(document.querySelector('.app-shell-root')).backgroundImage.includes('data:image/jpeg;base64,'), error:panel.querySelector('[role="alert"]')?.textContent?.trim() || null };
+  })()`)
+  check('authorized JPG imports through the real appearance file input', importedWallpaper.finished && importedWallpaper.active && importedWallpaper.jpeg && importedWallpaper.error === null, importedWallpaper)
+
+  // Operate the preset and sliders through trusted browser input. The test may
+  // reveal controls inside the appearance scroller, but never moves main or
+  // injects saved appearance values / CSS to manufacture the glass result.
+  const clickAppearanceControl = async (selector) => {
+    const point = await evalJS(`(() => {
+      const control = document.querySelector(${JSON.stringify(selector)});
+      if (!control || control.disabled) throw new Error('Missing or disabled appearance control');
+      const main = document.querySelector('#mirror-main');
+      const mainOffset = main.scrollTop;
+      control.scrollIntoView({ block:'nearest', inline:'nearest', behavior:'instant' });
+      if (main.scrollTop !== mainOffset) throw new Error('Revealing appearance control moved the work area');
+      const box = control.getBoundingClientRect();
+      if (box.top < 0 || box.bottom > innerHeight || box.width <= 0 || box.height <= 0) throw new Error('Appearance control is outside the viewport');
+      const point = { x:box.left + box.width / 2, y:box.top + box.height / 2 };
+      const hit = document.elementFromPoint(point.x, point.y);
+      if (hit !== control && !control.contains(hit)) throw new Error('Appearance control is covered');
+      return point;
+    })()`)
+    for (const type of ['mousePressed', 'mouseReleased']) {
+      await call('Input.dispatchMouseEvent', { type, button:'left', clickCount:1, ...point })
+    }
+  }
+  const appearanceState = async () => evalJS(`(() => {
+    const style = getComputedStyle(document.documentElement);
+    return { theme:document.documentElement.dataset.theme,
+      glass:parseFloat(style.getPropertyValue('--glass-strength')),
+      blur:parseFloat(style.getPropertyValue('--backdrop-blur')),
+      wallpaperStrength:parseFloat(style.getPropertyValue('--wallpaper-strength')),
+      activeControl:document.activeElement?.getAttribute('aria-label'),
+      trustedEnd:window.__keyboardEvents.filter((event) => event.key === 'End').at(-1)?.trusted === true,
+      trustedHome:window.__keyboardEvents.filter((event) => event.key === 'Home').at(-1)?.trusted === true,
+      jpeg:getComputedStyle(document.querySelector('.app-shell-root')).backgroundImage.includes('data:image/jpeg;base64,') };
+  })()`)
+  const appearanceBeforePreset = await appearanceState()
+  await clickAppearanceControl('button[aria-label="应用通透磨砂"]')
+  await waitFor(`document.documentElement.dataset.theme === 'midnight' && parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--glass-strength')) === 18 && parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--backdrop-blur')) === 10`, 'Translucent glass preset')
+  const presetAppearance = await appearanceState()
+  check('glass preset uses midnight with 82 percent transparency and 10px blur',
+    presetAppearance.theme === 'midnight' && presetAppearance.glass === 18 && presetAppearance.blur === 10 && presetAppearance.jpeg && presetAppearance.wallpaperStrength === appearanceBeforePreset.wallpaperStrength,
+    presetAppearance)
+
+  // A highly translucent dark preset must not leave dark-on-wallpaper text
+  // when the user returns to a light theme. Keep the imported image selected.
+  await clickAppearanceControl('button[title="清爽浅色，适合长时间管理图片"]')
+  await waitFor(`!document.documentElement.dataset.theme && parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--glass-strength')) === 88`, 'Readable light theme after glass preset')
+  const lightAppearance = await appearanceState()
+  check('switching translucent midnight to mist restores a readable light surface without losing the wallpaper',
+    lightAppearance.theme === undefined && lightAppearance.glass === 88 && lightAppearance.jpeg && lightAppearance.wallpaperStrength === appearanceBeforePreset.wallpaperStrength, lightAppearance)
+  await clickAppearanceControl('button[aria-label="应用通透磨砂"]')
+  await waitFor(`document.documentElement.dataset.theme === 'midnight' && parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--glass-strength')) === 18 && parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--backdrop-blur')) === 10`, 'Restore glass preset after light theme')
+
+  await clickAppearanceControl('input[aria-label="面板透明度"]')
+  for (const type of ['rawKeyDown', 'keyUp']) {
+    await call('Input.dispatchKeyEvent', { type, key:'End', code:'End', windowsVirtualKeyCode:35, nativeVirtualKeyCode:35 })
+  }
+  await waitFor(`document.querySelector('input[aria-label="面板透明度"]')?.value === '90' && parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--glass-strength')) === 10`, 'Maximum panel transparency')
+  const maximumTransparency = await appearanceState()
+  check('panel transparency accepts 90 percent through a trusted End key', maximumTransparency.glass === 10 && maximumTransparency.jpeg && maximumTransparency.activeControl === '面板透明度' && maximumTransparency.trustedEnd, maximumTransparency)
+
+  await clickAppearanceControl('input[aria-label="毛玻璃模糊"]')
+  for (const type of ['rawKeyDown', 'keyUp']) {
+    await call('Input.dispatchKeyEvent', { type, key:'Home', code:'Home', windowsVirtualKeyCode:36, nativeVirtualKeyCode:36 })
+  }
+  await waitFor(`document.querySelector('input[aria-label="毛玻璃模糊"]')?.value === '0' && parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--backdrop-blur')) === 0`, 'Clear glass background')
+  const clearGlass = await appearanceState()
+  check('background blur reaches zero through a trusted Home key', clearGlass.blur === 0 && clearGlass.glass === 10 && clearGlass.jpeg && clearGlass.activeControl === '毛玻璃模糊' && clearGlass.trustedHome, clearGlass)
+
+  await clickAppearanceControl('button[aria-label="应用通透磨砂"]')
+  await waitFor(`parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--glass-strength')) === 18 && parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--backdrop-blur')) === 10`, 'Restore glass preset after slider input')
+  const restoredAppearance = await appearanceState()
+  check('glass preset restores both sliders while retaining the imported wallpaper', restoredAppearance.theme === 'midnight' && restoredAppearance.glass === 18 && restoredAppearance.blur === 10 && restoredAppearance.jpeg && restoredAppearance.wallpaperStrength === appearanceBeforePreset.wallpaperStrength, restoredAppearance)
+  const closeSkinPoint = await evalJS(`(() => {
+    const button = document.querySelector('button[aria-label="关闭皮肤设置"]');
+    if (!button) throw new Error('Missing appearance close control');
+    const box = button.getBoundingClientRect();
+    return { x:box.left + box.width / 2, y:box.top + box.height / 2 };
+  })()`)
+  for (const type of ['mousePressed', 'mouseReleased']) {
+    await call('Input.dispatchMouseEvent', { type, button:'left', clickCount:1, ...closeSkinPoint })
+  }
+  await waitFor(`!document.querySelector('input[aria-label="导入本机壁纸"]')`, 'Appearance closes after import')
+  const closedWallpaper = await evalJS(`({ panelClosed:!document.querySelector('button[aria-label="关闭皮肤设置"]'), jpeg:getComputedStyle(document.querySelector('.app-shell-root')).backgroundImage.includes('data:image/jpeg;base64,') })`)
+  check('imported wallpaper remains rendered after closing appearance', closedWallpaper.panelClosed && closedWallpaper.jpeg, closedWallpaper)
+
+  // Navigation must restore the work area's entry position. A generic clipping
+  // sweep excuses content inside scroll rails as reachable; it cannot prove a
+  // newly opened page actually starts with its heading visible.
+  const navigateWorkspace = async (label) => {
+    const point = await evalJS(`(() => {
+      const button = [...document.querySelectorAll('nav[aria-label="主要页面"] button')].find((el) => el.title === ${JSON.stringify(label)});
+      if (!button) throw new Error('Missing workspace navigation');
+      const rail = button.closest('aside.app-sidebar');
+      if (!rail) throw new Error('Workspace navigation is not inside the sidebar rail');
+      const main = document.querySelector('#mirror-main');
+      const mainOffset = main.scrollTop;
+      // The minimum-height rail can scroll. Reveal its button without moving
+      // either the source work area or the destination page under test.
+      button.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+      if (main.scrollTop !== mainOffset) throw new Error('Revealing sidebar navigation changed the work-area scroll offset');
+      const box = button.getBoundingClientRect();
+      if (box.top < 0 || box.bottom > innerHeight || box.width <= 0 || box.height <= 0) throw new Error('Workspace navigation is outside the viewport');
+      return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+    })()`)
+    for (const type of ['mousePressed', 'mouseReleased']) {
+      await call('Input.dispatchMouseEvent', { type, button: 'left', clickCount: 1, ...point })
+    }
+    await waitFor(`document.querySelector('.page-header h1')?.textContent?.trim() === ${JSON.stringify(label)}`, label + ' page heading')
+    await sleep(150)
+  }
+  await call('Page.enable')
+  for (const [width, height] of [[640, 480], [1024, 768], [1440, 900], [1920, 1080]]) {
+    await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
+    await waitFor(`innerWidth === ${width} && innerHeight === ${height}`, 'Workspace viewport ' + width)
+    await navigateWorkspace('设置')
+    // Only the page being LEFT is scrolled. Never scroll the destination to
+    // manufacture a passing header position.
+    const leftPage = await evalJS(`(() => {
+      const main = document.querySelector('#mirror-main');
+      const maximum = main.scrollHeight - main.clientHeight;
+      main.scrollTo({ top: Math.min(300, maximum), behavior: 'instant' });
+      return { maximum, scrollTop: main.scrollTop };
+    })()`)
+    check('workspace ' + width + ' source settings really scrolls', leftPage.maximum > 0 && leftPage.scrollTop > 0, leftPage)
+    await navigateWorkspace('发布')
+    const workspace = await evalJS(`(() => {
+      const main = document.querySelector('#mirror-main');
+      const layout = main.querySelector('.page-layout');
+      const header = main.querySelector('.page-header');
+      const title = header?.querySelector('h1');
+      const rect = (el) => { const r = el.getBoundingClientRect(); return { left:r.left, top:r.top, right:r.right, bottom:r.bottom, width:r.width, height:r.height }; };
+      const area = rect(main);
+      const alphaCanvas = document.createElement('canvas');
+      alphaCanvas.width = alphaCanvas.height = 1;
+      const context = alphaCanvas.getContext('2d', { willReadFrequently: true });
+      const alpha = (color) => { context.clearRect(0, 0, 1, 1); context.fillStyle = color; context.fillRect(0, 0, 1, 1); return context.getImageData(0, 0, 1, 1).data[3] / 255; };
+      const candidates = new Set([main, main.querySelector('.app-page-surface'), layout, ...main.querySelectorAll('*')].filter(Boolean));
+      const backgrounds = [];
+      for (const el of candidates) {
+        const style = getComputedStyle(el);
+        if (el !== main && el !== layout && !el.classList.contains('app-page-surface') && style.position !== 'fixed') continue;
+        const box = rect(el);
+        const intersection = Math.max(0, Math.min(box.right, area.right) - Math.max(box.left, area.left)) * Math.max(0, Math.min(box.bottom, area.bottom) - Math.max(box.top, area.top));
+        const coverage = intersection / (area.width * area.height);
+        const opacity = alpha(style.backgroundColor) * Number(style.opacity);
+        if (coverage >= .8 && opacity > .5) backgrounds.push({ className:el.className, position:style.position, coverage, opacity, background:style.backgroundColor });
+      }
+      const shell = document.querySelector('.app-shell-root');
+      const paintedWallpaper = getComputedStyle(shell).backgroundImage;
+      const imageStart = paintedWallpaper.indexOf('data:image/jpeg;base64,');
+      const wallpaperSummary = imageStart < 0 ? paintedWallpaper : paintedWallpaper.slice(0, imageStart) + 'data:image/jpeg;base64,[omitted])';
+      const readingPanel = main.querySelector('.publish-drop-copy');
+      const panelStyle = readingPanel && getComputedStyle(readingPanel);
+      const glassPanel = panelStyle && { blur:panelStyle.backdropFilter || panelStyle.webkitBackdropFilter, opacity:alpha(panelStyle.backgroundColor), textFilter:getComputedStyle(readingPanel.querySelector('h2')).filter };
+      const layoutAncestors = [main, main.querySelector('.app-page-surface'), layout].filter(Boolean).map((el) => {
+        const style = getComputedStyle(el);
+        return { className:el.className, filter:style.filter, backdropFilter:style.backdropFilter || style.webkitBackdropFilter, transform:style.transform };
+      });
+      return { scrollTop:main.scrollTop, main:area, layout:layout && rect(layout), header:header && rect(header), title:title && rect(title), rootWallpaper:document.documentElement.dataset.wallpaper, wallpaper:wallpaperSummary, localWallpaper:paintedWallpaper.includes('data:image/jpeg;base64,'), largeReadingBackgrounds:backgrounds, glassPanel, layoutAncestors, viewport:{ width:innerWidth, height:innerHeight } };
+    })()`)
+    check('workspace ' + width + ' page change resets main scroll', workspace.scrollTop === 0, workspace)
+    check('workspace ' + width + ' publish heading starts fully visible',
+      workspace.title && workspace.title.height > 0 && workspace.title.top >= workspace.main.top && workspace.title.bottom <= workspace.main.bottom,
+      { main:workspace.main, title:workspace.title })
+    check('workspace ' + width + ' page frame and header stay inside the work area',
+      workspace.layout && workspace.header && workspace.layout.top >= workspace.main.top &&
+      workspace.layout.left >= workspace.main.left - 1 && workspace.layout.right <= workspace.main.right + 1 &&
+      workspace.header.left >= workspace.layout.left - 1 && workspace.header.right <= workspace.layout.right + 1 &&
+      workspace.header.top >= workspace.main.top && workspace.header.bottom <= workspace.main.bottom,
+      { main:workspace.main, layout:workspace.layout, header:workspace.header })
+    check('workspace ' + width + ' wallpaper has no large stacked reading backdrop',
+      workspace.rootWallpaper === 'true' && workspace.wallpaper.includes('url(') && workspace.localWallpaper && workspace.largeReadingBackgrounds.length === 0,
+      { wallpaper:workspace.wallpaper, largeReadingBackgrounds:workspace.largeReadingBackgrounds })
+    check('workspace ' + width + ' reading panel transmits the wallpaper through background-only blur',
+      workspace.glassPanel && workspace.glassPanel.blur === 'blur(10px)' && workspace.glassPanel.opacity > 0 && workspace.glassPanel.opacity < .35 && workspace.glassPanel.textFilter === 'none', workspace.glassPanel)
+    check('workspace ' + width + ' layout ancestors do not create filter or transform containing blocks',
+      workspace.layoutAncestors.length === 3 && workspace.layoutAncestors.every((ancestor) => ancestor.filter === 'none' && ancestor.backdropFilter === 'none' && ancestor.transform === 'none'), workspace.layoutAncestors)
+    const screenshot = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+    writeFileSync(join(out, 'ux-workspace-' + width + '.png'), Buffer.from(screenshot.data, 'base64'))
   }
   await call('Emulation.clearDeviceMetricsOverride')
 } catch (error) {

@@ -317,7 +317,7 @@ export function AssetsPage() {
         )}
 
         {filtered.map((asset) => (
-          <article key={asset.id} className="group overflow-hidden rounded-[26px] border border-[var(--border)] bg-[var(--surface)] shadow-[0_12px_40px_rgba(15,23,42,.045)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_55px_rgba(15,23,42,.09)]">
+          <article key={asset.id} className="workspace-glass-card group overflow-hidden rounded-[26px] border border-[var(--border)] bg-[var(--surface)] shadow-[0_12px_40px_rgba(15,23,42,.045)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_55px_rgba(15,23,42,.09)]">
             <div className="relative aspect-[16/10] overflow-hidden bg-[var(--surface-soft)]">
               {asset.publicUrl ? (
                 <img src={asset.publicUrl} alt={asset.name} className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.015]" loading="lazy" decoding="async" />

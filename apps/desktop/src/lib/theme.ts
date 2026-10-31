@@ -59,6 +59,10 @@ export const DEFAULT_THEME_PREFERENCES: ThemePreferences = {
   glass: 88,
 }
 
+export function withFrostedGlass(preferences: ThemePreferences): ThemePreferences {
+  return { ...preferences, theme: 'midnight', glass: 18, blur: 10 }
+}
+
 const isThemeKey = (value: unknown): value is ThemeKey =>
   value === 'mist' || value === 'midnight' || value === 'sakura'
 
@@ -89,7 +93,7 @@ export function loadThemePreferences(): ThemePreferences {
       wallpaperStrength: numberPreference(parsed.wallpaperStrength, DEFAULT_THEME_PREFERENCES.wallpaperStrength, 0, 100),
       wallpaperMotion: typeof parsed.wallpaperMotion === 'boolean' ? parsed.wallpaperMotion : true,
       blur: numberPreference(parsed.blur, DEFAULT_THEME_PREFERENCES.blur, 0, 36),
-      glass: numberPreference(parsed.glass, DEFAULT_THEME_PREFERENCES.glass, 45, 100),
+      glass: numberPreference(parsed.glass, DEFAULT_THEME_PREFERENCES.glass, 10, 100),
     }
   } catch {
     return { ...DEFAULT_THEME_PREFERENCES }
@@ -114,7 +118,7 @@ export function applyThemePreferences(preferences: ThemePreferences) {
   root.style.setProperty('--accent', accent)
   root.style.setProperty('--accent-soft', accentSoft(accent))
   root.style.setProperty('--backdrop-blur', `${numberPreference(preferences.blur, DEFAULT_THEME_PREFERENCES.blur, 0, 36)}px`)
-  root.style.setProperty('--glass-strength', `${numberPreference(preferences.glass, DEFAULT_THEME_PREFERENCES.glass, 45, 100)}%`)
+  root.style.setProperty('--glass-strength', `${numberPreference(preferences.glass, DEFAULT_THEME_PREFERENCES.glass, 10, 100)}%`)
   root.style.setProperty('--wallpaper-strength', `${numberPreference(preferences.wallpaperStrength, DEFAULT_THEME_PREFERENCES.wallpaperStrength, 0, 100)}%`)
 
   // The local video is rendered as a blob-backed full-page layer; this image is its safe fallback.
