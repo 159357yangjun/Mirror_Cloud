@@ -394,3 +394,7 @@ CI Rust汇总221通过/0失败/1项real_r2_private_object_e2e按真实凭据和�
 ### 云端小窗命中区与焦点修正
 
 2af92d2的UI run41285727462/job124786512540一手日志：pages36/0、confirm19/0、keyboard77/0；layout21项中14失败，全部指向640x480头部select只有42px且focus样式无变化。不是上传/云端业务失败。将select最小高度改44px，并为移动导航button/select定义2px强调色焦点轮廓；不改测具阈值或断言。ff3c581的教程和640条user-flow已本地通过；最终候选需新源码同SHA的CI与UI成功，未用旧77/0代替。
+
+### 焦点差分测量顺序修正
+
+db7e0f6的UI run41286063639/job124787490444中，44px触控命中检查已通过；layout剩7个FOCUS-RING告警的resting值已经是solid 2px强调色。逐行核对测具发现markFocusables在blur之前，移动导航留下的焦点被错误当作未聚焦基线。交换原有两行顺序，先blur再采resting；不改focusNow比较逻辑、12次真实Tab或无轮廓/祖先轮廓正反控制。此修正需要新源码同SHA复跑UI，不将旧读数作通过。

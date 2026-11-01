@@ -3413,8 +3413,8 @@ async function main() {
         entry.exclusions = { srOnly: g.skipSrOnly, ellipsis: g.skipEllipsis, title: g.skipTitle, scrollRail: g.skipScrollRail, fixed: g.skipFixed, railX: g.railX, railY: g.railY, textLeaves: g.textLeaves, measuredLeaves: g.measuredLeaves, targetRescuedByLabel: g.rescuedByLabel, targetInOverlay: g.overlayInstances }
         if (tier.width === 640) {
           const seen = []
-          entry.focusableCount = await evaluate(`window.__L.markFocusables()`)
           await evaluate(`document.activeElement && document.activeElement.blur && document.activeElement.blur();true`)
+          entry.focusableCount = await evaluate(`window.__L.markFocusables()`)
           for (let i = 0; i < 12; i++) {
             for (const type of ['rawKeyDown', 'keyUp']) {
               await send('Input.dispatchKeyEvent', { type, key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 })
