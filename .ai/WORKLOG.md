@@ -390,3 +390,7 @@ CI Rust汇总221通过/0失败/1项real_r2_private_object_e2e按真实凭据和�
 本次将教程中明确UI导航文字同步到上传/上传记录/云端文件/云端配置，并补Typora快捷集成分类；不改变七平台字段、权限或公开URL指导。User-flow角标断言改为同时要求设置about分类与打开settings实际接线。依据docs/HANDOFF_TEST_SUBMISSION.md重登记两份已明确修改测具的行数/字节/SHA：fingerprint_rows只改CHANGELOG两行数值，保留其他19行和全部历史测量说明，未重签verify_shape/主题测量基线。提交后必须重跑HEAD blob和工作副本检查。
 
 沿用1.4.10无tag候选流程；正式tag不可变及G3保真缺口不变。工作流成功、安装器下载、校验及部署结果以outputs/rebuild-2026-11-01最终报告为准，派发不当作完成。未安装SDK或向真实云端写入。
+
+### 云端小窗命中区与焦点修正
+
+2af92d2的UI run41285727462/job124786512540一手日志：pages36/0、confirm19/0、keyboard77/0；layout21项中14失败，全部指向640x480头部select只有42px且focus样式无变化。不是上传/云端业务失败。将select最小高度改44px，并为移动导航button/select定义2px强调色焦点轮廓；不改测具阈值或断言。ff3c581的教程和640条user-flow已本地通过；最终候选需新源码同SHA的CI与UI成功，未用旧77/0代替。
