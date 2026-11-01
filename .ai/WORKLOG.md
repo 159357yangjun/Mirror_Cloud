@@ -398,3 +398,15 @@ CI Rust汇总221通过/0失败/1项real_r2_private_object_e2e按真实凭据和�
 ### 焦点差分测量顺序修正
 
 db7e0f6的UI run41286063639/job124787490444中，44px触控命中检查已通过；layout剩7个FOCUS-RING告警的resting值已经是solid 2px强调色。逐行核对测具发现markFocusables在blur之前，移动导航留下的焦点被错误当作未聚焦基线。交换原有两行顺序，先blur再采resting；不改focusNow比较逻辑、12次真实Tab或无轮廓/祖先轮廓正反控制。此修正需要新源码同SHA复跑UI，不将旧读数作通过。
+
+## 2026-11-01 — 候选打包与教程重新部署已完成
+
+桌面产品源码a2647214d9da227eb10bbf9a75c9325ef1b00700已推送main。同SHA CI41286273336成功（Rust221/0/1真实R2忽略）、UI41286273345成功（pages36/confirm19/layout21无跳过/keyboard77全部通过）、七页41286273350成功。无tag候选Release Bundle41286594283/job124789040215成功，NSIS与MSI各自安装卸载通过；publish-release按手动候选流程跳过，没有发布正式自动更新。
+
+教程ff3c581d8d306bd81a9f9baee6a21052178a38be的Docs41285877933/build124786958222/deploy124787112242成功，41项浏览器检查及全部路由通过；线上首页/Gitee另行HTTP200并含新菜单名称。后两笔只改桌面CSS/测具，网站内容未再变动。
+
+实际下载至D:/image-hosting-builds/1.4.10-candidate-a2647214d9da，推荐assets/image-hosting-platform-v1.4.10-windows-x64-setup.exe。主ZIP59912026字节/SHA256 cb6fa64e57923bc425e5d75df7a143739402547e2163a94710ac653331cd56be与artifact13076052032 digest一致；exe16423207字节/SHA256 6bca8559c2be57ea3a813b1e9140d55d440ae259c7eb8e3b1f1a4fe4d342c56a。MSI、源码ZIP及锁归档也核验通过；源码4个文本CRLF规范化后匹配Git blob，3份锁一致。
+
+交付报告、测试说明、candidate-verification.json及pipeline-evidence.json均在该目录；完整云端证据在工作会话outputs/rebuild-2026-11-01，云端UI归档digest已比对，640/1440实图已目视。首次CI/两轮UI失败及针对性修正见WORKLOG前文，没有改阈值/跳门/重签形状或主题基线。仅保留安装包/证据，无临时探针代码或.download残留。
+
+本条为本机文档闭环，不改变已构建a264721源码；本次不再推送记录提交以触发重复CI。真实用户升级G3、凭据/图床、原生个人视频、用户DPI仍缺；安装器未在本机自动执行，未安装SDK/依赖或上传个人MP4。
