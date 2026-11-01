@@ -86,7 +86,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="app-shell-root min-h-screen text-[var(--text-primary)]">
+    <div className="app-shell-root min-h-screen text-[var(--text-primary)]" data-page={page}>
       <header className="app-mobile-navigation theme-glass" aria-label="窄窗口导航">
         <label>镜云<select aria-label="主要页面" value={page} onChange={(event) => setPage(event.target.value as PageKey)}>{items.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label>
         <div className="app-mobile-actions">
@@ -103,7 +103,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="app-brand-mark grid size-9 place-items-center rounded-2xl bg-slate-950 text-white shadow-sm"><Cloud size={20} /></div>
             <div className="app-brand-copy">
               <div className="text-[15px] font-semibold tracking-[-0.02em]">镜云</div>
-              <div className="text-[11px] text-[var(--text-muted)]">Mirror Cloud</div>
+              <div className="text-xs text-[var(--text-muted)]">Mirror Cloud</div>
             </div>
           </div>
 
@@ -157,7 +157,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0 text-xs font-medium text-[var(--text-secondary)]">
                   v{__APP_VERSION__} · Mirror Cloud
-                  {__APP_CANDIDATE_LABEL__ && <div className="mt-1 break-all font-mono text-[10px] text-amber-700">{__APP_CANDIDATE_LABEL__}</div>}
+                  {__APP_CANDIDATE_LABEL__ && <div className="mt-1 break-all font-mono text-xs text-amber-700">{__APP_CANDIDATE_LABEL__}</div>}
                 </div>
                 {updateAvailableVersion && (
                   <button
@@ -168,8 +168,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                   />
                 )}
               </div>
-              <div className="mt-1 text-[11px] leading-5 text-[var(--text-muted)]">图片上传 · 云端管理 · 任务追踪</div>
-              <div className="mt-3 text-[11px] leading-5 text-[var(--text-muted)]">检查更新仅提示；下载和安装需手动确认</div>
+              <div className="mt-1 text-xs leading-5 text-[var(--text-muted)]">图片上传 · 云端管理 · 任务追踪</div>
+              <div className="mt-3 text-xs leading-5 text-[var(--text-muted)]">检查更新仅提示；下载和安装需手动确认</div>
             </div>
           </div>
         </div>

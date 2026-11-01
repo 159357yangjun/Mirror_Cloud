@@ -4,6 +4,7 @@ import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@ta
 import App from './App'
 import { notifyError } from './store/useToastStore'
 import './styles.css'
+import './styles/design-tokens.css'
 import './styles/workspace.css'
 
 // Mutations that already report their own failure keep that wording; the rest still has to

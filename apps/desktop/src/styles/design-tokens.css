@@ -1,0 +1,17 @@
+/* Workspace rhythm. Theme colours and personal wallpaper remain owned by styles.css/theme.ts. */
+:root {
+  --ui-space-1: 4px;
+  --ui-space-2: 8px;
+  --ui-space-3: 12px;
+  --ui-space-4: 16px;
+  --ui-space-6: 24px;
+  --ui-space-8: 32px;
+  --ui-radius-control: 8px;
+  --ui-radius-panel: 16px;
+  --ui-type-caption: 12px;
+  --ui-type-body: 14px;
+  --ui-type-section: 16px;
+  --ui-type-title: 24px;
+  --ui-control-height: 40px;
+  --ui-touch-height: 44px;
+}

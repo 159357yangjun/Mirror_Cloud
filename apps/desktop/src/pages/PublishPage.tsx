@@ -10,7 +10,6 @@ import {
   Cloud,
   Copy,
   FileImage,
-  GalleryHorizontalEnd,
   Link2,
   LoaderCircle,
   UploadCloud,
@@ -140,7 +139,7 @@ export function PublishPage() {
       />
 
       {needsFirstStorage && (
-        <section className="publish-support-surface mt-6 flex flex-wrap items-center justify-between gap-4 p-5">
+        <section className="publish-support-surface mt-6 flex flex-wrap items-center justify-between gap-4 p-4">
           <div>
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">先连接一个云端，再发布第一张图片</h2>
             <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
@@ -152,40 +151,40 @@ export function PublishPage() {
           </button>
         </section>
       )}
-      <div className="publish-layout-grid mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="publish-layout-grid mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <section className="publish-upload-surface">
           <div className="publish-source-actions grid gap-3 sm:grid-cols-3">
             <button onClick={() => openUpload('files')} className="publish-source-action flex items-center gap-3 p-4 text-left"><div><FileImage size={17} /></div><div className="text-sm font-medium">本地图片</div></button>
             <button onClick={() => openUpload('clipboard')} className="publish-source-action flex items-center gap-3 p-4 text-left transition hover:-translate-y-0.5">
               <div className="grid size-10 place-items-center rounded-xl bg-violet-50 text-violet-600"><ClipboardPaste size={17} /></div>
-              <div><div className="text-sm font-medium">剪贴板</div><div className="mt-0.5 text-[11px] text-slate-400">从剪贴板选择图片</div></div>
+              <div><div className="text-sm font-medium">剪贴板</div><div className="mt-0.5 text-xs text-slate-400">从剪贴板选择图片</div></div>
             </button>
             <button onClick={() => openUpload('urls')} className="publish-source-action flex items-center gap-3 p-4 text-left transition hover:-translate-y-0.5">
               <div className="grid size-10 place-items-center rounded-xl bg-blue-50 text-blue-600"><Link2 size={17} /></div>
-              <div><div className="text-sm font-medium">图片 URL</div><div className="mt-0.5 text-[11px] text-slate-400">批量下载再发布</div></div>
+              <div><div className="text-sm font-medium">图片 URL</div><div className="mt-0.5 text-xs text-slate-400">批量下载再发布</div></div>
             </button>
           </div>
 
           <button
             onClick={() => openUpload('files')}
-            className="group publish-drop-target text-center transition"
+            className="group publish-drop-target text-center transition" aria-label="选择图片或拖入图片"
             data-dragging={dragging}
           >
             <div className="publish-drop-copy">
-              <div className={`mx-auto grid size-20 place-items-center rounded-[28px] text-white shadow-xl transition group-hover:-translate-y-1 group-hover:rotate-3 ${dragging ? 'bg-blue-500' : 'bg-gradient-to-br from-slate-950 to-indigo-600'}`}>
+              <div className={`mx-auto grid size-14 place-items-center rounded-2xl ${dragging ? 'bg-[var(--accent)] text-white' : 'bg-[var(--accent-soft)] text-[var(--accent)]'}`}>
                 <UploadCloud size={34} />
               </div>
               <h2 className="mt-6 text-xl font-semibold tracking-[-0.03em]">{dragging ? '松开即可加入发布队列' : '把图片拖到这里'}</h2>
-              <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-400">或点击选择文件。提交前可核对文件列表，再执行图片处理、上传和结果确认。</p>
-              <div className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-slate-200"><FileImage size={16} />选择图片</div>
+              <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-400">提交前核对文件、上传目标和图片处理方式。</p>
+              <span className="mt-4 block text-xs text-[var(--text-secondary)]">也可点击此区域选择图片</span>
             </div>
           </button>
 
         </section>
 
-        <aside className="space-y-5" aria-label="发布辅助配置">
-          <section aria-label="发布目标" className="publish-support-surface overflow-hidden">
-          <div className="p-5">
+        <aside className="space-y-4" aria-label="发布辅助配置">
+          <section aria-label="发布目标" hidden={needsFirstStorage} className="publish-support-surface overflow-hidden">
+          <div className="p-4">
             {(storagesLoading || groupsLoading) && <p role="status" className="mb-3 text-xs text-slate-600">正在读取可用云端…</p>}
             {(storagesError || groupsError) && <p role="alert" className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">云端列表读取失败，请到「云端」页面检查连接。</p>}
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -220,7 +219,7 @@ export function PublishPage() {
             )}
           </div>
           </section>
-          <section className="publish-support-surface p-5">
+          <section className="publish-support-surface p-4">
             <div className="flex items-center gap-2 text-sm font-semibold"><Zap size={15} className="text-amber-500" />输出与复制</div>
             <p className="mt-1 text-xs leading-5 text-slate-400">公开图片上传后可复制链接或 Markdown；私有图片请到“上传记录”生成限时分享。</p>
             {preferences && (
@@ -254,25 +253,21 @@ export function PublishPage() {
             <button type="button" id="recent-assets-tab" aria-pressed={recentView === 'assets'} aria-controls="recent-assets-panel" onClick={() => setRecentView('assets')} className={`rounded-lg px-4 py-2 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 ${recentView === 'assets' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>最近发布</button>
             <button type="button" id="recent-tasks-tab" aria-pressed={recentView === 'tasks'} aria-controls="recent-tasks-panel" onClick={() => setRecentView('tasks')} className={`rounded-lg px-4 py-2 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 ${recentView === 'tasks' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>最近任务</button>
           </div>
-          <button type="button" onClick={() => setPage(recentView === 'assets' ? 'assets' : 'tasks')} className="text-xs font-medium text-indigo-700 hover:underline">查看全部{recentView === 'assets' ? '资源' : '任务'} →</button>
+          <button type="button" onClick={() => setPage(recentView === 'assets' ? 'assets' : 'tasks')} className="text-xs font-medium text-indigo-700 hover:underline">查看全部{recentView === 'assets' ? '记录' : '任务'} →</button>
         </div>
         {recentView === 'assets' && (
           <div role="region" id="recent-assets-panel" aria-label="最近发布列表">
-          <section className="publish-support-surface p-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm font-semibold"><GalleryHorizontalEnd size={15} className="text-indigo-500" />最近发布</div>
-              <button onClick={() => setPage('assets')} className="text-[11px] font-medium text-indigo-600">全部记录</button>
-            </div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <section className="publish-support-surface p-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {assetsLoading && <p role="status" className="rounded-xl bg-slate-50 px-3 py-6 text-xs text-slate-600">正在读取最近发布…</p>}
               {assetsError && <p role="alert" className="rounded-xl bg-red-50 px-3 py-6 text-xs text-red-700">最近发布读取失败，请前往资源页查看或重试。</p>}
               {!assetsLoading && !assetsError && !assets.length && <div className="rounded-xl bg-slate-50 px-3 py-6 text-center text-xs text-slate-500">发布第一张图片后会显示在这里</div>}
               {assets.slice(0, 4).map((asset) => (
                 <div key={asset.id} className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-100 px-3 py-3 hover:bg-slate-50">
                   <div className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-slate-100 text-slate-400">{asset.publicUrl ? <img src={asset.publicUrl} alt="" loading="lazy" className="size-full object-cover" /> : <FileImage size={17} />}</div>
-                  <div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{asset.name}</div><div className="mt-0.5 text-[10px] text-slate-400">{asset.status === 'online' ? '已上传（访问待核对）' : asset.status === 'partial' ? '部分副本异常' : '失败'}</div></div>
+                  <div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{asset.name}</div><div className="mt-0.5 text-xs text-slate-400">{asset.status === 'online' ? '已上传（访问待核对）' : asset.status === 'partial' ? '部分副本异常' : '失败'}</div></div>
                   <button disabled={!asset.publicUrl || !preferences} onClick={() => void copyAsset(asset.id)} className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-700 disabled:opacity-20" title={asset.publicUrl ? "按当前格式复制公开链接" : "无公开链接，请到资源页查看分享方式"} aria-label={asset.publicUrl ? `复制 ${asset.name} 的公开链接` : `${asset.name} 没有公开链接`}><Copy size={13} /></button>
-                  {copied === asset.id && <span className="text-[10px] text-emerald-600">已复制</span>}
+                  {copied === asset.id && <span className="text-xs text-emerald-600">已复制</span>}
                 </div>
               ))}
             </div>
@@ -281,9 +276,8 @@ export function PublishPage() {
         )}
         {recentView === 'tasks' && (
           <div role="region" id="recent-tasks-panel" aria-label="最近任务列表">
-          <section className="publish-support-surface p-5">
-            <div className="flex items-center justify-between"><div className="text-sm font-semibold">最近任务</div><button onClick={() => setPage('tasks')} className="text-[11px] font-medium text-indigo-600">任务中心</button></div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <section className="publish-support-surface p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
               {tasksLoading && <p role="status" className="text-xs text-slate-600">正在读取最近任务…</p>}
               {tasksError && <p role="alert" className="text-xs text-red-700">最近任务读取失败，请前往任务中心核对。</p>}
               {!tasksLoading && !tasksError && !tasks.length && <div className="text-xs text-slate-500">暂无任务</div>}
@@ -292,7 +286,7 @@ export function PublishPage() {
                   {task.status === 'running' || task.status === 'preparing' || task.status === 'queued'
                     ? <LoaderCircle size={13} className="mt-0.5 shrink-0 animate-spin text-blue-500" />
                     : <span className={`mt-0.5 size-2 shrink-0 rounded-full ${task.status === 'failed' ? 'bg-red-500' : task.error ? 'bg-amber-500' : 'bg-emerald-500'}`} />}
-                  <div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{task.title}</div><div className={`mt-1 line-clamp-2 rounded-lg px-2 py-1 text-[10px] ${taskTone(task.status, Boolean(task.error))}`}>{task.error || task.detail}</div></div>
+                  <div className="min-w-0 flex-1"><div className="truncate text-xs font-medium">{task.title}</div><div className={`mt-1 line-clamp-2 rounded-lg px-2 py-1 text-xs ${taskTone(task.status, Boolean(task.error))}`}>{task.error || task.detail}</div></div>
                 </div>
               ))}
             </div>
