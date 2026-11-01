@@ -37,7 +37,7 @@ import ConfigurationFields from '../../../components/ConfigurationFields.astro'
 
 ## 在镜云逐项填写
 
-打开 **云端 → 添加存储 → Cloudflare R2**，按四步向导操作。
+打开 **云端配置 → 添加存储 → Cloudflare R2**，按四步向导操作。
 
 <ConfigurationFields provider="r2" />
 
@@ -51,8 +51,8 @@ import ConfigurationFields from '../../../components/ConfigurationFields.astro'
 
 <Steps>
 
-1. 在 **发布** 上传一张测试图，到 **图库** 刷新，再到Cloudflare桶内核对文件。
-2. 公开模式：到 **资源** 复制URL，用未登录浏览器直接打开图片。
+1. 在 **上传** 上传一张测试图，到 **云端文件** 刷新，再到Cloudflare桶内核对文件。
+2. 公开模式：到 **上传记录** 复制URL，用未登录浏览器直接打开图片。
 3. 私有模式：确认匿名读取被拒绝，再测试应用内认证预览或限时分享。Typora和命令行上传需要能返回公开链接的目标。
 
 </Steps>

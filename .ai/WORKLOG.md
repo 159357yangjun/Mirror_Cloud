@@ -382,3 +382,11 @@ CI Rust汇总221通过/0失败/1项real_r2_private_object_e2e按真实凭据和�
 证据在C:/Users/yyyy/Documents/Codex/2026-10-24/d-image-hosting-platform/outputs/production-layout-2026-11-01。stdin改动工具没有保留探针脚本；gate-unit自动报告已移至证据目录并清除其临时空目录。计划本地提交，完整SHA/文件报告以同目录交付报告为准。
 
 本批未推送、无该源码云端CI或新安装包；两份Windows浏览器测具仅语法/静态复审，其CDP阶段未在本地运行。默认contrast仍只覆盖可见初始分类，本轮39组几何不能替代全分类对比度。原生WebView、用户DPI、真实图床及G3仍缺；不安装SDK，不上传私有MP4，不操作真实库/云端，不创建正式tag。
+
+## 2026-11-01 — 打包与重新部署：发布前同步
+
+用户明确要求打包并重新部署。已将2af92d262f19e63eac452b9f44c4bd66e9bfb131推送main，并手动派发Docs。首次CI41285727463在User-flow失败，与本机检查一致：旧测试只接受更新角标旧onClick文本；新布局前轮遗漏的测具指纹表及教程菜单名称也未同步。此前局部build/unit通过不能当发布静态门通过，现补记缺口。
+
+本次将教程中明确UI导航文字同步到上传/上传记录/云端文件/云端配置，并补Typora快捷集成分类；不改变七平台字段、权限或公开URL指导。User-flow角标断言改为同时要求设置about分类与打开settings实际接线。依据docs/HANDOFF_TEST_SUBMISSION.md重登记两份已明确修改测具的行数/字节/SHA：fingerprint_rows只改CHANGELOG两行数值，保留其他19行和全部历史测量说明，未重签verify_shape/主题测量基线。提交后必须重跑HEAD blob和工作副本检查。
+
+沿用1.4.10无tag候选流程；正式tag不可变及G3保真缺口不变。工作流成功、安装器下载、校验及部署结果以outputs/rebuild-2026-11-01最终报告为准，派发不当作完成。未安装SDK或向真实云端写入。

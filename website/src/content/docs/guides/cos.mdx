@@ -38,7 +38,7 @@ import ConfigurationFields from '../../../components/ConfigurationFields.astro'
 
 ## 在镜云逐项填写
 
-打开 **云端 → 添加存储 → 腾讯云 COS**。
+打开 **云端配置 → 添加存储 → 腾讯云 COS**。
 
 <ConfigurationFields provider="cos" />
 
@@ -48,8 +48,8 @@ import ConfigurationFields from '../../../components/ConfigurationFields.astro'
 
 <Steps>
 
-1. 在 **发布** 上传一张测试图，等待任务成功；到 **图库** 与COS控制台确认对象存在。
-2. 到 **资源** 复制URL，核对目录前缀没有遗漏或重复。
+1. 在 **上传** 上传一张测试图，等待任务成功；到 **云端文件** 与COS控制台确认对象存在。
+2. 到 **上传记录** 复制URL，核对目录前缀没有遗漏或重复。
 3. 在未登录的浏览器打开，应直接显示图片。若返回403/下载响应，先处理访问策略或域名预览条件。
 
 </Steps>

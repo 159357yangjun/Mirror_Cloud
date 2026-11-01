@@ -37,7 +37,7 @@ import ConfigurationFields from '../../../components/ConfigurationFields.astro'
 
 ## 在镜云逐项填写
 
-打开 **云端 → 添加存储 → 阿里云 OSS**。
+打开 **云端配置 → 添加存储 → 阿里云 OSS**。
 
 <ConfigurationFields provider="oss" />
 
@@ -47,8 +47,8 @@ import ConfigurationFields from '../../../components/ConfigurationFields.astro'
 
 <Steps>
 
-1. 在 **发布** 上传一张测试图；到 **图库** 刷新，并在OSS控制台核对对象路径。
-2. 到 **资源** 复制URL，例如图片在 `assets/test.jpg`，图片地址应对应域名下同一路径，避免CDN重复添加 `assets`。
+1. 在 **上传** 上传一张测试图；到 **云端文件** 刷新，并在OSS控制台核对对象路径。
+2. 到 **上传记录** 复制URL，例如图片在 `assets/test.jpg`，图片地址应对应域名下同一路径，避免CDN重复添加 `assets`。
 3. 用未登录浏览器打开；应显示图片，不能要求登录、返回XML错误或只打开管理后台。
 
 </Steps>

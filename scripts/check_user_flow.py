@@ -924,7 +924,7 @@ require('setUpdateAvailableVersion(cached.result.latestVersion)' in app_shell_up
         and 'checked.updateAvailable' in app_shell_up,
         'the sidebar dot is driven only by an observed updateAvailable result')
 require('size-2.5 shrink-0 rounded-full bg-amber-500' in app_shell_up
-        and 'onClick={() => setPage(\'settings\')}' in app_shell_up,
+        and "onClick={() => { useAppStore.getState().setSettingsSection('about'); setPage('settings') }}" in app_shell_up,
         'the dot is reachable: it navigates to the settings page where the action lives')
 settings_up = text('apps/desktop/src/pages/SettingsPage.tsx')
 require('void getUpdateStatus()' in settings_up
