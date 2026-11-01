@@ -1,3 +1,4 @@
+import { SectionNavigation } from '../components/SectionNavigation'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Activity, Bot, CheckCircle2, ChevronDown, ChevronUp, Download, LoaderCircle, Plug, Power, Search, Send, Sparkles, Store, Trash2, Zap } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -25,6 +26,7 @@ export function PluginsPage() {
   const [request, setRequest] = useState('')
   const [plan, setPlan] = useState('')
   const [query, setQuery] = useState('')
+  const [section, setSection] = useState('installed')
   const [showMarket, setShowMarket] = useState(false)
   const [showAi, setShowAi] = useState(false)
 
@@ -86,6 +88,9 @@ export function PluginsPage() {
       <PageHeader title="插件" description="安装和配置插件，管理启用状态、权限及执行记录。" />
       {!desktopAvailable && <p className="workspace-caption mt-4 text-sm text-[var(--text-secondary)]">当前为浏览器预览，插件和 AI 功能请在桌面应用中使用。</p>}
 
+      <SectionNavigation label="插件分类" options={[{ id: 'installed', label: '已安装' }, { id: 'market', label: '插件市场' }, { id: 'ai', label: 'AI 配置' }, { id: 'logs', label: '执行记录' }]} value={section} onChange={(value) => { setSection(value); if (value === 'market') setShowMarket(true); if (value === 'ai') setShowAi(true) }} />
+
+      <div className="workspace-section" hidden={section !== "installed"}>
       <section className="mt-8 rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_10px_40px_rgba(15,23,42,.04)]">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -126,12 +131,39 @@ export function PluginsPage() {
             <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-5 py-10 text-center">
               <Plug size={22} className="mx-auto text-slate-300" />
               <div className="mt-3 text-sm font-medium">还没有可切换的插件</div>
-              <div className="mt-1 text-xs text-slate-400">从下方插件市场安装一个。新插件默认关闭，配置完成后再手动开启。</div>
+              <div className="mt-1 text-xs text-slate-400">在“插件市场”安装一个。新插件默认关闭，配置完成后再手动开启。</div>
             </div>
           )}
         </div>
       </section>
 
+      </div>
+
+      <div className="workspace-section" hidden={section !== "market"}>
+      <section className="mt-6 overflow-hidden rounded-[26px] border border-slate-200 bg-white">
+        <button onClick={() => setShowMarket((v) => !v)} className="flex w-full items-center justify-between gap-4 p-5 text-left">
+          <div className="flex items-center gap-3"><div className="grid size-9 place-items-center rounded-xl bg-slate-100"><Store size={16} /></div><div><div className="text-sm font-semibold">插件市场</div><div className="mt-0.5 text-xs text-slate-400">安装新的处理、通知和 AI 能力；安装后默认关闭，避免未配置就参与上传。</div></div></div>
+          {showMarket ? <ChevronUp size={17} className="text-slate-400" /> : <ChevronDown size={17} className="text-slate-400" />}
+        </button>
+        {showMarket && <div className="border-t border-slate-100 p-5"><div className="grid grid-cols-2 gap-3">{market.map((plugin) => <PluginCard key={plugin.id} p={plugin} action={plugin.installed ? <span className="text-xs text-emerald-600">已安装</span> : <button onClick={() => install.mutate(plugin.id)} className="rounded-lg bg-slate-950 px-3 py-2 text-xs text-white"><Download size={12} className="mr-1 inline" />安装</button>} />)}</div></div>}
+      </section>
+
+      </div>
+
+      <div className="workspace-section" hidden={section !== "ai"}>
+      <section className="mt-4 overflow-hidden rounded-[26px] border border-indigo-100 bg-indigo-50/40">
+        <button onClick={() => setShowAi((v) => !v)} className="flex w-full items-center justify-between gap-4 p-5 text-left">
+          <div className="flex items-center gap-3"><div className="grid size-9 place-items-center rounded-xl bg-indigo-100 text-indigo-700"><Bot size={16} /></div><div><div className="text-sm font-semibold text-indigo-950">AI 与自动化</div><div className="mt-0.5 text-xs text-indigo-700">配置 OpenAI-compatible 接口，并让 AI 根据已安装插件生成自动化建议。</div></div></div>
+          {showAi ? <ChevronUp size={17} className="text-indigo-400" /> : <ChevronDown size={17} className="text-indigo-400" />}
+        </button>
+        {showAi && <div className="grid grid-cols-2 gap-5 border-t border-indigo-100 p-5">
+          <div className="rounded-2xl bg-white p-4"><div className="flex items-center gap-2 text-sm font-semibold"><Bot size={15} />AI Provider</div><div className="mt-1 text-[10px] leading-5 text-slate-400">AI Image Caption 会把真实图片作为 image_url 视觉输入发送给模型，请选择支持视觉能力的 OpenAI-compatible 模型。</div><div className="mt-3 space-y-3">{(['baseUrl', 'model', 'apiKey'] as const).map((key) => <input key={key} type={key === 'apiKey' ? 'password' : 'text'} value={settings[key]} onChange={(e) => setSettings({ ...settings, [key]: e.target.value })} placeholder={key} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none" />)}<button disabled={!desktopAvailable} onClick={() => saveAi.mutate(settings)} className="w-full rounded-xl bg-indigo-600 py-2.5 text-xs font-medium text-white">保存 AI 配置</button>{saveAi.isSuccess && <div className="text-[10px] text-emerald-600">已保存；API Key 存入系统凭据库。</div>}{saveAi.error && <div className="text-[10px] text-red-600">{String(saveAi.error)}</div>}</div></div>
+          <div className="rounded-2xl bg-white p-4"><div className="flex items-center gap-2 text-sm font-semibold"><Sparkles size={15} />AI Planner</div><div className="mt-3 flex gap-2"><input value={request} onChange={(e) => setRequest(e.target.value)} placeholder="例如：上传后调用 Webhook 通知博客" className="h-10 flex-1 rounded-xl border border-slate-200 px-3 text-xs" /><button disabled={!desktopAvailable || !request || planMut.isPending} onClick={() => planMut.mutate(request)} className="grid size-10 place-items-center rounded-xl bg-slate-950 text-white disabled:opacity-30">{planMut.isPending ? <LoaderCircle className="animate-spin" size={14} /> : <Send size={14} />}</button></div>{plan && <pre className="mt-3 max-h-52 overflow-auto rounded-xl bg-slate-950 p-3 text-[10px] leading-5 text-slate-100">{plan}</pre>}{planMut.error && <div className="mt-2 text-xs text-red-600">{String(planMut.error)}</div>}</div>
+        </div>}
+      </section>
+      </div>
+
+      <div className="workspace-section" hidden={section !== "logs"}>
       <section className="mt-6 overflow-hidden rounded-[26px] border border-slate-200 bg-white">
         <div className="flex items-center justify-between gap-4 border-b border-slate-100 p-5">
           <div className="flex items-center gap-3"><div className="grid size-9 place-items-center rounded-xl bg-slate-100 text-slate-600"><Activity size={16} /></div><div><div className="text-sm font-semibold">插件执行记录</div><div className="mt-0.5 text-xs text-slate-400">记录最近 Hook 的成功、失败与耗时，方便定位 Webhook / AI 插件问题。</div></div></div>
@@ -148,24 +180,8 @@ export function PluginsPage() {
         </div>
       </section>
 
-      <section className="mt-6 overflow-hidden rounded-[26px] border border-slate-200 bg-white">
-        <button onClick={() => setShowMarket((v) => !v)} className="flex w-full items-center justify-between gap-4 p-5 text-left">
-          <div className="flex items-center gap-3"><div className="grid size-9 place-items-center rounded-xl bg-slate-100"><Store size={16} /></div><div><div className="text-sm font-semibold">插件市场</div><div className="mt-0.5 text-xs text-slate-400">安装新的处理、通知和 AI 能力；安装后默认关闭，避免未配置就参与上传。</div></div></div>
-          {showMarket ? <ChevronUp size={17} className="text-slate-400" /> : <ChevronDown size={17} className="text-slate-400" />}
-        </button>
-        {showMarket && <div className="border-t border-slate-100 p-5"><div className="grid grid-cols-2 gap-3">{market.map((plugin) => <PluginCard key={plugin.id} p={plugin} action={plugin.installed ? <span className="text-xs text-emerald-600">已安装</span> : <button onClick={() => install.mutate(plugin.id)} className="rounded-lg bg-slate-950 px-3 py-2 text-xs text-white"><Download size={12} className="mr-1 inline" />安装</button>} />)}</div></div>}
-      </section>
+      </div>
 
-      <section className="mt-4 overflow-hidden rounded-[26px] border border-indigo-100 bg-indigo-50/40">
-        <button onClick={() => setShowAi((v) => !v)} className="flex w-full items-center justify-between gap-4 p-5 text-left">
-          <div className="flex items-center gap-3"><div className="grid size-9 place-items-center rounded-xl bg-indigo-100 text-indigo-700"><Bot size={16} /></div><div><div className="text-sm font-semibold text-indigo-950">AI 与自动化</div><div className="mt-0.5 text-xs text-indigo-700">配置 OpenAI-compatible 接口，并让 AI 根据已安装插件生成自动化建议。</div></div></div>
-          {showAi ? <ChevronUp size={17} className="text-indigo-400" /> : <ChevronDown size={17} className="text-indigo-400" />}
-        </button>
-        {showAi && <div className="grid grid-cols-2 gap-5 border-t border-indigo-100 p-5">
-          <div className="rounded-2xl bg-white p-4"><div className="flex items-center gap-2 text-sm font-semibold"><Bot size={15} />AI Provider</div><div className="mt-1 text-[10px] leading-5 text-slate-400">AI Image Caption 会把真实图片作为 image_url 视觉输入发送给模型，请选择支持视觉能力的 OpenAI-compatible 模型。</div><div className="mt-3 space-y-3">{(['baseUrl', 'model', 'apiKey'] as const).map((key) => <input key={key} type={key === 'apiKey' ? 'password' : 'text'} value={settings[key]} onChange={(e) => setSettings({ ...settings, [key]: e.target.value })} placeholder={key} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none" />)}<button disabled={!desktopAvailable} onClick={() => saveAi.mutate(settings)} className="w-full rounded-xl bg-indigo-600 py-2.5 text-xs font-medium text-white">保存 AI 配置</button>{saveAi.isSuccess && <div className="text-[10px] text-emerald-600">已保存；API Key 存入系统凭据库。</div>}{saveAi.error && <div className="text-[10px] text-red-600">{String(saveAi.error)}</div>}</div></div>
-          <div className="rounded-2xl bg-white p-4"><div className="flex items-center gap-2 text-sm font-semibold"><Sparkles size={15} />AI Planner</div><div className="mt-3 flex gap-2"><input value={request} onChange={(e) => setRequest(e.target.value)} placeholder="例如：上传后调用 Webhook 通知博客" className="h-10 flex-1 rounded-xl border border-slate-200 px-3 text-xs" /><button disabled={!desktopAvailable || !request || planMut.isPending} onClick={() => planMut.mutate(request)} className="grid size-10 place-items-center rounded-xl bg-slate-950 text-white disabled:opacity-30">{planMut.isPending ? <LoaderCircle className="animate-spin" size={14} /> : <Send size={14} />}</button></div>{plan && <pre className="mt-3 max-h-52 overflow-auto rounded-xl bg-slate-950 p-3 text-[10px] leading-5 text-slate-100">{plan}</pre>}{planMut.error && <div className="mt-2 text-xs text-red-600">{String(planMut.error)}</div>}</div>
-        </div>}
-      </section>
     </PageLayout>
   )
 }

@@ -1,7 +1,10 @@
+import type { SettingsSection } from '../features/settings/sections'
 import { create } from 'zustand'
 import type { PageKey, UploadMode } from '../types'
 
 interface AppState {
+  settingsSection: SettingsSection
+  setSettingsSection: (section: SettingsSection) => void
   page: PageKey
   uploadOpen: boolean
   requestedUploadMode: UploadMode
@@ -16,6 +19,8 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
+  settingsSection: 'output',
+  setSettingsSection: (settingsSection) => set({ settingsSection }),
   page: 'publish',
   uploadOpen: false,
   requestedUploadMode: 'files',

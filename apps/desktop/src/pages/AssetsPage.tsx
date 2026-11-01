@@ -247,12 +247,12 @@ export function AssetsPage() {
   return (
     <PageLayout width="wide">
       <PageHeader
-        title="资源"
+        title="上传记录"
         description="查看上传结果，复制图片链接，检查或修复多云副本。"
         action={
           <div className="flex items-center gap-2">
             <button onClick={() => setPage('gallery')} className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-sm font-medium text-[var(--text-secondary)]">
-              <Images size={16} />云端图库
+              <Images size={16} />云端文件
             </button>
             <button onClick={() => openUpload('files')} className="flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white">
               <Upload size={16} />上传
@@ -291,7 +291,7 @@ export function AssetsPage() {
       {privateActionError && <p role="alert" className="mt-3 text-xs text-red-600">{privateActionError}</p>}
       {copied?.startsWith('share:') && <p role="status" className="mt-3 text-xs text-amber-700">临时只读链接已复制。持有链接的人在有效期内可能访问该对象；请勿公开粘贴。</p>}
 
-      <section className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(290px,1fr))] gap-5">
+      <section className="assets-grid mt-6 grid grid-cols-[repeat(auto-fill,minmax(290px,1fr))] gap-5">
         {assetsError && !assets.length && <ReadFailurePanel className="col-span-full rounded-[26px] border border-dashed border-red-200 bg-red-50 p-10 text-center text-sm text-red-600" subject="资源" error={assetsError} />}
         {assetsLoading && <div className="col-span-full grid min-h-[240px] place-items-center text-slate-300"><LoaderCircle size={22} className="animate-spin" /></div>}
         {!assetsError && !assetsLoading && !filtered.length && (

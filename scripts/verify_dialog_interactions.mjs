@@ -455,17 +455,17 @@ const IDENTITY_CASES = [
 const DENOM_CASES = [
   {
     name: 'colliding keys quarantine the group',
-    rows: [{ route: '云端', theme: 'default', wallpaper: 'black', measured: 2, keys: ['k1', 'k1'] }, { route: '云端', theme: 'default', wallpaper: 'white', measured: 2, keys: ['k1', 'k1'] }],
+    rows: [{ route: '云端配置', theme: 'default', wallpaper: 'black', measured: 2, keys: ['k1', 'k1'] }, { route: '云端配置', theme: 'default', wallpaper: 'white', measured: 2, keys: ['k1', 'k1'] }],
     expect: { identityFalse: 2, unverifiedGroups: 1, denomDrift: 0 },
   },
   {
     name: 'injective keys across combos still catch missing content',
-    rows: [{ route: '云端', theme: 'default', wallpaper: 'black', measured: 2, keys: ['k1#1', 'k1#2'] }, { route: '云端', theme: 'default', wallpaper: 'white', measured: 1, keys: ['k1#1'] }],
+    rows: [{ route: '云端配置', theme: 'default', wallpaper: 'black', measured: 2, keys: ['k1#1', 'k1#2'] }, { route: '云端配置', theme: 'default', wallpaper: 'white', measured: 1, keys: ['k1#1'] }],
     expect: { identityFalse: 0, unverifiedGroups: 0, denomDrift: 1 },
   },
   {
     name: 'a lone combo is quarantined only by its own collision',
-    rows: [{ route: '云端', theme: 'sakura', wallpaper: 'black', measured: 1, keys: ['k1#1'] }],
+    rows: [{ route: '云端配置', theme: 'sakura', wallpaper: 'black', measured: 1, keys: ['k1#1'] }],
     expect: { identityFalse: 0, unverifiedGroups: 0, denomDrift: 0 },
   },
 ]
@@ -562,9 +562,9 @@ const CONFIRM_FIXTURE = (over = {}) => ([
   { name: '6-z-index-and-stacking', confirmAt95: true, confirm: { z: '95' }, toast: { present: true }, confirmStillOpen: true, tie: { hitIsSynth: true, hitInsideConfirm: false }, uploadAlone: { present: true, z: '50' } },
 ].map((s) => ({ ...s, ...(over[s.name] || {}) })))
 
-const PAGES_ROUTES = ['发布', '资源', '云端', '图库', '插件', '任务', '设置']
+const PAGES_ROUTES = ['上传', '上传记录', '云端配置', '云端文件', '插件', '任务', '设置']
 const PAGES_FIXTURE = (bad = null) => PAGES_ROUTES.map((label) => (label === bad
-  ? { label, after: { heading: '发布', rootChildren: 0, rootTextLen: 0, sidebarAlive: false } }
+  ? { label, after: { heading: '上传', rootChildren: 0, rootTextLen: 0, sidebarAlive: false } }
   : { label, after: { heading: label, rootChildren: 1, rootTextLen: 400, sidebarAlive: true } }))
 
 const VERDICT_CASES = [
@@ -579,7 +579,7 @@ const VERDICT_CASES = [
   { name: 'confirm: horizontal overflow is charged even below the minimum', run: () => confirmVerdict(CONFIRM_FIXTURE({ '5-long-text-below-app-minimum-420x720': { measured: { pOverflowX: 5, docOverflowX: false, confirmFullyVisible: false, overlayScrollable: false, overlayScrollDelta: 0 } } })).failures.length >= 1 },
   { name: 'confirm: the checked count is the number of assertions, not of steps', run: () => confirmVerdict(CONFIRM_FIXTURE()).checked === 19 },
   { name: 'pages: all seven routes alive produce no failure', run: () => pagesVerdict(PAGES_FIXTURE(), PAGES_ROUTES).failures.length === 0 },
-  { name: 'pages: a collapsed route is caught', run: () => pagesVerdict(PAGES_FIXTURE('云端'), PAGES_ROUTES).failures.length >= 4 },
+  { name: 'pages: a collapsed route is caught', run: () => pagesVerdict(PAGES_FIXTURE('云端配置'), PAGES_ROUTES).failures.length >= 4 },
   { name: 'pages: a route that never got visited is caught', run: () => pagesVerdict(PAGES_FIXTURE().slice(0, 6), PAGES_ROUTES).failures.length >= 1 },
   { name: 'pages: the checked count scales with the routes judged', run: () => pagesVerdict(PAGES_FIXTURE(), PAGES_ROUTES).checked === 1 + PAGES_ROUTES.length * 5 },
 ]
@@ -985,18 +985,31 @@ async function main() {
   await sleep(300)
 
   // ---- go to Settings and open the confirm dialog with a trusted click ----
-  const ALL_ROUTES = ['发布', '资源', '云端', '图库', '插件', '任务', '设置']
+  const ALL_ROUTES = ['上传', '上传记录', '云端配置', '云端文件', '插件', '任务', '设置']
   const routeList = () => (opt('routes', '') ? opt('routes', '').split(',') : ALL_ROUTES)
   const goto = async (label) => {
-    await scrollToAndClick(`(function(){const b=window.__H.byText('nav button', ${JSON.stringify(label)});if(!b)throw new Error('nav not found: '+Array.from(document.querySelectorAll('nav button')).map(x=>(x.textContent||'').trim()).join(','));return b;})()`)
+    const mobile = await evaluate(`(() => { const select=document.querySelector('.app-mobile-navigation select'); if(!select || !select.getClientRects().length)return null; const index=[...select.options].findIndex(option=>option.textContent===${JSON.stringify(label)}); if(index<0)throw new Error('Missing mobile navigation option'); return {index}; })()`)
+    if (mobile) {
+      await scrollToAndClick(`document.querySelector('.app-mobile-navigation select')`)
+      const key = async (name, code) => {
+        for (const type of ['rawKeyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: name, code: name, windowsVirtualKeyCode: code })
+      }
+      await key('Home', 36)
+      for (let i=0; i<mobile.index; i++) await key('ArrowDown', 40)
+      await key('Enter', 13)
+    } else {
+      await scrollToAndClick(`(function(){const b=window.__H.byText('nav[aria-label="主要页面"] button', ${JSON.stringify(label)});if(!b)throw new Error('nav not found');return b;})()`)
+    }
     await sleep(250)
+    const heading = await evaluate(`document.querySelector('main h1')?.textContent?.trim()`)
+    if (heading !== label) throw new Error('Navigation did not reach '+label+': '+heading)
   }
   // Scroll an element (located by a page-side expression) into view and click its centre with
   // trusted input; returns the box actually used so the report can show the hit coordinates.
   const scrollToAndClick = async (locatorExpr) => {
     // styles.css sets scroll-behavior:smooth, so an instant scroll + a short settle poll is
     // required before reading the rect a trusted click will use.
-    const box = await evaluate(`(async function(){const el=${locatorExpr};if(!el)throw new Error('locator null');el.scrollIntoView({block:'center',inline:'center',behavior:'instant'});for(let i=0;i<20;i++){const r=el.getBoundingClientRect();if(r.top>=0&&r.bottom<=innerHeight&&r.left>=0&&r.right<=innerWidth)return {x:r.x,y:r.y,w:r.width,h:r.height,cx:r.x+r.width/2,cy:r.y+r.height/2,inView:true,settledAfterMs:i*50};await new Promise(res=>setTimeout(res,50))}const r=el.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height,cx:r.x+r.width/2,cy:r.y+r.height/2,inView:false};})()`)
+    const box = await evaluate(`(async function(){const el=${locatorExpr};if(!el)throw new Error('locator null');el.scrollIntoView({block:'center',inline:'center',behavior:'instant'});for(let i=0;i<20;i++){const r=el.getBoundingClientRect();if(r.width>0&&r.height>0&&r.top>=0&&r.bottom<=innerHeight&&r.left>=0&&r.right<=innerWidth)return {x:r.x,y:r.y,w:r.width,h:r.height,cx:r.x+r.width/2,cy:r.y+r.height/2,inView:true,settledAfterMs:i*50};await new Promise(res=>setTimeout(res,50))}const r=el.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height,cx:r.x+r.width/2,cy:r.y+r.height/2,inView:false};})()`)
     if (!box.inView) {
       const why = await evaluate(`(function(){const el=${locatorExpr};const chain=[];let n=el;while(n&&n.tagName){const cs=getComputedStyle(n);chain.push({tag:n.tagName,cls:(n.className||'').toString().slice(0,40),oy:cs.overflowY,sh:n.scrollHeight,ch:n.clientHeight,st:n.scrollTop});n=n.parentElement}const b2=el.getBoundingClientRect();el.scrollIntoView({block:'center'});return {before:b2.y,after:el.getBoundingClientRect().y,innerH:innerHeight,docOY:getComputedStyle(document.documentElement).overflowY,bodyOY:getComputedStyle(document.body).overflowY,scrollingElement:(document.scrollingElement||{}).tagName,chain:chain.slice(0,10)};})()`)
       throw new Error('element not in view after scroll: ' + JSON.stringify({ box, why }))
@@ -1007,6 +1020,7 @@ async function main() {
 
   const openConfirm = async () => {
     await goto('设置')
+    await scrollToAndClick(`window.__H.byText('nav[aria-label="设置分类"] button', '接口与安全')`)
     consoleErrors.length = 0
     await scrollToAndClick(`window.__H.byText('main button', '重置 Token')`)
     await sleep(250)
@@ -1205,7 +1219,7 @@ async function main() {
     // real co-occurrence: UploadDialog (z-50) under the confirm overlay
     await evaluate(`(function(){const bs=window.__H.buttons();bs[bs.length-2].click();return true;})()`)
     await sleep(120)
-    await goto('发布')
+    await goto('上传')
     const urlBtn = await scrollToAndClick(`Array.from(document.querySelectorAll('main button')).find(b=>(b.textContent||'').includes('图片 URL'))`)
     await sleep(250)
     await assertRealViewport('6-upload-dialog')
@@ -1355,7 +1369,7 @@ async function main() {
     // C: StorageSetupDialog opens the provider guide directly with one click.
     consoleErrors.length = 0
     wo = woCount(); tc = tcCount()
-    await goto('云端')
+    await goto('云端配置')
     await sleep(500)
     await clickEl("(function(){return Array.from(document.querySelectorAll('main button')).find(x=>(x.textContent||'').trim()==='添加存储')})()")
     await sleep(500)
@@ -1451,13 +1465,13 @@ async function main() {
     if (vThemeRaw && !vThemeKnown) console.log(`VISUAL_THEME ${JSON.stringify(vThemeRaw)} is not a data-theme this app defines (mist|midnight|sakura|absent=default); shooting the app's own theme instead`)
     const applyTheme = (t) => evaluate(`(function(){const r=document.documentElement;if(${JSON.stringify(t)})r.dataset.theme=${JSON.stringify(t)};else delete r.dataset.theme;return r.dataset.theme||'default'})()`)
     const surfaces = [
-      { name: 'publish', open: async () => { await goto('发布') } },
+      { name: 'publish', open: async () => { await goto('上传') } },
       { name: 'help-center', open: async () => { await clickEl("(function(){return Array.from(document.querySelectorAll('button')).find(x=>(x.textContent||'').trim()==='教程与帮助')})()") } },
       { name: 'confirm', open: async () => { await openConfirm() } },
-      { name: 'upload', open: async () => { await goto('发布'); await scrollToAndClick(`Array.from(document.querySelectorAll('main button')).find(b=>(b.textContent||'').includes('图片 URL'))`) } },
-      { name: 'assets', open: async () => { await goto('资源') } },
-      { name: 'storages', open: async () => { await goto('云端') } },
-      { name: 'gallery', open: async () => { await goto('图库') } },
+      { name: 'upload', open: async () => { await goto('上传'); await scrollToAndClick(`Array.from(document.querySelectorAll('main button')).find(b=>(b.textContent||'').includes('图片 URL'))`) } },
+      { name: 'assets', open: async () => { await goto('上传记录') } },
+      { name: 'storages', open: async () => { await goto('云端配置') } },
+      { name: 'gallery', open: async () => { await goto('云端文件') } },
       { name: 'plugins', open: async () => { await goto('插件') } },
       { name: 'tasks', open: async () => { await goto('任务') } },
       { name: 'settings', open: async () => { await goto('设置') } },
@@ -3687,7 +3701,7 @@ async function main() {
     // ---- site C: direct provider-guide button in StorageSetupDialog ----
     consoleErrors.length = 0
     const cWo = woCount(); const cTc = tcCount()
-    await goto('云端')
+    await goto('云端配置')
     await sleep(500)
     await scrollToAndClick("(function(){const b=Array.from(document.querySelectorAll('main button')).find(x=>(x.textContent||'').trim()==='添加存储');if(!b)throw new Error('添加存储 missing');return b;})()")
     await sleep(500)

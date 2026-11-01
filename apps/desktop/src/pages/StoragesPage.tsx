@@ -1,3 +1,4 @@
+import { SectionNavigation } from '../components/SectionNavigation'
 import { workflowQueryKeys } from '../features/workflows/queryKeys'
 import {
   ArrowRight,
@@ -57,6 +58,7 @@ export function StoragesPage() {
   const { data: storages = [], isLoading, error: storagesError, refetch } = useQuery({ queryKey: ['storages'], queryFn: listStorages })
   const { data: groups = [] } = useQuery({ queryKey: ['storage-groups'], queryFn: listStorageGroups })
   const { data: defaultTarget = null } = useQuery({ queryKey: ['default-publish-target'], queryFn: getDefaultPublishTarget })
+  const [section, setSection] = useState('connections')
   const [pickerOpen, setPickerOpen] = useState(false)
   const [groupOpen, setGroupOpen] = useState(false)
   const [setup, setSetup] = useState<SupportedProviderKey | null>(null)
@@ -153,7 +155,7 @@ export function StoragesPage() {
   return (
     <PageLayout>
       <PageHeader
-        title="云端"
+        title="云端配置"
         description="添加存储连接，设置默认目标，或创建多云组。"
         action={
           <div className="flex items-center gap-2">
@@ -183,43 +185,9 @@ export function StoragesPage() {
         </div>
       )}
 
-      <div className="mt-8 flex items-center justify-between">
-        <div className="workspace-caption">
-          <h2 className="text-base font-semibold">多云组</h2>
-          <p className="mt-1 text-xs text-slate-400">定义 Primary / Mirror / Backup，一张图片可以自动发布到多个云端。</p>
-        </div>
-      </div>
+      <SectionNavigation label="云端分类" options={[{ id: 'connections', label: '我的存储' }, { id: 'groups', label: '多云组' }, { id: 'providers', label: '支持平台' }]} value={section} onChange={setSection} />
 
-      <section className="mt-4 grid grid-cols-3 gap-4">
-        {groups.map((group) => (
-          <article key={group.id} className="rounded-[22px] border border-slate-200/80 bg-white p-4 shadow-[0_8px_30px_rgba(15,23,42,.025)]">
-            <div className="flex items-start gap-3">
-              <div className="grid size-10 shrink-0 place-items-center rounded-2xl bg-slate-950 text-white"><Layers3 size={18} /></div>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium">{group.name}</div>
-                <div className="mt-1 text-[11px] text-slate-400">{strategyLabel(group.strategy)} · {group.members.length} 个云端</div>
-              </div>
-              <button onClick={() => void removeGroup(group.id, group.name)} className="rounded-lg p-2 text-slate-300 transition hover:bg-red-50 hover:text-red-500" title="删除多云组"><Trash2 size={14} /></button>
-            </div>
-            <div className="mt-4 space-y-2">
-              {group.members.map((member) => (
-                <div key={member.storageId} className="flex items-center rounded-xl bg-slate-50 px-3 py-2 text-xs">
-                  <span className="min-w-0 flex-1 truncate text-slate-600">{member.storageName}</span>
-                  <span className={`rounded-full px-2 py-1 text-[10px] ${member.role === 'primary' ? 'bg-slate-950 text-white' : member.role === 'mirror' ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'}`}>{member.role}</span>
-                </div>
-              ))}
-            </div>
-            <button disabled={defaultTargetMutation.isPending || (defaultTarget?.kind === 'group' && defaultTarget.id === group.id)} onClick={() => defaultTargetMutation.mutate({ kind: 'group', id: group.id })} className={`mt-3 w-full rounded-xl px-3 py-2 text-xs font-medium ${defaultTarget?.kind === 'group' && defaultTarget.id === group.id ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-950 text-white'}`}>{defaultTarget?.kind === 'group' && defaultTarget.id === group.id ? '✓ 默认上传目标' : '设为默认上传目标'}</button>
-          </article>
-        ))}
-        {!groups.length && (
-          <button disabled={storages.length < 2} onClick={() => setGroupOpen(true)} className="col-span-3 rounded-[24px] border border-dashed border-slate-200 bg-white p-8 text-center disabled:cursor-not-allowed disabled:opacity-60">
-            <div className="text-sm font-medium">{storages.length < 2 ? '连接至少两个存储后即可创建多云组' : '创建第一个多云组'}</div>
-            <div className="mt-1 text-xs text-slate-400">例如 R2 作为 Primary，Gitee 作为 Backup。</div>
-          </button>
-        )}
-      </section>
-
+      <div className="workspace-section" hidden={section !== "connections"}>
       <div className="mt-10 flex items-center justify-between gap-3">
         <div className="workspace-caption">
           <h2 className="text-base font-semibold">我的存储</h2>
@@ -266,6 +234,49 @@ export function StoragesPage() {
         )}
       </section>
 
+      </div>
+
+      <div className="workspace-section" hidden={section !== "groups"}>
+      <div className="mt-8 flex items-center justify-between">
+        <div className="workspace-caption">
+          <h2 className="text-base font-semibold">多云组</h2>
+          <p className="mt-1 text-xs text-slate-400">定义 Primary / Mirror / Backup，一张图片可以自动发布到多个云端。</p>
+        </div>
+      </div>
+
+      <section className="mt-4 grid grid-cols-3 gap-4">
+        {groups.map((group) => (
+          <article key={group.id} className="rounded-[22px] border border-slate-200/80 bg-white p-4 shadow-[0_8px_30px_rgba(15,23,42,.025)]">
+            <div className="flex items-start gap-3">
+              <div className="grid size-10 shrink-0 place-items-center rounded-2xl bg-slate-950 text-white"><Layers3 size={18} /></div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium">{group.name}</div>
+                <div className="mt-1 text-[11px] text-slate-400">{strategyLabel(group.strategy)} · {group.members.length} 个云端</div>
+              </div>
+              <button onClick={() => void removeGroup(group.id, group.name)} className="rounded-lg p-2 text-slate-300 transition hover:bg-red-50 hover:text-red-500" title="删除多云组"><Trash2 size={14} /></button>
+            </div>
+            <div className="mt-4 space-y-2">
+              {group.members.map((member) => (
+                <div key={member.storageId} className="flex items-center rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                  <span className="min-w-0 flex-1 truncate text-slate-600">{member.storageName}</span>
+                  <span className={`rounded-full px-2 py-1 text-[10px] ${member.role === 'primary' ? 'bg-slate-950 text-white' : member.role === 'mirror' ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'}`}>{member.role}</span>
+                </div>
+              ))}
+            </div>
+            <button disabled={defaultTargetMutation.isPending || (defaultTarget?.kind === 'group' && defaultTarget.id === group.id)} onClick={() => defaultTargetMutation.mutate({ kind: 'group', id: group.id })} className={`mt-3 w-full rounded-xl px-3 py-2 text-xs font-medium ${defaultTarget?.kind === 'group' && defaultTarget.id === group.id ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-950 text-white'}`}>{defaultTarget?.kind === 'group' && defaultTarget.id === group.id ? '✓ 默认上传目标' : '设为默认上传目标'}</button>
+          </article>
+        ))}
+        {!groups.length && (
+          <button disabled={storages.length < 2} onClick={() => setGroupOpen(true)} className="col-span-3 rounded-[24px] border border-dashed border-slate-200 bg-white p-8 text-center disabled:cursor-not-allowed disabled:opacity-60">
+            <div className="text-sm font-medium">{storages.length < 2 ? '连接至少两个存储后即可创建多云组' : '创建第一个多云组'}</div>
+            <div className="mt-1 text-xs text-slate-400">例如 R2 作为 Primary，Gitee 作为 Backup。</div>
+          </button>
+        )}
+      </section>
+
+      </div>
+
+      <div className="workspace-section" hidden={section !== "providers"}>
       <div className="workspace-caption mt-10">
         <h2 className="text-base font-semibold">官方 Provider</h2>
         <p className="mt-1 text-xs text-slate-400">R2 / S3 / OSS / COS / GitHub / Gitee / WebDAV 都可以作为默认上传目标或多云组成员。</p>
@@ -295,8 +306,11 @@ export function StoragesPage() {
         })}
       </section>
 
+      </div>
+
       {pickerOpen && <ProviderPickerDialog onPick={pickProvider} onClose={() => setPickerOpen(false)} />}
       {setup && <StorageSetupDialog provider={setup} onClose={() => setSetup(null)} onCreated={(created) => {
+        setSection('connections')
         setRecentlyAdded({ id: created.id, name: created.name })
         notifySuccess(`已连接“${created.name}”，可以开始发布图片`)
       }} />}

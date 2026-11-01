@@ -370,3 +370,15 @@ CI Rust汇总221通过/0失败/1项real_r2_private_object_e2e按真实凭据和�
 浏览器工件13028065439，29897262字节，实算SHA256 fb9da10225317f7d04a0174d276a0c5a5b5fb727491cd2b28180d90a0bc53a19与GitHub digest一致；安全解包JSON及指定PNG到outputs/desktop-glass-2026-10-30/windows-ui-e141cd1，已目视1440/640截图确认为真实导入的单张DeepSeek背景、局部模糊、标题完整，640下正文可滚动。外部ci-results.json、artifact-proof.json与交付报告保留完整SHA/run/job/工件映射和16文件改动范围；本地真实操作截图local-publish/local-settings.jpg单独标记为浏览器层证据。
 
 此后只修改HANDOFF、TASKS、WORKLOG、CHANGELOG和实施计划五份Markdown进行本地提交，不再推送触发重复CI；对应记录SHA待提交后补入外部报告。新用户默认与旧外观保存值原义保留；本机1420仍运行，用户可在皮肤选择通透磨砂。原生个人JPG/MP4完整播放与保存、用户实际DPI、G3真实旧数据和图床/编辑器/插件/更新闭环仍未做，本批不隐藏这些缺口。
+
+## 2026-11-01 — 桌面分类布局与缩放（本地完成）
+
+用户确认静态演示后要求直接修改项目。基于6d717552ddb2278afeb5491365c54933f9fcfc7e，改前远端main实读e141cd1b953c15eeb2a82fc25c03c4410e616f5d，工作区干净，main-only。实施计划见docs/superpowers/plans/2026-11-01-desktop-functional-layout.md。
+
+文字侧栏改为上传/上传记录/云端配置/云端文件/插件/任务/设置；<=700px用文字选择器及上传/外观/帮助。设置六分类可搜索，云端三分类、插件四分类；分类吸顶且hidden保留挂载。迁移重连与云端对话框在分类外。上传来源前置，网格、拖拽区和AI表单响应式；壁纸、主题参数、真实接口和业务行为保持原实现，未复制静态示例数据。
+
+本地build成功（既有chunk和动态导入警告保留）；20套unit通过，97命令契约一致，gate-unit29/0。受支持CUA实操42组页面尺寸+39组分类尺寸无横向溢出/控件裁切；覆盖640x480、701x600临界点至1920x1080。模板草稿切分类保留，更新关键词直达，Token确认弹窗1280x800内完整且取消未执行，实际滚动19.5后切上传复位0。独立审查发现AI双列和UI测具可能点击隐藏侧栏的P1，均已修复复审；测具现在操作可见select、核对h1、拒绝零尺寸，未弱化滚动断言。
+
+证据在C:/Users/yyyy/Documents/Codex/2026-10-24/d-image-hosting-platform/outputs/production-layout-2026-11-01。stdin改动工具没有保留探针脚本；gate-unit自动报告已移至证据目录并清除其临时空目录。计划本地提交，完整SHA/文件报告以同目录交付报告为准。
+
+本批未推送、无该源码云端CI或新安装包；两份Windows浏览器测具仅语法/静态复审，其CDP阶段未在本地运行。默认contrast仍只覆盖可见初始分类，本轮39组几何不能替代全分类对比度。原生WebView、用户DPI、真实图床及G3仍缺；不安装SDK，不上传私有MP4，不操作真实库/云端，不创建正式tag。

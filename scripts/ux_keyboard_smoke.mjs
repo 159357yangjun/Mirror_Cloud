@@ -100,7 +100,7 @@ try {
 
   // Upload: keyboard may only reach live controls inside the dialog; Escape
   // cancels only when closeDialog's original pending-task guard allows it.
-  const opened = await evalJS("(()=>{const b=Array.from(document.querySelectorAll('button')).find(x=>(x.textContent||'').includes('快速发布'));if(!b)return false;b.focus();b.click();return true})()")
+  const opened = await evalJS("(()=>{const b=Array.from(document.querySelectorAll('button')).find(x=>(x.textContent||'').includes('快速上传'));if(!b)return false;b.focus();b.click();return true})()")
   check('upload trigger is reachable', opened, opened)
   await waitFor("Boolean(document.querySelector('section[role=\"dialog\"][aria-labelledby=\"upload-dialog-title\"]'))", 'Upload dialog open')
   const uploadSnapshot = "()=>{const d=document.querySelector('section[role=\"dialog\"][aria-labelledby=\"upload-dialog-title\"]');const list=Array.from(d.querySelectorAll('button:not([disabled]), textarea:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex=\"-1\"])')).filter(x=>x.getClientRects().length>0);return {present:!!d,initialInside:d.contains(document.activeElement),isContainer:document.activeElement===d,count:list.length,first:list[0]?.textContent?.trim()||list[0]?.getAttribute('aria-label'),last:list.at(-1)?.textContent?.trim(),activeIndex:list.indexOf(document.activeElement)}}"
@@ -116,13 +116,14 @@ try {
   const uploadWrap = await evalJS('(' + uploadSnapshot + ')()')
   check('upload Tab wraps back to first control', uploadWrap.activeIndex === 0, uploadWrap)
   await pressEscape()
-  const uploadClose = await evalJS("(()=>({dialogGone:!document.querySelector('section[role=\"dialog\"][aria-labelledby=\"upload-dialog-title\"]'),restored:(document.activeElement?.textContent||'').includes('快速发布')}))()")
+  const uploadClose = await evalJS("(()=>({dialogGone:!document.querySelector('section[role=\"dialog\"][aria-labelledby=\"upload-dialog-title\"]'),restored:(document.activeElement?.textContent||'').includes('快速上传')}))()")
   check('upload Escape closes and restores triggering focus', uploadClose.dialogGone && uploadClose.restored, uploadClose)
 
   // Confirmation: no destructive action is executed. Escape must cancel.
   const settingOpened = await evalJS("(()=>{const b=Array.from(document.querySelectorAll('nav button')).find(x=>(x.textContent||'').trim()==='设置');if(!b)return false;b.click();return true})()")
   check('settings tab is reachable', settingOpened, settingOpened)
   await waitFor("Array.from(document.querySelectorAll('main button')).some(b=>(b.textContent||'').includes('重置 Token'))", 'Settings reset button')
+  await evalJS("(()=>{const b=Array.from(document.querySelectorAll('nav[aria-label=\"设置分类\"] button')).find(x=>(x.textContent||'').trim()==='接口与安全');if(!b)throw new Error('Missing API settings category');b.click();return true})()")
   const confirmOpened = await evalJS("(()=>{const b=Array.from(document.querySelectorAll('main button')).find(x=>(x.textContent||'').includes('重置 Token'));if(!b||b.disabled)return false;b.focus();b.click();return true})()")
   check('confirmation trigger is reachable', confirmOpened, confirmOpened)
   await waitFor("Boolean(document.querySelector('section[role=\"dialog\"][aria-labelledby=\"confirm-dialog-title\"]'))", 'Confirmation dialog open')
@@ -144,6 +145,44 @@ try {
   const trusted = await evalJS("window.__keyboardEvents.filter(e=>['Tab','Escape'].includes(e.key))")
   check('CDP key events were trusted browser inputs', trusted.length >= 7 && trusted.every((e)=>e.trusted), trusted)
 
+  const navigateWorkspace = async (label) => {
+    const point = await evalJS(`(() => {
+      const mobile = document.querySelector('.app-mobile-navigation select');
+      if (mobile && mobile.getClientRects().length) {
+        const index = [...mobile.options].findIndex(option => option.textContent === ${JSON.stringify(label)});
+        if (index < 0) throw new Error('Missing mobile page option');
+        const box = mobile.getBoundingClientRect();
+        return { x: box.left + box.width / 2, y: box.top + box.height / 2, mobile: true, index };
+      }
+      const button = [...document.querySelectorAll('nav[aria-label="主要页面"] button')].find((el) => el.title === ${JSON.stringify(label)});
+      if (!button) throw new Error('Missing workspace navigation');
+      const rail = button.closest('aside.app-sidebar');
+      if (!rail) throw new Error('Workspace navigation is not inside the sidebar rail');
+      const main = document.querySelector('#mirror-main');
+      const mainOffset = main.scrollTop;
+      // The minimum-height rail can scroll. Reveal its button without moving
+      // either the source work area or the destination page under test.
+      button.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+      if (main.scrollTop !== mainOffset) throw new Error('Revealing sidebar navigation changed the work-area scroll offset');
+      const box = button.getBoundingClientRect();
+      if (box.top < 0 || box.bottom > innerHeight || box.width <= 0 || box.height <= 0) throw new Error('Workspace navigation is outside the viewport');
+      return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+    })()`)
+    for (const type of ['mousePressed', 'mouseReleased']) {
+      await call('Input.dispatchMouseEvent', { type, button: 'left', clickCount: 1, x: point.x, y: point.y })
+    }
+    if (point.mobile) {
+      const key = async (name, code) => {
+        for (const type of ['rawKeyDown', 'keyUp']) await call('Input.dispatchKeyEvent', { type, key: name, code: name, windowsVirtualKeyCode: code });
+      };
+      await key('Home', 36);
+      for (let i = 0; i < point.index; i++) await key('ArrowDown', 40);
+      await key('Enter', 13);
+    }
+    await waitFor(`document.querySelector('.page-header h1')?.textContent?.trim() === ${JSON.stringify(label)}`, label + ' page heading')
+    await sleep(150)
+  }
+
   // Device-scale emulation (not a real Windows OS DPI test). The effective DPR
   // must be observed, never inferred from a successful CDP command response.
   for (const scale of [1.25, 1.5]) {
@@ -152,12 +191,11 @@ try {
         width: size[0], height: size[1], deviceScaleFactor: scale, mobile: false,
       })
       await waitFor('window.innerWidth === ' + size[0] + ' && Math.abs(window.devicePixelRatio - ' + scale + ') < .02', 'DPR override ' + scale)
-      const pages = ['发布','资源','云端','图库','插件','任务','设置']
+      const pages = ['上传','上传记录','云端配置','云端文件','插件','任务','设置']
       for (const label of pages) {
-        const activated = await evalJS("(()=>{const b=Array.from(document.querySelectorAll('nav button')).find(x=>(x.getAttribute('title')||'')===" + JSON.stringify(label) + ");if(!b)return false;b.click();return true})()")
-        if (!activated) { check('DPR '+scale+' '+label+' navigation', false, 'navigation button absent'); continue }
+        await navigateWorkspace(label)
         await sleep(150)
-        const geom = await evalJS("({width:innerWidth,height:innerHeight,dpr:devicePixelRatio,body:document.documentElement.scrollWidth,nav:document.querySelector('nav[aria-label=\"主要页面\"]')?.getBoundingClientRect().width})")
+        const geom = await evalJS("({width:innerWidth,height:innerHeight,dpr:devicePixelRatio,body:document.documentElement.scrollWidth,nav:innerWidth<=700?document.querySelector('.app-mobile-navigation select')?.getBoundingClientRect().width:document.querySelector('nav[aria-label=\"主要页面\"]')?.getBoundingClientRect().width})")
         check('DPR ' + scale + ' ' + size.join('x') + ' ' + label,
           geom.width === size[0] && geom.height === size[1] &&
           Math.abs(geom.dpr - scale) < .02 && geom.body <= geom.width + 1 && geom.nav > 0, geom)
@@ -289,33 +327,14 @@ try {
   // Navigation must restore the work area's entry position. A generic clipping
   // sweep excuses content inside scroll rails as reachable; it cannot prove a
   // newly opened page actually starts with its heading visible.
-  const navigateWorkspace = async (label) => {
-    const point = await evalJS(`(() => {
-      const button = [...document.querySelectorAll('nav[aria-label="主要页面"] button')].find((el) => el.title === ${JSON.stringify(label)});
-      if (!button) throw new Error('Missing workspace navigation');
-      const rail = button.closest('aside.app-sidebar');
-      if (!rail) throw new Error('Workspace navigation is not inside the sidebar rail');
-      const main = document.querySelector('#mirror-main');
-      const mainOffset = main.scrollTop;
-      // The minimum-height rail can scroll. Reveal its button without moving
-      // either the source work area or the destination page under test.
-      button.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
-      if (main.scrollTop !== mainOffset) throw new Error('Revealing sidebar navigation changed the work-area scroll offset');
-      const box = button.getBoundingClientRect();
-      if (box.top < 0 || box.bottom > innerHeight || box.width <= 0 || box.height <= 0) throw new Error('Workspace navigation is outside the viewport');
-      return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
-    })()`)
-    for (const type of ['mousePressed', 'mouseReleased']) {
-      await call('Input.dispatchMouseEvent', { type, button: 'left', clickCount: 1, ...point })
-    }
-    await waitFor(`document.querySelector('.page-header h1')?.textContent?.trim() === ${JSON.stringify(label)}`, label + ' page heading')
-    await sleep(150)
-  }
   await call('Page.enable')
   for (const [width, height] of [[640, 480], [1024, 768], [1440, 900], [1920, 1080]]) {
     await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
     await waitFor(`innerWidth === ${width} && innerHeight === ${height}`, 'Workspace viewport ' + width)
     await navigateWorkspace('设置')
+    const integrationPoint = await evalJS(`(() => { const b=[...document.querySelectorAll('nav[aria-label="设置分类"] button')].find(el=>el.textContent.trim()==='快捷集成'); if(!b)throw new Error('Missing integration category'); const r=b.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}; })()`);
+    for (const type of ['mousePressed','mouseReleased']) await call('Input.dispatchMouseEvent',{type,button:'left',clickCount:1,...integrationPoint});
+    await waitFor(`Array.from(document.querySelectorAll('nav[aria-label="设置分类"] button')).some(b=>b.textContent.trim()==='快捷集成'&&b.getAttribute('aria-pressed')==='true')`, 'Integration category selected');
     // Only the page being LEFT is scrolled. Never scroll the destination to
     // manufacture a passing header position.
     const leftPage = await evalJS(`(() => {
@@ -325,7 +344,7 @@ try {
       return { maximum, scrollTop: main.scrollTop };
     })()`)
     check('workspace ' + width + ' source settings really scrolls', leftPage.maximum > 0 && leftPage.scrollTop > 0, leftPage)
-    await navigateWorkspace('发布')
+    await navigateWorkspace('上传')
     const workspace = await evalJS(`(() => {
       const main = document.querySelector('#mirror-main');
       const layout = main.querySelector('.page-layout');

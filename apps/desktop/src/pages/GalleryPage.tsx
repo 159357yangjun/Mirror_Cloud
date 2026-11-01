@@ -252,7 +252,7 @@ export function GalleryPage() {
   return (
     <PageLayout>
       <PageHeader
-        title="图库"
+        title="云端文件"
         description="浏览云端文件，预览、下载、重命名、移动或删除。"
         action={
           <div className="flex items-center gap-2">

@@ -1,0 +1,78 @@
+/* Shared layout follows available window space. Wallpaper remains on the shell only. */
+.app-shell-root { --app-rail-width: 188px; --app-page-gap: clamp(16px, 2vw, 30px); }
+.app-sidebar { width: var(--app-rail-width); }
+.app-sidebar > div { padding: 14px 12px; }
+.app-main { margin-left: var(--app-rail-width); padding: var(--app-page-gap); }
+.app-page-surface { min-height: 0; }
+.app-sidebar-footer { font-size: 11px; }
+.app-mobile-navigation { display: none; }
+/* Layout ancestors stay unfiltered so fixed dialogs retain viewport bounds. */
+.page-layout input, .page-layout textarea { min-width: 0; }
+.page-header-copy { padding: 10px 14px; border-radius: 12px; }
+.page-header h1 { font-size: clamp(22px, 2vw, 27px); }
+.page-header p { font-size: 13px; }
+.page-header-actions { align-self: center; }
+.section-navigation { position: sticky; top: 0; z-index: 10; margin: 20px 0; min-width: 0; }
+.section-search { display: block; width: 100%; min-height: 42px; margin-bottom: 12px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text-primary); }
+.section-navigation-buttons { display: flex; flex-wrap: wrap; gap: 5px; padding: 5px; background: var(--surface); border-radius: 12px; }
+:root[data-wallpaper='true'] :is(.section-navigation-buttons, .section-search, .settings-shortcuts button) { backdrop-filter: blur(var(--backdrop-blur)); -webkit-backdrop-filter: blur(var(--backdrop-blur)); }
+.section-navigation-buttons button { flex: 1 1 112px; min-height: 40px; padding: 9px 13px; border-radius: 8px; color: var(--text-secondary); font-size: 13px; text-align: center; }
+.section-navigation-buttons button:hover { background: var(--surface-hover); }
+.section-navigation-buttons button[aria-pressed='true'] { background: var(--accent-soft); color: var(--text-primary); box-shadow: inset 0 -2px var(--accent); font-weight: 600; }
+.section-navigation-buttons button span { display: block; margin-top: 5px; font-size: 11px; font-weight: 400; }
+.section-navigation-buttons button:focus-visible, .section-search:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.section-search-empty { padding: 12px; font-size: 13px; color: var(--text-secondary); background: var(--surface); border-radius: 10px; }
+.settings-group[hidden], .workspace-section[hidden] { display: none; }
+.settings-group > :first-child, .workspace-section > :first-child { margin-top: 0; }
+.settings-group section, .workspace-section article { min-width: 0; border-radius: 16px; }
+.settings-group input, .settings-group select { min-width: 0; max-width: 100%; }
+.settings-shortcuts { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-shortcuts button { min-height: 38px; border-radius: 9px; padding: 9px 12px; background: var(--surface); color: var(--text-secondary); font-size: 12px; }
+.publish-layout-grid { grid-template-columns: minmax(0, 1fr) minmax(235px, 280px); align-items: start; }
+.publish-upload-surface { display: flex; flex-direction: column; }
+.publish-source-actions { padding: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.publish-source-action { min-width: 0; gap: 8px; padding: 12px 9px; border-radius: 10px; justify-content: center; text-align: center; }
+.publish-source-action > div:first-child { display: none; }
+.publish-source-action .text-\[11px\] { display: none; }
+.publish-drop-target { min-height: 240px; padding: 14px 0; }
+.publish-drop-copy { width: 100%; max-width: none; padding: 24px 20px; border-radius: 14px; }
+.publish-drop-copy > div:first-child { width: 54px; height: 54px; border-radius: 17px; }
+.publish-drop-copy h2 { margin-top: 18px; font-size: 20px; }
+.publish-drop-copy p { font-size: 13px; }
+.publish-support-surface { border-radius: 14px; }
+.workspace-section .grid-cols-3 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); }
+.workspace-section .col-span-3 { grid-column: 1 / -1; }
+.assets-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr)); }
+@media (max-width: 1100px) {
+  .app-shell-root { --app-rail-width: 172px; }
+  .app-nav-item { gap: 9px; padding-inline: 10px; }
+  .app-sidebar-footer { padding: 10px; }
+  .publish-layout-grid { grid-template-columns: minmax(0, 1fr); }
+  .publish-layout-grid > aside { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .publish-layout-grid > aside > * { margin-top: 0; min-width: 0; }
+  .workspace-section .grid-cols-2 { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 700px) {
+  .app-shell-root { --app-rail-width: 0px; --app-page-gap: 14px; }
+  .app-sidebar { display: none; }
+  .app-mobile-navigation { display: flex; position: fixed; z-index: 30; inset: 0 0 auto; height: 64px; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; }
+  .app-mobile-navigation label { display: flex; gap: 8px; align-items: center; font-size: 12px; min-width: 0; }
+  .app-mobile-navigation select { min-width: 110px; min-height: 42px; padding: 8px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-base); color: var(--text-primary); }
+  .app-mobile-navigation button { min-width: 44px; min-height: 44px; border-radius: 9px; }
+  .app-mobile-actions { display: flex; gap: 4px; }
+  .app-main { padding-top: 78px; }
+  .page-header { gap: 8px; align-items: center; }
+  .page-header-copy { max-width: 100%; padding: 8px 10px; }
+  .page-header p { display: none; }
+  .page-header-actions { width: auto; }
+  .section-navigation-buttons button { flex-basis: 28%; font-size: 12px; }
+  .section-navigation { top: 64px; }
+  .publish-layout-grid > aside { grid-template-columns: 1fr; }
+  .publish-drop-target { min-height: 210px; }
+  .publish-source-action { font-size: 12px; padding: 12px 5px; }
+  .publish-source-action .text-sm { font-size: 12px; }
+  .settings-group .flex.items-start.justify-between, .settings-group .flex.items-center.justify-between { flex-wrap: wrap; gap: 12px; }
+  .app-main button, .app-main select, .app-main input:not([type='checkbox']):not([type='radio']):not([type='range']), .app-main a[href] { min-height: 44px; }
+  .app-main a[href] { display: inline-flex; align-items: center; }
+}
+@media (prefers-reduced-motion: reduce) { .app-sidebar, .app-main { transition: none; } }

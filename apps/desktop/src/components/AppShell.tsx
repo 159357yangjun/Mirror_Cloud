@@ -16,10 +16,10 @@ import { VideoWallpaper } from './VideoWallpaper'
 import { notifyError } from '../store/useToastStore'
 
 const items: Array<{ key: PageKey; label: string; icon: typeof Boxes }> = [
-  { key: 'publish', label: '发布', icon: Upload },
-  { key: 'assets', label: '资源', icon: Boxes },
-  { key: 'storages', label: '云端', icon: Cloud },
-  { key: 'gallery', label: '图库', icon: Images },
+  { key: 'publish', label: '上传', icon: Upload },
+  { key: 'assets', label: '上传记录', icon: Boxes },
+  { key: 'storages', label: '云端配置', icon: Cloud },
+  { key: 'gallery', label: '云端文件', icon: Images },
   { key: 'plugins', label: '插件', icon: Plug },
   { key: 'tasks', label: '任务', icon: ListTodo },
   { key: 'settings', label: '设置', icon: Settings },
@@ -87,9 +87,17 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="app-shell-root min-h-screen text-[var(--text-primary)]">
+      <header className="app-mobile-navigation theme-glass" aria-label="窄窗口导航">
+        <label>镜云<select aria-label="主要页面" value={page} onChange={(event) => setPage(event.target.value as PageKey)}>{items.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label>
+        <div className="app-mobile-actions">
+          <button onClick={() => openUpload('files')} aria-label="快速发布图片" title="快速上传"><Upload size={18} /></button>
+          <button onClick={() => setShowTheme(true)} aria-label="打开壁纸与外观" title="壁纸与外观"><Palette size={18} /></button>
+          <button onClick={() => setShowHelp(true)} aria-label="打开教程与帮助" title="教程与帮助"><BookOpen size={18} /></button>
+        </div>
+      </header>
       {appearance.wallpaper === 'local:video' && <VideoWallpaper motion={appearance.wallpaperMotion && appearance.wallpaperStrength > 0} />}
       <a href="#mirror-main" className="sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:not-sr-only focus:rounded-lg focus:bg-[var(--surface)] focus:px-3 focus:py-2 text-sm focus:font-semibold focus:text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent)]">跳到主工作区</a>
-      <aside aria-label="应用导航" className="app-sidebar theme-glass fixed inset-y-0 left-0 z-30 w-[220px] border-r">
+      <aside aria-label="应用导航" className="app-sidebar theme-glass fixed inset-y-0 left-0 z-30 border-r">
         <div className="flex min-h-full flex-col p-4">
           <div className="flex items-center gap-3 px-2 py-3">
             <div className="app-brand-mark grid size-9 place-items-center rounded-2xl bg-slate-950 text-white shadow-sm"><Cloud size={20} /></div>
@@ -105,7 +113,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             aria-label="快速发布图片"
             title="快速发布图片"
           >
-            <Upload size={16} /> <span className="app-upload-label">快速发布</span>
+            <Upload size={16} /> <span className="app-upload-label">快速上传</span>
           </button>
 
           <nav aria-label="主要页面" className="mt-6 space-y-1">
@@ -153,7 +161,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </div>
                 {updateAvailableVersion && (
                   <button
-                    onClick={() => setPage('settings')}
+                    onClick={() => { useAppStore.getState().setSettingsSection('about'); setPage('settings') }}
                     title={`发现新版本 v${updateAvailableVersion}，点击去设置`}
                     aria-label={`发现新版本 v${updateAvailableVersion}`}
                     className="size-2.5 shrink-0 rounded-full bg-amber-500"
@@ -166,7 +174,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       </aside>
-      <main ref={mainRef} id="mirror-main" tabIndex={-1} className="app-main ml-[220px] min-h-screen">
+      <main ref={mainRef} id="mirror-main" tabIndex={-1} className="app-main min-h-screen">
         <div className="app-page-surface">{children}</div>
       </main>
       {showHelp && (

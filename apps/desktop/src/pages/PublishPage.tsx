@@ -135,8 +135,8 @@ export function PublishPage() {
   return (
     <PageLayout className="publish-workspace">
       <PageHeader
-        title="发布"
-        description="上传本地图片、截图或图片链接；Typora 也使用相同的默认云端和插件处理设置。"
+        title="上传"
+        description="选择图片、截图或链接，上传后复制结果。"
       />
 
       {needsFirstStorage && (
@@ -144,7 +144,7 @@ export function PublishPage() {
           <div>
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">先连接一个云端，再发布第一张图片</h2>
             <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
-              在“云端”添加并测试存储连接，设为默认目标后上传测试图片。上传成功后，请在“资源”或“图库”核对图片及访问方式。
+              在“云端配置”添加并测试存储连接，设为默认目标后上传测试图片。上传成功后，请在“上传记录”或“云端文件”核对图片及访问方式。
             </p>
           </div>
           <button onClick={() => setPage('storages')} className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white">
@@ -154,6 +154,18 @@ export function PublishPage() {
       )}
       <div className="publish-layout-grid mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <section className="publish-upload-surface">
+          <div className="publish-source-actions grid gap-3 sm:grid-cols-3">
+            <button onClick={() => openUpload('files')} className="publish-source-action flex items-center gap-3 p-4 text-left"><div><FileImage size={17} /></div><div className="text-sm font-medium">本地图片</div></button>
+            <button onClick={() => openUpload('clipboard')} className="publish-source-action flex items-center gap-3 p-4 text-left transition hover:-translate-y-0.5">
+              <div className="grid size-10 place-items-center rounded-xl bg-violet-50 text-violet-600"><ClipboardPaste size={17} /></div>
+              <div><div className="text-sm font-medium">剪贴板</div><div className="mt-0.5 text-[11px] text-slate-400">从剪贴板选择图片</div></div>
+            </button>
+            <button onClick={() => openUpload('urls')} className="publish-source-action flex items-center gap-3 p-4 text-left transition hover:-translate-y-0.5">
+              <div className="grid size-10 place-items-center rounded-xl bg-blue-50 text-blue-600"><Link2 size={17} /></div>
+              <div><div className="text-sm font-medium">图片 URL</div><div className="mt-0.5 text-[11px] text-slate-400">批量下载再发布</div></div>
+            </button>
+          </div>
+
           <button
             onClick={() => openUpload('files')}
             className="group publish-drop-target text-center transition"
@@ -169,16 +181,6 @@ export function PublishPage() {
             </div>
           </button>
 
-          <div className="publish-source-actions grid gap-3 sm:grid-cols-2">
-            <button onClick={() => openUpload('clipboard')} className="publish-source-action flex items-center gap-3 p-4 text-left transition hover:-translate-y-0.5">
-              <div className="grid size-10 place-items-center rounded-xl bg-violet-50 text-violet-600"><ClipboardPaste size={17} /></div>
-              <div><div className="text-sm font-medium">剪贴板</div><div className="mt-0.5 text-[11px] text-slate-400">从剪贴板选择图片</div></div>
-            </button>
-            <button onClick={() => openUpload('urls')} className="publish-source-action flex items-center gap-3 p-4 text-left transition hover:-translate-y-0.5">
-              <div className="grid size-10 place-items-center rounded-xl bg-blue-50 text-blue-600"><Link2 size={17} /></div>
-              <div><div className="text-sm font-medium">图片 URL</div><div className="mt-0.5 text-[11px] text-slate-400">批量下载再发布</div></div>
-            </button>
-          </div>
         </section>
 
         <aside className="space-y-5" aria-label="发布辅助配置">
@@ -220,7 +222,7 @@ export function PublishPage() {
           </section>
           <section className="publish-support-surface p-5">
             <div className="flex items-center gap-2 text-sm font-semibold"><Zap size={15} className="text-amber-500" />输出与复制</div>
-            <p className="mt-1 text-xs leading-5 text-slate-400">公开图片上传后可复制链接或 Markdown；私有图片请到“资源”生成限时分享。</p>
+            <p className="mt-1 text-xs leading-5 text-slate-400">公开图片上传后可复制链接或 Markdown；私有图片请到“上传记录”生成限时分享。</p>
             {preferences && (
               <>
                 <div className="mt-4 grid grid-cols-2 gap-2">
@@ -259,7 +261,7 @@ export function PublishPage() {
           <section className="publish-support-surface p-5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm font-semibold"><GalleryHorizontalEnd size={15} className="text-indigo-500" />最近发布</div>
-              <button onClick={() => setPage('assets')} className="text-[11px] font-medium text-indigo-600">全部资源</button>
+              <button onClick={() => setPage('assets')} className="text-[11px] font-medium text-indigo-600">全部记录</button>
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {assetsLoading && <p role="status" className="rounded-xl bg-slate-50 px-3 py-6 text-xs text-slate-600">正在读取最近发布…</p>}
