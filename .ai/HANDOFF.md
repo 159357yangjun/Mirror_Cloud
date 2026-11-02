@@ -1,5 +1,11 @@
 # HANDOFF
 
+## 2026-11-02 — 新候选G3用户验收通过，推进正式发布
+
+用户明确针对1.4.11候选b7595e9（run41450636695/artifact13144899114）答复“以上项目全部通过”：版本、SQLite/资源、云端配置和凭据、默认目标、Typora、插件、主题壁纸保留及新图片上传。所测setup.exe 16433758字节/SHA256 496b9a0013654eaf99df91b8b5926ac6e73386be06acaaeef38bea3cade4fe40，原始答复及矩阵记于会话outputs/release-2026-11-02/G3-user-confirmation-1.4.11.json。这是用户报告真机保真，不是agent操作，也不是复用旧1.4.10验收。
+
+复核固定产品源b7595e94f4edad2920621bf5a7c7df9091a3552e的7项push及候选构建均成功，artifact未过期且digest不变。按既有发布授权，创建一次v1.4.11附注tag固定此已测源，然后云端正式构建；文档HEAD不替代安装件源码，旧v1.4.10 tag不动。当前尚未完成G4/G5；正式重建去除候选标记，须单独核对正式资产SHA及来源，不能假定与候选字节一致或声称正式包已真机复验。
+
 ## 2026-11-02 — 1.4.11候选G0/G2完成；等待新真机G3
 
 固定产品源b7595e94f4edad2920621bf5a7c7df9091a3552e，已推送。策略回归[41449425942](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41449425942)10通过/0失败；[CI41449426294](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41449426294)成功（Rust229/0/1真实R2忽略、97命令、640流程、前端和教程构建）。UI41449425955成功（pages36/confirm19/layout21零skip/keyboard77），七页41449426041、身份41449426118、R2离线41449426198均成功。原生41449425988成功（windows2/sqlite2/persisted1/failed0、NSIS/MSI安装卸载），此为干净云端Windows，不冒充用户个人升级保真。
