@@ -12,3 +12,6 @@ domain = { path = "../domain" }
 storage-core = { path = "../storage-core" }
 thiserror.workspace = true
 uuid.workspace = true
+
+[dev-dependencies]
+async-trait.workspace = true

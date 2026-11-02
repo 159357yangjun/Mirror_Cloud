@@ -340,6 +340,9 @@ impl CloudMutationCore {
 }
 
 #[cfg(test)]
+mod publish_tests;
+
+#[cfg(test)]
 mod tests {
     use super::{PublishOutcome, PublisherCore};
     use domain::{DeploymentRole, StorageId};

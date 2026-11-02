@@ -1,5 +1,13 @@
 # HANDOFF
 
+## 2026-11-02 — 已批准修复策略并制作1.4.11候选；测试先行
+
+用户明确选择“先修复备份策略，制作1.4.11候选包，再继续发布”。本阶段先新增8个真实StorageProvider调用级内存用例和Application publish policy云端Ubuntu检查，生产publish_group逻辑暂不修改；静态预期3红（主成功含镜像失败/private主成功/Primary pending时Backup提前执行）、其余5新+2旧URL测试为绿，须实际云端输出确认后再修复。保留慢Mirror不阻塞Backup、priority首成功即停、MirrorAll全尝试、无Primary拒绝等语义。
+
+test-only async-trait复用既有workspace依赖；cargo update --workspace --offline仅向application锁依赖列表加入async-trait，实际0包升级；没有下载安装新工具或本地编译。已安装rustfmt只格式化代码，Actions48引用pin检查及diff通过；独立子智能体核对trait/Send/闸门/测试期望无P1/P2。新增核心云端用例是永久回归代码，不是一次性探针，现有CI/发布门禁没有移除或放宽。
+
+现D:/image-hosting-platform/target重新出现debug/flycheck/.rustc_info.json，观察到rust-analyzer在运行，推断为编辑器自动检查缓存；不声称已持续保持为空，也不擅自停用编辑器或重试原批量递归删除。用户新增长报告仅作为后续待核参考，不能据此宣传自动修复/永不丢失或承诺星标增长；本批不重构README/官网、不设置Topics、不发布外部社区消息。
+
 ## 2026-11-02 — 现状审计完成；正式发布因新增P1取消
 
 用户在确认候选升级矩阵后追加要求先核对现有实现、整理实施方案。本轮只读代码审计发现PrimaryWithBackups策略P1：application/src/lib.rs160的backup_future无Primary结果条件，179的join3并发驱动，Primary成功时仍上传Backup；失败还会计入partial/警告。Desktop/CLI无外层门控，现有2测试仅测URL选择。独立release_harness_review确认阻断；Backup失败本身不直接触发全量回滚，不夸大为已发生的数据事故。
