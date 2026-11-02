@@ -1,5 +1,13 @@
 # HANDOFF
 
+## 2026-11-02 — 云端出包预检与D盘清理请求
+
+用户要求云端打包发布最新版并直接从云端下载，本机不下载新安装包。改前本地/远端main均5f8c06afb5043fd5e0400d25841a52f6e30d162f，工作区干净。该SHA六条push检查中CI、原生、身份、R2离线、七页成功；UI41307226012/browser124849992146失败。日志证明pages36/confirm19/keyboard77通过，layout在正式扫描前因CONTROL-B找不到产品页裁切祖先退出2，不是已测几何失败。首次云端卡隐藏后不存在裁切容器属于合法空态。
+
+修复：测具自建180x24 overflow:hidden裁切祖先，再注入2400px文字进行原有自检，随后移除整个夹具。保留全部正反控、裁切/恢复断言和21组实际扫描；CHANGELOG只更新该脚本一行fingerprint数值/hash。node --check及gate-unit29/0；提交前流程639/640，唯一失败是新fingerprint对旧HEAD，提交后重跑，不降低断言或重签视觉/形状基线。云端复跑、无tag候选构建和正式G3状态待后续证据补充；latest实读仍v1.4.9，无v1.4.10 tag，不能跳过真实升级保真直接标正式更新完成。
+
+清理：用户确认仅删除不影响运行部分。拟删D:/image-hosting-builds（三旧候选342MiB）、D:/tmp-probes/image-hosting-probes（460MiB）、项目target（496MiB）、dist/tsbuildinfo/三处__pycache__（约8MiB）；保留node_modules、源码/测试源码/文档/.git和已安装D:/Mirror Cloud。exec对该批已校验目标的递归删除被自动审批blocked by policy拒绝（未给具体原因），实际没有删任何文件，不换工具绕过。清单及本轮证据在C:/Users/yyyy/Documents/Codex/2026-10-24/d-image-hosting-platform/outputs/release-2026-11-02。
+
 ## 2026-11-01 — 桌面视觉秩序与入口精简（本地完成）
 
 基于本地b1066745e7ac830443b5aced3c57287719983af3，修改前实读远端main仍为a2647214d9da227eb10bbf9a75c9325ef1b00700。按用户视觉/信息架构建议继续现有设计：共享4/8间距、8/16圆角、12/14/16/24字号（窄窗标题20），首配云端只留一处引导，近期记录/任务只留一个随分类切换的全量入口，上传图标与快捷上传降重；壁纸/磨砂/主题和业务处理流程保留。约定见docs/DESKTOP_UI_RULES.md。

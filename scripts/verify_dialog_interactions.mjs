@@ -2996,11 +2996,15 @@ async function main() {
       const wide = () => { const d = document.createElement('div'); d.style.cssText = 'width:2400px;height:12px;background:red'; return d };
       const LONG = 'abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnop';
       const host = document.querySelector('main') || document.body;
-      const clipper = Array.from(host.querySelectorAll('*')).find((e) => { const cs = getComputedStyle(e); return cs.overflowX !== 'visible' && !/auto|scroll/.test(cs.overflowX) && e.clientWidth > 40 && e.clientWidth < innerWidth });
       const baseline = window.__L.geometry(0);
       const report = { baselineDocOverflow: baseline.docOverflowPx, baselineClips: baseline.clippedByAncestorTotal };
       const probe = {};
-      if (clipper) {
+      {
+        // Own the positive control's clipping ancestor. Product empty states may legitimately
+        // contain no clipping surface; that must not prevent this detector self-check from running.
+        const clipper = document.createElement('div');
+        clipper.style.cssText = 'width:180px;height:24px;overflow:hidden;flex-shrink:0';
+        host.appendChild(clipper);
         // Text-bearing, because the ancestor-clip criterion is defined over text leaves: content
         // that is silently cut where a reader would look for it.
         const d = document.createElement('div');
@@ -3010,9 +3014,8 @@ async function main() {
         const g = window.__L.geometry(0);
         const mine = g.clippedByAncestor.filter((c) => c.text && c.text.indexOf('LCTL') === 0)
         probe.clippedPlacement = { docOverflowPx: g.docOverflowPx, clippedByAncestorTotal: g.clippedByAncestorTotal, caught: mine.length > 0, worst: mine.length ? Math.max(...mine.map((c) => c.excess)) : null };
-        d.remove()
+        clipper.remove()
       }
-      else probe.clippedPlacement = { skipped: 'no non-scrolling clipping ancestor found on this page' };
       const d2 = wide(); document.documentElement.appendChild(d2); const g2 = window.__L.geometry(0);
       probe.scrollPlacement = { docOverflowPx: g2.docOverflowPx, docPx: g2.docOverflowPx - baseline.docOverflowPx, viewportPx: g2.viewportOverflowPx, caughtByDoc: g2.docOverflowPx > baseline.docOverflowPx, caughtByViewport: g2.viewportOverflowPx > 0 };
       d2.remove();
