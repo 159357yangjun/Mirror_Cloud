@@ -1,5 +1,11 @@
 # TASKS
 
+## 2026-11-02 — 当前发布任务
+
+- 完成：备份策略修复，产品源b7595e94f4edad2920621bf5a7c7df9091a3552e的7项push检查通过；无tag的1.4.11候选41450636695及归档/安装件/源码/锁校验通过。详细证据和下载见HANDOFF最新条目及CHANGELOG。
+- 未完成：此候选真实用户升级G3（数据库/资源、凭据、默认目标、Typora、插件、主题壁纸保留、新上传）。不能移用旧1.4.10验收。
+- G3后按已有授权：一次性v1.4.11 tag固定已测b7595e9，云端正式发布；不移动v1.4.10，不将仅文档提交当作已测安装件源码。官网/README展示及开放插件生态另批，未插入本次运行修复。
+
 ## 2026-11-02 — 备份策略修复与下一补丁候选准备
 
 测试源b6abad20a5d9dce1e56ea9351b55c6fd91d94cf1的[云端策略回归41447462147](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41447462147)真实编译完成，7通过/3失败，恰为主成功仍写Backup、私有主成功仍写Backup、Primary未完成提前写Backup；格式检查通过。随后修复publish_group：Primary成功不尝试Backup，失败才按priority顺序尝试到首个成功；Mirrors与Primary→Backup链并行，慢Mirror不阻塞故障接管。MirrorAll、URL选择和输出角色顺序保持，永久回归测试未删除或弱化。

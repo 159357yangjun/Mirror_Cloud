@@ -1,5 +1,15 @@
 # HANDOFF
 
+## 2026-11-02 — 1.4.11候选G0/G2完成；等待新真机G3
+
+固定产品源b7595e94f4edad2920621bf5a7c7df9091a3552e，已推送。策略回归[41449425942](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41449425942)10通过/0失败；[CI41449426294](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41449426294)成功（Rust229/0/1真实R2忽略、97命令、640流程、前端和教程构建）。UI41449425955成功（pages36/confirm19/layout21零skip/keyboard77），七页41449426041、身份41449426118、R2离线41449426198均成功。原生41449425988成功（windows2/sqlite2/persisted1/failed0、NSIS/MSI安装卸载），此为干净云端Windows，不冒充用户个人升级保真。
+
+G2：[无tag候选41450636695](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41450636695)成功，windows-bundle125294685234成功，publish-release125306215379按候选规则跳过；源码预检、Rust229/0/1忽略、锁文件不变、NSIS/MSI安装卸载和教程HTTP200通过。可从[artifact13144899114](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41450636695/artifacts/13144899114)下载release-files，59955291字节/SHA256 63c5e88dea3f6e699128f328a7daaeda6a11c25a5fbf3f4fd4c9b8903da6a851；有效期至2026-12-02。推荐其中image-hosting-platform-v1.4.11-windows-x64-setup.exe，16433758字节/SHA256 496b9a0013654eaf99df91b8b5926ac6e73386be06acaaeef38bea3cade4fe40。内存重算三资产/完整归档digest匹配，源码488个非目录文件及archive comment匹配该SHA，三锁匹配；安装包/归档没有落盘。完整校验在会话outputs/release-2026-11-02/candidate-1.4.11-verification.json。
+
+独立审查无修复范围P1/P2代码阻断；交付报告曾把测试提交b6abad2的lock/lib改动误归为升版/生产修复，现已更正：b6只加测试/async-trait，升版和条件备份属于b759。当前剩余：用户用此新候选覆盖升级，确认版本、SQLite/资源、云端配置/凭据、默认目标、Typora、插件、主题壁纸保留并上传新图。旧1.4.10 PASS不复用。此笔只记录门禁，不改变候选运行代码；用户确认新G3后按既有授权创建一次v1.4.11 tag固定已测产品源，再云端正式发布，不能把这笔仅文档HEAD当作已测安装包源码。v1.4.10 tag保持原样。未完成新G3/G5，不称正式发布或完整自更新。
+
+本轮check_user_flow产生两个临时文本仍在C:/Users/yyyy/AppData/Local/Temp/image-hosting-probes/2026-11-02/stray-guard-red.txt及stray-guard-green.txt；包含移动/空目录删除的清理命令再次被自动审批blocked by policy拒绝，整条未执行（随后仅单独推送成功）。不绕过删除限制，不声称已清净。D盘旧9路径已手动删除的历史结论不因此变为新清理完成。
+
 ## 2026-11-02 — 备份策略修复与下一补丁候选准备
 
 测试源b6abad20a5d9dce1e56ea9351b55c6fd91d94cf1的[云端策略回归41447462147](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41447462147)真实编译完成，7通过/3失败，恰为主成功仍写Backup、私有主成功仍写Backup、Primary未完成提前写Backup；格式检查通过。随后修复publish_group：Primary成功不尝试Backup，失败才按priority顺序尝试到首个成功；Mirrors与Primary→Backup链并行，慢Mirror不阻塞故障接管。MirrorAll、URL选择和输出角色顺序保持，永久回归测试未删除或弱化。

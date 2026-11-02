@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-02 — 1.4.11候选G0/G2完成；G3待验收
+
+- 修复PrimaryWithBackups在主存储成功时仍上传Backup的问题；失败后才按优先级故障接管，Mirrors保持并发。产品源固定`b7595e94f4edad2920621bf5a7c7df9091a3552e`。
+- G0：[CI41449426294](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41449426294)成功（Rust229通过/0失败/1真实R2忽略、97命令、640流程）；策略41449425942成功（10/0），UI41449425955成功（36页面/19确认/21布局零skip/77键盘）；原生41449425988成功（两次窗口与SQLite持久化、NSIS/MSI安装卸载）。七页、身份及R2离线检查亦成功。
+- G2：[无tag候选41450636695](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41450636695)成功；安装卸载、锁文件不变、教程HTTP200通过，正式发布作业按候选规则跳过。[下载artifact13144899114](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41450636695/artifacts/13144899114)（有效至2026-12-02）：归档59955291字节/SHA256 `63c5e88dea3f6e699128f328a7daaeda6a11c25a5fbf3f4fd4c9b8903da6a851`；setup.exe 16433758字节/SHA256 `496b9a0013654eaf99df91b8b5926ac6e73386be06acaaeef38bea3cade4fe40`。三资产校验和、源码488个文件及archive comment、三依赖锁均与该SHA匹配。
+- G3待用户报告此新候选的真实覆盖升级保真及新上传；旧候选PASS不复用。未创建v1.4.11 tag或正式发布；保留旧v1.4.10不可变tag。本笔只记录门禁，不改变已测产品源码，不能称完整自更新已验收。
+
 ## 2026-11-02 — 备份策略修复与下一补丁候选准备
 
 测试源b6abad20a5d9dce1e56ea9351b55c6fd91d94cf1的[云端策略回归41447462147](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41447462147)真实编译完成，7通过/3失败，恰为主成功仍写Backup、私有主成功仍写Backup、Primary未完成提前写Backup；格式检查通过。随后修复publish_group：Primary成功不尝试Backup，失败才按priority顺序尝试到首个成功；Mirrors与Primary→Backup链并行，慢Mirror不阻塞故障接管。MirrorAll、URL选择和输出角色顺序保持，永久回归测试未删除或弱化。同步纠正旧静态流程规则中强制join3和禁止Primary条件的错误策略，改为验证Primary错误后才进入Backup且Mirrors并行；仅更新该检查脚本的fingerprint行，未重签视觉基线。
