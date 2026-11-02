@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-02 — 正式发布阻断更正与产品现状审计
+
+后续代码审计确认P1：PrimaryWithBackups的Backup链在join3中无条件执行，Primary成功仍写Backup；额外失败进入partial/任务警告。Desktop/CLI无外层门控，既有两项application测试只测URL选择。此结论经独立审查，不能用之前候选的CI及用户矩阵报告替代该边界验证；原始报告保留，当前总体发布裁定改为阻断。
+
+[正式构建41439806763](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41439806763)已取消，发布作业未执行；1.4.10 Release不存在，最新正式版仍1.4.9。已创建的v1.4.10 tag固定3a9b7b1、不删除或移动；建议修复后使用下一补丁版本重新走候选与门禁。本笔只提交现状审计和实施方案，未修改运行代码或新增官网/插件能力。详见[审计与分批方案](docs/superpowers/specs/2026-11-02-product-growth-audit.md)。
+
 ## 2026-11-02 — 1.4.10发布门禁G0/G2/G3
 
 - 固定产品源：`3a9b7b1efd37c3f67a8f9238daecf4c0be5fb00b`。G0：[CI41434342128](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41434342128)成功（Rust221/0/1真实R2忽略、97契约、640流程）；[UI41434342166](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41434342166)成功（pages36/confirm19/layout21无跳过/keyboard77）；七页41434342301成功。

@@ -1,5 +1,15 @@
 # HANDOFF
 
+## 2026-11-02 — 现状审计完成；正式发布因新增P1取消
+
+用户在确认候选升级矩阵后追加要求先核对现有实现、整理实施方案。本轮只读代码审计发现PrimaryWithBackups策略P1：application/src/lib.rs160的backup_future无Primary结果条件，179的join3并发驱动，Primary成功时仍上传Backup；失败还会计入partial/警告。Desktop/CLI无外层门控，现有2测试仅测URL选择。独立release_harness_review确认阻断；Backup失败本身不直接触发全量回滚，不夸大为已发生的数据事故。
+
+正式Release Bundle41439806763已通过API取消，windows-bundle125258530862在Build Windows bundles阶段cancelled，publish-release125263538627 cancelled；v1.4.10 Release实读404，latest仍v1.4.9。已创建的v1.4.10附注tag对象4a5f5574eaa51eba919fb2e5eaefe39f61985695→3a9b7b1efd37c3f67a8f9238daecf4c0be5fb00b保留不可变。用户原始候选PASS报告保留，但新增P1阻断当前总体可发布结论；不得继续重跑该tag发布已知问题版本。建议修复后用下一补丁1.4.11重新候选、同SHA检查和真机验收，具体执行按用户先看方案的当前范围推进。
+
+审计/分批方案见docs/superpowers/specs/2026-11-02-product-growth-audit.md。核实了官网现有Astro/Starlight、七平台字段教程、受控三类插件与固定官方目录；缺本地Manifest安装/API兼容版本/自动配置表单/社区索引/WASM。README和帮助仍用旧菜单词，Typora帮助未直达integration；About仍v1.4.6/Topics空；RECONCILIATION_ENGINE文档关于无调度/远端探测/journal的说法已过时，实际默认关闭的后台探测和发布日志已接通，自动修复/访问URL自动故障切换未实现。新增功能、Topic修改和运行时修复均未实施。
+
+D盘9个原路径已由用户手动删除，源码/.git/node_modules/已安装软件保留；回收站核验仍8项约846MiB，已明确告知，最终空间释放未确认。原始API/元数据/校验/取消证据在会话outputs/release-2026-11-02。安装包和归档仅内存核验未落盘；失败HTTP range尝试没读取归档，随后使用连接器安全地址在内存校验，未留下临时探针代码。
+
 ## 2026-11-02 — 1.4.10候选已验收，准备正式发布
 
 产品源固定3a9b7b1efd37c3f67a8f9238daecf4c0be5fb00b。G0：CI41434342128成功（Rust221/0/1真实R2忽略、97契约、640流程）；UI41434342166成功（CONTROL-B2220px/doc0、pages36、confirm19、layout21无跳过、keyboard77）；七页41434342301成功。G2：无tag候选Release Bundle41434944652成功，NSIS/MSI安装卸载及锁文件无修改通过，教程HTTP200。artifact13137701669/59925842字节，SHA256 855dc8f2e04fce711d254d2d876a8a6edb1c373607f34216bf7dc67861912b77。内存核对归档digest与三资产SHA256SUMS一致，582项源码与该SHA Git archive一致（仅规范化UTF-8 CRLF/LF）；未在本机保存安装包或新归档。
