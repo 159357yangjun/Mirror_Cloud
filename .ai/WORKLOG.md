@@ -1,5 +1,13 @@
 # WORKLOG
 
+## 2026-11-02 — 备份策略修复与下一补丁候选准备
+
+测试源b6abad20a5d9dce1e56ea9351b55c6fd91d94cf1的[云端策略回归41447462147](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41447462147)真实编译完成，7通过/3失败，恰为主成功仍写Backup、私有主成功仍写Backup、Primary未完成提前写Backup；格式检查通过。随后修复publish_group：Primary成功不尝试Backup，失败才按priority顺序尝试到首个成功；Mirrors与Primary→Backup链并行，慢Mirror不阻塞故障接管。MirrorAll、URL选择和输出角色顺序保持，永久回归测试未删除或弱化。
+
+按用户已确认范围统一Cargo、13个workspace锁版本、desktop npm/package-lock和Tauri版本为1.4.11，仅更新README当前开发版本，identifier不变。锁文件无外部依赖升级；未本地编译/安装工具。修复提交尚待同SHA云端全量检查、无正式tag候选和新G3用户升级验收；旧1.4.10验收不移用于本包，v1.4.10 tag不移动/删除/复用。
+
+静态流程检查原先强制join3并禁止Primary成功条件，已按已确认策略更正两项断言；640项总数不变，仅同步本脚本fingerprint一行，提交前唯一失败为新数值对旧HEAD，提交后复验。
+
 ## 2026-11-02 — 已批准修复策略并制作1.4.11候选；测试先行
 
 用户明确选择“先修复备份策略，制作1.4.11候选包，再继续发布”。本阶段先新增8个真实StorageProvider调用级内存用例和Application publish policy云端Ubuntu检查，生产publish_group逻辑暂不修改；静态预期3红（主成功含镜像失败/private主成功/Primary pending时Backup提前执行）、其余5新+2旧URL测试为绿，须实际云端输出确认后再修复。保留慢Mirror不阻塞Backup、priority首成功即停、MirrorAll全尝试、无Primary拒绝等语义。

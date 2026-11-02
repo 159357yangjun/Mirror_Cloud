@@ -122,11 +122,9 @@ impl PublisherCore {
                     .cloned()
                     .ok_or(ApplicationError::MissingPrimary)?;
 
-                // Mirrors are replicas and Backups are failover targets: neither may
-                // gate the other. All three lanes run concurrently; each lane's outcomes
-                // are concatenated in its own role order (primary, then mirrors, then
-                // backups ascending by priority) so a caller picking "first successful"
-                // gets the Backup that took over, never a Mirror that merely copied.
+                // Mirrors run independently of failover. The other lane tries Primary,
+                // then Backups only on failure, without waiting for a slow Mirror.
+                // Outcomes retain role order: primary, mirrors, attempted backups.
                 let mirror_members = members
                     .iter()
                     .filter(|member| member.role == DeploymentRole::Mirror)
@@ -157,29 +155,31 @@ impl PublisherCore {
                         mime_type.clone(),
                     )
                 });
-                let backup_future = async move {
+                let primary_and_backups = async move {
+                    let primary_outcome = primary_future.await;
                     let mut taken = Vec::new();
-                    for backup in backup_members {
-                        let outcome = Self::upload_member(
-                            backup,
-                            backup_bytes.clone(),
-                            backup_path.clone(),
-                            backup_mime.clone(),
-                        )
-                        .await;
-                        let succeeded = outcome.error.is_none();
-                        taken.push(outcome);
-                        if succeeded {
-                            break;
+                    if primary_outcome.error.is_some() {
+                        for backup in backup_members {
+                            let outcome = Self::upload_member(
+                                backup,
+                                backup_bytes.clone(),
+                                backup_path.clone(),
+                                backup_mime.clone(),
+                            )
+                            .await;
+                            let succeeded = outcome.error.is_none();
+                            taken.push(outcome);
+                            if succeeded {
+                                break;
+                            }
                         }
                     }
-                    taken
+                    (primary_outcome, taken)
                 };
 
-                let (primary_outcome, mirror_outcomes, backup_outcomes) = futures::future::join3(
-                    primary_future,
+                let ((primary_outcome, backup_outcomes), mirror_outcomes) = futures::future::join(
+                    primary_and_backups,
                     futures::future::join_all(mirror_futures),
-                    backup_future,
                 )
                 .await;
                 let mut outcomes = vec![primary_outcome];

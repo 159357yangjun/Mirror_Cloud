@@ -348,13 +348,16 @@ migration9 = text('crates/persistence-sqlite/migrations/0009_upgrade_official_ai
 migration10 = text('crates/persistence-sqlite/migrations/0010_plugin_permission_grants.sql')
 
 require('permissions/push' in github and 'Contents: Read and write' in github, 'GitHub connection test checks repository write access')
-require('PublisherCore::publish_group' in commands and 'backup_members.sort_by_key(|member| member.priority)' in application and 'futures::future::join3' in application, 'desktop group publish delegates priority-ordered backup failover to PublisherCore, concurrent with mirrors (PWB-semantics-fix)')
+require('PublisherCore::publish_group' in commands and 'backup_members.sort_by_key(|member| member.priority)' in application and 'futures::future::join(' in application and 'primary_and_backups,' in application, 'desktop group publish delegates priority-ordered backup failover to PublisherCore, concurrent with mirrors (PWB-semantics-fix)')
 require('PublisherCore::publish_group' in cli and 'UploadRequest' not in cli and 'futures::future::join3' not in cli and 'backup_members.sort_by_key(' not in cli, 'Typora/CLI publish delegates multi-cloud strategy to PublisherCore instead of keeping a second implementation')
 _pwb = application[application.index('StorageGroupStrategy::PrimaryWithBackups'):]
 _pwb = _pwb[:_pwb.index('Ok(outcomes)')]
-require('_primary_succeeded' not in _pwb and 'if !primary_succeeded {' not in _pwb,
-        'no lane gates another: PrimaryWithBackups has no primary-success conditional left (offenders: '
-        + ', '.join(l.strip() for l in _pwb.splitlines() if 'primary_succeeded' in l)[:120] + ')')
+_failover = _rust_block(_pwb, 'let primary_and_backups = async move')
+_backup_gate = _rust_block(_failover, 'if primary_outcome.error.is_some()')
+require('let primary_outcome = primary_future.await;' in _failover
+        and 'for backup in backup_members' in _backup_gate
+        and _failover.index('primary_future.await') < _failover.index('if primary_outcome.error.is_some()'),
+        'Backup starts only after Primary reports an upload error; private success is not failover')
 require('Backup 仅在 Primary 失败时接管' in group_dialog, 'Storage Group UI explains failover semantics')
 # audit item A (2026-10-03): the public-URL pick must live in exactly one place and a
 # Mirror must never win it; both consumers used to hand-roll `.or_else(first-successful)`.

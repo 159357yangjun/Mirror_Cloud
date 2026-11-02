@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-02 — 备份策略修复与下一补丁候选准备
+
+测试源b6abad20a5d9dce1e56ea9351b55c6fd91d94cf1的[云端策略回归41447462147](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41447462147)真实编译完成，7通过/3失败，恰为主成功仍写Backup、私有主成功仍写Backup、Primary未完成提前写Backup；格式检查通过。随后修复publish_group：Primary成功不尝试Backup，失败才按priority顺序尝试到首个成功；Mirrors与Primary→Backup链并行，慢Mirror不阻塞故障接管。MirrorAll、URL选择和输出角色顺序保持，永久回归测试未删除或弱化。同步纠正旧静态流程规则中强制join3和禁止Primary条件的错误策略，改为验证Primary错误后才进入Backup且Mirrors并行；仅更新该检查脚本的fingerprint行，未重签视觉基线。
+
+按用户已确认范围统一Cargo、13个workspace锁版本、desktop npm/package-lock和Tauri版本为1.4.11，仅更新README当前开发版本，identifier不变。锁文件无外部依赖升级；未本地编译/安装工具。修复提交尚待同SHA云端全量检查、无正式tag候选和新G3用户升级验收；旧1.4.10验收不移用于本包，v1.4.10 tag不移动/删除/复用。
+
 ## 2026-11-02 — 正式发布阻断更正与产品现状审计
 
 后续代码审计确认P1：PrimaryWithBackups的Backup链在join3中无条件执行，Primary成功仍写Backup；额外失败进入partial/任务警告。Desktop/CLI无外层门控，既有两项application测试只测URL选择。此结论经独立审查，不能用之前候选的CI及用户矩阵报告替代该边界验证；原始报告保留，当前总体发布裁定改为阻断。
@@ -265,7 +271,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | `scripts/verify_probe_display.mjs` | 73 | 2,893 | `9bd4bf1b3aa82a1302201ac8b026f47639fd2fd410ce4ed1b6a8805506486933` | `PROBE_DISPLAY total=6 failed=0`（§18B 四类失败种类：标签/提示/颜色两两互异，未知种类降级到 rejected，成功探测不渲染）| `node scripts/verify_probe_display.mjs` |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
 | `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,887 | `e6e9b182585b7ece6b8811d06ab67412d90f6c23a7404633c8a22c91590b6fc1` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
-| `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 2569 | 187,845 | `f560caae33bd2a8370c20423846200789a99045d69b6154d81d3fd247a53d829` | `USERFLOW_CHECKS total=625 failed=0`（落盘后；未提交时它必然报 10 条"HEAD blob 里没有这个文件"，见本节末） | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16 M19 M20` |
+| `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 2572 | 188,081 | `c2106b7edac7bb9b1e93183da8c12d0d8ca74935ef3710bdb18122558ebea826` | `USERFLOW_CHECKS total=625 failed=0`（落盘后；未提交时它必然报 10 条"HEAD blob 里没有这个文件"，见本节末） | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16 M19 M20` |
 | `scripts/validate.py` | 113 | 4,659 | `7b5fd57c6e2a2572ce99a89076660b8d20198d29c83ba7a31bd5ef4b79e6a581` | 结构自检：JSON/TOML 可解析、SQLite 迁移与表数、workspace members、版本对齐 | `python scripts/validate.py`
 | `scripts/check_contracts.py` | 45 | 2,029 | `8fd928f98ec97a1c1969b6eed53e01a04ac3c6d865120e0a4978438bed0e2127` | 前端 invoke ↔ Rust command ↔ 注册表 三方对账，缺一即红 | `python scripts/check_contracts.py`
 | `scripts/check_release_version.py` | 131 | 5,713 | `8d45f2079150ac343193461c5b72b474a818f79e59858b3c2eda964c5c7a984d` | 五处版本声明 + Cargo.lock 13 成员必须同值；tag 推送时另核 tag 与版本一致 | `python scripts/check_release_version.py`

@@ -4,7 +4,7 @@
 
 镜云支持图片上传、云端文件管理、多云副本、图片处理和编辑器集成。
 
-当前开发线：**v1.4.10（候选验证中）**。版本以 Cargo/package.json 为准，`scripts/project_state.py --verify` 检查一致性；开发版本不代表已正式发布。
+当前开发线：**v1.4.11（候选准备中）**。版本以 Cargo/package.json 为准，`scripts/project_state.py --verify` 检查一致性；开发版本不代表已正式发布。
 
 ## 核心能力
 
