@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-02 — 1.4.10发布门禁G0/G2/G3
+
+- 固定产品源：`3a9b7b1efd37c3f67a8f9238daecf4c0be5fb00b`。G0：[CI41434342128](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41434342128)成功（Rust221/0/1真实R2忽略、97契约、640流程）；[UI41434342166](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41434342166)成功（pages36/confirm19/layout21无跳过/keyboard77）；七页41434342301成功。
+- G2：[无tag候选41434944652](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41434944652)成功，NSIS/MSI安装卸载、源码/锁文件和教程可达性通过。归档artifact13137701669，59925842字节/SHA256 `855dc8f2e04fce711d254d2d876a8a6edb1c373607f34216bf7dc67861912b77`；三资产与SHA256SUMS经内存重算一致，源码582项与该Git archive一致（UTF-8 CRLF/LF规范化）。未在用户机器保存新安装包。
+- G3：用户对本次“候选构建3a9b7b1efd37”十项升级保真明确报告“以上项目全部通过”；这是用户真机结果，不是agent本机执行。实测候选EXE16426859字节/SHA256 `c2a20c0292085d39ca4f58b8e6d0b848de1d90a3075976d10ac2c469c94f6ac3`；MSI20742144字节/SHA256 `553a3084bb2d112dafed6cb8bee0bd293ed0c8bd12386f362be1b7968b2209a9`。逐项矩阵和原始云端校验见本轮outputs/release-2026-11-02/G3-user-confirmation.json、candidate-verification.json。
+- G4/G5：本笔记录时尚未执行；下一步只在已测3a9b7b1上创建一次v1.4.10，不能把本笔文档提交充当已测源码。正式构建会移除候选标记，二进制须单独登记校验值及后续实包复验，不推定同源码等于同字节。更新功能继续按既有措辞边界表述。
+
 ## 通透磨砂与壁纸工作区 — 2026-10-30（源码及云端验证完成）
 
 移除整页灰白背板、重复欢迎区和普通卡片装饰框；一张壁纸贯穿界面，局部面板显示同位置模糊图案。皮肤新增通透磨砂预设（深夜、82%透明、10px磨砂），透明度上限90%；旧设置保留原义，图片/MP4存储仍在本机。切页复位主滚动，固定弹窗保持实底和原定位。已在实际前端通过文件选择器导入JPG展示；首次存储提示颜色、切回浅色主题的高透明可读性已修并复验。最终build、20套unit（主题27/0）、97契约、16文档、提交前后640流程及独立复审通过。
