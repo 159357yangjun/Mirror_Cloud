@@ -309,6 +309,9 @@ export interface PluginExecutionLogView {
 }
 
 export interface PluginView {
+  apiVersion: number
+  schemaVersion: number
+  configSchema: Record<string, PluginConfigField>
   id: string
   name: string
   version: string
@@ -322,6 +325,24 @@ export interface PluginView {
   installed: boolean
   source: string
   config: Record<string, unknown>
+}
+
+export interface PluginConfigField {
+  type: 'string' | 'url' | 'boolean' | 'number' | 'integer' | 'enum'
+  title?: string
+  description?: string
+  required?: boolean
+  default?: unknown
+  enum?: string[]
+  minLength?: number
+  maxLength?: number
+  minimum?: number
+  maximum?: number
+}
+
+export interface PluginImportPreview {
+  importId: string
+  plugin: PluginView
 }
 
 export interface AiSettings { baseUrl: string; model: string; apiKey: string }

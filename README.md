@@ -4,7 +4,7 @@
 
 镜云支持图片上传、云端文件管理、多云副本、图片处理和编辑器集成。
 
-当前正式版：**v1.4.11**。[下载安装包](https://github.com/159357yangjun/Mirror_Cloud/releases/latest)。源码版本以 Cargo/package.json 为准，`scripts/project_state.py --verify` 检查一致性。
+当前正式版：**v1.4.12**。[下载安装包](https://github.com/159357yangjun/Mirror_Cloud/releases/latest)。源码版本以 Cargo/package.json 为准，`scripts/project_state.py --verify` 检查一致性。main 中尚未发布的插件文件安装与配置表单见 [插件说明](docs/PLUGIN_ARCHITECTURE.md)。
 
 ## 核心能力
 

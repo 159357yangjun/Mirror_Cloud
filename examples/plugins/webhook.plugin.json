@@ -11,7 +11,15 @@
   ],
   "config_schema": {
     "endpoint": {
-      "type": "url"
+      "type": "url",
+      "title": "Webhook 地址",
+      "required": true
     }
-  }
+  },
+  "api_version": 1,
+  "schema_version": 1,
+  "hooks": [
+    "after_upload",
+    "manual_trigger"
+  ]
 }

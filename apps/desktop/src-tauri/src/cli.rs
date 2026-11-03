@@ -16,7 +16,7 @@ use persistence_sqlite::{
     SettingsRepository, StorageGroupRecord, StorageGroupRepository, StorageRecord,
     StorageRepository, TaskRepository, WorkflowRepository,
 };
-use plugin_runtime::{PluginContext, PluginHook, PluginManifest, PluginPermission};
+use plugin_runtime::{PluginContext, PluginHook, PluginPermission};
 use storage_core::StorageProvider;
 use task_engine::TaskEngine;
 use uuid::Uuid;
@@ -805,7 +805,7 @@ async fn run_enabled_plugins_for_hook(
     let mut failures = Vec::new();
     let mut outputs = Vec::new();
     for row in rows.into_iter().filter(|row| row.enabled) {
-        let manifest: PluginManifest = match serde_json::from_value(row.manifest_json.clone()) {
+        let manifest = match crate::commands::plugins::effective_manifest(&row) {
             Ok(manifest) => manifest,
             Err(error) => {
                 failures.push(format!("{}: invalid manifest ({error})", row.name));

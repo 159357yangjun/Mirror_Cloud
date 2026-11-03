@@ -39,7 +39,9 @@ pub(crate) mod portable_references;
 pub use portable_references::*;
 pub(crate) mod portable_assets;
 pub use portable_assets::*;
+pub(crate) mod plugin_import;
 pub(crate) mod plugins;
+pub use plugin_import::*;
 #[cfg(test)]
 mod r2_private_live_e2e;
 pub(crate) mod reconcile;

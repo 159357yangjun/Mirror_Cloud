@@ -1,13 +1,17 @@
+import { PluginSchemaForm } from '../features/plugins/PluginSchemaForm'
+import { PluginImportDialog } from '../features/plugins/PluginImportDialog'
+import { previewLocalPlugin, installLocalPlugin } from '../features/plugins/api'
+import { choosePluginManifestFile } from '../platform/desktop/dialogs'
 import { SectionNavigation } from '../components/SectionNavigation'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Activity, Bot, CheckCircle2, ChevronDown, ChevronUp, Download, LoaderCircle, Plug, Power, Search, Send, Sparkles, Store, Trash2, Zap } from 'lucide-react'
+import { Activity, Bot, ChevronDown, ChevronUp, Download, LoaderCircle, Plug, Power, Search, Send, Sparkles, Store, Trash2, Zap } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { aiPlanWorkflow, deletePlugin, getAiSettings, installMarketplacePlugin, listMarketplacePlugins, listPluginExecutionLogs, listPlugins, saveAiSettings, savePluginConfig, setPluginEnabled, setPluginHooks, setPluginPermissions } from '../lib/desktop'
 import { PageHeader } from '../components/PageHeader'
 import { PageLayout } from '../components/PageLayout'
 import { isTauriRuntime } from '../platform/desktop/runtime'
 import { ReadFailurePanel } from '../components/ReadFailurePanel'
-import type { AiSettings, PluginView } from '../types'
+import type { AiSettings, PluginView, PluginImportPreview } from '../types'
 import { notifyError } from '../store/useToastStore'
 import { confirmAction } from '../store/useConfirmStore'
 
@@ -26,6 +30,8 @@ export function PluginsPage() {
   const [request, setRequest] = useState('')
   const [plan, setPlan] = useState('')
   const [query, setQuery] = useState('')
+  const [importPreview, setImportPreview] = useState<PluginImportPreview | null>(null)
+  const [previewBusy, setPreviewBusy] = useState(false)
   const [section, setSection] = useState('installed')
   const [showMarket, setShowMarket] = useState(false)
   const [showAi, setShowAi] = useState(false)
@@ -38,6 +44,16 @@ export function PluginsPage() {
     await qc.invalidateQueries({ queryKey: ['plugin-execution-logs'] })
   }
   const install = useMutation({ mutationFn: installMarketplacePlugin, onSuccess: refresh })
+  const localInstall = useMutation({ mutationFn: (id: string) => installLocalPlugin(id), onSuccess: async () => { setImportPreview(null); await refresh() } })
+  async function chooseLocalPlugin() {
+    if (previewBusy) return
+    setPreviewBusy(true)
+    try {
+      const path = await choosePluginManifestFile()
+      if (path) setImportPreview(await previewLocalPlugin(path))
+    } catch { notifyError('插件预览失败：请检查 Manifest 格式、版本、大小或重复 ID') }
+    finally { setPreviewBusy(false) }
+  }
   const toggle = useMutation({ mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => setPluginEnabled(id, enabled), onSuccess: refresh })
   const authorize = useMutation({ mutationFn: ({ id, permissions }: { id: string; permissions: string[] }) => setPluginPermissions(id, permissions), onSuccess: refresh })
   const hooks = useMutation({ mutationFn: ({ id, values }: { id: string; values: string[] }) => setPluginHooks(id, values), onSuccess: refresh })
@@ -85,7 +101,8 @@ export function PluginsPage() {
 
   return (
     <PageLayout width="plugins">
-      <PageHeader title="插件" description="安装和配置插件，管理启用状态、权限及执行记录。" />
+      <PageHeader title="插件" description="安装和配置插件，管理启用状态、权限及执行记录。" action={<button disabled={!desktopAvailable || previewBusy} onClick={() => void chooseLocalPlugin()} className="rounded-xl border px-3 py-2 text-sm disabled:opacity-40">{previewBusy ? '读取中…' : '从文件安装'}</button>} />
+      {importPreview && <PluginImportDialog preview={importPreview} busy={localInstall.isPending} onCancel={() => setImportPreview(null)} onInstall={() => localInstall.mutate(importPreview.importId)} />}
       {!desktopAvailable && <p className="workspace-caption mt-4 text-sm text-[var(--text-secondary)]">当前为浏览器预览，插件和 AI 功能请在桌面应用中使用。</p>}
 
       <SectionNavigation label="插件分类" options={[{ id: 'installed', label: '已安装' }, { id: 'market', label: '插件市场' }, { id: 'ai', label: 'AI 配置' }, { id: 'logs', label: '执行记录' }]} value={section} onChange={(value) => { setSection(value); if (value === 'market') setShowMarket(true); if (value === 'ai') setShowAi(true) }} />
@@ -211,7 +228,10 @@ function PluginCard({ p, action }: { p: PluginView; action: ReactNode }) {
 }
 
 function PluginConfig({ p, onSaved }: { p: PluginView; onSaved: () => void }) {
-  const [raw, setRaw] = useState(JSON.stringify(p.config ?? {}, null, 2))
-  const mutation = useMutation({ mutationFn: () => savePluginConfig(p.id, JSON.parse(raw)), onSuccess: onSaved })
-  return <div className="mt-4 rounded-xl bg-white p-3 ring-1 ring-slate-100"><div className="mb-2 text-[11px] font-medium text-slate-600">插件配置 JSON</div><textarea value={raw} onChange={(e) => setRaw(e.target.value)} className="h-24 w-full rounded-xl border border-slate-200 p-3 font-mono text-[11px]" /><div className="mt-2 flex items-center"><button onClick={() => mutation.mutate()} className="rounded-lg border border-slate-200 px-3 py-1.5 text-[11px]">保存配置</button>{mutation.isSuccess && <CheckCircle2 size={13} className="ml-2 text-emerald-500" />}{mutation.error && <span className="ml-2 text-[10px] text-red-500">{String(mutation.error)}</span>}</div></div>
+  const mutation = useMutation({ mutationFn: (config: Record<string, unknown>) => savePluginConfig(p.id, config), onSuccess: onSaved })
+  return <div className="mt-4 rounded-xl bg-white p-3 ring-1 ring-slate-100">
+    <div className="mb-3 text-xs font-medium">插件配置 · API {p.apiVersion} / Schema {p.schemaVersion}</div>
+    <PluginSchemaForm key={p.id} plugin={p} busy={mutation.isPending} onSave={(config) => mutation.mutate(config)} />
+    {mutation.isSuccess && <p role="status" className="mt-2 text-xs text-emerald-700">配置已保存</p>}
+  </div>
 }

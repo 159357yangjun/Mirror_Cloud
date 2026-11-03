@@ -20,6 +20,9 @@ pub struct PluginView {
     pub name: String,
     pub version: String,
     pub description: String,
+    pub api_version: u32,
+    pub schema_version: u32,
+    pub config_schema: Value,
     pub kind: String,
     pub permissions: Vec<String>,
     pub granted_permissions: Vec<String>,
@@ -34,6 +37,8 @@ pub struct PluginView {
 fn marketplace_manifests() -> Vec<PluginManifest> {
     vec![
         PluginManifest {
+            api_version: 1,
+            schema_version: 1,
             id: "official.markdown-card".into(),
             name: "Markdown Asset Card".into(),
             version: "1.1.0".into(),
@@ -44,6 +49,8 @@ fn marketplace_manifests() -> Vec<PluginManifest> {
             config_schema: json!({"template":{"type":"string","default":"![{name}]({url})"}}),
         },
         PluginManifest {
+            api_version: 1,
+            schema_version: 1,
             id: "official.webhook".into(),
             name: "Webhook Publisher".into(),
             version: "1.2.0".into(),
@@ -63,9 +70,11 @@ fn marketplace_manifests() -> Vec<PluginManifest> {
                 PluginHook::OnGalleryDelete,
                 PluginHook::ManualTrigger,
             ],
-            config_schema: json!({"endpoint":{"type":"url"}}),
+            config_schema: json!({"endpoint":{"type":"url","title":"Webhook 地址","required":true}}),
         },
         PluginManifest {
+            api_version: 1,
+            schema_version: 1,
             id: "official.ai-caption".into(),
             name: "AI Image Caption".into(),
             version: "1.2.0".into(),
@@ -79,7 +88,7 @@ fn marketplace_manifests() -> Vec<PluginManifest> {
                 PluginPermission::Secret,
             ],
             hooks: vec![PluginHook::AfterUpload, PluginHook::ManualTrigger],
-            config_schema: json!({"prompt":{"type":"string"}}),
+            config_schema: json!({"prompt":{"type":"string","title":"提示词"},"baseUrl":{"type":"url","title":"AI 地址覆盖（留空用全局配置）"},"model":{"type":"string","title":"模型覆盖（留空用全局配置）"}}),
         },
     ]
 }
@@ -111,14 +120,67 @@ pub(super) fn record_hooks(record: &PluginRecord) -> Vec<PluginHook> {
         .unwrap_or_else(|_| vec![PluginHook::AfterUpload])
 }
 
-pub(super) fn effective_manifest(record: &PluginRecord) -> CmdResult<PluginManifest> {
+pub(crate) fn effective_manifest(record: &PluginRecord) -> CmdResult<PluginManifest> {
+    if record
+        .manifest_json
+        .get("api_version")
+        .is_some_and(|v| v.as_u64() != Some(1))
+        || record
+            .manifest_json
+            .get("schema_version")
+            .is_some_and(|v| v.as_u64() != Some(1))
+    {
+        return Err("插件的宿主 API 或 Schema 版本不兼容".into());
+    }
     if let Some(current) = marketplace_manifests()
         .into_iter()
         .find(|manifest| manifest.id == record.id)
     {
         return Ok(current);
     }
-    serde_json::from_value(record.manifest_json.clone()).map_err(|error| error.to_string())
+    let manifest: PluginManifest = serde_json::from_value(record.manifest_json.clone())
+        .map_err(|_| "插件兼容声明缺失或格式无效")?;
+    manifest.validate_contract(false)?;
+    Ok(manifest)
+}
+
+#[cfg(test)]
+mod compatibility_tests {
+    use super::*;
+
+    #[test]
+    fn legacy_official_manifests_keep_settings_but_explicit_incompatible_versions_fail() {
+        for manifest in marketplace_manifests() {
+            let mut json = serde_json::to_value(&manifest).unwrap();
+            json.as_object_mut().unwrap().remove("api_version");
+            json.as_object_mut().unwrap().remove("schema_version");
+            let now = Utc::now();
+            let mut record = PluginRecord {
+                id: manifest.id.clone(),
+                name: manifest.name.clone(),
+                version: manifest.version.clone(),
+                manifest_json: json,
+                config_json: json!({"existing":"preserve"}),
+                granted_permissions_json: json!(["read_asset"]),
+                enabled_hooks_json: json!(["after_upload"]),
+                enabled: true,
+                source: "marketplace".into(),
+                created_at: now,
+                updated_at: now,
+            };
+            assert_eq!(effective_manifest(&record).unwrap().api_version, 1);
+            assert_eq!(record.config_json, json!({"existing":"preserve"}));
+            record.manifest_json["api_version"] = json!(2);
+            assert!(effective_manifest(&record).is_err());
+            record
+                .manifest_json
+                .as_object_mut()
+                .unwrap()
+                .remove("api_version");
+            record.id = "example.unknown".into();
+            assert!(effective_manifest(&record).is_err());
+        }
+    }
 }
 
 fn record_grants(record: &PluginRecord) -> Vec<PluginPermission> {
@@ -137,7 +199,7 @@ fn missing_permissions(
         .collect()
 }
 
-fn manifest_to_view(
+pub(super) fn manifest_to_view(
     m: &PluginManifest,
     installed: bool,
     enabled: bool,
@@ -147,6 +209,9 @@ fn manifest_to_view(
     enabled_hooks: &[PluginHook],
 ) -> PluginView {
     PluginView {
+        api_version: m.api_version,
+        schema_version: m.schema_version,
+        config_schema: m.config_schema.clone(),
         id: m.id.clone(),
         name: m.name.clone(),
         version: m.version.clone(),
@@ -298,6 +363,7 @@ pub async fn install_marketplace_plugin(
 
 async fn validate_plugin_ready(state: &AppState, record: &PluginRecord) -> CmdResult<()> {
     let manifest = effective_manifest(record)?;
+    plugin_runtime::manifest::validate_config(&manifest, &record.config_json, true)?;
     match manifest.kind {
         plugin_runtime::PluginKind::Template => Ok(()),
         plugin_runtime::PluginKind::Webhook => {
@@ -315,14 +381,20 @@ async fn validate_plugin_ready(state: &AppState, record: &PluginRecord) -> CmdRe
         }
         plugin_runtime::PluginKind::AiPrompt => {
             let settings = load_ai_settings(state).await?;
-            let base = settings
+            let base = record
+                .config_json
                 .get("baseUrl")
                 .and_then(Value::as_str)
+                .filter(|s| !s.trim().is_empty())
+                .or_else(|| settings.get("baseUrl").and_then(Value::as_str))
                 .unwrap_or("")
                 .trim();
-            let model = settings
+            let model = record
+                .config_json
                 .get("model")
                 .and_then(Value::as_str)
+                .filter(|s| !s.trim().is_empty())
+                .or_else(|| settings.get("model").and_then(Value::as_str))
                 .unwrap_or("")
                 .trim();
             if base.is_empty() || model.is_empty() {
@@ -464,6 +536,7 @@ pub async fn save_plugin_config(
             "API Key 不能写入插件 JSON；请使用“AI Provider”设置，它会保存到系统凭据库。".into(),
         );
     }
+    plugin_runtime::manifest::validate_config(&manifest, &config, record.enabled)?;
     state
         .plugins
         .set_config(&plugin_id, &config)

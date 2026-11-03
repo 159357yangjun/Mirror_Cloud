@@ -138,5 +138,16 @@ for (const [entryName, path] of [['legacy', desktopPath], ['platform', dialogsPa
     })
   }
 }
+for (const mode of ['browser', 'no-window']) await check(`manifest selection ${mode} does not load native dialog`, async () => {
+  const ctx = setup(mode)
+  assert.equal(await ctx.load(dialogsPath).choosePluginManifestFile(), null)
+  assert.equal(ctx.state.loads, 0)
+})
+for (const result of [null, 'C:/fixtures/plugin.json', ['unexpected.json']]) await check('manifest selection is a single JSON file with cancel fallback', async () => {
+  const ctx = setup()
+  ctx.state.result = result
+  assert.equal(await ctx.load(dialogsPath).choosePluginManifestFile(), typeof result === 'string' ? result : null)
+  assert.deepEqual(ctx.calls, [{ name: 'open', options: { multiple: false, directory: false, filters: [{ name: 'Plugin Manifest', extensions: ['json'] }] } }])
+})
 console.log(`DESKTOP_DIALOGS_GATE checks=${checks} failed=${failed}`)
 if (failed) process.exitCode = 1

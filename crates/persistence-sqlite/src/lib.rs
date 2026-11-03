@@ -1507,6 +1507,17 @@ impl PluginRepository {
           .bind(&record.id).bind(&record.name).bind(&record.version).bind(record.manifest_json.to_string()).bind(record.config_json.to_string()).bind(record.granted_permissions_json.to_string()).bind(record.enabled_hooks_json.to_string()).bind(if record.enabled {1}else{0}).bind(&record.source).bind(record.created_at.to_rfc3339()).bind(record.updated_at.to_rfc3339()).execute(&self.pool).await?;
         Ok(())
     }
+    /// Import never overwrites an existing plugin, including during concurrent confirmations.
+    pub async fn insert_if_absent(&self, record: &PluginRecord) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query("INSERT INTO plugins (id,name,version,manifest_json,config_json,granted_permissions_json,enabled_hooks_json,enabled,source,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING")
+            .bind(&record.id).bind(&record.name).bind(&record.version)
+            .bind(record.manifest_json.to_string()).bind(record.config_json.to_string())
+            .bind(record.granted_permissions_json.to_string()).bind(record.enabled_hooks_json.to_string())
+            .bind(if record.enabled {1} else {0}).bind(&record.source)
+            .bind(record.created_at.to_rfc3339()).bind(record.updated_at.to_rfc3339())
+            .execute(&self.pool).await?;
+        Ok(result.rows_affected() == 1)
+    }
     pub async fn set_enabled(&self, id: &str, enabled: bool) -> Result<(), sqlx::Error> {
         sqlx::query("UPDATE plugins SET enabled=?, updated_at=? WHERE id=?")
             .bind(if enabled { 1 } else { 0 })
@@ -1869,5 +1880,59 @@ mod task_batch_transaction_tests {
             "a failed batch must leave no partial queued tasks"
         );
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod plugin_import_tests {
+    use super::*;
+
+    fn record(id: &str) -> PluginRecord {
+        let now = Utc::now();
+        PluginRecord {
+            id: id.into(),
+            name: "Existing".into(),
+            version: "1.0.0".into(),
+            manifest_json: json!({}),
+            config_json: json!({"template":"keep me"}),
+            granted_permissions_json: json!(["read_asset"]),
+            enabled_hooks_json: json!(["after_upload"]),
+            enabled: true,
+            source: "local".into(),
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[sqlx::test]
+    async fn local_import_does_not_overwrite_existing_configuration(pool: SqlitePool) {
+        let repository = PluginRepository::new(pool);
+        let original = record("example.local");
+        assert!(repository.insert_if_absent(&original).await.unwrap());
+        let mut other = original.clone();
+        other.name = "Changed".into();
+        other.config_json = json!({});
+        other.enabled = false;
+        assert!(!repository.insert_if_absent(&other).await.unwrap());
+        let saved = repository.get(&original.id).await.unwrap().unwrap();
+        assert_eq!(saved.name, original.name);
+        assert_eq!(saved.config_json, original.config_json);
+        assert!(saved.enabled);
+        assert_eq!(
+            saved.granted_permissions_json,
+            original.granted_permissions_json
+        );
+    }
+
+    #[sqlx::test]
+    async fn concurrent_imports_have_one_winner(pool: SqlitePool) {
+        let repository = PluginRepository::new(pool);
+        let item = record("example.race");
+        let (first, second) = tokio::join!(
+            repository.insert_if_absent(&item),
+            repository.insert_if_absent(&item)
+        );
+        assert_ne!(first.unwrap(), second.unwrap());
+        assert_eq!(repository.list().await.unwrap().len(), 1);
     }
 }

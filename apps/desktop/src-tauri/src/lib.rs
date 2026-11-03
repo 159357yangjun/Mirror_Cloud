@@ -118,6 +118,7 @@ pub fn run() {
             };
             app.manage(state);
             app.manage(commands::updater::new_pending_store());
+            app.manage(commands::plugin_import::new_import_store());
             commands::integrations::setup_tray(app)?;
             commands::integrations::setup_global_shortcut(app)?;
             commands::integrations::start_local_http_api(
@@ -220,6 +221,8 @@ pub fn run() {
             commands::list_plugins,
             commands::list_plugin_execution_logs,
             commands::install_marketplace_plugin,
+            commands::preview_local_plugin,
+            commands::install_local_plugin,
             commands::set_plugin_enabled,
             commands::set_plugin_permissions,
             commands::set_plugin_hooks,

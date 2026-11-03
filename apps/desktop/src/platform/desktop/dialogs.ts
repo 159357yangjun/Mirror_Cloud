@@ -17,3 +17,10 @@ export async function chooseDownloadPath(suggestedName: string): Promise<string 
   const { save } = await import('@tauri-apps/plugin-dialog')
   return save({ defaultPath: suggestedName })
 }
+
+export async function choosePluginManifestFile(): Promise<string | null> {
+  if (!isTauriRuntime()) return null
+  const { open } = await import('@tauri-apps/plugin-dialog')
+  const path = await open({ multiple: false, directory: false, filters: [{ name: 'Plugin Manifest', extensions: ['json'] }] })
+  return typeof path === 'string' ? path : null
+}

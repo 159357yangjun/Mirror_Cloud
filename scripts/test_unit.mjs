@@ -24,6 +24,7 @@ const suites = [
   'test_anime_theme.mjs',
   'test_video_wallpaper.mjs',
   'test_provider_guides.mjs',
+  'test_plugin_extensions.mjs',
 ]
 let failed = 0
 for (const suite of suites) {

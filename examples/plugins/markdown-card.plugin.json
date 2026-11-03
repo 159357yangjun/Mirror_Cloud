@@ -9,7 +9,15 @@
   ],
   "config_schema": {
     "template": {
-      "type": "string"
+      "type": "string",
+      "title": "Markdown 模板",
+      "default": "![{name}]({url})"
     }
-  }
+  },
+  "api_version": 1,
+  "schema_version": 1,
+  "hooks": [
+    "after_upload",
+    "manual_trigger"
+  ]
 }

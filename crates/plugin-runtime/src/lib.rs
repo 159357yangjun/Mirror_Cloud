@@ -1,3 +1,5 @@
+pub mod manifest;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -30,7 +32,10 @@ pub enum PluginHook {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PluginManifest {
+    pub api_version: u32,
+    pub schema_version: u32,
     pub id: String,
     pub name: String,
     pub version: String,
@@ -122,11 +127,67 @@ pub fn require_https_or_loopback(url: &str) -> Result<(), String> {
                 Ok(())
             } else {
                 Err(format!(
-                    "plain HTTP is only allowed for loopback hosts (got {url}); use https://"
+                    "plain HTTP is only allowed for loopback hosts; use https://"
                 ))
             }
         }
-        other => Err(format!("unsupported URL scheme {other}: use https://")),
+        _ => Err("unsupported URL scheme: use https://".into()),
+    }
+}
+
+fn plugin_http_client() -> Result<reqwest::Client, PluginError> {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            if attempt.previous().len() >= 3
+                || require_https_or_loopback(attempt.url().as_str()).is_err()
+            {
+                attempt.error("plugin redirect refused")
+            } else {
+                attempt.follow()
+            }
+        }))
+        .build()
+        .map_err(|_| PluginError::Network("plugin HTTP client unavailable".into()))
+}
+
+async fn read_plugin_body(mut response: reqwest::Response) -> Result<Vec<u8>, PluginError> {
+    const LIMIT: usize = 1024 * 1024;
+    if response.content_length().is_some_and(|n| n > LIMIT as u64) {
+        return Err(PluginError::Network("plugin response exceeds 1 MiB".into()));
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| PluginError::Network("plugin response interrupted".into()))?
+    {
+        if chunk.len() > LIMIT.saturating_sub(body.len()) {
+            return Err(PluginError::Network("plugin response exceeds 1 MiB".into()));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
+fn redact_secret(value: &mut Value, secret: &str) {
+    if secret.is_empty() {
+        return;
+    }
+    match value {
+        Value::String(text) => *text = text.replace(secret, "[redacted]"),
+        Value::Array(items) => items
+            .iter_mut()
+            .for_each(|item| redact_secret(item, secret)),
+        Value::Object(object) => {
+            let old = std::mem::take(object);
+            for (name, mut item) in old {
+                redact_secret(&mut item, secret);
+                object.insert(name.replace(secret, "[redacted]"), item);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -157,6 +218,9 @@ pub async fn execute_for_hook(
     ctx: &PluginContext,
     hook: PluginHook,
 ) -> Result<PluginOutput, PluginError> {
+    manifest
+        .validate_contract(false)
+        .map_err(PluginError::InvalidConfig)?;
     if !supports_hook(manifest, hook) {
         return Err(PluginError::InvalidConfig(format!(
             "{} does not support hook {:?}",
@@ -188,7 +252,7 @@ pub async fn execute_for_hook(
                 PluginPermission::ExternalWrite,
             )?;
             let endpoint = http_endpoint(config, "endpoint")?;
-            let response = reqwest::Client::new()
+            let response = plugin_http_client()?
                 .post(endpoint)
                 .json(&json!({
                     "event": serde_json::to_value(hook).unwrap_or(Value::String("unknown".into())),
@@ -199,11 +263,12 @@ pub async fn execute_for_hook(
                 }))
                 .send()
                 .await
-                .map_err(|e| PluginError::Network(e.to_string()))?;
+                .map_err(|_| PluginError::Network("plugin network request failed".into()))?;
             let status = response.status();
-            let body = response.text().await.unwrap_or_default();
+            let body = String::from_utf8(read_plugin_body(response).await?)
+                .map_err(|_| PluginError::Network("plugin response is not UTF-8".into()))?;
             if !status.is_success() {
-                return Err(PluginError::Network(format!("HTTP {status}: {body}")));
+                return Err(PluginError::Network(format!("HTTP {status}")));
             }
             Ok(PluginOutput {
                 text: body.clone(),
@@ -226,7 +291,7 @@ pub async fn execute_for_hook(
                 .replace("{name}", &ctx.asset_name)
                 .replace("{url}", &ctx.public_url);
 
-            let mut request = reqwest::Client::new()
+            let mut request = plugin_http_client()?
                 .post(format!(
                     "{}/chat/completions",
                     base_url.trim_end_matches('/')
@@ -241,15 +306,23 @@ pub async fn execute_for_hook(
                 require_permission(manifest, granted_permissions, PluginPermission::Secret)?;
                 request = request.bearer_auth(key);
             }
-            let value: Value = request
+            let response = request
                 .send()
                 .await
-                .map_err(|e| PluginError::Network(e.to_string()))?
+                .map_err(|_| PluginError::Network("AI request failed".into()))?
                 .error_for_status()
-                .map_err(|e| PluginError::Network(e.to_string()))?
-                .json()
-                .await
-                .map_err(|e| PluginError::Network(e.to_string()))?;
+                .map_err(|_| PluginError::Network("AI service rejected request".into()))?;
+            let body = read_plugin_body(response).await?;
+            let mut value: Value = serde_json::from_slice(&body)
+                .map_err(|_| PluginError::Network("AI response is not valid JSON".into()))?;
+            if let Some(key) = config
+                .get("apiKey")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|key| !key.is_empty())
+            {
+                redact_secret(&mut value, key);
+            }
             let text = value
                 .pointer("/choices/0/message/content")
                 .and_then(Value::as_str)
@@ -331,6 +404,8 @@ mod tests {
     #[tokio::test]
     async fn template_requires_read_asset_permission() {
         let manifest = PluginManifest {
+            api_version: 1,
+            schema_version: 1,
             id: "test.template".into(),
             name: "Template".into(),
             version: "1.0.0".into(),
@@ -359,6 +434,8 @@ mod tests {
     #[tokio::test]
     async fn declared_permission_still_requires_user_grant() {
         let manifest = PluginManifest {
+            api_version: 1,
+            schema_version: 1,
             id: "test.template.grant".into(),
             name: "Template Grant".into(),
             version: "1.0.0".into(),
@@ -382,5 +459,104 @@ mod tests {
         .await
         .expect_err("declared permission must not imply authorization");
         assert!(matches!(error, PluginError::PermissionDenied(_)));
+    }
+}
+
+#[cfg(test)]
+mod extension_network_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    async fn endpoint(reply: &'static [u8]) -> (String, tokio::task::JoinHandle<()>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let task = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut block = [0; 1024];
+            loop {
+                let read = stream.read(&mut block).await.unwrap();
+                if read == 0 {
+                    break;
+                }
+                request.extend_from_slice(&block[..read]);
+                if let Some(end) = request.windows(4).position(|part| part == b"\r\n\r\n") {
+                    let header = String::from_utf8_lossy(&request[..end]);
+                    let length = header
+                        .lines()
+                        .find_map(|line| {
+                            line.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .and_then(|v| v.trim().parse::<usize>().ok())
+                        })
+                        .unwrap_or(0);
+                    if request.len() >= end + 4 + length {
+                        break;
+                    }
+                }
+                assert!(request.len() < 8192);
+            }
+            stream.write_all(reply).await.unwrap();
+        });
+        (format!("http://{address}"), task)
+    }
+
+    fn webhook() -> PluginManifest {
+        PluginManifest {
+            api_version: 1,
+            schema_version: 1,
+            id: "example.webhook".into(),
+            name: "Test".into(),
+            version: "1.0.0".into(),
+            description: "".into(),
+            kind: PluginKind::Webhook,
+            permissions: vec![
+                PluginPermission::ReadAsset,
+                PluginPermission::Network,
+                PluginPermission::ExternalWrite,
+            ],
+            hooks: vec![PluginHook::AfterUpload],
+            config_schema: json!({"endpoint":{"type":"url"}}),
+        }
+    }
+    fn context() -> PluginContext {
+        PluginContext {
+            asset_name: "fixture.png".into(),
+            public_url: "https://example.com/image.png".into(),
+            mime_type: "image/png".into(),
+            metadata: json!({}),
+        }
+    }
+
+    #[tokio::test]
+    async fn webhook_errors_never_echo_remote_body_or_secret_query() {
+        let (url,task)=endpoint(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 14\r\nConnection: close\r\n\r\nsecret-fixture").await;
+        let manifest = webhook();
+        let error = execute(
+            &manifest,
+            &manifest.permissions,
+            &json!({"endpoint":url+"?key=secret-fixture"}),
+            &context(),
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+        task.await.unwrap();
+        assert!(!error.contains("secret-fixture"));
+        assert!(error.contains("400"));
+    }
+    #[tokio::test]
+    async fn response_budget_and_redirect_policy_are_enforced() {
+        for reply in [b"HTTP/1.1 200 OK\r\nContent-Length: 1048577\r\nConnection: close\r\n\r\n".as_slice(),b"HTTP/1.1 302 Found\r\nLocation: http://192.0.2.1/secret-fixture\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".as_slice()] {
+            let (url,task)=endpoint(reply).await; let manifest=webhook();
+            let error=execute(&manifest,&manifest.permissions,&json!({"endpoint":url}),&context()).await.unwrap_err().to_string();
+            task.await.unwrap(); assert!(!error.contains("secret-fixture"));
+        }
+    }
+    #[test]
+    fn successful_ai_json_redacts_secret_values_and_object_keys() {
+        let mut value = json!({"key-fixture":["echo key-fixture",{"nested":"key-fixture"}]});
+        redact_secret(&mut value, "key-fixture");
+        assert!(!value.to_string().contains("key-fixture"));
     }
 }

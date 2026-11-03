@@ -6,7 +6,31 @@
 
 ## Manifest
 
-核心字段：`id`、`name`、`version`、`description`、`kind`、`permissions`、`hooks`、`config_schema`。
+核心字段：`api_version`、`schema_version`、`id`、`name`、`version`、`description`、`kind`、`permissions`、`hooks`、`config_schema`。
+
+main 的未发布扩展使用宿主 API **1**、Manifest Schema **1**，两者必须显式声明且精确匹配；插件自身的 `version` 仅表示插件版本。缺失或不支持的版本会被拒绝。历史内置的三个官方插件由宿主当前声明补齐缺失版本，保留已有配置、开关、权限和触发器；显式声明不兼容版本仍拒绝。桌面、Typora/CLI 和 Local API 使用同一兼容解析入口。已发布 v1.4.12 安装包不包含这些未发布扩展。
+
+## 从本地文件安装（main 未发布）
+
+桌面插件页点击“从文件安装”，选择本地 UTF-8 JSON Manifest，查看名称、版本、兼容版本、声明权限和触发器后确认安装。可直接使用 [模板示例](../examples/plugins/markdown-card.plugin.json) 或 [Webhook 示例](../examples/plugins/webhook.plugin.json)。
+
+- 文件不超过 256 KiB；仅接受已知字段、三种受控 kind、合法 ID、显式触发器和 `read_asset` 声明。拒绝 `official` / `official.*` 本地 ID、重复顶层字段及不兼容声明。
+- 预览保存后端持有的 Manifest，确认时只接受一次性 ID，五分钟过期，最多保存四份预览；确认不会重新读取已被修改的原文件。
+- 数据库插入采用原子“ID 不存在才插入”，并发或重复安装不会覆盖已有配置。
+- 新安装默认关闭，仅授予基础 `read_asset`；网络、密钥、外部写入继续单独显式授权。仅默认选择已声明的 `after_upload`，不自动开启其他触发器。
+- 文件只包含声明式配置，不加载脚本、原生代码或 WASM；导入与确认不会执行插件或发起网络请求。
+
+## 自动配置表单（main 未发布）
+
+`config_schema` 是字段名到字段说明的对象，最多 32 项。支持 `string`、`url`、`boolean`、`number`、`integer` 和 `enum`，可填写 `title`、`description`、`required`、`default`、`enum`、`minLength`、`maxLength`、`minimum`、`maximum`。例如：
+
+```json
+{"endpoint":{"type":"url","title":"Webhook 地址","required":true},"format":{"type":"enum","enum":["png","webp"],"default":"webp"}}
+```
+
+配置页生成带标签的文本、数字、开关与下拉控件，前端提示错误，后端独立检查类型、长度、范围、必填和未知字段。关闭时可保存未完成配置，开启时必须完整。配置最大 64 KiB；字符串默认最多 4096 字符。URL 仅 HTTPS 或本机回环 HTTP，禁止内嵌用户名/密码。原有 AI `baseUrl` / `model` 非敏感覆盖保留；API Key 仍通过全局 AI 配置进入系统凭据库，不能定义为普通表单字段。
+
+历史配置包含未声明字段时，表单不展示其内容，必须明确确认移除后才保存，未保存前保留原数据。
 
 当前 kind：
 
@@ -54,6 +78,7 @@ Webhook 的生命周期事件会附带 `event` 和 `metadata`。Cloud Manager �
 5. 生命周期触发点与权限授权是两套独立 Gate：开启 `on_gallery_delete` 不会自动授予 `external_write`。
 6. Desktop、Typora CLI 与 Local HTTP API bridge 使用同一份持久化授权与 Hook 状态；发布生命周期都走相同 Runtime。
 7. AI Planner 只生成计划，不静默执行远端写操作。
+8. 插件 HTTP 请求有连接/总超时、重定向次数与协议检查、1 MiB 响应上限；错误不回显远端正文或请求 URL，AI 响应中的实际 API Key 会脱敏。
 
 ## 后续
 
