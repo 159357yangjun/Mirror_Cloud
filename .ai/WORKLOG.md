@@ -1,5 +1,13 @@
 # WORKLOG
 
+## 2026-11-02 — G4/G5完成：1.4.11正式发布并核验
+
+不可变v1.4.11 tag对象23fa0451f96d095eb7fbf17a9e64e310380f4e79固定产品源b7595e94f4edad2920621bf5a7c7df9091a3552e；旧v1.4.10对象/目标未改。[正式构建41455840690](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41455840690)成功，windows-bundle125312156090、publish-release125321396531均成功，标签CI41455840706成功。正式构建重新执行Rust229/0/1真实R2忽略、教程HTTP200、依赖锁不变及NSIS/MSI安装卸载检查；候选身份环境为空。
+
+G5：[正式Release431533688](https://github.com/159357yangjun/Mirror_Cloud/releases/tag/v1.4.11)已公开且非prerelease/draft，四项公开资产可下载。逐项公开下载内容与云端归档、SHA256SUMS及GitHub asset digest一致；源码488个非目录文件和ZIPcomment匹配产品源，三锁匹配。正式setup.exe 16433671字节/SHA256 8b08fc37ff935153621f56e06f20f34a0f66cf493f59158c59095aae0cc572b7；归档59955442字节/SHA256 eed4493a6f8b6f9930c43307084893a76ee80508c068d8a479ecd20203951360。正式EXE不同于候选，用户G3报告仍明确只属于候选，不冒称正式二进制已在用户机复验，也不把SHA256说成独立签名。安装包/归档全程内存校验，未落盘；完整结果在会话outputs/release-2026-11-02/formal-1.4.11-verification.json。
+
+认证API的releases/latest已指向v1.4.11；当前网络匿名同接口因GitHub API额度耗尽返回403，公开文件下载200正常。这是实测网络限制，不写成客户端更新成功或构建缺陷。源码版本比较：旧于1.4.11才提示，已安装1.4.11候选同版本不提示，可手动安装正式包。旧版客户端“检查→下载→安装”全路径本轮未操作，不能与候选升级保真或云端安装器smoke混淆。发布说明已简化为本次修复/导航布局/下载升级和验证边界。
+
 ## 2026-11-02 — 新候选G3用户验收通过，推进正式发布
 
 用户明确针对1.4.11候选b7595e9（run41450636695/artifact13144899114）答复“以上项目全部通过”：版本、SQLite/资源、云端配置和凭据、默认目标、Typora、插件、主题壁纸保留及新图片上传。所测setup.exe 16433758字节/SHA256 496b9a0013654eaf99df91b8b5926ac6e73386be06acaaeef38bea3cade4fe40，原始答复及矩阵记于会话outputs/release-2026-11-02/G3-user-confirmation-1.4.11.json。这是用户报告真机保真，不是agent操作，也不是复用旧1.4.10验收。

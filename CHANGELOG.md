@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-02 — v1.4.11正式发布（G4/G5）
+
+- G4：不可变tag对象23fa0451f96d095eb7fbf17a9e64e310380f4e79固定已测产品源`b7595e94f4edad2920621bf5a7c7df9091a3552e`，旧tag未移动。新候选G3为用户报告全项通过，见前条。
+- G5：[正式构建41455840690](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41455840690)及发布作业成功，标签CI41455840706成功；Rust229/0/1真实R2忽略、教程HTTP200、锁不变及NSIS/MSI安装卸载通过。[正式下载](https://github.com/159357yangjun/Mirror_Cloud/releases/tag/v1.4.11)已公开，认证latest API指向该版。
+- 四个公开文件内容与云端产物/GitHub digest/校验文件一致，源码488个文件及三锁匹配。setup.exe 16433671字节/SHA256 `8b08fc37ff935153621f56e06f20f34a0f66cf493f59158c59095aae0cc572b7`。正式重建与候选字节不同，未声称正式安装件已用户真机复验或具备独立签名认证。
+- 当前网络的匿名GitHub API检查受403额度限制，公开文件下载正常；客户端旧版检查/下载安装全路径未在本轮实操。已安装1.4.11候选同版本不会提示更新，可手动覆盖安装正式包。
+
 ## 2026-11-02 — 新候选G3用户验收通过，推进正式发布
 
 用户明确针对1.4.11候选b7595e9（run41450636695/artifact13144899114）答复“以上项目全部通过”：版本、SQLite/资源、云端配置和凭据、默认目标、Typora、插件、主题壁纸保留及新图片上传。所测setup.exe 16433758字节/SHA256 496b9a0013654eaf99df91b8b5926ac6e73386be06acaaeef38bea3cade4fe40，原始答复及矩阵记于会话outputs/release-2026-11-02/G3-user-confirmation-1.4.11.json。这是用户报告真机保真，不是agent操作，也不是复用旧1.4.10验收。
