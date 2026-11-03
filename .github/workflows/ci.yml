@@ -36,6 +36,8 @@ jobs:
             ~/.cargo/git
             target/debug
           key: ${{ runner.os }}-rust-debug-v2-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-${{ hashFiles('.github/workflows/ci.yml') }}
+      - name: Update signature protocol tests
+        run: node --test scripts/test_update_signing.mjs
       - name: Static validation
         run: python scripts/validate.py
       - name: Command contract validation

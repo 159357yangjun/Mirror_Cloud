@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -23,6 +24,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SUMS_NAME = 'SHA256SUMS.txt'
+SIGNED_METADATA = {'update-manifest.json', 'update-manifest.json.sig'}
 SUMS_LINE = re.compile(r'\A([0-9a-f]{64})  (\S+)\Z')
 VERSION_IN_NAME = re.compile(r'-v(\d+\.\d+\.\d+)-')
 
@@ -85,7 +87,7 @@ def parse_sums(directory: Path) -> dict[str, str]:
 
 
 def verify_checksums(directory: Path, expected: dict[str, str], api: dict[str, str]) -> None:
-    on_disk = {p.name for p in directory.iterdir() if p.is_file() and p.name not in {SUMS_NAME, 'api_assets.json'}}
+    on_disk = {p.name for p in directory.iterdir() if p.is_file() and p.name not in {SUMS_NAME, 'api_assets.json'} | SIGNED_METADATA}
     check(not (on_disk - set(expected)), f'no downloaded asset is missing from {SUMS_NAME} ({sorted(on_disk - set(expected))})')
     for name, digest in sorted(expected.items()):
         path = directory / name
@@ -177,6 +179,8 @@ def main() -> int:
     parser.add_argument('--dir', required=True, type=Path)
     parser.add_argument('--api', type=Path, help='JSON of GET /releases/tags/<tag> for a third digest opinion')
     parser.add_argument('--repo', type=Path, default=ROOT)
+    parser.add_argument('--public-key', help='Trusted Ed25519 public key (64 hex characters); never obtain it from the release being verified')
+    parser.add_argument('--require-signature', action='store_true', help='Reject historical unsigned releases too')
     args = parser.parse_args()
 
     directory = args.dir
@@ -195,6 +199,18 @@ def main() -> int:
         return report()
     verify_checksums(directory, expected, api)
     version = verify_versions(args.tag, expected)
+    signed = any((directory / name).exists() for name in SIGNED_METADATA)
+    if signed or args.require_signature:
+        trusted_key = args.public_key or os.environ.get('MIRROR_UPDATE_PUBLIC_KEY', '')
+        if check(bool(trusted_key), 'independently trusted update public key supplied'):
+            env = dict(os.environ, MIRROR_UPDATE_PUBLIC_KEY=trusted_key)
+            verified = subprocess.run(
+                ['node', str(ROOT / 'scripts/sign_update.mjs'), '--verify', str(directory.resolve()), version],
+                env=env, capture_output=True, text=True,
+            )
+            check(verified.returncode == 0, 'release signature and signed installer metadata verify')
+    else:
+        print('      Historical unsigned release: checksums prove integrity only; use --require-signature for signed releases')
     verify_source_zip(directory, expected, version, args.repo if args.repo and args.repo.is_dir() else None, args.tag)
     return report()
 

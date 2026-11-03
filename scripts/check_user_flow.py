@@ -2022,8 +2022,12 @@ require('openExternalUrl(url).catch((error) => notifyError' in desktop_lib, 'a f
 # deleting any one turns the gate red (M32-style witnesses come with the next mutation batch).
 updater = text('apps/desktop/src-tauri/src/commands/updater.rs')
 require('pub async fn check_for_updates' in updater and 'pub async fn download_update' in updater and 'pub async fn install_update' in updater, 'the three updater commands exist')
-require(updater.count('ends_with(SETUP_ASSET_SUFFIX)') >= 2, 'both asset selection and the download URL re-check the setup.exe suffix')
-require('sha256 校验不一致' in updater and 'remove_file' in updater, 'a hash mismatch deletes the installer and refuses it')
+update_security = text('apps/desktop/src-tauri/src/update_security.rs')
+require('verify_manifest' in updater and 'check.setup_url != setup_url' in updater
+        and 'image-hosting-platform-v{}-windows-x64-setup.exe' in update_security,
+        'signed metadata fixes the exact installer name and IPC cannot substitute its URL')
+require(updater.index('manifest.verify_body(&body)?') < updater.index('tokio::fs::write(&path, &body)'),
+        'a hash mismatch is refused before an installer is written to disk')
 # G1 trust boundary (docs/RELEASE_GATE_UPDATER.md): install takes ONLY an opaque id;
 # the record comes from backend state and SHA256 is recomputed from disk pre-spawn.
 require('update_id: String,' in updater and 'PendingUpdates' in updater,

@@ -1584,7 +1584,7 @@ export function SettingsPage() {
       <div className="settings-group" hidden={selectedSection !== "about"}>
       <section className="mt-6 rounded-[24px] border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div><div className="text-sm font-semibold">关于与更新</div><div className="mt-1 text-xs leading-5 text-slate-400">仅检查 GitHub 已发布的正式版本，不包含测试候选版；不会自动下载或安装。升级前请备份本地数据，安装包需通过 SHA256 校验。</div></div>
+          <div><div className="text-sm font-semibold">关于与更新</div><div className="mt-1 text-xs leading-5 text-slate-400">仅检查 GitHub 已发布的正式版本，不包含测试候选版；不会自动下载或安装。升级前请备份本地数据，安装包需通过发布签名和 SHA256 校验。</div></div>
           <div className="flex shrink-0 flex-col items-end gap-1"><span className="font-mono text-[11px] text-slate-400">v{__APP_VERSION__}</span>{__APP_CANDIDATE_LABEL__ && <span className="font-mono text-[11px] text-amber-700">{__APP_CANDIDATE_LABEL__}</span>}<button disabled={checkUpdateMutation.isPending} onClick={() => checkUpdateMutation.mutate()} className="h-9 rounded-xl border border-slate-200 px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">{checkUpdateMutation.isPending ? '检查中…' : '检查更新'}</button></div>
         </div>
         {__APP_CANDIDATE_LABEL__ && (
@@ -1614,7 +1614,7 @@ export function SettingsPage() {
                   <button disabled={downloadUpdateMutation.isPending} onClick={() => downloadUpdateMutation.mutate()} className="mt-3 rounded-xl bg-slate-950 px-4 py-2 text-xs font-medium text-white disabled:opacity-50">{downloadUpdateMutation.isPending ? '下载并校验中…' : '下载更新'}</button>
                 ) : (
                   <div className="mt-3">
-                    <div className="text-[11px] text-emerald-700">已下载并通过 sha256 校验（{updateDownloaded.bytes.toLocaleString()} B）。</div>
+                    <div className="text-[11px] text-emerald-700">已下载并通过发布签名和 SHA256 校验（{updateDownloaded.bytes.toLocaleString()} B）。</div>
                     <button disabled={installUpdateMutation.isPending} onClick={() => void confirmAction({ title: '立即安装更新？', detail: '确认已备份重要数据后继续。应用将退出并启动静默安装；完成后请重新打开镜云，检查配置和资源是否保留。', danger: false, confirmLabel: '安装并退出' }).then((ok) => ok && installUpdateMutation.mutate())} className="mt-2 rounded-xl bg-emerald-700 px-4 py-2 text-xs font-medium text-white disabled:opacity-50">{installUpdateMutation.isPending ? '安装器已启动，应用即将退出…' : '立即安装'}</button>
                   </div>
                 )}

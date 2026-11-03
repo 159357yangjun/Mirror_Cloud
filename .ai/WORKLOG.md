@@ -1,5 +1,17 @@
 # WORKLOG
 
+## 2026-11-03 — 签名更新本地实现，云端与真机待验收
+
+基于 main 的 3f5d1e1c169b3ee91f9439a08f49b34cbf60211d，在隔离本地 main 工作树实现：固定源码 Ed25519 公钥、带版本/平台/文件名/大小/哈希的签名清单、公开资产更新检查、下载前后及安装前验证、严格 IPC 目标与大小限制、随机下载目录和句柄。保留旧 SHA256SUMS 三资产契约；旧客户端第一次升级仍不能补获得新验签能力。
+
+发布流程新增签名配对预检、清单签名及独立验件；Secret 仅在相关步骤注入。新增 Node/Python 跨语言向量、发布验件正反例及 Rust 签名/磁盘/目录/分块大小用例。ring 0.17.14 已存在锁文件，本批只加入桌面直接依赖边，不升级外部依赖。版本和 identifier 不变。
+
+本地 Node 5项通过；97命令契约、版本/13锁成员、48 Actions pin、JSON/TOML/21迁移回放、Tauri依赖族及前端 build通过；既有大chunk/动态导入警告保留。前端复用与锁一致的已有依赖，没有安装新工具或依赖。Rust代码通过官方Rust Playground的rustfmt格式化，不将其等同于固定1.98.1云端检查或Rust编译测试。用户流程检查提交前仅因fingerprint对旧HEAD不一致；提交后须复验640项。
+
+新私钥已存Windows凭据库，回读签名验证成功；公钥SHA256为c5da5a6d069f9422c780f13362248b1a85ec0eaa6c1c0ea3696a0d2b286fcaa4。私钥没有进入源码/磁盘交付文件；GitHub Secret尚未配置，未声明已备份。公开凭据信息见本轮outputs/update-signing-key-info.json。
+
+剩余：按AGENTS明确授权推送后核对同SHA Rust CI；配置MIRROR_UPDATE_SIGNING_SEED；下一版本与无tag候选构建需明确授权，再按docs/UPDATE_SIGNING.md分别验收旧客户端首次升级、签名客户端更高版本更新和G3数据保真。尚未推送/构建候选/打tag/发布/升级用户应用，不能宣称完整或安全自更新已实操。
+
 ## 2026-11-02 — G4/G5完成：1.4.11正式发布并核验
 
 不可变v1.4.11 tag对象23fa0451f96d095eb7fbf17a9e64e310380f4e79固定产品源b7595e94f4edad2920621bf5a7c7df9091a3552e；旧v1.4.10对象/目标未改。[正式构建41455840690](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41455840690)成功，windows-bundle125312156090、publish-release125321396531均成功，标签CI41455840706成功。正式构建重新执行Rust229/0/1真实R2忽略、教程HTTP200、依赖锁不变及NSIS/MSI安装卸载检查；候选身份环境为空。

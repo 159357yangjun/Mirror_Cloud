@@ -1,5 +1,12 @@
 # Changelog
 
+## 未发布 — 签名更新
+
+- 增加Ed25519签名清单，绑定版本、Windows x64平台、安装文件名、大小与SHA256；源码固定公钥，安装前重新验签及核对磁盘文件。
+- 更新检查读取公开签名资产，避免依赖匿名GitHub API额度；保留旧版SHA256SUMS兼容。下载限制按实际分块读取执行，拒绝伪造IPC地址、同版和降级。
+- 发布前验证密钥配对，安装器smoke后签名并独立验件；新增跨语言协议和拒绝路径测试。
+- 本地协议/构建检查通过，云端Rust与真实升级尚待验收，未发布。密钥配置与过渡边界见docs/UPDATE_SIGNING.md。
+
 ## 2026-11-02 — v1.4.11正式发布（G4/G5）
 
 - G4：不可变tag对象23fa0451f96d095eb7fbf17a9e64e310380f4e79固定已测产品源`b7595e94f4edad2920621bf5a7c7df9091a3552e`，旧tag未移动。新候选G3为用户报告全项通过，见前条。
@@ -291,7 +298,7 @@ verify:all | 12 stages: 12 passed, 0 failed, 0 skipped
 | `scripts/verify_probe_display.mjs` | 73 | 2,893 | `9bd4bf1b3aa82a1302201ac8b026f47639fd2fd410ce4ed1b6a8805506486933` | `PROBE_DISPLAY total=6 failed=0`（§18B 四类失败种类：标签/提示/颜色两两互异，未知种类降级到 rejected，成功探测不渲染）| `node scripts/verify_probe_display.mjs` |
   它本身不能单独报红（没有断言），所以红演示挂在 harness 上：`node scripts/verify_guard_mutations.mjs M20`
 | `scripts/__fixtures__/impostor_dev_server.mjs` | 76 | 3,887 | `e6e9b182585b7ece6b8811d06ab67412d90f6c23a7404633c8a22c91590b6fc1` | 两种模式各自只触发预期的那一层（other-app→L1+L2；stale-source→仅 L3） | `node scripts/verify_dialog_interactions.mjs red-demo` |
-| `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 2572 | 188,081 | `c2106b7edac7bb9b1e93183da8c12d0d8ca74935ef3710bdb18122558ebea826` | `USERFLOW_CHECKS total=625 failed=0`（落盘后；未提交时它必然报 10 条"HEAD blob 里没有这个文件"，见本节末） | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16 M19 M20` |
+| `scripts/check_user_flow.py`（认证上面四个的那份检查器，同址在 `scripts/`） | 2576 | 188,327 | `2aee04b04885138a0eb3415d517c9cbbba4ac161668c6f8212181876ef5a0e17` | `USERFLOW_CHECKS total=625 failed=0`（落盘后；未提交时它必然报 10 条"HEAD blob 里没有这个文件"，见本节末） | `node scripts/verify_guard_mutations.mjs M6 M7 M8 M9 M10 M11 M12 M13 M14 M15 M16 M19 M20` |
 | `scripts/validate.py` | 113 | 4,659 | `7b5fd57c6e2a2572ce99a89076660b8d20198d29c83ba7a31bd5ef4b79e6a581` | 结构自检：JSON/TOML 可解析、SQLite 迁移与表数、workspace members、版本对齐 | `python scripts/validate.py`
 | `scripts/check_contracts.py` | 45 | 2,029 | `8fd928f98ec97a1c1969b6eed53e01a04ac3c6d865120e0a4978438bed0e2127` | 前端 invoke ↔ Rust command ↔ 注册表 三方对账，缺一即红 | `python scripts/check_contracts.py`
 | `scripts/check_release_version.py` | 131 | 5,713 | `8d45f2079150ac343193461c5b72b474a818f79e59858b3c2eda964c5c7a984d` | 五处版本声明 + Cargo.lock 13 成员必须同值；tag 推送时另核 tag 与版本一致 | `python scripts/check_release_version.py`

@@ -3,6 +3,7 @@ mod commands;
 pub mod reconcile_cadence;
 mod rollback;
 mod services;
+mod update_security;
 mod window_layout;
 
 use std::{

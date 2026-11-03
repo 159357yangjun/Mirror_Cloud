@@ -5,9 +5,13 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
+use tokio::io::AsyncReadExt;
 
 use super::CmdResult;
 use crate::AppState;
+use crate::update_security::{
+    self, MANIFEST_NAME, MAX_MANIFEST_BYTES, MAX_SETUP_BYTES, SIGNATURE_NAME, UpdateManifest,
+};
 
 /// Where the last completed check is cached, and how long it stays answerable without a network
 /// round trip. A separate key from every other settings value: `set` replaces whole values, so a
@@ -21,8 +25,6 @@ pub const UPDATE_CACHE_MAX_AGE_HOURS: i64 = 24;
 /// value to the live API `full_name`; a mismatch goes red at gate time rather than at update time.
 const UPDATE_REPO: &str = "159357yangjun/Mirror_Cloud";
 const SETUP_ASSET_SUFFIX: &str = "-windows-x64-setup.exe";
-const SUMS_ASSET_NAME: &str = "SHA256SUMS.txt";
-const MAX_SETUP_BYTES: u64 = 64 * 1024 * 1024;
 const CONTROLLED_DIR_NAME: &str = "mirror-updates";
 
 /// Backend-owned record of a verified download (G1 trust boundary): the frontend
@@ -63,20 +65,11 @@ pub struct UpdateCheckResult {
 
 /// Strict-enough semver for this repo's tags: `v?MAJOR.MINOR.PATCH`, numeric only.
 /// Anything else compares as "unknown" and never claims an update.
-fn parse_version(raw: &str) -> Option<[u64; 3]> {
-    let core = raw.trim().trim_start_matches('v');
-    let mut parts = core.split('.');
-    let a = parts.next()?.parse().ok()?;
-    let b = parts.next()?.parse().ok()?;
-    let c = parts.next()?.parse().ok()?;
-    if parts.next().is_some() {
-        return None;
-    }
-    Some([a, b, c])
-}
-
 pub fn version_is_newer(current: &str, candidate: &str) -> bool {
-    match (parse_version(current), parse_version(candidate)) {
+    match (
+        update_security::parse_version(current.trim_start_matches('v')),
+        update_security::parse_version(candidate.trim_start_matches('v')),
+    ) {
         (Some(c), Some(n)) => n > c,
         _ => false,
     }
@@ -85,7 +78,8 @@ pub fn version_is_newer(current: &str, candidate: &str) -> bool {
 fn client() -> CmdResult<reqwest::Client> {
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
-        .user_agent("Mirror-Cloud-Updater/1.0")
+        .https_only(true)
+        .user_agent("Mirror-Cloud-Updater/2.0")
         .build()
         .map_err(|error| error.to_string())
 }
@@ -96,84 +90,16 @@ pub async fn check_for_updates(
     state: tauri::State<'_, AppState>,
 ) -> CmdResult<UpdateCheckResult> {
     let current_version = app.package_info().version.to_string();
-    let response: serde_json::Value = client()?
-        .get(format!(
-            "https://api.github.com/repos/{UPDATE_REPO}/releases/latest"
-        ))
-        .header("Accept", "application/vnd.github+json")
-        .send()
-        .await
-        .map_err(|error| format!("检查更新失败（网络或代理未开启？）: {error}"))?
-        .error_for_status()
-        .map_err(|error| format!("更新服务拒绝请求: {error}"))?
-        .json()
-        .await
-        .map_err(|error| format!("更新服务返回了无法解析的内容: {error}"))?;
-
-    let tag = response
-        .get("tag_name")
-        .and_then(serde_json::Value::as_str)
-        .ok_or("更新响应缺少 tag_name")?;
-    let assets = response
-        .get("assets")
-        .and_then(serde_json::Value::as_array)
-        .ok_or("更新响应缺少 assets")?;
-
-    // Exactly one setup asset or the whole thing is refused - picking "the first download URL"
-    // would happily grab an msi or a source zip.
-    let setup_candidates: Vec<&serde_json::Value> = assets
-        .iter()
-        .filter(|a| {
-            a.get("name")
-                .and_then(serde_json::Value::as_str)
-                .is_some_and(|n| n.ends_with(SETUP_ASSET_SUFFIX))
-        })
-        .collect();
-    if setup_candidates.len() != 1 {
-        return Err(format!(
-            "最新发行版里的安装资产数量异常（期望 1 个 setup.exe，实际 {}）",
-            setup_candidates.len()
-        ));
-    }
-    let setup = setup_candidates[0];
-    let setup_bytes = setup
-        .get("size")
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0);
-    if setup_bytes == 0 || setup_bytes > MAX_SETUP_BYTES {
-        return Err(format!("安装包大小不合理: {setup_bytes} B"));
-    }
-    // The name is validated even though the download URL is what gets used: an asset missing its
-    // filename cannot be matched against SHA256SUMS.txt later, so refusing here is the honest
-    // point of failure rather than a checksum mismatch mid-install.
-    let _ = setup
-        .get("name")
-        .and_then(serde_json::Value::as_str)
-        .ok_or("安装包资产缺少文件名")?;
-    let setup_url = setup
-        .get("browser_download_url")
-        .and_then(serde_json::Value::as_str)
-        .ok_or("安装包缺少下载地址")?
-        .to_string();
-
+    // Public signed assets avoid GitHub's unauthenticated API quota.
+    let (manifest, _, _) = fetch_manifest(&client()?, None).await?;
     let result = UpdateCheckResult {
-        latest_version: tag.trim_start_matches('v').to_string(),
-        update_available: version_is_newer(&current_version, tag),
+        latest_version: manifest.version.clone(),
+        update_available: version_is_newer(&current_version, &manifest.version),
         current_version,
-        release_notes: response
-            .get("body")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default()
-            .chars()
-            .take(2000)
-            .collect(),
-        setup_url,
-        setup_bytes,
-        published_at: response
-            .get("published_at")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
+        release_notes: "此更新已通过发布签名验证。发行说明请查看官方 Release。".into(),
+        setup_url: asset_url(&manifest.version, &manifest.asset_name),
+        setup_bytes: manifest.bytes,
+        published_at: String::new(),
     };
     // Best-effort by design: a check that got a real answer must not report failure because the
     // cache row could not be written - the caller already has their answer.
@@ -181,7 +107,7 @@ pub async fn check_for_updates(
         .settings
         .set(
             UPDATE_CACHE_KEY,
-            &json!({ "checkedAt": Utc::now().to_rfc3339(), "result": result }),
+            &json!({ "protocol": 2, "checkedAt": Utc::now().to_rfc3339(), "result": result }),
         )
         .await
     {
@@ -236,6 +162,9 @@ async fn read_update_cache(state: &AppState) -> UpdateStatusView {
     let Some(record) = value.as_object() else {
         return empty();
     };
+    if record.get("protocol").and_then(serde_json::Value::as_u64) != Some(2) {
+        return empty();
+    }
     let checked_at = record
         .get("checkedAt")
         .and_then(serde_json::Value::as_str)
@@ -257,25 +186,74 @@ async fn read_update_cache(state: &AppState) -> UpdateStatusView {
 #[derive(Debug, Clone)]
 pub struct DownloadedUpdate {
     pub installer_path: String,
-    pub expected_sha256: String,
-    pub actual_sha256: String,
-    pub verified: bool,
     pub bytes: u64,
+    pub manifest: Vec<u8>,
+    pub signature: String,
 }
 
-fn parse_sums(text: &str, wanted_name: &str) -> Option<String> {
-    for line in text.lines() {
-        let mut fields = line.split_whitespace();
-        if let (Some(hash), Some(name)) = (fields.next(), fields.next()) {
-            if name == wanted_name
-                && hash.len() == 64
-                && hash.bytes().all(|b| b.is_ascii_hexdigit())
-            {
-                return Some(hash.to_ascii_lowercase());
-            }
-        }
+fn asset_url(version: &str, name: &str) -> String {
+    format!("https://github.com/{UPDATE_REPO}/releases/download/v{version}/{name}")
+}
+
+async fn read_bounded(mut response: reqwest::Response, limit: usize) -> CmdResult<Vec<u8>> {
+    if response
+        .content_length()
+        .is_some_and(|len| len > limit as u64)
+    {
+        return Err("更新下载内容超过大小上限".into());
     }
-    None
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|_| "更新下载中断，请重试")? {
+        if chunk.len() > limit.saturating_sub(body.len()) {
+            return Err("更新下载内容超过大小上限".into());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
+async fn fetch_manifest(
+    client: &reqwest::Client,
+    version: Option<&str>,
+) -> CmdResult<(UpdateManifest, Vec<u8>, String)> {
+    let key = update_security::trusted_key()?;
+    let base = match version {
+        Some(version) => {
+            if update_security::parse_version(version).is_none() {
+                return Err("更新版本格式无效".into());
+            }
+            format!("https://github.com/{UPDATE_REPO}/releases/download/v{version}")
+        }
+        None => format!("https://github.com/{UPDATE_REPO}/releases/latest/download"),
+    };
+    let raw = read_bounded(
+        client
+            .get(format!("{base}/{MANIFEST_NAME}"))
+            .send()
+            .await
+            .map_err(|_| "获取更新清单失败，请检查网络或代理")?
+            .error_for_status()
+            .map_err(|_| "该发行版未提供签名更新清单，请从官方 Release 手动升级")?,
+        MAX_MANIFEST_BYTES,
+    )
+    .await?;
+    let signature = read_bounded(
+        client
+            .get(format!("{base}/{SIGNATURE_NAME}"))
+            .send()
+            .await
+            .map_err(|_| "获取更新签名失败")?
+            .error_for_status()
+            .map_err(|_| "发行版缺少更新签名，已拒绝")?,
+        256,
+    )
+    .await?;
+    let signature = String::from_utf8(signature).map_err(|_| "更新签名格式无效")?;
+    let manifest = update_security::verify_manifest(&raw, &signature, &key)?;
+    if version.is_some_and(|version| version != manifest.version) {
+        return Err("签名清单与请求的版本不符".into());
+    }
+    Ok((manifest, raw, signature))
 }
 
 #[tauri::command]
@@ -283,59 +261,35 @@ pub async fn download_update(
     check: UpdateCheckResult,
     pending: tauri::State<'_, PendingUpdates>,
 ) -> CmdResult<DownloadedUpdateSummary> {
-    if !check.update_available {
-        return Err("当前没有可用的更新".into());
+    if !cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+        return Err("此更新安装包仅支持 Windows x64".into());
     }
-    let file_name = std::path::Path::new(&check.setup_url)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .filter(|n| n.ends_with(SETUP_ASSET_SUFFIX))
-        .ok_or("下载地址的文件名不是 setup.exe，已拒绝")?
-        .to_string();
-    let sums_url = format!(
-        "https://github.com/{UPDATE_REPO}/releases/download/v{}/{SUMS_ASSET_NAME}",
-        check.latest_version
-    );
     let client = client()?;
-    let sums = client
-        .get(&sums_url)
-        .send()
-        .await
-        .map_err(|error| format!("下载校验清单失败: {error}"))?
-        .error_for_status()
-        .map_err(|error| format!("校验清单被拒绝: {error}"))?
-        .text()
-        .await
-        .map_err(|error| format!("校验清单读取失败: {error}"))?;
-    let expected = parse_sums(&sums, &file_name)
-        .ok_or_else(|| format!("校验清单里没有 {file_name} 这一行，已拒绝"))?;
-
+    let (manifest, raw_manifest, signature) =
+        fetch_manifest(&client, Some(&check.latest_version)).await?;
+    manifest.require_newer(env!("CARGO_PKG_VERSION"))?;
+    let setup_url = asset_url(&manifest.version, &manifest.asset_name);
+    // IPC fields are not authority; the signed record defines URL and size.
+    if !check.update_available
+        || check.setup_url != setup_url
+        || check.setup_bytes != manifest.bytes
+        || !manifest.asset_name.ends_with(SETUP_ASSET_SUFFIX)
+    {
+        return Err("更新请求与签名清单不符，请重新检查更新".into());
+    }
+    let file_name = manifest.asset_name.clone();
     let stream = client
-        .get(&check.setup_url)
+        .get(&setup_url)
         .send()
         .await
-        .map_err(|error| format!("下载安装包失败（网络或代理未开启？）: {error}"))?
+        .map_err(|_| "下载安装包失败，请检查网络或代理")?
         .error_for_status()
-        .map_err(|error| format!("安装包下载被拒绝: {error}"))?;
-    if let Some(len) = stream.content_length() {
-        if len > MAX_SETUP_BYTES {
-            return Err(format!("安装包超过上限: {len} B"));
-        }
-    }
-    let body = stream
-        .bytes()
-        .await
-        .map_err(|error| format!("安装包下载中断: {error}"))?;
-    if body.len() as u64 != check.setup_bytes {
-        return Err(format!(
-            "安装包字节数与发行页不符（下载 {} B，声明 {} B）",
-            body.len(),
-            check.setup_bytes
-        ));
-    }
+        .map_err(|_| "安装包下载被拒绝")?;
+    let body = read_bounded(stream, MAX_SETUP_BYTES as usize).await?;
+    manifest.verify_body(&body)?;
     let actual = format!("{:x}", Sha256::digest(&body));
 
-    let dir = controlled_dir();
+    let dir = controlled_dir().join(uuid::Uuid::new_v4().to_string());
     tokio::fs::create_dir_all(&dir)
         .await
         .map_err(|error| format!("无法创建更新临时目录: {error}"))?;
@@ -344,20 +298,10 @@ pub async fn download_update(
         .await
         .map_err(|error| format!("无法写入安装包: {error}"))?;
 
-    if actual != expected {
-        let _ = tokio::fs::remove_file(&path).await;
-        return Err(format!(
-            "sha256 校验不一致，安装包已删除（期望 {expected}，实际 {actual}）"
-        ));
-    }
     let canonical = tokio::fs::canonicalize(&path)
         .await
         .map_err(|error| format!("无法解析安装包绝对路径: {error}"))?;
-    let update_id = format!(
-        "{:x}",
-        Sha256::digest(canonical.as_os_str().as_encoded_bytes())
-    )[..16]
-        .to_string();
+    let update_id = uuid::Uuid::new_v4().to_string();
     pending
         .lock()
         .map_err(|_| "更新状态锁毒化".to_string())?
@@ -365,10 +309,9 @@ pub async fn download_update(
             update_id.clone(),
             DownloadedUpdate {
                 installer_path: canonical.to_string_lossy().into_owned(),
-                expected_sha256: expected.clone(),
-                actual_sha256: actual.clone(),
-                verified: true,
                 bytes: body.len() as u64,
+                manifest: raw_manifest,
+                signature,
             },
         );
     Ok(DownloadedUpdateSummary {
@@ -386,43 +329,22 @@ pub async fn install_update(
     pending: tauri::State<'_, PendingUpdates>,
     app: tauri::AppHandle,
 ) -> CmdResult<()> {
+    if !cfg!(all(target_os = "windows", target_arch = "x86_64")) {
+        return Err("此更新安装包仅支持 Windows x64".into());
+    }
     let record = pending
         .lock()
         .map_err(|_| "更新状态锁毒化".to_string())?
         .get(&update_id)
         .cloned()
         .ok_or("未知或已过期的更新句柄，请重新下载")?;
-    if !record.verified || record.expected_sha256 != record.actual_sha256 {
-        return Err("未通过校验的安装包不允许安装".into());
-    }
-    let path = std::path::PathBuf::from(&record.installer_path);
-    let canonical = tokio::fs::canonicalize(&path)
-        .await
-        .map_err(|error| format!("安装包已不在临时目录，请重新下载: {error}"))?;
-    if canonical
-        .parent()
-        .map(|parent| parent.as_os_str() != controlled_dir().as_os_str())
-        .unwrap_or(true)
-    {
-        return Err("安装包路径不在受控更新目录，已拒绝".into());
-    }
-    let bytes = tokio::fs::read(&canonical)
-        .await
-        .map_err(|error| format!("无法重读安装包: {error}"))?;
-    if bytes.len() as u64 != record.bytes {
-        return Err(format!(
-            "安装包字节数与下载时不符（现在 {} B，登记 {} B）",
-            bytes.len(),
-            record.bytes
-        ));
-    }
-    let recomputed = format!("{:x}", Sha256::digest(&bytes));
-    if recomputed != record.expected_sha256 {
-        return Err(format!(
-            "安装前复核 sha256 不一致（期望 {}，实际 {}），已拒绝",
-            record.expected_sha256, recomputed
-        ));
-    }
+    let canonical = verify_install_candidate(
+        &record,
+        &controlled_dir(),
+        &update_security::trusted_key()?,
+        env!("CARGO_PKG_VERSION"),
+    )
+    .await?;
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
@@ -433,13 +355,168 @@ pub async fn install_update(
             .spawn()
             .map_err(|error| format!("无法启动安装器: {error}"))?;
     }
+    #[cfg(not(target_os = "windows"))]
+    let _ = canonical;
     app.exit(0);
     Ok(())
+}
+
+async fn verify_install_candidate(
+    record: &DownloadedUpdate,
+    root: &std::path::Path,
+    public_key: &[u8],
+    current_version: &str,
+) -> CmdResult<std::path::PathBuf> {
+    let path = std::path::PathBuf::from(&record.installer_path);
+    let canonical = tokio::fs::canonicalize(&path)
+        .await
+        .map_err(|error| format!("安装包已不在临时目录，请重新下载: {error}"))?;
+    let root = tokio::fs::canonicalize(root)
+        .await
+        .map_err(|_| "受控更新目录不可用")?;
+    if canonical.parent().and_then(|parent| parent.parent()) != Some(root.as_path()) {
+        return Err("安装包路径不在受控更新目录，已拒绝".into());
+    }
+    let manifest =
+        update_security::verify_manifest(&record.manifest, &record.signature, public_key)?;
+    manifest.require_newer(current_version)?;
+    if canonical.file_name().and_then(|name| name.to_str()) != Some(manifest.asset_name.as_str()) {
+        return Err("安装文件名与签名清单不符".into());
+    }
+    if tokio::fs::metadata(&canonical)
+        .await
+        .map_err(|_| "安装包不可读")?
+        .len()
+        > MAX_SETUP_BYTES
+    {
+        return Err("安装包超过大小上限".into());
+    }
+    let file = tokio::fs::File::open(&canonical)
+        .await
+        .map_err(|_| "无法重读安装包")?;
+    let mut bytes = Vec::new();
+    file.take(MAX_SETUP_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .await
+        .map_err(|_| "无法重读安装包")?;
+    if bytes.len() as u64 != record.bytes {
+        return Err(format!(
+            "安装包字节数与下载时不符（现在 {} B，登记 {} B）",
+            bytes.len(),
+            record.bytes
+        ));
+    }
+    let recomputed = format!("{:x}", Sha256::digest(&bytes));
+    if bytes.len() as u64 != manifest.bytes || recomputed != manifest.sha256 {
+        return Err(format!(
+            "安装前复核 sha256 不一致（期望 {}，实际 {}），已拒绝",
+            manifest.sha256, recomputed
+        ));
+    }
+    Ok(canonical)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn preinstall_guard_rechecks_real_disk_bytes_signature_version_and_confinement() {
+        use ring::signature::{Ed25519KeyPair, KeyPair};
+        let key = Ed25519KeyPair::from_seed_unchecked(&[7; 32]).unwrap();
+        let root =
+            std::env::temp_dir().join(format!("mirror-update-test-{}", uuid::Uuid::new_v4()));
+        let dir = root.join("download");
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let body = b"fixture installer, never executable";
+        let manifest = UpdateManifest {
+            schema_version: 1,
+            version: "2.0.0".into(),
+            target: update_security::TARGET.into(),
+            asset_name: "image-hosting-platform-v2.0.0-windows-x64-setup.exe".into(),
+            bytes: body.len() as u64,
+            sha256: format!("{:x}", Sha256::digest(body)),
+        };
+        let path = dir.join(&manifest.asset_name);
+        tokio::fs::write(&path, body).await.unwrap();
+        let raw = serde_json::to_vec(&manifest).unwrap();
+        let record = DownloadedUpdate {
+            installer_path: path.to_string_lossy().into_owned(),
+            bytes: body.len() as u64,
+            signature: hex::encode(key.sign(&raw)),
+            manifest: raw,
+        };
+        let public = key.public_key().as_ref();
+        assert!(
+            verify_install_candidate(&record, &root, public, "1.4.11")
+                .await
+                .is_ok()
+        );
+        assert!(
+            verify_install_candidate(&record, &root, public, "2.0.0")
+                .await
+                .is_err()
+        );
+        assert!(
+            verify_install_candidate(&record, &dir, public, "1.4.11")
+                .await
+                .is_err()
+        );
+        let mut wrong_signature = record.clone();
+        wrong_signature.signature = "00".repeat(64);
+        assert!(
+            verify_install_candidate(&wrong_signature, &root, public, "1.4.11")
+                .await
+                .is_err()
+        );
+        let mut changed = body.to_vec();
+        changed[0] ^= 1;
+        tokio::fs::write(&path, &changed).await.unwrap();
+        assert!(
+            verify_install_candidate(&record, &root, public, "1.4.11")
+                .await
+                .is_err()
+        );
+        tokio::fs::write(&path, &body[..body.len() - 1])
+            .await
+            .unwrap();
+        assert!(
+            verify_install_candidate(&record, &root, public, "1.4.11")
+                .await
+                .is_err()
+        );
+        tokio::fs::remove_dir_all(&root).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn chunked_download_is_bounded_even_without_content_length() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut request = [0; 2048];
+                stream.read(&mut request).await.unwrap();
+                stream.write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n4\r\n1234\r\n4\r\n5678\r\n0\r\n\r\n").await.unwrap();
+            }
+        });
+        // This local transport fixture uses a separate client; production still requires HTTPS.
+        let test_client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let response = test_client
+            .get(format!("http://{addr}"))
+            .send()
+            .await
+            .unwrap();
+        assert!(read_bounded(response, 7).await.is_err());
+        let response = test_client
+            .get(format!("http://{addr}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(read_bounded(response, 8).await.unwrap(), b"12345678");
+        server.await.unwrap();
+    }
 
     fn stamp(minutes_ago: i64) -> String {
         (Utc::now() - Duration::minutes(minutes_ago)).to_rfc3339()

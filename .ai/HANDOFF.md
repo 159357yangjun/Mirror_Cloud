@@ -1,5 +1,13 @@
 # HANDOFF
 
+## 2026-11-03 — 签名更新本地实施，未推送
+
+基于3f5d1e1c169b3ee91f9439a08f49b34cbf60211d，已接通源码固定Ed25519公钥、签名清单、公开资产检查、下载和安装前校验及发布签名步骤。保留旧SHA256SUMS契约。Node5项、97命令、版本/锁、48Actions pin、JSON/TOML和前端build通过；Rust格式化使用官方Playground，不替代固定工具链云端编译/测试。
+
+生产私钥已存本机Windows凭据库并回读验签；公开指纹及凭据目标见本轮outputs/update-signing-key-info.json。没有私钥磁盘交付文件，也未配置GitHub Secret。
+
+下一步在明确授权后推送main并配置MIRROR_UPDATE_SIGNING_SEED，核对同SHA CI。下一版本及候选另按授权执行；按docs/UPDATE_SIGNING.md验证旧版首次升级和签名客户端后续升级。当前不能称完整/安全自更新已验收；旧v1.4.11证据不能代替本批。未打tag、发布或升级用户应用。详细本地记录见WORKLOG同日条目。
+
 ## 2026-11-02 — G4/G5完成：1.4.11正式发布并核验
 
 不可变v1.4.11 tag对象23fa0451f96d095eb7fbf17a9e64e310380f4e79固定产品源b7595e94f4edad2920621bf5a7c7df9091a3552e；旧v1.4.10对象/目标未改。[正式构建41455840690](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41455840690)成功，windows-bundle125312156090、publish-release125321396531均成功，标签CI41455840706成功。正式构建重新执行Rust229/0/1真实R2忽略、教程HTTP200、依赖锁不变及NSIS/MSI安装卸载检查；候选身份环境为空。
