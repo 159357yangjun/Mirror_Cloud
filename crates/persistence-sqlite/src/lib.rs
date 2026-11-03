@@ -1886,6 +1886,7 @@ mod task_batch_transaction_tests {
 #[cfg(test)]
 mod plugin_import_tests {
     use super::*;
+    use serde_json::json;
 
     fn record(id: &str) -> PluginRecord {
         let now = Utc::now();

@@ -1,5 +1,9 @@
 # WORKLOG
 
+## 2026-11-03 — 插件测试编译诊断与修正
+
+源码 5d04eb41ff527dfe3eb8bead907d2b5e1e6b7ae7 的 CI 41677009748：格式、生产 cargo check、插件 Node 与契约检查通过；Rust tests 在 persistence-sqlite 新增测试模块因缺少 serde_json::json 宏导入编译失败（五处）。读取 job 126060235630 的原始编译日志后补一个导入，不修改测试断言或跳过用例。CI 增加同 Windows debug 缓存前缀回退，仍由锁文件和 Cargo 校验实际依赖/增量有效性，不改变检查命令。修正源码须等待自己的同 SHA 云端结果。
+
 ## 未发布 — 插件扩展前三项
 
 - 本地 JSON Manifest 选择、权限/兼容声明预览、后端一次性确认与原子不覆盖安装；安装默认关闭，不授予敏感权限。
