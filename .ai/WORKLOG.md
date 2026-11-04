@@ -1,5 +1,19 @@
 # WORKLOG
 
+## 2026-11-04 — 候选插件原生验收及实际安装G3完成
+
+固定被测源60f0a34c898cf3ef88c470ff019381ef0fa476e5，候选NSIS16542951B/SHA256 77adb8aa7ab7720888db8ff7bda1ec366b96a9f23cc59e9b5fd1886867c72a17。用户明确批准运行独立候选、授权提示自行操作，后另批准覆盖D:/Mirror Cloud安装候选。先保留实际可运行的正式1.4.12副本于会话outputs/baseline-1.4.12-preserved，SHA256 9d2ec952c18958057dbc5bd7e6e438eda9ec88dae53982dc72319dfb20f5fb25；实际启动确认1.4.12。各阶段18表SQLite只读一致性快照经DPAPI加密并解密恢复/integrity_check通过，未落盘明文或导出凭据。
+
+先将旧1.4.10升级到正式1.4.12：旧应用内“安装并退出”被“安装包路径不在受控更新目录，已拒绝”拦截。旧代码把canonical parent与非canonical受控目录比较，当前正式1.4.12已同时canonicalize，不新增修复。随后依用户批准用同一已核验正式NSIS手动升级，实际安装/重启1.4.12和签名同版本检查通过；旧1.4.10全路径仍记安装失败，不把外部验签算成旧客户端能力。
+
+候选原生验收：文件选择/身份API1Schema1权限触发器预览、取消不安装、预览后修改文件仍安装固定快照、安装默认关闭/read_asset、重复ID不覆盖全部通过。唯一ID的API2/Schema2及official.fake拒绝；旧官方无版本Manifest配置保留并显示兼容表单。文本/布尔/数字/整数/枚举编辑保存和进程重启保留通过；HTTP公网URL、越界数字、小数整数禁用保存，缺必填URL草稿关闭可保存但开启被拒绝。实际CLI候选上传合成Gitee图并生成CANDIDATE-1.4.13模板标记，之后测试模板已关闭。
+
+Webhook默认关闭、无敏感授权；开启单独显示网络/外部写入请求。首次用户报告“不开启”与实际授予并开启不一致，未判产品缺陷或通过，立即停止测试插件。用户随后撤销，UI/DB确认只剩read_asset；再次由用户明确点击左侧“不开启”，UI/DB确认仍关闭且无敏感授权。复测通过，首次差异原因未知保留。没有主动执行Webhook或记录真实凭据。
+
+G3实际执行：NSIS选择Do not uninstall，目标D:/Mirror Cloud；同意关闭旧进程，Installation Complete成功，Finish后实际启动D目录。原生1.4.13/候选60f0a34c898c，EXE43922944B/SHA256 aa0abb4b6f66c4fb9e7607d712715f1d8888205c3f306fd9d6a3f34dd3336d10与已提取候选一致。与安装前加密快照比较，九表全部原业务记录及设置保留，四个插件配置/开关/权限/触发器保留；默认Gitee、樱粉及原壁纸可见。安装后再实际--typora-upload经现有凭据成功上传新合成图，返回一条URL并增加一条资源。桥接入口实测，不冒称Typora编辑器UI或返回链接公网访问已验；真实R2、个人MP4和壁纸字节比较不在本轮。
+
+证据位于会话outputs/G3-candidate-1.4.13.json、candidate-1.4.13-native-validation.json、candidate-1.4.13-installed-data-preservation.json、candidate-1.4.13-installed-upload-probe.json及baseline-update-to-1.4.12.json。三次合成Gitee测试对象及三个本地样例插件仍保留，测试插件均关闭。当前只记录G3；下一步按既有条件授权在确切被测60f源创建一次不可变v1.4.13，正式包另验公开六资产/签名/源码/三锁，再从保留1.4.12实测正式更高版本更新，安装时确认另按Computer Use规则执行。
+
 ## 2026-11-03 — 1.4.13修正候选G0/G2与独立验件完成
 
 固定源60f0a34c898cf3ef88c470ff019381ef0fa476e5：[CI41761819146](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41761819146)和七页41761818872成功，Rust246/0/1真实R2忽略；基础091ef4e的七项与原生检查为同产品代码补充证据，不混成同SHA七项。13facts/0problem快照复验通过，匿名UPDATE_REPO核对仍SKIP。50个外部Actions引用固定SHA校验通过。
