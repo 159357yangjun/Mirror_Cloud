@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-04 — 网站上线与1.4.14 G0/G2完成，等待候选安装验收
+
+冻结候选源码aa58f75568fe4b9a01cdc774002b4c07add2b061已推送main（17文件）。八项同SHA检查均completed/success：CI41821628103/job126545924951、原生Windows/SQLite41821628300/job126545926715、七页41821628218、R2离线41821627974、Windows UI41821627940、构建身份41821628018、发布策略41821628166及Docs41821627979。Rust明细246通过/0失败/1受保护真实R2忽略，不记真实R2已验收。本地22组unit/99契约/640流程/tsc与Vite结果见前条。
+
+Docs41821627979首轮静态构建成功，但Chromium启动未开放DevTools，0项页面断言执行；原源码仅重试失败作业，attempt2 build126547337539/deploy126547670774成功，41项浏览器断言通过。首页与use/plugins、use/updates独立HTTP200且新版本/教程内容匹配；电脑/手机首页截图目视核对通过。保留首次失败事实，不记首次全绿。
+
+G0同源CI成功后触发无tag候选41822449820；windows-bundle126548688341成功，publish-release126556991334按预期skipped。独立下载六资产并验证源码内固定公钥Ed25519、三资产SHA256、504源码文件与冻结Git树（仅UTF-8文本CRLF规范化）及三份实际构建锁文件。NSIS 16,541,082 B，SHA256 02563e19f91bc9d21b0e1fde200adb90bbcb36d3a301ed14d0b6ac28f54e8589。候选仅含已验证缓存显示修正；不含新功能/依赖/DDL/公钥/identifier变更。
+
+正式频道仍为v1.4.13，v1.4.14正式tag不存在；未安装或运行1.4.14，也未做其G3。D目录正式1.4.13及保留副本哈希f32573cf5536f9dd95ae8205779db5c331f03b3c24b5ce7cb229698ed0e8d04f一致；SQLite已用DPAPI一致备份并内存解密恢复完整性验证。旧缓存current/latest均13、无更新且24h内，可用于新客户端忽略跨版本缓存的实际复测。下一步按Computer Use操作时确认安装已核验候选，重启比较九张业务表、配置/凭据功能、主题壁纸、插件及新上传；G3前不创建正式tag。完整逐文件报告及JSON/截图在会话outputs/release-1.4.14-report.md、1.4.14-ci.json、1.4.14-site-live.json、candidate-1.4.14-cloud-verification.json。
+
 ## 2026-11-04 — 执行教程同步、网站部署与1.4.14候选准备
 
 用户对“同步README/插件教程、部署网站、缓存修复随下一补丁打包”回复执行。修改前D:/image-hosting-platform main干净，HEAD及认证API远端均ea0970b7bcc2fce23f643bb7c567209380b399e8。README改正式1.4.13，插件架构改为1.4.13已发布；网站新增use/plugins与use/updates教程并接入既有使用菜单和首页，明确当前正式13、候选14、敏感权限及旧缓存处理边界，不声称社区索引/WASM已提供。
