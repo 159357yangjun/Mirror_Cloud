@@ -18,7 +18,7 @@ G4/G5已完成：v1.4.13附注tag对象4e24287a9acdb7e3878c911ef542ad16b94399ad�
 
 证据：会话outputs/formal-1.4.13-updater-e2e.json、formal-1.4.13-data-preservation.json、formal-1.4.13-upload-probe.json、formal-1.4.13-public-verification.json；最新加密备份mirror-cloud-before-formal-1.4.13.sqlite.dpapi恢复校验通过。原真实Typora CLI桥接不冒称编辑器UI，未验链接公开访问/真实R2/个人MP4/壁纸字节。
 
-另发现缓存显示缺陷：升级后旧currentVersion结果仍fresh，手动检查未清侧栏。已main修复getUpdateStatus按__APP_VERSION__失效、SettingsPage成功回调同步提示；4项回归先红后绿，22组unit/99契约/640流程/build通过，新源码提交后核对CI。后续源码修复尚未打包，不在已发布60f源包内；不得移动v1.4.13或复用旧正式版本，下一版本须另按授权与门禁推进。当前正式应用手动检查并再次重启后旧提示已消失。
+另发现缓存显示缺陷：升级后旧currentVersion结果仍fresh，手动检查未清侧栏。已main修复getUpdateStatus按__APP_VERSION__失效、SettingsPage成功回调同步提示；4项回归先红后绿，22组unit/99契约/640流程/build通过；修复源14f4e5858ff4bff48ca533f95650d8e6ba5e204f的CI41804857563、原生41804857548、UI41804857561、身份41804857589、R2离线41804857615、七页41804857628均completed/success。后续源码修复尚未打包，不在已发布60f源包内；不得移动v1.4.13或复用旧正式版本，下一版本须另按授权与门禁推进。当前正式应用手动检查并再次重启后旧提示已消失。
 
 ## 历史边界与保留
 
