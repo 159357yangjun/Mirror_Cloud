@@ -1,5 +1,9 @@
 # WORKLOG
 
+## 2026-11-03 — 已授权执行1.4.13候选与验收
+
+用户对下一步方案回复“执行”：统一1.4.13版本、无tag签名候选、插件真机交互与G3、条件正式发布、当前1.4.12经更新器升级正式1.4.13。基于干净70db93a，云端文档CI41756223420及七页41756223082已成功。仅修改版本声明和13个workspace锁成员，不升级外部依赖、不改identifier/DDL/签名公钥。签名密钥和Secret沿用已配置项，不重新生成。保留现有1.4.12作为未来正式更新基线；候选隔离方案须先核实，未实操不写PASS。
+
 ## 2026-11-03 — 插件前三项源码与自动回归完成，本地目录同步
 
 固定产品源 1d3aa9ab2c40b7ac5efc325a4a5ab086343e5843。[CI 41678849682](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41678849682) 成功，job126066734155 的 Rust fmt/check/tests、插件 Node、契约、桌面和文档构建通过；原始 test result 累加为 246通过/0失败/1真实R2忽略，新增预览 TTL/容量、旧官方兼容、Manifest/配置、原子重复插入/并发、回环 HTTP 及脱敏测试均通过。[原生 Windows/SQLite 41678849564](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41678849564) job126066733655 成功，覆盖原生启动、干净机 SQLite 重启保留、NSIS/MSI安装卸载和锁不变；[七页契约41678849544](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41678849544) 成功。
