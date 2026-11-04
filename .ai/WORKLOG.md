@@ -1,5 +1,13 @@
 # WORKLOG
 
+## 2026-11-03 — 插件前三项源码与自动回归完成，本地目录同步
+
+固定产品源 1d3aa9ab2c40b7ac5efc325a4a5ab086343e5843。[CI 41678849682](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41678849682) 成功，job126066734155 的 Rust fmt/check/tests、插件 Node、契约、桌面和文档构建通过；原始 test result 累加为 246通过/0失败/1真实R2忽略，新增预览 TTL/容量、旧官方兼容、Manifest/配置、原子重复插入/并发、回环 HTTP 及脱敏测试均通过。[原生 Windows/SQLite 41678849564](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41678849564) job126066733655 成功，覆盖原生启动、干净机 SQLite 重启保留、NSIS/MSI安装卸载和锁不变；[七页契约41678849544](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41678849544) 成功。
+
+首轮实现源5d04eb4的UI、R2离线、构建身份和发布策略检查成功，首轮CI失败已在下方保留诊断；不将它写成修正源同SHA七项检查。修正仅测试导入及CI缓存回退，对应源码自己的三项触发检查全部成功。本地21组Node、36对话框模拟、640流程、99/99/99命令和tsc/Vite均通过。
+
+用户明确本地位置为 D:/image-hosting-platform。核对干净main、旧HEAD3f5d1e1、origin仓库重定向后，以fetch+merge --ff-only同步至1d3aa9a，无覆盖、重置或新分支；未修改origin地址。当前记录是后续文档提交，不替代已测产品源。新插件原生导入/授权交互、真实R2写入及更高签名版本完整下载/安装没有新增实操，仍作为后续具体验收项。
+
 ## 2026-11-03 — 插件测试编译诊断与修正
 
 源码 5d04eb41ff527dfe3eb8bead907d2b5e1e6b7ae7 的 CI 41677009748：格式、生产 cargo check、插件 Node 与契约检查通过；Rust tests 在 persistence-sqlite 新增测试模块因缺少 serde_json::json 宏导入编译失败（五处）。读取 job 126060235630 的原始编译日志后补一个导入，不修改测试断言或跳过用例。CI 增加同 Windows debug 缓存前缀回退，仍由锁文件和 Cargo 校验实际依赖/增量有效性，不改变检查命令。修正源码须等待自己的同 SHA 云端结果。

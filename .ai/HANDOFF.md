@@ -1,6 +1,6 @@
 # HANDOFF
 
-入口规则见根目录 AGENTS.md。当前仅 main 开发，原始用户目录与安装应用保留；本轮编辑副本位于会话 work/source。
+入口规则见根目录 AGENTS.md。当前仅 main 开发。用户指定本地项目为 D:/image-hosting-platform；已确认其原状态干净，并从 3f5d1e1 快进同步至本批已验证产品源。后续以此目录为主，会话 work/source 保留核验副本；安装应用位置未变。
 
 ## 2026-11-03 — 1.4.12 正式发布与签名检查反馈
 
@@ -12,6 +12,6 @@
 
 用户确认“完成当前更新闭环后，继续做前三项插件能力”。现已实现本地 Manifest 预览/确认安装、宿主 API/Schema 1 校验与历史官方兼容、受限 Schema 表单。安装使用后端缓存原文对应对象/一次性 UUID/五分钟 TTL/最多四份预览/SQLite insert-if-absent，默认关闭且仅 read_asset。更改不增加迁移或外部依赖版本；只增加测试用 tokio 依赖边。文档见 docs/PLUGIN_ARCHITECTURE.md，例子见 examples/plugins。
 
-本地 21 组 Node 单元和前端 tsc/Vite 构建通过；云端 Rust fmt/check/tests 尚待本批提交的同 SHA 实际结果。不要拿签名发布源的 236/0/1 替代插件源码。原生 UI 自动化初始化持续报 kernel assets 路径错误，未操作真实插件/数据库。后续完成云端回归、记录源码 SHA 与结果；不复用 v1.4.12 tag 发布这些未发布变更。社区索引与 WASM 未实施。
+产品源 1d3aa9ab2c40b7ac5efc325a4a5ab086343e5843 的 CI 41678849682 成功，Rust 246/0/1真实R2忽略；原生 Windows/SQLite 41678849564 和七页契约 41678849544 成功。完整证据见 WORKLOG。原生 UI 自动化初始化持续报 kernel assets 路径错误，未在用户机操作新插件/数据库。下一候选需独立验收文件选择、预览/确认、授权、表单和重启保留；不复用 v1.4.12 tag 发布这些未发布变更。社区索引与 WASM 未实施。
 
 私钥在系统凭据库，GitHub Secret 已配置；加密 PKCS8 与 DPAPI 数据库备份实际恢复校验通过。异地签名备份未确认，凭据值不得进入日志或源码。早前临时目录清理被自动策略拒绝，未绕过，残留仍在会话 work；后续不重复批量删除。旧历史请查 Git，不沿用旧“等待授权/未发布”状态。
