@@ -29,6 +29,24 @@ jobs:
           toolchain: '1.98.1'
           components: rustfmt
 
+      - name: Restore pinned debug build cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/debug
+          key: ${{ runner.os }}-rust-debug-v2-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}-${{ hashFiles('.github/workflows/ci.yml') }}
+
+      - name: Restore pinned native release build cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/release
+          key: taskui-native-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}
+
       - name: Validate update signing configuration
         env:
           MIRROR_UPDATE_SIGNING_SEED: ${{ secrets.MIRROR_UPDATE_SIGNING_SEED }}

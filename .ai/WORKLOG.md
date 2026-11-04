@@ -1,5 +1,19 @@
 # WORKLOG
 
+## 2026-11-03 — 候选源码状态快照修正与缓存复用
+
+补查确认091ef4e的STATE.generated仍记录旧版本，project_state --verify报version_declared/repository漂移1项。当前用脚本刷新并规范origin后复验13facts/0problem；为使交付源码也通过此项，改用修正提交重新冻结候选。初次候选41758695818已成功结束，windows-bundle126340912227成功、publish-release126349587546跳过；取消API返回409，未实际取消。旧产物保留但不作为本轮交付。原产品代码和依赖版本不变，不把原候选二进制复用于新SHA。
+
+Release Bundle增加两个已固定SHA的actions/cache步骤，路径与键分别精确对应现有CI debug缓存及原生release缓存，包含依赖锁和工具链摘要。Cargo仍完整执行fmt/check/test --locked、Tauri构建、锁不变检查、NSIS/MSI smoke、签名配对与验件；缓存命中与最终结果按新run记录，不以旧CI替代。
+
+## 2026-11-03 — 1.4.13 G0通过，旧客户端实际下载完成
+
+固定源091ef4e3633daa6d82a50146c06d43489afb9d1e的七项push均成功；CI41756938053/job126335144324原始test result累计246/0/1真实R2忽略，原生41756938033/job126335144426通过NSIS/MSI安装卸载与SQLite重启保留。按顺序触发无tag候选41758695818，当前打包中，不提前记为G2通过。
+
+更新后的Computer Use恢复可操作。按用户指定核对D盘一级目录、程序版本与真实UI，当前D:/Mirror Cloud为1.4.10候选c4d8a540a1f9。先用SQLite只读backup取得一致快照，DPAPI加密到会话outputs，解密回读、18表与integrity_check验证通过；无明文DB落盘。旧客户端实际发现正式1.4.12，经下载按钮完成下载，界面显示SHA256通过；磁盘16480162字节及完整哈希997839522f02e0fb0ac105f01396fed9805c00156bb2ced95c07361bd8135e68匹配已核验正式资产。当前未启动安装器，安装时确认已请求。旧客户端只做SHA256，不把外部独立验签冒称旧客户端自带签名。
+
+补查project_state --verify发现快照version_declared/repository漂移1项；将旧origin重定向规范为用户给定Mirror_Cloud地址，并用--write刷新。复验13facts/0problem，UPDATE_REPO匿名API不可达按SKIP记录。此后续记录提交不改变冻结候选源码。
+
 ## 2026-11-03 — 已授权执行1.4.13候选与验收
 
 用户对下一步方案回复“执行”：统一1.4.13版本、无tag签名候选、插件真机交互与G3、条件正式发布、当前1.4.12经更新器升级正式1.4.13。基于干净70db93a，云端文档CI41756223420及七页41756223082已成功。仅修改版本声明和13个workspace锁成员，不升级外部依赖、不改identifier/DDL/签名公钥。签名密钥和Secret沿用已配置项，不重新生成。保留现有1.4.12作为未来正式更新基线；候选隔离方案须先核实，未实操不写PASS。
