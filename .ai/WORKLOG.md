@@ -1,5 +1,13 @@
 # WORKLOG
 
+## 2026-11-03 — 1.4.13修正候选G0/G2与独立验件完成
+
+固定源60f0a34c898cf3ef88c470ff019381ef0fa476e5：[CI41761819146](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41761819146)和七页41761818872成功，Rust246/0/1真实R2忽略；基础091ef4e的七项与原生检查为同产品代码补充证据，不混成同SHA七项。13facts/0problem快照复验通过，匿名UPDATE_REPO核对仍SKIP。50个外部Actions引用固定SHA校验通过。
+
+[无tag候选41762347677](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41762347677)成功，windows-bundle126352697742成功、publish-release126355858655跳过。候选自身Rust246/0/1、教程HTTP、锁不变、NSIS/MSI smoke、签名配对和验件成功。独立下载artifact13290489317/60390907B，重算digest4eab9014542e350f299ddb1d389db8f82f1af84eaddb674bb9ddce4d10742012匹配；六资产、源码固定公钥Ed25519、SHA256SUMS、501源码及ZIPcomment一致，UTF-8 CRLF/LF按公开验件规则规范化比较；三份构建锁artifact13290519309/95774B/digest aa61dcd295725d70aad39a5fbe3fe502641ac3e4fcea575a422b10d858ebad01也匹配冻结源。
+
+候选NSIS16542951B/SHA256 77adb8aa7ab7720888db8ff7bda1ec366b96a9f23cc59e9b5fd1886867c72a17。latest仍v1.4.12，v1.4.13 tag不存在。证据和文件在会话outputs/candidate-1.4.13-*，验收见1.4.13-acceptance.md。当前本机仍1.4.10，已下载校验1.4.12并做18表加密DB备份，安装时确认待用户答复；没有把旧1.4.12反馈复用为新候选G3。本笔仅记录G0/G2，不替代候选源，也未正式发布。
+
 ## 2026-11-03 — 候选源码状态快照修正与缓存复用
 
 补查确认091ef4e的STATE.generated仍记录旧版本，project_state --verify报version_declared/repository漂移1项。当前用脚本刷新并规范origin后复验13facts/0problem；为使交付源码也通过此项，改用修正提交重新冻结候选。初次候选41758695818已成功结束，windows-bundle126340912227成功、publish-release126349587546跳过；取消API返回409，未实际取消。旧产物保留但不作为本轮交付。原产品代码和依赖版本不变，不把原候选二进制复用于新SHA。
