@@ -38,7 +38,9 @@ export default defineConfig({
             { label: '多云组与修复', slug: 'use/multicloud' },
             { label: '本机 HTTP API', slug: 'use/local-api' },
             { label: '凭据与安全', slug: 'use/security' },
-            { label: '背景与外观', slug: 'use/appearance' }
+            { label: '背景与外观', slug: 'use/appearance' },
+            { label: '插件安装与配置', slug: 'use/plugins' },
+            { label: '版本与签名更新', slug: 'use/updates' }
           ]
         },
         {

@@ -8,9 +8,9 @@
 
 核心字段：`api_version`、`schema_version`、`id`、`name`、`version`、`description`、`kind`、`permissions`、`hooks`、`config_schema`。
 
-main 的未发布扩展使用宿主 API **1**、Manifest Schema **1**，两者必须显式声明且精确匹配；插件自身的 `version` 仅表示插件版本。缺失或不支持的版本会被拒绝。历史内置的三个官方插件由宿主当前声明补齐缺失版本，保留已有配置、开关、权限和触发器；显式声明不兼容版本仍拒绝。桌面、Typora/CLI 和 Local API 使用同一兼容解析入口。已发布 v1.4.12 安装包不包含这些未发布扩展。
+自正式 v1.4.13 起，本地插件使用宿主 API **1**、Manifest Schema **1**，两者必须显式声明且精确匹配；插件自身的 `version` 仅表示插件版本。缺失或不支持的版本会被拒绝。历史内置的三个官方插件由宿主当前声明补齐缺失版本，保留已有配置、开关、权限和触发器；显式声明不兼容版本仍拒绝。桌面、Typora/CLI 和 Local API 使用同一兼容解析入口。v1.4.12 及更早安装包不包含本地文件安装与自动配置表单；操作步骤见 [插件教程](https://159357yangjun.github.io/Mirror_Cloud/use/plugins/)。
 
-## 从本地文件安装（main 未发布）
+## 从本地文件安装（v1.4.13 起）
 
 桌面插件页点击“从文件安装”，选择本地 UTF-8 JSON Manifest，查看名称、版本、兼容版本、声明权限和触发器后确认安装。可直接使用 [模板示例](../examples/plugins/markdown-card.plugin.json) 或 [Webhook 示例](../examples/plugins/webhook.plugin.json)。
 
@@ -20,7 +20,7 @@ main 的未发布扩展使用宿主 API **1**、Manifest Schema **1**，两者�
 - 新安装默认关闭，仅授予基础 `read_asset`；网络、密钥、外部写入继续单独显式授权。仅默认选择已声明的 `after_upload`，不自动开启其他触发器。
 - 文件只包含声明式配置，不加载脚本、原生代码或 WASM；导入与确认不会执行插件或发起网络请求。
 
-## 自动配置表单（main 未发布）
+## 自动配置表单（v1.4.13 起）
 
 `config_schema` 是字段名到字段说明的对象，最多 32 项。支持 `string`、`url`、`boolean`、`number`、`integer` 和 `enum`，可填写 `title`、`description`、`required`、`default`、`enum`、`minLength`、`maxLength`、`minimum`、`maximum`。例如：
 

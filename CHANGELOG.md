@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-04 — 执行教程同步、网站部署与1.4.14候选准备
+
+用户对“同步README/插件教程、部署网站、缓存修复随下一补丁打包”回复执行。修改前D:/image-hosting-platform main干净，HEAD及认证API远端均ea0970b7bcc2fce23f643bb7c567209380b399e8。README改正式1.4.13，插件架构改为1.4.13已发布；网站新增use/plugins与use/updates教程并接入既有使用菜单和首页，明确当前正式13、候选14、敏感权限及旧缓存处理边界，不声称社区索引/WASM已提供。
+
+准备1.4.14仅纳入已通过六项云端的缓存修正14f4e58；Cargo/npm/Tauri及13个workspace锁成员同步版本，外部依赖、公钥、identifier和DDL不变。STATE.generated由脚本刷新。原7900系统代理可访问Git；旧7897已失效，直连reset，按本轮探测使用命令/进程级7900，不改全局配置。本地网站build因未安装Astro不能运行，文档16项通过；不装额外工具，按既有Docs/CI消费锁文件在云端构建、浏览器验证与发布。新教程未部署、新候选未产出，不提前记成功；实际结果见后续收据。
+
 ## 2026-11-04 — 更新缓存修复同源云端核验完成
 
 后续未发布源码14f4e5858ff4bff48ca533f95650d8e6ba5e204f已推送main；六条实际工作流均completed/success：[CI41804857563](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41804857563)/job126489242778、原生Windows/SQLite41804857548/job126489242023、Windows UI41804857561、构建身份41804857589、R2离线41804857615、七页41804857628。源码4项新增回归及本地22组unit/99契约/640流程/build结果见前条；云端成功不代替该缓存修正尚未在已安装正式包中发布的事实。本批正式1.4.13签名更新和数据保留验收已完成，当前D目录正式程序保持运行，未创建新tag或移动旧tag。完整逐文件/提交/实际CI报告在会话outputs/release-1.4.13-report.md与cache-fix-ci.json。
