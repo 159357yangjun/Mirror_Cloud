@@ -1,5 +1,17 @@
 # WORKLOG
 
+## 2026-11-04 — 正式签名更新全路径完成；修复升级缓存提示（未另发包）
+
+用户明确批准安装正式1.4.13。保留的正式1.4.12进程中，实际点“立即安装”及“安装并退出”，后端自己复验并启动静默NSIS，旧进程退出；agent没有另行从文件管理器/命令行启动正式安装器。D:/Mirror Cloud程序随后与已验正式NSIS静态提取的payload逐字节哈希匹配：EXE43922944B/SHA256 f32573cf5536f9dd95ae8205779db5c331f03b3c24b5ce7cb229698ed0e8d04f，正式安装件16541832B/SHA256 d26c10ace1a70770db3fe93a2303383e72880e40143b726cc7903e7a002ff233。实际重开D目录UI1.4.13，无候选标记。
+
+正式重启后，与mirror-cloud-before-formal-1.4.13.sqlite.dpapi解密快照比较：九张业务表记录完全一致（排除created_at/updated_at），原设置无缺失/变化（排除update.lastCheck）；SQLite integrity_check通过，四插件配置/开关/授权/触发器及无API版本的旧官方模板保留。樱粉、原壁纸和默认Gitee仍可见。正式D程序实际--typora-upload经现有凭据上传一张合成图成功，返回1URL，资产4→5且旧ID全保留；凭据未读出/回显。再点正式版检查，显示暂无比1.4.13更新的正式版，无签名错误。
+
+至此“正式1.4.12检查→独立验签→下载→客户端确认安装→退出→正式1.4.13重启→数据与新上传复验”已实际通过。边界：起点是保留的真实正式1.4.12可执行文件，共用数据库和D程序注册此前已跑过1.4.13候选；不冒称从未运行候选的独立机器。Typora为真实CLI桥接入口，非编辑器UI；未验公开链接访问、真实R2或个人MP4。证据会话outputs/formal-1.4.13-updater-e2e.json、formal-1.4.13-data-preservation.json、formal-1.4.13-upload-probe.json。四张合成Gitee测试对象及三个关闭的本地样例插件保留，未删除。
+
+真机发现非阻断显示缺陷：新程序复用24小时内旧currentVersion检查结果，首次启动仍提示发现已装版本；手动检查更新了设置卡片但没有清侧栏，检查后再次重启才消失。源码已证实getUpdateStatus未按当前编译版本失效，SettingsPage onSuccess未同步store。仅main修复：旧版本/无payload/已过期缓存返回fresh:false/result:null，启动重新检查；手动检查同步或清除侧栏提示。新增4项真实包装函数/成功回调回归（红1通过3失败→绿4/0），纳入test_unit；22组unit、99/99/99契约、640流程、tsc/Vite和diff通过，既有chunk/动态导入警告保留。此次修复尚未打包发布，不将本机正式60f源包冒称包含修复；v1.4.13 tag/资产不动，无新tag/版本/依赖/DDL。
+
+本条提交前，新修复同SHA云端CI仍待提交后读取。当前已安装正式版完成范围内闭环，源码缓存修复与已发布包分别留证；私钥异地备份、社区索引/WASM及上述未测范围不扩写为完成。
+
 ## 2026-11-04 — 1.4.13正式G4/G5与签名客户端下载完成
 
 G4：一次创建不可变v1.4.13，附注tag对象4e24287a9acdb7e3878c911ef542ad16b94399ad固定已测产品源60f0a34c898cf3ef88c470ff019381ef0fa476e5；不是后续文档HEAD。G5：[正式构建41800825443](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41800825443)完成success，windows-bundle126475859060、publish-release126478877951均成功；标签CI41800825440成功。[正式Release](https://github.com/159357yangjun/Mirror_Cloud/releases/tag/v1.4.13)公开且latest。六公开文件逐字节哈希与GitHub digest/云端artifact13308330538一致，固定公钥Ed25519、501源码和三锁独立核验通过。正式NSIS16541832B/SHA256 d26c10ace1a70770db3fe93a2303383e72880e40143b726cc7903e7a002ff233，与候选字节不同；详见会话outputs/formal-1.4.13-public-verification.json。

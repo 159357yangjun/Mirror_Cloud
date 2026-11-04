@@ -635,7 +635,13 @@ export async function getUpdateStatus(): Promise<UpdateStatus> {
   if (!isTauriRuntime()) {
     return { checkedAt: null, fresh: false, result: null }
   }
-  return invoke('get_update_status')
+  const status = await invoke<UpdateStatus>('get_update_status')
+  // A recent answer belongs to the binary that checked it. After upgrading, withhold it so
+  // startup re-checks instead of announcing the version that is already installed.
+  if (!status.fresh || !status.result || status.result.currentVersion !== __APP_VERSION__) {
+    return { checkedAt: status.checkedAt, fresh: false, result: null }
+  }
+  return status
 }
 
 export async function downloadUpdate(check: UpdateCheckResult): Promise<DownloadedUpdateSummary> {

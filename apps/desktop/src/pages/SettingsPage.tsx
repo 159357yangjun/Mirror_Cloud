@@ -333,6 +333,7 @@ export function SettingsPage() {
     onSuccess: (result) => {
       setUpdateCheck(result)
       setUpdateDownloaded(null)
+      useAppStore.getState().setUpdateAvailableVersion(result.updateAvailable ? result.latestVersion : null)
       const checkedAt = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
       setManualUpdateFeedback(result.updateAvailable
         ? `本次检查成功（${checkedAt}）：GitHub 已发布 v${result.latestVersion}。`
