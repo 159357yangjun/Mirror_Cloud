@@ -1,5 +1,13 @@
 # WORKLOG
 
+## 2026-11-04 — 1.4.13正式G4/G5与签名客户端下载完成
+
+G4：一次创建不可变v1.4.13，附注tag对象4e24287a9acdb7e3878c911ef542ad16b94399ad固定已测产品源60f0a34c898cf3ef88c470ff019381ef0fa476e5；不是后续文档HEAD。G5：[正式构建41800825443](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41800825443)完成success，windows-bundle126475859060、publish-release126478877951均成功；标签CI41800825440成功。[正式Release](https://github.com/159357yangjun/Mirror_Cloud/releases/tag/v1.4.13)公开且latest。六公开文件逐字节哈希与GitHub digest/云端artifact13308330538一致，固定公钥Ed25519、501源码和三锁独立核验通过。正式NSIS16541832B/SHA256 d26c10ace1a70770db3fe93a2303383e72880e40143b726cc7903e7a002ff233，与候选字节不同；详见会话outputs/formal-1.4.13-public-verification.json。
+
+从保留的正式1.4.12副本实际启动，原生版本核对后点击检查，UI发现1.4.13并明确发布签名通过；实际点下载，显示“已下载并通过发布签名和SHA256校验（16,541,832 B）”。受控随机目录文件独立磁盘哈希与上述公开正式包匹配。当前停在“立即安装”；正式安装操作时确认已请求，尚未获答复，未启动该正式安装器。D:/Mirror Cloud磁盘仍为候选，当前运行的是保留1.4.12副本；不能把已发布/验签/下载扩写为完整更新安装和重启通过。最新18表数据库DPAPI备份mirror-cloud-before-formal-1.4.13.sqlite.dpapi已恢复校验。
+
+G3记录提交e4f8494f32dc1394a59156677b9a107b741e794f已推送，仅五文档40新增/28删除；其CI41800703984与七页41800703921均成功。本轮文档验证曾因STATE.md重写遗漏固定文案失败，恢复原句后640/0；16文档、diff及13facts/0problem通过，远端tag陈旧比较不可达SKIP。没有产品变更、额外依赖、DDL或猜测修复。余项：用户确认后从当前1.4.12真正点击立即安装/安装并退出，经安装器替换D目录候选为正式，重启复核正式标记、哈希和保真矩阵，再记录完整签名更新是否通过。
+
 ## 2026-11-04 — 候选插件原生验收及实际安装G3完成
 
 固定被测源60f0a34c898cf3ef88c470ff019381ef0fa476e5，候选NSIS16542951B/SHA256 77adb8aa7ab7720888db8ff7bda1ec366b96a9f23cc59e9b5fd1886867c72a17。用户明确批准运行独立候选、授权提示自行操作，后另批准覆盖D:/Mirror Cloud安装候选。先保留实际可运行的正式1.4.12副本于会话outputs/baseline-1.4.12-preserved，SHA256 9d2ec952c18958057dbc5bd7e6e438eda9ec88dae53982dc72319dfb20f5fb25；实际启动确认1.4.12。各阶段18表SQLite只读一致性快照经DPAPI加密并解密恢复/integrity_check通过，未落盘明文或导出凭据。
