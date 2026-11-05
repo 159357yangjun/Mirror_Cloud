@@ -180,7 +180,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       {showHelp && (
         <HelpCenterDialog
           onClose={closeHelp}
-          onNavigate={setPage}
+          onNavigate={(page, settingsSection) => {
+            if (page === 'settings') useAppStore.getState().setSettingsSection(settingsSection ?? 'output')
+            setPage(page)
+            if (mainRef.current) mainRef.current.scrollTop = 0
+          }}
           onlineDocsUrl={docsUrl}
           openExternalUrl={openExternalUrlOrReport}
         />

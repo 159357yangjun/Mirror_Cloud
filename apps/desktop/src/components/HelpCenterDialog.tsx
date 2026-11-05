@@ -1,5 +1,6 @@
 import { BookOpen, Boxes, Cloud, Copy, ExternalLink, Images, Settings2, Upload, Workflow, X } from 'lucide-react'
 import type { PageKey } from '../types'
+import type { SettingsSection } from '../features/settings/sections'
 
 type GuideTint = 'info' | 'accent' | 'success' | 'warning'
 
@@ -23,12 +24,12 @@ export function HelpCenterDialog({
   openExternalUrl,
 }: {
   onClose: () => void
-  onNavigate: (page: PageKey) => void
+  onNavigate: (page: PageKey, settingsSection?: SettingsSection) => void
   onlineDocsUrl?: string | null
   openExternalUrl: (url: string) => void
 }) {
-  function go(page: PageKey) {
-    onNavigate(page)
+  function go(page: PageKey, settingsSection?: SettingsSection) {
+    onNavigate(page, settingsSection)
     onClose()
   }
 
@@ -51,14 +52,16 @@ export function HelpCenterDialog({
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6">
           <div className="grid grid-cols-2 gap-4 max-md:grid-cols-1">
-            <GuideCard tint="info" icon={Cloud} step="1" title="连接一个云端存储" description="首次可从 GitHub 开始：填写仓库信息和访问令牌，先测试连接再保存。连接成功不等于公开地址可用或私有权限已验证。" action="去云端" onClick={() => go('storages')} />
+            <GuideCard tint="info" icon={Cloud} step="1" title="连接一个云端存储" description="在“云端配置”填写仓库信息和访问令牌，先测试连接再保存。连接成功不等于公开地址可用或私有权限已验证。" action="去云端配置" onClick={() => go('storages')} />
             <GuideCard tint="info" icon={Cloud} step="R2" title="R2 逐步配置与排错" description="在云端选择 Cloudflare R2，依次核对桶名、Account ID、公开/私有用途和密钥。遇到连接错误可查看不泄漏密钥的对应修复建议；仅最后的远端测试会请求写入授权。" action="打开 R2 配置入口" onClick={() => go('storages')} />
-            <GuideCard tint="accent" icon={Upload} step="2" title="上传第一张测试图片" description="点击“快速发布”选择图片，确认默认云端后提交。任务成功代表本次上传已完成；请再核对资源记录、访问链接或私有权限。" action="开始发布" onClick={() => go('publish')} />
-            <GuideCard tint="info" icon={Images} step="3" title="在“图库”查看云端文件" description="图库浏览已连接云端的文件，也能查看非镜云上传的旧图片；它与记录本机发布结果的“资源”页不同。" action="打开图库" onClick={() => go('gallery')} />
-            <GuideCard tint="success" icon={Boxes} step="4" title="理解“资源”记录" description="“资源”记录图片名称、可用地址、部署和插件结果，图片本体仍在云端。连接已有云端不会自动把旧文件加入发布记录。" action="查看资源" onClick={() => go('assets')} />
-            <GuideCard tint="success" icon={Copy} step="5" title="复制链接与私有分享" description="有公开地址时，可以复制 URL、Markdown 或 HTML 等格式。私有图片不应直接公开：请到“资源”按权限生成限时分享链接。" action="查看设置" onClick={() => go('settings')} />
-            <GuideCard tint="warning" icon={Workflow} step="6" title="将镜云连接到 Typora" description="在设置页复制 Typora 自定义上传命令，然后到 Typora → 偏好设置 → 图像中粘贴并验证。不需要同时安装其他图床工具。" action="Typora 配置" onClick={() => go('settings')} />
+            <GuideCard tint="accent" icon={Upload} step="2" title="上传第一张测试图片" description="点击“快速上传”选择图片，确认默认云端后提交。任务成功代表本次上传已完成；请再核对上传记录、访问链接或私有权限。" action="开始上传" onClick={() => go('publish')} />
+            <GuideCard tint="info" icon={Images} step="3" title="在“云端文件”查看已有图片" description="“云端文件”浏览已连接云端的文件，也能查看非镜云上传的旧图片；它与记录本机上传结果的“上传记录”页不同。" action="打开云端文件" onClick={() => go('gallery')} />
+            <GuideCard tint="success" icon={Boxes} step="4" title="理解“上传记录”" description="“上传记录”保存图片名称、可用地址、部署和插件结果，图片本体仍在云端。连接已有云端不会自动把旧文件加入上传记录。" action="查看上传记录" onClick={() => go('assets')} />
+            <GuideCard tint="success" icon={Copy} step="5" title="复制链接与私有分享" description="在设置 → 上传与复制中选择 URL、Markdown 或 HTML 等输出格式。私有图片不应直接公开，请到“上传记录”按权限生成限时分享链接。" action="复制设置" onClick={() => go('settings', 'output')} />
+            <GuideCard tint="warning" icon={Workflow} step="6" title="将镜云连接到 Typora" description="在设置 → 快捷集成中复制 Typora 自定义上传命令，然后到 Typora → 偏好设置 → 图像中粘贴并验证。不需要同时安装其他图床工具。" action="Typora 配置" onClick={() => go('settings', 'integration')} />
             <GuideCard tint="warning" icon={Settings2} step="7" title="按需开启进阶功能" description="熟悉基本上传后，再配置快捷键、右键菜单、ShareX 本机接口或多云备份；首次使用不需要一次全部设置。" action="全部设置" onClick={() => go('settings')} />
+            <GuideCard tint="info" icon={Settings2} step="API" title="连接本机 API" description="在设置 → 接口与安全中查看本机 HTTP API 地址、令牌和连接说明。接口只面向本机回环访问，令牌请勿放入公开文档。" action="本机 API 设置" onClick={() => go('settings', 'security')} />
+            <GuideCard tint="info" icon={Settings2} step="更新" title="检查正式版本更新" description="在设置 → 关于与诊断中检查正式版本。下载和安装由你确认，安装包需要通过发布签名与 SHA256 校验。" action="版本与更新" onClick={() => go('settings', 'about')} />
           </div>
         </div>
       </section>

@@ -39,11 +39,12 @@ jobs:
           restore-keys: ${{ runner.os }}-rust-debug-v2-
       - name: Update signature protocol tests
         run: node --test scripts/test_update_signing.mjs
-      - name: Plugin import and schema form tests
+      - name: Plugin import, schema form and help navigation tests
         working-directory: apps/desktop
         run: |
           npm ci
           node --test ../../scripts/test_plugin_extensions.mjs
+          node --test ../../scripts/test_help_navigation.mjs
       - name: Static validation
         run: python scripts/validate.py
       - name: Command contract validation

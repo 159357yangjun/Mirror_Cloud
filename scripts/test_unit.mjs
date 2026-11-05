@@ -7,6 +7,7 @@ const suites = [
   'test_desktop_runtime.mjs',
   'test_desktop_query_availability.mjs',
   'test_desktop_update_cache.mjs',
+  'test_help_navigation.mjs',
   'test_desktop_subscription.mjs',
   'test_desktop_dialogs.mjs',
   'test_desktop_clipboard.mjs',
