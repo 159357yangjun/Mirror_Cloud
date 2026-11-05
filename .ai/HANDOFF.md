@@ -2,9 +2,9 @@
 
 入口规则见AGENTS.md；仅main，主目录D:/image-hosting-platform。正式1.4.14产品源aa58f75568fe4b9a01cdc774002b4c07add2b061；本轮1.4.15候选冻结源800f8786cd98ef9fda7e938a48b8dc3a27ca7038，记录提交不能替代被测源。
 
-## 当前执行：第1批帮助入口
+## 已完成：第1批帮助入口（源码与独立候选验收）
 
-本轮源码/本地检查、同SHA七项G0和候选41970382973 G2独立核验完成（签名/六资产/505源码/三锁）。正式14原生旧负例已复现：从关于与诊断点击帮助Typora仍在原分类。独立候选EXE在会话outputs/candidate-1.4.15-msi-reference/PFiles/Mirror Cloud/image-hosting-platform-desktop.exe，SHA2569a1680125a280c0ce2036e593ce7b1f5afa9029e9fb34e5fbdd4edf3e3065de1，尚未运行；下一步操作时获准后运行独立候选验帮助路由/滚动/名称/按钮可达性，再返回正式14，不覆盖D程序、不做新云端上传。最新DPAPI备份mirror-cloud-before-1.4.15-help-run已恢复验证18表；原正式14及副本匹配。没有正式15 tag，不自动发布；本轮原生帮助验收不等于安装升级G3。详见WORKLOG最新条与会话outputs/1.4.15-help-delivery.md。
+本批完成：冻结源800f8786同SHA七项G0、无tag签名候选41970382973六资产/505源码/三锁核验、正式14原生旧负例及用户批准后的独立15候选9项帮助正例。当前独立候选已退出，D目录仍原正式14（56d7fb73d808adaa34d877ee637dd6e7ac257ac0bbe42756378679377360bdbf），九表/设置与备份一致、assets7、无新上传。原生证据范围仅当前桌面窗口/鼠标导航；没有安装15、没有升级G3/正式15 tag，不把帮助验收写成升级验收。若后续用户要求正式发布，先走实际安装升级G3；此事项不自动插入当前批次。详情见WORKLOG最新条及会话outputs/1.4.15-help-delivery.md、1.4.15-help-native.json、1.4.15-help-preservation.json。
 
 ## 已完成：教程同步与1.4.14
 
