@@ -2,9 +2,9 @@
 
 入口规则见AGENTS.md；仅main，主目录D:/image-hosting-platform。正式1.4.15与已验候选均使用冻结源800f8786cd98ef9fda7e938a48b8dc3a27ca7038。正式资产与候选资产分别核验。
 
-## 待完成：正式1.4.15重启复验与官网同步
+## 正式1.4.15重启复验与官网同步
 
-正式Release已发布，签名及六项公开资产、505个源码文件和三把构建锁核验通过。保留的正式1.4.14实际检查和下载正式1.4.15，临时目录文件匹配公开安装包。安装确认后旧客户端退出，D目录EXE与正式MSI解包参考归一化哈希匹配，等待用户重新打开。已在安装前加密备份。复验九表/原设置、帮助跳转及Gitee合成图上传后部署官网。会话outputs/formal-1.4.15-public-verification.json及formal-1.4.15-updater-e2e.json保存当前证据。
+正式Release已发布，签名及六项公开资产、505个源码文件和三把构建锁核验通过。保留的正式1.4.14完成实际应用内更新。用户重新打开D目录正式版，原有九表及设置保留，Typora帮助跳转和Gitee合成图上传通过。官网随本提交部署，检查Docs Site同SHA部署及公开页面。证据见会话outputs/formal-1.4.15-public-verification.json及formal-1.4.15-updater-e2e.json。
 
 ## 已完成：第1批帮助入口及候选G3
 

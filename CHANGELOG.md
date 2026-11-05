@@ -2,7 +2,7 @@
 
 ## 2026-11-05（UTC）— 正式1.4.15发布
 
-正式版统一应用内帮助入口名称，修复设置分类跳转和跳转后的滚动位置。不可变标签指向候选验收源码 `800f8786cd98ef9fda7e938a48b8dc3a27ca7038`。正式安装包的发布签名及SHA256已独立核验。原生正式1.4.14应用内检查、下载、验签与安装已复验，重启后验收待完成。[正式安装包](https://github.com/159357yangjun/Mirror_Cloud/releases/tag/v1.4.15) · [正式构建](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41994352437)
+正式版统一应用内帮助入口名称，修复设置分类跳转和跳转后的滚动位置。不可变标签指向候选验收源码 `800f8786cd98ef9fda7e938a48b8dc3a27ca7038`。正式安装包的发布签名及SHA256已独立核验。正式1.4.14应用内检查、下载、验签、安装及重启已复验，原数据与设置保留，Typora帮助入口和Gitee上传通过。[正式安装包](https://github.com/159357yangjun/Mirror_Cloud/releases/tag/v1.4.15) · [正式构建](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/41994352437)
 
 ## 2026-11-05（UTC）— 1.4.15 候选通过本机安装升级 G3
 
