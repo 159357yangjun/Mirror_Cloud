@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-04 — 正式1.4.14发布与公开资产独立核验
+
+G3后创建唯一不可变v1.4.14，tag对象a39801abd8639141fe88bb188baa9f9e6548d751，目标aa58f75568fe4b9a01cdc774002b4c07add2b061；正式Release Bundle41964583299/windows-bundle127038517249/publish127040560988及tag CI41964583270均success。G3记录6e888997e44de8109f328e8bcbc74eff3a6297a8对应CI41964539862与七页41964539923成功。
+
+正式公开六文件全部独立下载，与GitHub size/digest及云端artifact字节一致；固定公钥Ed25519、三SHA256、504源文件/冻结Git树及三份实际构建锁通过。正式NSIS 16,533,785 B/SHA256 eb733e85abad25e160933fa06b92c8fd77e437c0a1f9b67c889b99404c80236d，与候选不同，不复用候选哈希。正式latest已为1.4.14；README/网站首页/更新教程同步正式版本与缓存修复说明，STATE.generated脚本刷新。新网站提交尚待实际部署，不能用前次部署冒充本次。
+
+本机D目录仍候选14，正式包尚未安装；正使用保留的真实正式13副本验证检查/下载，正式具体安装须操作时确认。用户数据已再次DPAPI备份并恢复验证18表。真实正式13->14更新安装、正式14重启数据/新上传尚待，不复用候选G3称正式已完成。独立核验JSON与逐文件报告在会话outputs/formal-1.4.14-public-verification.json、formal-1.4.14-build-locks.json及release-1.4.14-report.md。
+
 ## 2026-11-04 — 1.4.14候选G3复验完成，准备正式发布
 
 当前D:/Mirror Cloud实际程序1.4.14，原生界面候选标识aa58f75568fe，已实际重启。安装器欢迎页曾观察到，但Next操作因窗口失效/前台PID失败；用户继续安装后确认实际落盘，不能声称安装器末页由Agent完整操作。旧D目录一度仅剩卸载程序的中间状态已不适用。当前EXE 43,922,944 B/SHA256 e6902c536fcece8b7989d7313c045e743e7d555bcf3c800acfd68956d86fb50e。已签名候选MSI用系统msiexec /a仅解包作参考，退出0；其EXE哈希a44818c823a2e2322e336fd28d7f37ac18f9a32e1dc01b3508241d13e517fcdb，与已装EXE仅Tauri __TAURI_BUNDLE_TYPE_VAR_MSI/NSS标记两字节不同，替换此唯一标记后全部字节一致，不称两格式原始哈希相同。
