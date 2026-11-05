@@ -1,5 +1,15 @@
 # WORKLOG
 
+## 2026-11-05（UTC）— 第1批同源G0/G2完成，等待独立候选原生验收
+
+冻结源码800f8786cd98ef9fda7e938a48b8dc3a27ca7038已推送main，17文件；同SHA七项completed/success：CI41969186639/job127053182604、原生Windows/SQLite41969186685/job127053182294、R2离线41969186602、Windows UI41969186742、构建身份41969186676、发布策略41969186675、七页41969186701。已通过GitHub连接器读取CI完成日志，新增6项真实JSX闭包/宿主回调回归全部通过；Rust246通过/0失败/1受保护真实R2忽略。本地23组unit和其他检查见前条，不把离线/云端检查等同本机原生交互。
+
+在本机正式1.4.14实际复现旧入口问题：先选设置“关于与诊断”，打开帮助并点击“Typora 配置”，帮助关闭但仍停在关于与诊断，未到快捷集成；未改设置值或写入云端。独立原生负例证据在会话outputs/1.4.15-old-help-native.json。
+
+G0全部通过后无tag候选41970382973完成success，windows-bundle127056992226成功、publish-release127060323143按预期skipped。六资产独立下载，固定公钥Ed25519、三资产SHA256、505源码与冻结Git树（UTF-8 CRLF规范化）及三实际构建锁核验通过。候选NSIS16,537,995 B/SHA256 8b4a8e17721c4f55b74cf69802494680acc63e0beee13ba17033a0cd2b912088。由已核验MSI仅解包得到独立EXE43,922,944 B/SHA256 9a1680125a280c0ce2036e593ce7b1f5afa9029e9fb34e5fbdd4edf3e3065de1，尚未运行。正式1.4.14及保留副本仍匹配56d7fb73d808adaa34d877ee637dd6e7ac257ac0bbe42756378679377360bdbf，D目录未覆盖；SQLite已再次DPAPI一致备份并内存恢复完整性验证18表。一次性核验脚本已按精确路径删除。
+
+下一步按Computer Use操作时确认，临时退出正式14后运行独立15候选，只核对帮助分类、同页滚动、名称与按钮可达性，完成返回正式14；不把本轮原生帮助验收当作安装升级G3，不自动发布正式15或执行新云端上传。正式频道仍v1.4.14，未创建v1.4.15 tag，官网/社区索引/WASM不插入。逐文件与CI/签名/源码证据在会话outputs/1.4.15-help-delivery.md、1.4.15-ci-tests.json、candidate-1.4.15-cloud-verification.json、candidate-1.4.15-verification.json、candidate-1.4.15-exe-reference.json。
+
 ## 2026-11-04 — 执行第1批帮助入口与过期描述修正
 
 用户接受“下一次只做第1批”后回复执行。修改前本地主仓库main干净、HEAD与认证API远端均3f7ee311039fc1fdbd2e2e499729ae6e4d2696b8。帮助旧图库/资源/快速发布名称与当前导航不一致，Typora等只调用setPage、未选择设置分类，已实际读取确认。现在内部导航携带SettingsSection，先设分类再设页面，帮助跳转始终滚动到主区顶部（包括已在相同设置分类）；普通非设置帮助跳转保留用户的设置分类。复制/Typora/API/更新分别指定output/integration/security/about，通用设置默认output；新增API与版本卡，保留原7步顺序、权限/链接访问边界与布局样式。未触发任何设置更改、网络、权限或安装动作。

@@ -1,10 +1,10 @@
 # HANDOFF
 
-入口规则见AGENTS.md；仅main，主目录D:/image-hosting-platform。正式1.4.13产品源60f0a34c898cf3ef88c470ff019381ef0fa476e5；新1.4.14候选冻结源aa58f75568fe4b9a01cdc774002b4c07add2b061，后续记录提交不能替代被测源。
+入口规则见AGENTS.md；仅main，主目录D:/image-hosting-platform。正式1.4.14产品源aa58f75568fe4b9a01cdc774002b4c07add2b061；本轮1.4.15候选冻结源800f8786cd98ef9fda7e938a48b8dc3a27ca7038，记录提交不能替代被测源。
 
 ## 当前执行：第1批帮助入口
 
-用户已批准执行上手入口批次，main基线3f7ee311039fc1fdbd2e2e499729ae6e4d2696b8。新增帮助设置分类导航与顶部定位、统一菜单名称，准备1.4.15无tag候选；尚待完整检查/云端及原生验收，当前正式1.4.14保留。官网演示/社区索引/WASM不插入。本轮实际回归与后续证据见WORKLOG最新条。
+本轮源码/本地检查、同SHA七项G0和候选41970382973 G2独立核验完成（签名/六资产/505源码/三锁）。正式14原生旧负例已复现：从关于与诊断点击帮助Typora仍在原分类。独立候选EXE在会话outputs/candidate-1.4.15-msi-reference/PFiles/Mirror Cloud/image-hosting-platform-desktop.exe，SHA2569a1680125a280c0ce2036e593ce7b1f5afa9029e9fb34e5fbdd4edf3e3065de1，尚未运行；下一步操作时获准后运行独立候选验帮助路由/滚动/名称/按钮可达性，再返回正式14，不覆盖D程序、不做新云端上传。最新DPAPI备份mirror-cloud-before-1.4.15-help-run已恢复验证18表；原正式14及副本匹配。没有正式15 tag，不自动发布；本轮原生帮助验收不等于安装升级G3。详见WORKLOG最新条与会话outputs/1.4.15-help-delivery.md。
 
 ## 已完成：教程同步与1.4.14
 
