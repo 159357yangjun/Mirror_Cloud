@@ -4,7 +4,13 @@
 
 镜云支持图片上传、云端文件管理、多云副本、图片处理和编辑器集成。
 
-当前正式版为 **v1.4.15**。[下载正式版](https://github.com/159357yangjun/Mirror_Cloud/releases/tag/v1.4.15)。本版统一了帮助入口的页面名称，并修复了设置分类和跳转后滚动位置。插件支持本地 Manifest 安装、宿主 API 兼容检查和自动配置表单，详见 [插件说明](docs/PLUGIN_ARCHITECTURE.md) 和 [使用教程](https://159357yangjun.github.io/Mirror_Cloud/use/plugins/)。源码版本以 Cargo/package.json 为准，使用 `scripts/project_state.py --verify` 检查一致性。
+**Windows 正式版 v1.4.15（x64）**：[EXE 安装包](https://github.com/159357yangjun/Mirror_Cloud/releases/download/v1.4.15/image-hosting-platform-v1.4.15-windows-x64-setup.exe) · [MSI 安装包](https://github.com/159357yangjun/Mirror_Cloud/releases/download/v1.4.15/image-hosting-platform-v1.4.15-windows-x64.msi) · [SHA256 校验文件](https://github.com/159357yangjun/Mirror_Cloud/releases/download/v1.4.15/SHA256SUMS.txt) · [正式 Release](https://github.com/159357yangjun/Mirror_Cloud/releases/tag/v1.4.15)。
+
+**镜云官网**：[下载与使用教程](https://159357yangjun.github.io/Mirror_Cloud/) · [完整下载页](https://159357yangjun.github.io/Mirror_Cloud/use/download/)。
+
+**免登录在线体验**：[打开浏览器演示站](https://headless-ftmdatbupdr-yjun9573-1408.wix-site-host.com/)。网页版仅模拟图片上传与云端操作，不连接真实云存储，也不需要填写密钥；需要真实上传、多云副本或 Windows 集成，请下载桌面正式版。
+
+本版统一了帮助入口的页面名称，并修复了设置分类和跳转后滚动位置。插件支持本地 Manifest 安装、宿主 API 兼容检查和自动配置表单，详见 [插件说明](docs/PLUGIN_ARCHITECTURE.md) 和 [使用教程](https://159357yangjun.github.io/Mirror_Cloud/use/plugins/)。源码版本以 Cargo/package.json 为准，使用 `scripts/project_state.py --verify` 检查一致性。
 
 ## 核心能力
 
@@ -49,10 +55,10 @@ Desktop / Typora / Clipboard / URL / Tray / Shortcut / HTTP API / Shell Upload
 
 | 页面 | 用途 |
 | --- | --- |
-| 发布 | 选择默认云端并快速发布图片 |
-| 资源 | 查看 Asset / Variant / Deployment 索引，并同步已有云端图片 |
-| 云端 | 配置 Provider 和多云 Storage Group |
-| 图库 | 管理真实远端目录和图片 |
+| 上传 | 选择默认云端并快速发布图片 |
+| 上传记录 | 查看 Asset / Variant / Deployment 索引，并同步已有云端图片 |
+| 云端配置 | 配置 Provider 和多云 Storage Group |
+| 云端文件 | 管理真实远端目录和图片 |
 | 插件 | 管理插件权限、生命周期和执行记录 |
 | 任务 | 查看上传和批量云端任务，可取消或重试 |
 | 设置 | Typora、快捷键、Local API、输出格式和系统诊断 |

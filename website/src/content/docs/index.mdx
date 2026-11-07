@@ -1,21 +1,29 @@
 ---
-title: 镜云使用教程
-description: 配置存储、上传图片、复制链接。
+title: 镜云官网 · 下载与教程
+description: 镜云 Mirror Cloud 的 Windows 正式版下载、公开演示及多云配置教程。
 template: splash
 hero:
-  title: 使用教程
-  tagline: 先添加存储，再上传图片。已有配置可直接查看使用说明。
+  title: 镜云 · Mirror Cloud
+  tagline: 多云图片上传与管理。下载 Windows 正式版，或无需登录先体验浏览器演示。
 ---
 
 import { Steps } from '@astrojs/starlight/components'
 import ProviderDirectory from '../../components/ProviderDirectory.astro'
 import GuideResources from '../../components/GuideResources.astro'
 
-当前正式版为 **1.4.15**，可从 [官方 Release 下载](https://github.com/159357yangjun/Mirror_Cloud/releases/tag/v1.4.15)。本版修复了帮助入口跳错设置分类的问题。从“教程与帮助”选择“Typora 配置”会进入“快捷集成”，跳转后回到对应页面的顶部。详见 [插件教程](./use/plugins/) 与 [版本更新教程](./use/updates/)。
+<div class="mirror-entry-actions" role="group" aria-label="镜云下载与在线体验">
+  <a class="mirror-entry-button mirror-entry-button--primary" href="https://github.com/159357yangjun/Mirror_Cloud/releases/download/v1.4.15/image-hosting-platform-v1.4.15-windows-x64-setup.exe">下载 Windows v1.4.15 · EXE</a>
+  <a class="mirror-entry-button" href="./use/download/">MSI / 源码 / 校验文件</a>
+  <a class="mirror-entry-button" href="https://headless-ftmdatbupdr-yjun9573-1408.wix-site-host.com/" target="_blank" rel="noopener noreferrer">在线体验（模拟，无需登录）</a>
+</div>
+
+<p class="mirror-entry-disclaimer">正式版适用于 Windows x64，提供真实云端上传和桌面集成。浏览器体验站仅用于查看界面与模拟操作，不会将图片上传到云服务，不收集 Token / Secret；体验站不等于正式桌面软件。</p>
+
+当前 Windows 正式版为 **v1.4.15**。完整发布记录与下载文件见 [GitHub Release](https://github.com/159357yangjun/Mirror_Cloud/releases/tag/v1.4.15)，安装前可核对 [SHA256SUMS.txt](https://github.com/159357yangjun/Mirror_Cloud/releases/download/v1.4.15/SHA256SUMS.txt)。
 
 ## 配置存储
 
-选择正在使用的平台，查看配置获取入口和字段填写步骤。账号和密钥只在镜云应用内填写。
+选择正在使用的平台，查看配置获取入口和字段填写步骤。账号和密钥只在镜云桌面应用内填写。
 
 <ProviderDirectory />
 
