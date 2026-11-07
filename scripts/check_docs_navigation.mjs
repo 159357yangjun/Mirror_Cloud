@@ -224,6 +224,14 @@ try {
   await size(390, 844)
   check(await evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'mobile homepage and its open selector do not overflow')
   await shot('home-mobile.png')
+  // The download CTAs increase the home page's height. Scroll the real Gitee link
+  // into view before a pointer click; CDP does not auto-scroll like a user.
+  await evaluate(() => document.querySelector('.provider-directory a[href$="/guides/gitee/"]').scrollIntoView({ block: 'center', inline: 'nearest' }))
+  check(await evaluate(() => {
+    const link = document.querySelector('.provider-directory a[href$="/guides/gitee/"]')
+    const rect = link.getBoundingClientRect()
+    return rect.top >= 0 && rect.bottom <= innerHeight
+  }), 'homepage provider link remains reachable after scrolling past the download CTAs')
   await click('.provider-directory a[href$="/guides/gitee/"]')
   await waitFor(() => location.pathname.endsWith('/guides/gitee/') && document.querySelector('.configuration-fields'))
   check(await evaluate(() => document.querySelectorAll('[data-field-label]').length === 7), 'homepage choice reaches the complete Gitee field guide')
