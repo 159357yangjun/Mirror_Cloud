@@ -1,5 +1,9 @@
 # HANDOFF
 
+## 待验收：Typora 已有网图与跨设备显示
+
+镜云已登记图片上传，报错由 Typora 再次向桥接传入 HTTPS 地址触发。新增 Typora 专用入口和回归测试，待运行 Rust CI 与实际 Typora 验收。跨设备预览待选定公开 HTTPS 域名，再用不同网络匿名验证实际返回的图片。
+
 入口规则见AGENTS.md；仅main，主目录D:/image-hosting-platform。正式1.4.15与已验候选均使用冻结源800f8786cd98ef9fda7e938a48b8dc3a27ca7038。正式资产与候选资产分别核验。
 
 ## 正式1.4.15重启复验与官网同步

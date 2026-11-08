@@ -65,9 +65,15 @@ fn run_upload_mode(args: &[OsString], copy_to_clipboard: bool) -> ExitCode {
         }
     };
 
-    match runtime.block_on(
-        multicloud_publisher_desktop_lib::cli::upload_with_default_workflow(&data_dir, &paths),
-    ) {
+    let result = runtime.block_on(async {
+        if copy_to_clipboard {
+            multicloud_publisher_desktop_lib::cli::upload_with_default_workflow(&data_dir, &paths)
+                .await
+        } else {
+            multicloud_publisher_desktop_lib::cli::upload_typora_images(&data_dir, paths).await
+        }
+    });
+    match result {
         Ok(urls) => {
             if copy_to_clipboard {
                 let text = urls.join("\r\n");

@@ -117,6 +117,54 @@ struct CliContext {
     credentials: CredentialStore,
 }
 
+pub async fn upload_typora_images(
+    data_dir: &Path,
+    paths: Vec<PathBuf>,
+) -> Result<Vec<String>, String> {
+    if paths.is_empty() {
+        return Err("Typora did not pass any images".into());
+    }
+
+    // Typora consumes one URL per input, in order. Existing URLs require no
+    // cloud or database access and can be mixed with files that need uploading.
+    let mut results = Vec::with_capacity(paths.len());
+    let mut local_paths = Vec::new();
+    for path in paths {
+        let input = path
+            .to_str()
+            .filter(|value| value.starts_with("https://") || value.starts_with("http://"));
+        if let Some(input) = input {
+            let url = reqwest::Url::parse(input).map_err(|_| "Typora passed an invalid image URL")?;
+            if url.host_str().is_none()
+                || !url.username().is_empty()
+                || url.password().is_some()
+                || input.chars().any(char::is_control)
+            {
+                return Err("Typora passed an invalid image URL".into());
+            }
+            results.push(Some(input.to_owned()));
+        } else {
+            results.push(None);
+            local_paths.push(path);
+        }
+    }
+
+    if !local_paths.is_empty() {
+        let uploaded = upload_with_default_workflow(data_dir, &local_paths).await?;
+        for (slot, url) in results
+            .iter_mut()
+            .filter(|slot| slot.is_none())
+            .zip(uploaded)
+        {
+            *slot = Some(url);
+        }
+    }
+    results
+        .into_iter()
+        .collect::<Option<Vec<_>>>()
+        .ok_or_else(|| "Publisher did not return a URL for every Typora image".into())
+}
+
 pub async fn upload_with_default_workflow(
     data_dir: &Path,
     paths: &[PathBuf],
@@ -971,6 +1019,56 @@ fn build_provider(
     crate::services::provider_factory::build_provider(&context.credentials, record, |key| {
         format!("Provider {key} is not supported by the Typora bridge")
     })
+}
+
+#[cfg(test)]
+mod typora_image_tests {
+    use super::{upload_typora_images, PathBuf, Uuid};
+
+    #[tokio::test]
+    async fn existing_links_are_returned_in_order_without_opening_the_database() {
+        let data_dir = std::env::temp_dir().join(Uuid::new_v4().to_string());
+        let urls = [
+            "https://example.com/images/first.webp",
+            "https://example.com/images/second%20image.png?v=1",
+        ];
+        let paths = urls.iter().copied().map(PathBuf::from).collect();
+
+        let result = upload_typora_images(&data_dir, paths).await.unwrap();
+
+        assert_eq!(result, urls.map(str::to_owned).to_vec());
+        assert!(!data_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn mixed_batch_still_rejects_missing_local_files_before_opening_the_database() {
+        let data_dir = std::env::temp_dir().join(Uuid::new_v4().to_string());
+        let paths = vec![
+            PathBuf::from("https://example.com/images/first.webp"),
+            data_dir.join("missing.png"),
+        ];
+
+        let error = upload_typora_images(&data_dir, paths).await.unwrap_err();
+
+        assert!(error.starts_with("Image file does not exist:"));
+        assert!(!data_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn invalid_url_errors_do_not_include_the_input() {
+        let data_dir = std::env::temp_dir().join(Uuid::new_v4().to_string());
+        for input in [
+            "https://",
+            "https://user:password@example.com/image.png",
+            "https://example.com/image.png\nhttps://example.com/another.png",
+        ] {
+            let error = upload_typora_images(&data_dir, vec![PathBuf::from(input)])
+                .await
+                .unwrap_err();
+            assert_eq!(error, "Typora passed an invalid image URL");
+        }
+        assert!(!data_dir.exists());
+    }
 }
 
 #[cfg(test)]
