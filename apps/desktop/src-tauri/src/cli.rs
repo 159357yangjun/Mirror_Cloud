@@ -134,7 +134,8 @@ pub async fn upload_typora_images(
             .to_str()
             .filter(|value| value.starts_with("https://") || value.starts_with("http://"));
         if let Some(input) = input {
-            let url = reqwest::Url::parse(input).map_err(|_| "Typora passed an invalid image URL")?;
+            let url =
+                reqwest::Url::parse(input).map_err(|_| "Typora passed an invalid image URL")?;
             if url.host_str().is_none()
                 || !url.username().is_empty()
                 || url.password().is_some()
@@ -1023,7 +1024,7 @@ fn build_provider(
 
 #[cfg(test)]
 mod typora_image_tests {
-    use super::{upload_typora_images, PathBuf, Uuid};
+    use super::{PathBuf, Uuid, upload_typora_images};
 
     #[tokio::test]
     async fn existing_links_are_returned_in_order_without_opening_the_database() {
