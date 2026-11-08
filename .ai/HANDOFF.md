@@ -2,6 +2,8 @@
 
 ## 待验收：Typora 已有网图误报修复
 
+1.4.16 待正式发布。冻结源码 0372e95dc44be57cee17eb1d36fa6804693d726d，七项同源检查及候选 42462704395 通过。用户选择自行覆盖安装并反馈。候选 NSIS SHA256 c3b790022c5e3a5564c99e7243f274e4004d63a83a73c9e601e27f4f39234670，预期 D 盘安装 EXE SHA256 bbe418fa6a6e1c0bcac739a455699502e5d9b32e1f45e6a43f572a79c4862035。加密备份 mirror-cloud-before-1.4.16-candidate.sqlite.dpapi 及保留正式1.4.15 EXE 在会话 outputs。收到用户反馈后核对真实安装、重启、数据保留、截图网图和新上传，再固定正式标签到已测源。正式版仍1.4.15。
+
 镜云已登记图片上传，报错由 Typora 再次向桥接传入 HTTPS 地址触发。修复源 ed46b06004c3d472a45756da5714bdb07a033d9e，三个同 SHA 工作流通过。签名候选构建 42460108963 已验证，截图同一 URL 的 Windows 桥接对照由退出1变为退出0。未覆盖 D 盘正式程序，待用户实际 Typora 界面验收。收据在会话 outputs/typora-candidate-1.4.15-native-bridge.json。
 
 入口规则见AGENTS.md；仅main，主目录D:/image-hosting-platform。正式1.4.15与已验候选均使用冻结源800f8786cd98ef9fda7e938a48b8dc3a27ca7038。正式资产与候选资产分别核验。
