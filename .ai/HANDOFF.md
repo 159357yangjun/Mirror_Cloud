@@ -2,7 +2,7 @@
 
 ## 待验收：Typora 已有网图误报修复
 
-镜云已登记图片上传，报错由 Typora 再次向桥接传入 HTTPS 地址触发。新增 Typora 专用入口和回归测试，按用户要求生成带源码标识的 Windows 候选，供实际 Typora 验收。
+镜云已登记图片上传，报错由 Typora 再次向桥接传入 HTTPS 地址触发。修复源 ed46b06004c3d472a45756da5714bdb07a033d9e，三个同 SHA 工作流通过。签名候选构建 42460108963 已验证，截图同一 URL 的 Windows 桥接对照由退出1变为退出0。未覆盖 D 盘正式程序，待用户实际 Typora 界面验收。收据在会话 outputs/typora-candidate-1.4.15-native-bridge.json。
 
 入口规则见AGENTS.md；仅main，主目录D:/image-hosting-platform。正式1.4.15与已验候选均使用冻结源800f8786cd98ef9fda7e938a48b8dc3a27ca7038。正式资产与候选资产分别核验。
 
