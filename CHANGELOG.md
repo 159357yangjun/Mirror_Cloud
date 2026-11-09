@@ -4,6 +4,7 @@
 
 - 修复 Typora 再次提交已上传的网络图片时提示“文件不存在”的问题。镜云保留已有图片链接，并按输入顺序返回链接和新上传结果。
 - 正式 1.4.15 覆盖升级到签名候选的验收通过。候选 [42462704395](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/42462704395) 对应源码 `0372e95dc44be57cee17eb1d36fa6804693d726d`，安装包 SHA256 `c3b790022c5e3a5564c99e7243f274e4004d63a83a73c9e601e27f4f39234670`。重启后数据和配置保留，实际桥接在同一批次保留已有 Gitee 链接并上传一张新图。
+- [正式版](https://github.com/159357yangjun/Mirror_Cloud/releases/tag/v1.4.16)已从相同标签发布。正式 EXE 的签名和 SHA256 已独立核验，SHA256 为 `d84b6578be11d77f63ac6749a086601099b64b8b0e40e87ef6fd248fab9e308a`。[正式构建](https://github.com/159357yangjun/Mirror_Cloud/actions/runs/42470278680)
 
 ## 2026-11-05（UTC）— 正式1.4.15发布
 
