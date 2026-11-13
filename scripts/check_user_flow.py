@@ -392,6 +392,13 @@ require('official.ai-caption' in migration9 and '"secret"' in migration9, 'exist
 require('cargo generate-lockfile' not in ci and 'npm ci' in ci and '--locked' in ci and all((ROOT / rel).exists() for rel in ('Cargo.lock', 'apps/desktop/package-lock.json', 'website/package-lock.json')), 'CI consumes committed dependency locks without regenerating them')
 docs_workflow = text('.github/workflows/docs.yml')
 require('cargo generate-lockfile' not in release and 'cargo generate-lockfile' not in ci and 'npm install' not in release and 'npm install' not in ci and 'npm install' not in docs_workflow and '--locked' in release, 'every build workflow installs from committed locks only (npm ci + cargo --locked), never npm install or generate-lockfile')
+installer_smoke = text('scripts/smoke_windows_installers.ps1')
+require('npm run tauri bundle -- --bundles nsis,msi --no-binary-patching' in release,
+        'SignPath app signature is preserved when Tauri bundles NSIS/MSI instead of being invalidated by executable patching')
+require('function Assert-SignPathApplicationSignature' in installer_smoke
+        and 'Assert-SignPathApplicationSignature -ExecutablePath $applicationExecutables[0].FullName' in installer_smoke
+        and 'Assert-SignPathApplicationSignature -ExecutablePath $msiApplicationExecutable' in installer_smoke,
+        'signed candidate installer smoke verifies the installed app EXE from both NSIS and MSI')
 
 require('granted_permissions: &[PluginPermission]' in plugin_runtime and 'granted_permissions.contains(&permission)' in plugin_runtime, 'plugin runtime requires explicit user grants')
 require('granted_permissions_json' in persistence and 'set_granted_permissions' in persistence, 'plugin grants persist separately from manifest declarations')

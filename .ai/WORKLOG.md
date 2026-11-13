@@ -792,3 +792,8 @@ Revalidated the license inventory against dependency-bearing revision `eabeb32cf
 ### CC0 remediation compatibility check
 
 Queried crates.io current package metadata and exact published manifests. `ordered-multimap` 0.7.3 remains the latest release and constrains `dlv-list` to 0.5; `dlv-list` 0.5.2 has unconditional `const-random`, while 0.6.0 moves it behind an optional feature. There is no compatible lockfile-only upgrade that removes `tiny-keccak` from the existing S3/OSS signer dependency chain. The audit now records a path that preserves providers: wait for/seek an upstream `ordered-multimap` release on `dlv-list` 0.6, or obtain SignPath's scope decision. No upstream issue was filed and no dependency/provider behavior changed.
+
+
+### SignPath binary-patching audit
+
+Release workflow review found that the signed-path command `tauri bundle --bundles nsis,msi` used Tauri's default bundle-type patching after SignPath had signed the app EXE. Official Tauri documentation states this rewrites the main executable and invalidates its existing code signature. The locked CLI is `@tauri-apps/cli 2.11.4`, and `--no-binary-patching` is available since Tauri CLI 2.10.0. The signed path now passes that flag; Mirror Cloud's custom updater targets the NSIS setup asset and does not rely on Tauri's per-bundle-type marker. Installer smoke coverage now checks the installed app EXE signer after both NSIS and MSI installations when SignPath is enabled, and the user-flow contract pins these invariants. This is a code-path correction, not yet a real SignPath run; the latest CI must pass and the SignPath project configuration must still be exercised.

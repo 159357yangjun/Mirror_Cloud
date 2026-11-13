@@ -206,7 +206,9 @@ jobs:
       - name: Build Windows bundles from the signed application executable
         if: env.MIRROR_SIGNPATH_ENABLED == 'true'
         working-directory: apps/desktop
-        run: npm run tauri bundle -- --bundles nsis,msi
+        # Tauri normally patches bundle-type metadata into the main EXE, invalidating its signature.
+        # Mirror Cloud's custom updater targets the NSIS setup asset, so preserve the signed bytes.
+        run: npm run tauri bundle -- --bundles nsis,msi --no-binary-patching
 
       - name: Stage installer signing inputs
         if: env.MIRROR_SIGNPATH_ENABLED == 'true'

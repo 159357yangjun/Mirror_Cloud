@@ -58,6 +58,22 @@ function Wait-ForInstalledState {
     throw "Timed out waiting for '$DisplayName' to $state in the Windows uninstall registry."
 }
 
+function Assert-SignPathApplicationSignature {
+    param([Parameter(Mandatory = $true)][string]$ExecutablePath)
+
+    if ($env:MIRROR_SIGNPATH_ENABLED -ne "true") {
+        return
+    }
+
+    $signature = Get-AuthenticodeSignature -LiteralPath $ExecutablePath
+    if ($signature.Status -ne "Valid") {
+        throw "Installed application Authenticode signature is not valid: $($signature.Status)."
+    }
+    if ($signature.SignerCertificate.Subject -notmatch "SignPath Foundation") {
+        throw "Installed application has an unexpected signer: $($signature.SignerCertificate.Subject)."
+    }
+}
+
 if (-not (Test-Path $BundleRoot)) {
     throw "Bundle root not found: $BundleRoot"
 }
@@ -99,6 +115,11 @@ $installedExecutables = @(
 if ($installedExecutables.Count -lt 1) {
     throw "NSIS install completed but no application executable was found in '$installLocation'."
 }
+$applicationExecutables = @($installedExecutables | Where-Object { $_.Name -eq "image-hosting-platform-desktop.exe" })
+if ($applicationExecutables.Count -ne 1) {
+    throw "NSIS install completed but expected exactly one Mirror Cloud application executable, found $($applicationExecutables.Count)."
+}
+Assert-SignPathApplicationSignature -ExecutablePath $applicationExecutables[0].FullName
 $uninstaller = Join-Path $installLocation "uninstall.exe"
 if (-not (Test-Path $uninstaller)) {
     throw "NSIS install completed but uninstall.exe was not found in '$installLocation'."
@@ -118,7 +139,17 @@ Invoke-ProcessChecked -FilePath "msiexec.exe" -ArgumentList @(
     "/L*v",
     "`"$msiInstallLog`""
 ) -Description "MSI quiet install" -SuccessExitCodes @(0, 3010)
-Wait-ForInstalledState -DisplayName $ProductName -Present $true | Out-Null
+$msiEntries = @(Wait-ForInstalledState -DisplayName $ProductName -Present $true)
+$msiInstallLocation = [string]$msiEntries[0].InstallLocation
+$msiInstallLocation = $msiInstallLocation.Trim('"')
+if (-not $msiInstallLocation) {
+    $msiInstallLocation = $installLocation
+}
+$msiApplicationExecutable = Join-Path $msiInstallLocation "image-hosting-platform-desktop.exe"
+if (-not (Test-Path -LiteralPath $msiApplicationExecutable -PathType Leaf)) {
+    throw "MSI install completed but the application executable was not found at '$msiApplicationExecutable'."
+}
+Assert-SignPathApplicationSignature -ExecutablePath $msiApplicationExecutable
 
 Write-Host "[4/4] Quiet-uninstall MSI bundle"
 $msiUninstallLog = Join-Path $logRoot "msi-uninstall.log"
