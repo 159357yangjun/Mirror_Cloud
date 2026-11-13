@@ -46,7 +46,7 @@ The release workflow now contains this opt-in sequence. A candidate run selects 
 
 - [ ] SignPath confirms the project qualifies and accepts the application.
 - [ ] SignPath confirms the proposed single-maintainer role arrangement.
-- [ ] All included dependency and bundled-component licenses have been reviewed.
+- [ ] All included dependency and bundled-component licenses have been reviewed; SignPath has determined whether website-only `mdn-data` CC0-1.0 build dependencies affect eligibility.
 - [ ] Privacy behavior and installer disclosure requirements have been confirmed.
 - [ ] Public homepage, download page, and release page contain the active policy and current release links.
 - [ ] SignPath project, GitHub trusted build system, artifact configurations, signing policies, and approval permissions are configured.

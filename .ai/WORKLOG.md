@@ -8,7 +8,11 @@
 
 在上述依据上，本地修改发布工作流以供配置后试跑：workflow_dispatch 可显式选择 SignPath；签名启用时先构建并提交应用 EXE，等待 SignPath 决策、验证签名后再打 NSIS/MSI，随后提交并验证两个最终安装包；SHA256 与 Ed25519 更新清单仍在已签包后生成。通过 SignPath 官方 v3 发布 commit `f6d04783b4569d051e0c80105fe66e82819d0092` 固定 submit action。未来 release notes 自动含签名政策和隐私页链接。
 
-尚无 SignPath 受理、项目 ID、策略/API token 或实际 MSI 样本配置；此变更还未提交、推送或由 CI 验证。SignPath application 表单页面在可读网页抽取中仅返回标题，未提交申请。当前 v1.4.16 GitHub Release 还没有政策链接，未来模板改动不能追溯补到该已发布页面。完整 Rust/打包依赖许可证审查、单人 author/reviewer/approver 能否被接受、GitHub/SignPath MFA 状态和候选 Authenticode 验收均未证明。
+npm 锁清单初查：桌面112项、网站376项，均有 lockfile license 字段。发现网站工具链 transitive `mdn-data` 两项为 CC0-1.0；OSI 未将 CC0 纳入 approved list，FAQ 记录其申请未获批准且不建议以 CC0 发布软件。它们经 css-tree 用于网站构建，当前未证实被打进桌面二进制；需让 SignPath 确认网站构建依赖是否在“all components”范围。详细表与边界写入 `docs/CODE_SIGNING_LICENSE_INVENTORY.md`。完整 Rust/打包依赖许可证审查、单人 author/reviewer/approver 能否被接受、GitHub/SignPath MFA 状态和候选 Authenticode 验收均未证明。
+
+本地另准备 `docs/SIGNPATH_APPLICATION_DRAFT.md`，包括项目公开信息、申请描述、签名范围及需向 SignPath 提问的单人角色/CC0范围事项；联系人、MFA状态和账户信息留空，不假设或代填用户个人信息。
+
+CI 配置改动现已提交并推送为 `4639d53b8e606c4d220812f9dea9e7ca31fa181e`。同 SHA 云端 CI run `43394223751` 已 completed/success；Rust format/check/tests、桌面构建、Docs build、Action 引用校验等必跑步骤成功，两个仅在失败时上传日志的步骤按条件 skipped。CI 是 `ci.yml` 工作流结果，未签名 release fallback 与真实 SignPath 分支仍未由 `release.yml` 实际构建。
 
 ## 2026-11-09 — 1.4.16 正式发布核验完成
 

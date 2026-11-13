@@ -4,7 +4,9 @@
 
 - 已推送公开隐私与代码签名政策草案，远端 CI `43391911032` 与 Docs Site `43391911079` 在源码 `ac49909915c0fb364b1a0ef46060943f87c24321` 成功。
 - 本地正在将可选 SignPath 签名链接入发布工作流：先签应用 EXE，再由该 EXE 构建 NSIS/MSI，审批后签最终安装包，最后才生成 SHA256 与 Ed25519 更新清单；未来 Release Notes 加入政策链接。
-- 未完成：SignPath Foundation 申请/受理、单人维护角色确认、完整许可证盘点、SignPath 项目/策略/API token/样本 Artifact Configuration、候选包签名及端到端验收。不可将 1.4.16 描述为 Authenticode 已签名。
+- npm 锁文件初查共488个包元数据均有 license 字段；发现网站构建工具链中的2个 `mdn-data` 项声明 CC0-1.0，需确认 SignPath 是否把网站-only build dependencies 纳入“all components”。Rust 锁依赖和最终安装器组成仍未审。
+- 已准备 application answers draft 与锁文件许可证盘点报告；尚未发送申请，缺维护者联系方式、MFA/角色事实确认及 SignPath 对 CC0 / 单人职责的答复。
+- 未完成：SignPath Foundation 申请/受理、单人维护角色确认、完整许可证盘点、SignPath 项目/策略/API token/样本 Artifact Configuration、签名候选构建与端到端验收。不可将 1.4.16 描述为 Authenticode 已签名。
 
 ## Typora 已有网图误报修复
 
