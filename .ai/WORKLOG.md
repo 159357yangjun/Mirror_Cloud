@@ -12,6 +12,8 @@
 
 SignPath 文档显示，MSI 可做深度签名；Artifact Configuration 的验证指令可验证嵌套文件，并应在签名指令前运行。参考：[deep-signing syntax](https://docs.signpath.io/artifact-configuration/syntax)、[artifact configuration](https://docs.signpath.io/artifact-configuration/)、[GitHub action inputs](https://github.com/SignPath/github-action-submit-signing-request/blob/main/action.yml)。
 
+为加强可验证构建，随后给 `release.yml` 增加 GitHub `actions/attest@v4.2.2`（固定到官方标签解析出的 commit `1e69f48acb82d1966a394da916b4c1698aa569d6`），在 Authenticode 与 update-manifest 完成后对 `release/*` 逐文件生成构建来源证明。顶层增加 `attestations: write`、`id-token: write`、`artifact-metadata: write`。官方文档说明该动作使用 Sigstore 签发的短期证书并把 attestation 关联到仓库；公开仓库支持此能力。尚未云端运行，也未用 `gh attestation verify` 对候选资产独立验证。参考：[actions/attest](https://github.com/actions/attest)、[GitHub artifact attestations](https://docs.github.com/en/actions/concepts/security/artifact-attestations)。
+
 ## 2026-11-13 — SignPath 发布签名链路准备中
 
 重新核对当前仓库为 `main`、干净工作树、HEAD `ac49909915c0fb364b1a0ef46060943f87c24321`。GitHub 同 SHA CI run `43391911032` 状态 Success（4m38s，workflow desktop-check）；Docs Site run `43391911079` 状态 Success（build 44s、deploy 11s），无跳过。该 SHA 的 CI 检查不覆盖本条之后的未提交变更。
