@@ -16,6 +16,8 @@ SignPath 文档显示，MSI 可做深度签名；Artifact Configuration 的验�
 
 随后提交 `4b7f38e09807274e78f69c735182729a8696f59d` 的完整 CI 与 strict-manifest/source-alignment 均通过。通过 GitHub Actions REST workflow_dispatch 触发候选 run `43406205980`，`sign_with_signpath=false`，无 tag、不发布 Release。Windows 打包、release-file 上传、依赖锁上传及 `Attest final release artifacts` 均 success；`publish-release` skipped 为预期。run URL: https://github.com/159357yangjun/Mirror_Cloud/actions/runs/43406205980。
 
+随后仅更新验证记录的提交 `7ae831039695efdc7fec534c96a80be9b296c5e9` 同样已获得 `desktop-check` 与 `strict-manifest-and-source-alignment` completed/success。
+
 用 GitHub CLI v2.104.0（Windows x64 ZIP SHA256 `08c06d10482f12c478018cd259f64acbd5f625712cadf331aad19ba973c879e5`）从工件 ZIP 解出 6 个候选文件，逐个运行 `gh attestation verify`，限制 `--repo 159357yangjun/Mirror_Cloud`、`--signer-workflow 159357yangjun/Mirror_Cloud/.github/workflows/release.yml` 和 `--source-ref refs/heads/main`；六项验证全部通过。setup EXE SHA256 `785de3771e5685d2fff6391aec5c319b62ff679c86f1b6e854a08e944d159ffa`，MSI SHA256 `33b08348208de1886271b9f2d395a56ef65d648fb51bc7fb92e6113c2e1379a5`；source ZIP、SHA256SUMS、update manifest 与 `.sig` 也均通过。该验证只证明 GitHub workflow 来源，不是 Authenticode 签名；候选未安装。临时 CLI/工件文件残留于 `%TEMP%\mirror-cloud-attestation-43406205980`：PowerShell 清理操作两次被策略拒绝，尚未清理。
 
 ## 2026-11-13 — SignPath 发布签名链路准备中
