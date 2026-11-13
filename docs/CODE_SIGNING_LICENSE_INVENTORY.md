@@ -87,12 +87,22 @@ The observed identifiers were compared with the [OSI approved-license list](http
 
 **Potential eligibility blockers requiring a written SignPath determination or remediation:**
 
-- `tiny-keccak 2.0.2` declares `CC0-1.0` with no alternate license in crates.io metadata. The lockfile dependency path is `storage-opendal -> opendal (services-oss) -> opendal-service-oss -> reqsign-aliyun-oss -> rust-ini -> ordered-multimap -> dlv-list -> const-random -> const-random-macro -> tiny-keccak`; `crates/storage-opendal/Cargo.toml` explicitly enables OpenDAL's `services-oss` feature. This is part of the desktop dependency graph, not just the website toolchain.
+- `tiny-keccak 2.0.2` declares `CC0-1.0` with no alternate license in crates.io metadata. The lockfile dependency path is `storage-opendal -> opendal (services-oss) -> opendal-service-oss -> reqsign-aliyun-oss -> rust-ini -> ordered-multimap -> dlv-list -> const-random -> const-random-macro -> tiny-keccak`; `crates/storage-opendal/Cargo.toml` explicitly enables OpenDAL's `services-oss` feature. `const-random-macro` is a build-time proc-macro dependency; package metadata does not prove its code is linked into the final executable. Ask SignPath whether build-time source dependencies are in scope, or replace the dependency chain if they require every build component to use an OSI-approved license.
 - `mdn-data` appears twice with `CC0-1.0` in the website lockfile, through the `css-tree` website build chain.
-- `dunce 1.0.5` declares `CC0-1.0 OR MIT-0 OR Apache-2.0`; the published declaration offers alternate license choices, but its exact source/license files and selection should be confirmed.
-- `webpki-root-certs 1.0.9` declares `CDLA-Permissive-2.0` and is reachable through `reqwest` from the desktop and multiple storage crates. This is a data license and does not appear in OSI's current approved-license list. SignPath should confirm whether this certificate-data component is in scope under its “OSI-approved license for all components” rule.
 
-OSI's current approved-license list includes `MIT-0`, `Unicode-3.0`, and `Zlib`, but not `CC0-1.0`; CC0 was not approved through OSI's license review. Check every non-OSI-looking license and all OR/AND combinations against the current official list before making an eligibility claim. See the [OSI approved-license list](https://opensource.org/licenses), [OSI FAQ](https://opensource.org/faq), and [SignPath Foundation terms](https://signpath.org/terms.html).
+**Target and license-expression notes:**
+
+- `webpki-root-certs 1.0.9` declares `CDLA-Permissive-2.0`, but [`rustls-platform-verifier 0.7.1`](https://docs.rs/crate/rustls-platform-verifier/0.7.1) declares it only for `wasm32` plus as a dev-dependency. Its documented Windows implementation uses the Windows platform certificate store/API. It appears in the shared lockfile, but current evidence does not put it in the Windows x64 runtime dependency graph. Verify the actual Windows build graph/artifact before treating it as a shipped component; ask SignPath whether repository-wide target-only/dev dependencies count under its policy.
+- `dunce 1.0.5` declares `CC0-1.0 OR MIT-0 OR Apache-2.0`, which offers MIT-0 and Apache-2.0 alternatives. It is not an unequivocal CC0-only dependency, but the selected license and distributed source notices still need review.
+
+OSI's current approved-license list includes `MIT-0`, `Unicode-3.0`, and `Zlib`, but not `CC0-1.0`; CC0 was not approved through OSI's license review. `CDLA-Permissive-2.0` is also absent from OSI's current list. Check every license expression and selected alternative against the current official list before making an eligibility claim. See the [OSI approved-license list](https://opensource.org/licenses), [OSI FAQ](https://opensource.org/faq), and [SignPath Foundation terms](https://signpath.org/terms.html).
+
+### Primary metadata/source references
+
+- [tiny-keccak 2.0.2 manifest on docs.rs](https://docs.rs/crate/tiny-keccak/2.0.2/source/Cargo.toml) declares CC0-1.0.
+- [OpenDAL OSS service 0.58.2](https://docs.rs/crate/opendal-service-oss/0.58.2) is the selected `services-oss` implementation.
+- [rustls-platform-verifier 0.7.1](https://docs.rs/crate/rustls-platform-verifier/0.7.1) documents platform behavior; its source manifest specifies the target-specific root-certificate dependency.
+- [webpki-root-certs 1.0.9 manifest on docs.rs](https://docs.rs/crate/webpki-root-certs/1.0.9/source/Cargo.toml) declares CDLA-Permissive-2.0.
 
 - No complete SBOM/license report is attached to the published v1.4.16 artifacts.
 

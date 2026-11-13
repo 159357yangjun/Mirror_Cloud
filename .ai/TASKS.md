@@ -4,7 +4,7 @@
 
 - 已推送公开隐私与代码签名政策草案，远端 CI `43391911032` 与 Docs Site `43391911079` 在源码 `ac49909915c0fb364b1a0ef46060943f87c24321` 成功。
 - 本地正在将可选 SignPath 签名链接入发布工作流：先签应用 EXE，再由该 EXE 构建 NSIS/MSI，审批后签最终安装包，最后才生成 SHA256 与 Ed25519 更新清单；未来 Release Notes 加入政策链接。
-- 已按 Cargo.lock 中650个 registry package entries 查询 crates.io 锁定版本元数据：582个 crate 名称、全部650条均找到 license 声明。发现 Rust 依赖 `tiny-keccak 2.0.2` 声明 CC0-1.0，并可经 storage-opendal 的 OpenDAL OSS 服务依赖链到达；网站工具链还有2个 `mdn-data` CC0-1.0 项。另有 `webpki-root-certs 1.0.9` 声明 CDLA-Permissive-2.0。它们与 SignPath 对所有组件 OSI-approved license 的要求需书面确认或先清理/替换；详见 `docs/CODE_SIGNING_LICENSE_INVENTORY.md`。
+- 已按 Cargo.lock 中650个 registry package entries 查询 crates.io 锁定版本元数据：582个 crate 名称、全部650条均找到 license 声明。发现 Rust `tiny-keccak 2.0.2` CC0-1.0 经构建期 proc-macro 依赖链到达；网站工具链还有2个 `mdn-data` CC0 项。`webpki-root-certs` 的 CDLA 声明在当前 rustls-platform-verifier 中仅用于 wasm32/dev，非 Windows x64 runtime 依赖的证据较强；仍需 SignPath 确认其 target/dev-only 成分范围。详见 `docs/CODE_SIGNING_LICENSE_INVENTORY.md`。
 - 签名工作流的顺序已复核，但没有真正请求 SignPath 签名或验收 MSI 嵌套文件；MSI deep-signing artifact configuration 必须根据实际构建样本生成、审核后才可用。main CI 已在最新提交 `f2f84bc8011c72f5065be669b3ef90ae1c6b3e22` 成功。
 - 已准备 application answers draft 与锁文件许可证盘点报告；尚未发送申请，缺维护者联系方式、MFA/角色事实确认及 SignPath 对 CC0 / 单人职责的答复。
 - 未完成：SignPath Foundation 申请/受理、单人维护角色确认、对 CC0/CDLA 依赖的处置或 SignPath 书面认定、发布安装包/SBOM 内容审查、旧 v1.4.16 Release 直接政策链接、SignPath 项目/策略/API token/样本 Artifact Configuration、签名候选构建与端到端验收。不可将 1.4.16 描述为 Authenticode 已签名。

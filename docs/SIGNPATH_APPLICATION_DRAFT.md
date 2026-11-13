@@ -35,10 +35,10 @@ One GitHub account currently maintains the source and would also review outside 
 ## Questions requiring SignPath's determination
 
 1. Is the project eligible with the exact locked dependency declarations below, given the rule that all components must use OSI-approved licenses?
-   - `tiny-keccak 2.0.2` declares only `CC0-1.0` and is reachable through the explicitly enabled `storage-opendal` / OpenDAL OSS-service dependency chain.
+   - `tiny-keccak 2.0.2` declares only `CC0-1.0` and is reachable through the explicitly enabled `storage-opendal` / OpenDAL OSS-service dependency chain via a proc-macro build dependency. Does SignPath include build-time-only source dependencies in its all-components rule?
    - Two website build-tool entries for `mdn-data` declare `CC0-1.0`.
-   - `webpki-root-certs 1.0.9` declares `CDLA-Permissive-2.0` and is reachable through the `reqwest` dependency graph.
-   - `dunce 1.0.5` declares `CC0-1.0 OR MIT-0 OR Apache-2.0`.
+   - `webpki-root-certs 1.0.9` declares `CDLA-Permissive-2.0` but the exact `rustls-platform-verifier 0.7.1` manifest scopes it to `wasm32` and dev dependencies; does SignPath require OSI approval for target-specific/dev-only dependencies absent from the Windows package?
+   - `dunce 1.0.5` declares `CC0-1.0 OR MIT-0 OR Apache-2.0`; the metadata offers OSI-approved alternatives.
    See `docs/CODE_SIGNING_LICENSE_INVENTORY.md` for the exact lockfile scan and remaining package-content review.
 2. Can one individual hold the author, non-committer reviewer, and signing-approver responsibilities for this project, and what review safeguards are required?
 3. Does the current public policy wording and placement meet the terms? The website policy exists, but the existing v1.4.16 GitHub Release body does not yet contain a direct policy link. Future releases from the current workflow include policy and privacy links.
