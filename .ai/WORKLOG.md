@@ -1,5 +1,15 @@
 # WORKLOG
 
+## 2026-11-13 — SignPath 发布签名链路准备中
+
+重新核对当前仓库为 `main`、干净工作树、HEAD `ac49909915c0fb364b1a0ef46060943f87c24321`。GitHub 同 SHA CI run `43391911032` 状态 Success（4m38s，workflow desktop-check）；Docs Site run `43391911079` 状态 Success（build 44s、deploy 11s），无跳过。该 SHA 的 CI 检查不覆盖本条之后的未提交变更。
+
+依 SignPath 官方 GitHub Trusted Build 文档，签名必须基于先上传到 GitHub Actions 的 artifact；OSSC 项目要求相关工作均在 GitHub-hosted runner，SignPath 应用要求正向 Origin Verification。官方 Artifact Configuration 文档说明 MSI 可进行嵌套 PE 验证/签名，并建议用真实样本生成后审查配置，排除不应由项目签名的第三方代码。Tauri 官方文档支持 `tauri build --no-bundle` 后用 `tauri bundle` 分离构建与打包。
+
+在上述依据上，本地修改发布工作流以供配置后试跑：workflow_dispatch 可显式选择 SignPath；签名启用时先构建并提交应用 EXE，等待 SignPath 决策、验证签名后再打 NSIS/MSI，随后提交并验证两个最终安装包；SHA256 与 Ed25519 更新清单仍在已签包后生成。通过 SignPath 官方 v3 发布 commit `f6d04783b4569d051e0c80105fe66e82819d0092` 固定 submit action。未来 release notes 自动含签名政策和隐私页链接。
+
+尚无 SignPath 受理、项目 ID、策略/API token 或实际 MSI 样本配置；此变更还未提交、推送或由 CI 验证。SignPath application 表单页面在可读网页抽取中仅返回标题，未提交申请。当前 v1.4.16 GitHub Release 还没有政策链接，未来模板改动不能追溯补到该已发布页面。完整 Rust/打包依赖许可证审查、单人 author/reviewer/approver 能否被接受、GitHub/SignPath MFA 状态和候选 Authenticode 验收均未证明。
+
 ## 2026-11-09 — 1.4.16 正式发布核验完成
 
 常规构建 42465027752 第五次在 WiX 下载遇 HTTP 504。一次性恢复工作流 eeb72240764f3afcd82a6a7ab2aaa42148c8ed2b 检出原不可变标签及源码，经 GitHub 官方资产 API 取得 NSIS、WiX 和插件并锁定哈希。原签名、双安装器冒烟和发布流程均执行成功，恢复构建 42470278680、构建任务 128699193487、发布任务 128701480885。移除一次性工作流，常规工作流未改动。

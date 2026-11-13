@@ -2,11 +2,18 @@ name: Release Bundle
 
 on:
   workflow_dispatch:
+    inputs:
+      sign_with_signpath:
+        description: Submit this candidate to SignPath for manual approval and Authenticode signing
+        required: false
+        type: boolean
+        default: false
   push:
     tags:
       - 'v*'
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -17,6 +24,7 @@ jobs:
       DOCS_BASE_URL: https://159357yangjun.github.io/Mirror_Cloud
       # Manual runs are test candidates; immutable tag builds keep the public version label only.
       MIRROR_CANDIDATE_SOURCE_SHA: ${{ github.event_name == 'workflow_dispatch' && github.sha || '' }}
+      MIRROR_SIGNPATH_ENABLED: ${{ vars.SIGNPATH_ENABLED == 'true' || (github.event_name == 'workflow_dispatch' && inputs.sign_with_signpath) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -50,6 +58,38 @@ jobs:
         env:
           MIRROR_UPDATE_SIGNING_SEED: ${{ secrets.MIRROR_UPDATE_SIGNING_SEED }}
         run: node scripts/sign_update.mjs --preflight
+
+      - name: Validate SignPath signing configuration
+        if: env.MIRROR_SIGNPATH_ENABLED == 'true'
+        shell: pwsh
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          SIGNPATH_PROJECT_SLUG: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          SIGNPATH_SIGNING_POLICY_SLUG: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          SIGNPATH_APP_ARTIFACT_CONFIGURATION_SLUG: ${{ vars.SIGNPATH_APP_ARTIFACT_CONFIGURATION_SLUG }}
+          SIGNPATH_INSTALLERS_ARTIFACT_CONFIGURATION_SLUG: ${{ vars.SIGNPATH_INSTALLERS_ARTIFACT_CONFIGURATION_SLUG }}
+        run: |
+          $required = @(
+            'SIGNPATH_API_TOKEN',
+            'SIGNPATH_ORGANIZATION_ID',
+            'SIGNPATH_PROJECT_SLUG',
+            'SIGNPATH_SIGNING_POLICY_SLUG',
+            'SIGNPATH_APP_ARTIFACT_CONFIGURATION_SLUG',
+            'SIGNPATH_INSTALLERS_ARTIFACT_CONFIGURATION_SLUG'
+          )
+          foreach ($name in $required) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "SignPath is enabled but required secret/variable $name is not configured."
+            }
+          }
+
+      - name: Resolve release version
+        id: release-version
+        shell: pwsh
+        run: |
+          $version = (Get-Content 'apps/desktop/package.json' -Raw | ConvertFrom-Json).version
+          "version=$version" | Add-Content -Path $env:GITHUB_OUTPUT -Encoding utf8NoBOM
 
       - name: Test update release signing
         run: node --test scripts/test_update_signing.mjs
@@ -110,9 +150,122 @@ jobs:
         working-directory: apps/desktop
         run: npm run build
 
-      - name: Build Windows bundles
+      - name: Build unsigned app executable for SignPath
+        if: env.MIRROR_SIGNPATH_ENABLED == 'true'
+        working-directory: apps/desktop
+        run: npm run tauri build -- --no-bundle
+
+      - name: Build Windows bundles without Authenticode signing
+        if: env.MIRROR_SIGNPATH_ENABLED != 'true'
         working-directory: apps/desktop
         run: npm run tauri build
+
+      - name: Upload unsigned application executable to GitHub Actions
+        id: upload-unsigned-app
+        if: env.MIRROR_SIGNPATH_ENABLED == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mirror-cloud-app-exe-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/release/image-hosting-platform-desktop.exe
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Submit app executable for SignPath signing
+        id: sign-app-executable
+        if: env.MIRROR_SIGNPATH_ENABLED == 'true'
+        uses: SignPath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_APP_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.upload-unsigned-app.outputs.artifact-id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: ${{ runner.temp }}\mirror-cloud-signed-app
+          parameters: |
+            version: "${{ steps.release-version.outputs.version }}"
+
+      - name: Verify signed app executable and replace build output
+        if: env.MIRROR_SIGNPATH_ENABLED == 'true'
+        shell: pwsh
+        run: |
+          $signedRoot = Join-Path $env:RUNNER_TEMP 'mirror-cloud-signed-app'
+          $signedFiles = @(Get-ChildItem -LiteralPath $signedRoot -Recurse -File -Filter 'image-hosting-platform-desktop.exe')
+          if ($signedFiles.Count -ne 1) { throw "Expected one SignPath-signed app executable, found $($signedFiles.Count)." }
+          $signature = Get-AuthenticodeSignature -LiteralPath $signedFiles[0].FullName
+          if ($signature.Status -ne 'Valid') { throw "Application Authenticode signature is not valid: $($signature.Status)." }
+          if ($signature.SignerCertificate.Subject -notmatch 'SignPath Foundation') { throw "Unexpected application signer: $($signature.SignerCertificate.Subject)." }
+          Copy-Item -LiteralPath $signedFiles[0].FullName -Destination 'target/release/image-hosting-platform-desktop.exe' -Force
+
+      - name: Build Windows bundles from the signed application executable
+        if: env.MIRROR_SIGNPATH_ENABLED == 'true'
+        working-directory: apps/desktop
+        run: npm run tauri bundle -- --bundles nsis,msi
+
+      - name: Stage installer signing inputs
+        if: env.MIRROR_SIGNPATH_ENABLED == 'true'
+        shell: pwsh
+        run: |
+          $bundleRoot = Join-Path $env:GITHUB_WORKSPACE 'target\release\bundle'
+          $exeFiles = @(Get-ChildItem $bundleRoot -Recurse -File -Filter '*.exe')
+          $msiFiles = @(Get-ChildItem $bundleRoot -Recurse -File -Filter '*.msi')
+          if ($exeFiles.Count -ne 1) { throw "Expected exactly one Windows EXE installer, found $($exeFiles.Count)." }
+          if ($msiFiles.Count -ne 1) { throw "Expected exactly one Windows MSI installer, found $($msiFiles.Count)." }
+          $inputDir = Join-Path $env:RUNNER_TEMP 'mirror-cloud-installer-signing-input'
+          New-Item -ItemType Directory -Force -Path $inputDir | Out-Null
+          Copy-Item -LiteralPath $exeFiles[0].FullName -Destination $inputDir
+          Copy-Item -LiteralPath $msiFiles[0].FullName -Destination $inputDir
+
+      - name: Upload unsigned installers to GitHub Actions
+        id: upload-unsigned-installers
+        if: env.MIRROR_SIGNPATH_ENABLED == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mirror-cloud-installers-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/mirror-cloud-installer-signing-input/*
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Submit installers for SignPath signing
+        id: sign-installers
+        if: env.MIRROR_SIGNPATH_ENABLED == 'true'
+        uses: SignPath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_INSTALLERS_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.upload-unsigned-installers.outputs.artifact-id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: ${{ runner.temp }}\mirror-cloud-signed-installers
+          parameters: |
+            version: "${{ steps.release-version.outputs.version }}"
+
+      - name: Verify signed installers and update bundle outputs
+        if: env.MIRROR_SIGNPATH_ENABLED == 'true'
+        shell: pwsh
+        run: |
+          $signedRoot = Join-Path $env:RUNNER_TEMP 'mirror-cloud-signed-installers'
+          $signedExe = @(Get-ChildItem -LiteralPath $signedRoot -Recurse -File -Filter '*.exe')
+          $signedMsi = @(Get-ChildItem -LiteralPath $signedRoot -Recurse -File -Filter '*.msi')
+          if ($signedExe.Count -ne 1 -or $signedMsi.Count -ne 1) { throw "Expected one signed EXE and MSI, found $($signedExe.Count) and $($signedMsi.Count)." }
+          foreach ($file in @($signedExe[0], $signedMsi[0])) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
+            if ($signature.Status -ne 'Valid') { throw "Installer Authenticode signature is not valid for $($file.Name): $($signature.Status)." }
+            if ($signature.SignerCertificate.Subject -notmatch 'SignPath Foundation') { throw "Unexpected installer signer for $($file.Name): $($signature.SignerCertificate.Subject)." }
+          }
+          $bundleRoot = Join-Path $env:GITHUB_WORKSPACE 'target\release\bundle'
+          foreach ($file in @($signedExe[0], $signedMsi[0])) {
+            $matches = @(Get-ChildItem $bundleRoot -Recurse -File -Filter $file.Name)
+            if ($matches.Count -ne 1) { throw "Expected one unsigned bundle destination for $($file.Name), found $($matches.Count)." }
+            Copy-Item -LiteralPath $file.FullName -Destination $matches[0].FullName -Force
+          }
 
       - name: Verify build did not mutate dependency locks
         shell: pwsh
@@ -213,5 +366,9 @@ jobs:
         with:
           name: Mirror Cloud ${{ github.ref_name }}
           generate_release_notes: true
+          body: |
+            **Code signing policy:** [current signing status and policy](https://159357yangjun.github.io/Mirror_Cloud/use/signing/)
+
+            **Privacy and data handling:** [privacy policy](https://159357yangjun.github.io/Mirror_Cloud/use/privacy/)
           files: release/*
           fail_on_unmatched_files: true

@@ -36,9 +36,11 @@ See the public-facing [Privacy and Data Handling](../website/src/content/docs/us
 - Build from a tagged repository commit on GitHub-hosted runners, with locked dependencies and no reuse of prior `target/release` outputs.
 - Require trusted-build-system and positive origin verification for release signing.
 - Require a human approval for every release-signing request.
-- Validate product name/version metadata and sign the application executable and final installers in the correct order.
+- Sign the app executable first, then build the NSIS/MSI packages from that signed executable, then sign the outer installers. The MSI artifact configuration must verify the embedded app executable before signing the MSI; its exact internal path must be confirmed against a sample produced by this repository's build.
 - Generate SHA-256 sums and the signed update manifest only after Authenticode signing has completed.
 - Publish only the returned signed artifacts and retain the source commit, workflow run, SignPath request, signer identity, and verification evidence.
+
+The release workflow now contains this opt-in sequence. A candidate run selects `sign_with_signpath`; after acceptance, tagged releases use the repository variable `SIGNPATH_ENABLED=true`. The integration expects the GitHub secret `SIGNPATH_API_TOKEN` and repository variables `SIGNPATH_ORGANIZATION_ID`, `SIGNPATH_PROJECT_SLUG`, `SIGNPATH_SIGNING_POLICY_SLUG`, `SIGNPATH_APP_ARTIFACT_CONFIGURATION_SLUG`, and `SIGNPATH_INSTALLERS_ARTIFACT_CONFIGURATION_SLUG`. The project and both artifact configurations must be created and sample-validated in SignPath before enabling it. Each submission waits for SignPath's configured human approval, checks the returned signatures, and only then stages hashes and the Ed25519 update manifest.
 
 ## Application review checklist
 
@@ -48,4 +50,5 @@ See the public-facing [Privacy and Data Handling](../website/src/content/docs/us
 - [ ] Privacy behavior and installer disclosure requirements have been confirmed.
 - [ ] Public homepage, download page, and release page contain the active policy and current release links.
 - [ ] SignPath project, GitHub trusted build system, artifact configurations, signing policies, and approval permissions are configured.
+- [ ] Candidate Authenticode signing is exercised end to end using the opt-in release workflow, including verification of the installed app executable and final EXE/MSI signatures.
 - [ ] A candidate EXE/MSI has a valid Authenticode signature and passes install, update-manifest, checksum, and launch checks.
