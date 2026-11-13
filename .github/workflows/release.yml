@@ -44,7 +44,6 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target/release
           key: taskui-native-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '**/Cargo.toml') }}
 
       - name: Validate update signing configuration

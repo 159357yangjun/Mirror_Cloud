@@ -34,6 +34,8 @@ export default defineConfig({
           label: '使用',
           items: [
             { label: '下载与在线体验', slug: 'use/download' },
+            { label: '隐私与数据处理', slug: 'use/privacy' },
+            { label: '代码签名政策', slug: 'use/signing' },
             { label: '文件 / URL / 剪贴板', slug: 'use/publish' },
             { label: 'Typora 配置向导', slug: 'use/typora' },
             { label: '多云组与修复', slug: 'use/multicloud' },

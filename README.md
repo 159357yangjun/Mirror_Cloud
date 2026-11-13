@@ -4,13 +4,15 @@
 
 镜云支持图片上传、云端文件管理、多云副本、图片处理和编辑器集成。
 
-**Windows 正式版 v1.4.15（x64）**：[EXE 安装包](https://github.com/159357yangjun/Mirror_Cloud/releases/download/v1.4.15/image-hosting-platform-v1.4.15-windows-x64-setup.exe) · [MSI 安装包](https://github.com/159357yangjun/Mirror_Cloud/releases/download/v1.4.15/image-hosting-platform-v1.4.15-windows-x64.msi) · [SHA256 校验文件](https://github.com/159357yangjun/Mirror_Cloud/releases/download/v1.4.15/SHA256SUMS.txt) · [正式 Release](https://github.com/159357yangjun/Mirror_Cloud/releases/tag/v1.4.15)。
+**Windows 正式版 v1.4.16（x64）**：[EXE 安装包](https://github.com/159357yangjun/Mirror_Cloud/releases/download/v1.4.16/image-hosting-platform-v1.4.16-windows-x64-setup.exe) · [MSI 安装包](https://github.com/159357yangjun/Mirror_Cloud/releases/download/v1.4.16/image-hosting-platform-v1.4.16-windows-x64.msi) · [SHA256 校验文件](https://github.com/159357yangjun/Mirror_Cloud/releases/download/v1.4.16/SHA256SUMS.txt) · [正式 Release](https://github.com/159357yangjun/Mirror_Cloud/releases/tag/v1.4.16)。
 
 **镜云官网**：[下载与使用教程](https://159357yangjun.github.io/Mirror_Cloud/) · [完整下载页](https://159357yangjun.github.io/Mirror_Cloud/use/download/)。
 
+**项目政策**：[隐私与数据处理](https://159357yangjun.github.io/Mirror_Cloud/use/privacy/) · [Code signing policy（代码签名政策）](https://159357yangjun.github.io/Mirror_Cloud/use/signing/)。
+
 **免登录在线体验**：[打开浏览器演示站](https://headless-ftmdatbupdr-yjun9573-1408.wix-site-host.com/)。网页版仅模拟图片上传与云端操作，不连接真实云存储，也不需要填写密钥；需要真实上传、多云副本或 Windows 集成，请下载桌面正式版。
 
-本版统一了帮助入口的页面名称，并修复了设置分类和跳转后滚动位置。插件支持本地 Manifest 安装、宿主 API 兼容检查和自动配置表单，详见 [插件说明](docs/PLUGIN_ARCHITECTURE.md) 和 [使用教程](https://159357yangjun.github.io/Mirror_Cloud/use/plugins/)。源码版本以 Cargo/package.json 为准，使用 `scripts/project_state.py --verify` 检查一致性。
+本版修复 Typora 重复提交已上传网络图片时报“文件不存在”的问题。插件支持本地 Manifest 安装、宿主 API 兼容检查和自动配置表单，详见 [插件说明](docs/PLUGIN_ARCHITECTURE.md) 和 [使用教程](https://159357yangjun.github.io/Mirror_Cloud/use/plugins/)。源码版本以 Cargo/package.json 为准，使用 `scripts/project_state.py --verify` 检查一致性。
 
 ## 核心能力
 

@@ -1,0 +1,30 @@
+---
+title: Code signing policy（代码签名政策）
+description: Mirror Cloud Windows 发布物的当前签名状态、验证方法和 SignPath Foundation 申请计划。
+---
+
+## 当前签名状态
+
+截至本政策更新时，Windows EXE/MSI 安装程序**尚未使用 Windows Authenticode 代码签名证书签名**。因此，安装时可能显示 Windows 发布者未知或 SmartScreen 信誉不足的提示。该提示不证明文件安全，也不证明文件恶意；请只从[官方 v1.4.16 Release](https://github.com/159357yangjun/Mirror_Cloud/releases/tag/v1.4.16)下载，并通过该 Release 的 SHA256 校验文件检查下载完整性。
+
+镜云的应用内更新使用 Ed25519 签名验证 `update-manifest.json`，该签名保护更新清单及其声明的安装包哈希。它与 Windows Authenticode 是不同机制，不能在 Windows 文件属性中证明发布者身份。
+
+## 签名计划
+
+项目维护者正在准备向 SignPath Foundation 申请免费开源代码签名。申请获批且签名流水线通过候选验收之前，本项目不会声称安装包已由 SignPath 签名，也不会把更新清单签名描述为 Authenticode 签名。
+
+若 SignPath Foundation 接受申请，启用后的发布说明将包含以下归属声明：
+
+> Free code signing provided by SignPath.io, certificate by SignPath Foundation
+
+签名范围计划覆盖镜云自己的 Windows 应用程序和 EXE/MSI 安装程序；具体文件与嵌套签名顺序以经验证的 SignPath artifact configuration 为准。第三方依赖不会作为镜云自行开发的二进制提交签名。
+
+## 维护与签名职责
+
+- 项目仓库与发布由 GitHub 账号 [`159357yangjun`](https://github.com/159357yangjun) 维护。
+- 非维护者提交的变更应由维护者审核；审核范围包括源码、CI 工作流、构建脚本和依赖输入。
+- 每一项正式发布签名请求都须由维护者在 SignPath 中人工批准，并核对仓库、分支、commit、构建记录和候选验证结果。
+- 目前是个人维护项目，作者、PR 审核者和签名批准者的角色由同一维护者承担。此安排仍需 SignPath 在申请时确认；若不接受，将邀请真实的独立贡献者承担相应职责，不虚列团队成员。
+- 所有获准参与代码或签名管理的人员须在 GitHub 和 SignPath 启用 MFA。
+
+完整的数据流说明见[隐私与数据处理](../privacy/)。项目对外签署的正式文件会在发布前独立检查 Authenticode 状态、发布者名称、产品版本及 SHA256；签名不会保证 SmartScreen 警告即时消失。
