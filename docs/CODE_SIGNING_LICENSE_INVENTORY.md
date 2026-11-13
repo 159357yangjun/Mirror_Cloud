@@ -1,7 +1,7 @@
 # Code-signing eligibility: license inventory (preliminary)
 
 Date checked: 2026-11-13
-Source revision: `f2f84bc8011c72f5065be669b3ef90ae1c6b3e22`
+Source revision revalidated against current `main`: `b7347f52be163cfd8a8ac6cc39c57f9545cf2dbe` (the Cargo/npm manifests and lockfiles are unchanged since inventory source `f2f84bc8011c72f5065be669b3ef90ae1c6b3e22`)
 
 ## Declared project license
 
@@ -49,7 +49,11 @@ Website dependency declarations:
 
 The observed identifiers were compared with the [OSI approved-license list](https://opensource.org/licenses). OSI lists the relevant base licenses including MIT, Apache-2.0, MPL-2.0, LGPL-3.0, BSD-2-Clause, BSD-3-Clause, BlueOak-1.0.0, 0BSD, ISC, and Python-2.0. Compound expressions still require their normal SPDX interpretation; a declaration is not a legal compatibility opinion.
 
-**Website dependency concern:** `CC0-1.0` appears on two `mdn-data` entries in the website lockfile. Those entries are transitive build-time metadata reached through `css-tree` (the `csso`/`svgo` toolchain); they are not declared as desktop runtime dependencies. The Rust lockfile below reveals an additional CC0 declaration reachable from the desktop dependency graph, so the website entries are not the only licensing question. CC0 does not appear in OSI's approved-license list, and [OSI's FAQ](https://opensource.org/faq) says its review application was withdrawn without approval and does not recommend releasing software under CC0. Because [SignPath's terms](https://signpath.org/terms.html) require an OSI-approved license for all components, confirm scope with SignPath or remediate before claiming the project fully meets that condition.
+**Website dependency concern:** `CC0-1.0` appears on two `mdn-data` entries in the website lockfile. The lockfile reverse-dependency paths are `astro -> svgo -> css-tree -> mdn-data@2.27.1` and `astro -> svgo -> csso -> css-tree -> mdn-data@2.0.28`. These are website build-tool dependencies, not declared desktop runtime dependencies. The Rust lockfile below reveals an additional CC0 declaration reachable from the desktop dependency graph, so the website entries are not the only licensing question. CC0 does not appear in OSI's approved-license list, and [OSI's FAQ](https://opensource.org/faq) says its review application was withdrawn without approval and does not recommend releasing software under CC0. Because [SignPath's terms](https://signpath.org/terms.html) require an OSI-approved license for all components, confirm scope with SignPath or remediate before claiming the project fully meets that condition.
+
+## Revalidation against current main
+
+On 2026-11-13, `git diff --name-only f2f84bc8011c72f5065be669b3ef90ae1c6b3e22..b7347f52be163cfd8a8ac6cc39c57f9545cf2dbe` was checked for Cargo/npm manifests and lockfiles; none changed. The inventory source inputs therefore still match current `main` at `b7347f52be163cfd8a8ac6cc39c57f9545cf2dbe`. Its GitHub CI run `43411563344` completed successfully, including Rust check/tests and desktop/docs builds. This does not establish SignPath eligibility or replace an exact candidate SBOM/package-content review.
 
 ## Remaining review required
 
