@@ -7,9 +7,10 @@
 - 已按 Cargo.lock 中650个 registry package entries 查询 crates.io 锁定版本元数据：582个 crate 名称、全部650条均找到 license 声明。发现 Rust `tiny-keccak 2.0.2` CC0-1.0 经构建期 proc-macro 依赖链到达；网站工具链还有2个 `mdn-data` CC0 项。`webpki-root-certs` 的 CDLA 声明在当前 rustls-platform-verifier 中仅用于 wasm32/dev，非 Windows x64 runtime 依赖的证据较强；仍需 SignPath 确认其 target/dev-only 成分范围。详见 `docs/CODE_SIGNING_LICENSE_INVENTORY.md`。
 - 签名工作流的顺序已复核，但没有真正请求 SignPath 签名或验收 MSI 嵌套文件；MSI deep-signing artifact configuration 必须根据实际构建样本生成、审核后才可用。main CI 已在最新提交 `f2f84bc8011c72f5065be669b3ef90ae1c6b3e22` 成功。
 - 发布工作流加入 GitHub `actions/attest` 源码/构建身份 provenance，覆盖 Authenticode 和 Ed25519 完成后的所有 release 文件；需要对新提交做云端验证，并在候选产物上实际执行 `gh attestation verify`。此证明补充构建来源，不取代 Windows Authenticode 或更新清单签名。
-- 已准备 application answers draft 与锁文件许可证盘点报告；尚未发送申请，缺维护者联系方式、MFA/角色事实确认及 SignPath 对 CC0 / 单人职责的答复。维护者表示会提供联系信息并确认状态，但本轮尚未收到具体事实。
+- 已准备 application answers draft 与锁文件许可证盘点报告；用户已提供联系人姓名/邮箱（仅供提交表单，不写入仓库）；仍需用户确认 GitHub MFA、SignPath MFA 和单人角色安排，以及 SignPath 对 CC0 / 单人职责的答复。
 - 新增真实包证据：下载公开 v1.4.16 MSI 后用 Windows Installer 数据库只读检查；包内 File 表只有 `image-hosting-platform-desktop.exe`（1.4.16.0，43,947,008 bytes），MSI 大小 21,057,536 bytes，SHA256 `be757d7cfdd6a08220b4a618ee53f0ca73365c2c94df85d9e6de7ee986305dbc`。`D:\Mirror Cloud` 当前 EXE 的 Windows Authenticode 状态为 NotSigned。新增 `docs/SIGNPATH_MSI_ARTIFACT_CONFIGURATION.xml` 草案（根 ZIP 同时包含唯一 NSIS EXE 和 MSI；验证 MSI 内应用 EXE 后签 MSI）及应用 PE 元数据约束草案 `docs/SIGNPATH_APP_EXE_ARTIFACT_CONFIGURATION.xml`；均尚未上传/验证为 SignPath 配置。
-- 未完成：SignPath Foundation 申请/受理、单人维护角色确认、对 CC0/CDLA 依赖的处置或 SignPath 书面认定、NSIS/最终候选完整 SBOM 内容审查、旧 v1.4.16 Release 直接政策链接、SignPath 项目/策略/API token/上传并实测 MSI Artifact Configuration、签名候选构建与端到端验收。不可将 1.4.16 描述为 Authenticode 已签名。
+- v1.4.16 既有 GitHub Release 正文已补并公开核实代码签名政策链接；尚未 SignPath 接纳前不加 SignPath 归属声明。
+- 未完成：SignPath Foundation 申请/受理、单人维护角色确认、对 CC0/CDLA 依赖的处置或 SignPath 书面认定、NSIS/最终候选完整 SBOM 内容审查、SignPath 项目/策略/API token/上传并实测 Artifact Configuration、attestation 手动运行与独立验证、签名候选构建与端到端验收。不可将 1.4.16 描述为 Authenticode 已签名。
 
 ## Typora 已有网图误报修复
 

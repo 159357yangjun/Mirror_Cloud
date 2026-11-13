@@ -8,11 +8,11 @@
 
 根据该包结构新增 `docs/SIGNPATH_MSI_ARTIFACT_CONFIGURATION.xml`：根节点按 workflow 上传的 installers ZIP 结构，签名唯一 `*-setup.exe`；在 `*.msi` 内先验证唯一 `image-hosting-platform-desktop.exe` 的 Authenticode，再签外层 MSI。新增 `docs/SIGNPATH_APP_EXE_ARTIFACT_CONFIGURATION.xml`，按实际安装 EXE 的版本资源约束产品名、文件/产品版本、公司名和版权信息。两个 XML 都已通过 SignPath 官方 v1 XSD 校验。配置仍是草案，必须上传 SignPath，检查解析后的文件结构/签名目标，并在实际测试与正式策略下分别试验。同步移除 `release.yml` 中给 installers Artifact Configuration 传入未声明/未使用的 `version` 参数；应用 EXE 配置仍传入其 `version` 参数。未请求签名、未启用 SignPath、未生成签名候选。
 
-调整了 `docs/CODE_SIGNING_LICENSE_INVENTORY.md` 与 `docs/SIGNPATH_APPLICATION_DRAFT.md`，将对真实 MSI 的发现及边界写清；没有声称 NSIS、未来候选或所有依赖已完成 SBOM 审查。现有 v1.4.16 GitHub Release API 仍显示正文仅含 Full Changelog、未含政策链接；用户已经授权补链接，但本机未安装 GitHub CLI，当前可用 GitHub connector 只提供公开 GET、此前 CUA release 页面处于未登录状态，故本轮无法直接修改现有 Release。未来 release workflow body 已有政策与隐私链接。
+调整了 `docs/CODE_SIGNING_LICENSE_INVENTORY.md` 与 `docs/SIGNPATH_APPLICATION_DRAFT.md`，将对真实 MSI 的发现及边界写清；没有声称 NSIS、未来候选或所有依赖已完成 SBOM 审查。此前 v1.4.16 Release 正文只有 Full Changelog，用户授权后使用本机 Git Credential Manager 已有 GitHub 凭据通过 Releases API 加入代码签名政策链接；没有打印或持久化凭据，随后以公开 Release API 复核链接和原 changelog 均在。
 
 SignPath 文档显示，MSI 可做深度签名；Artifact Configuration 的验证指令可验证嵌套文件，并应在签名指令前运行。参考：[deep-signing syntax](https://docs.signpath.io/artifact-configuration/syntax)、[artifact configuration](https://docs.signpath.io/artifact-configuration/)、[GitHub action inputs](https://github.com/SignPath/github-action-submit-signing-request/blob/main/action.yml)。
 
-为加强可验证构建，随后给 `release.yml` 增加 GitHub `actions/attest@v4.2.2`（固定到官方标签解析出的 commit `1e69f48acb82d1966a394da916b4c1698aa569d6`），在 Authenticode 与 update-manifest 完成后对 `release/*` 逐文件生成构建来源证明。顶层增加 `attestations: write`、`id-token: write`、`artifact-metadata: write`。官方文档说明该动作使用 Sigstore 签发的短期证书并把 attestation 关联到仓库；公开仓库支持此能力。尚未云端运行，也未用 `gh attestation verify` 对候选资产独立验证。参考：[actions/attest](https://github.com/actions/attest)、[GitHub artifact attestations](https://docs.github.com/en/actions/concepts/security/artifact-attestations)。
+为加强可验证构建，给 `release.yml` 增加 GitHub `actions/attest@v4.2.2`（固定到官方标签解析出的 commit `1e69f48acb82d1966a394da916b4c1698aa569d6`），在 Authenticode 与 update-manifest 完成后对 `release/*` 逐文件生成构建来源证明。顶层增加 `attestations: write`、`id-token: write`、`artifact-metadata: write`。对应源码 `4a517bbc2431b9a216b3b3e868e6daad2927dcfe` 的 GitHub `desktop-check` 与 `strict-manifest-and-source-alignment` 均 completed/success；但这两个检查没有执行手动发布工作流中的 attestation 运行时，也没有用 `gh attestation verify` 独立验证真实候选资产。参考：[actions/attest](https://github.com/actions/attest)、[GitHub artifact attestations](https://docs.github.com/en/actions/concepts/security/artifact-attestations)。
 
 ## 2026-11-13 — SignPath 发布签名链路准备中
 
