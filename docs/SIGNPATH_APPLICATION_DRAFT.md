@@ -44,7 +44,7 @@ One GitHub account currently maintains the source and would also review outside 
    - `dunce 1.0.5` declares `CC0-1.0 OR MIT-0 OR Apache-2.0`; the metadata offers OSI-approved alternatives.
    See `docs/CODE_SIGNING_LICENSE_INVENTORY.md` for the exact lockfile scan and remaining package-content review.
 2. Can one individual hold the author, non-committer reviewer, and signing-approver responsibilities for this project, and what review safeguards are required?
-3. Does the current public policy wording and placement meet the terms? The website policy exists, but the existing v1.4.16 GitHub Release body does not yet contain a direct policy link. Future releases from the current workflow include policy and privacy links.
+3. Does the current public policy wording and placement meet the terms? The website policy exists, README/home/download pages link it, and the v1.4.16 GitHub Release body was updated and verified to link directly to the policy. Future releases from the current workflow include policy and privacy links.
 
 ## Maintainer-only details to provide in the application form
 
@@ -54,3 +54,7 @@ One GitHub account currently maintains the source and would also review outside 
 - Any current SignPath account or organization details, if one already exists.
 
 Do not place personal contact details, API tokens, or credentials in this draft or in repository files.
+
+## 2026-11-13 — Public Release policy link verified
+
+The v1.4.16 GitHub Release body was updated with the direct signing-policy URL and independently re-read from the public GitHub Releases API. The application draft now reflects the current public state.
