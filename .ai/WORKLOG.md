@@ -1,5 +1,17 @@
 # WORKLOG
 
+## 2026-11-13 — SignPath MSI Artifact Configuration draft grounded in release sample
+
+当前仓库 `main` / HEAD `0999e0496bfc758dca66466e2be384144738976c` 与 `origin/main` 一致；改动前工作区干净。GitHub REST `check-runs` 初次读取时 `desktop-check` 仍 in_progress；随后复查显示 `strict-manifest-and-source-alignment` 与 `desktop-check` 均 completed/success（desktop-check 于 2026-11-13 09:23:36Z 结束）。此状态只属于改动前 SHA；未覆盖本条记录的未提交改动。状态查询链接：[commit checks](https://github.com/159357yangjun/Mirror_Cloud/commit/0999e0496bfc758dca66466e2be384144738976c/checks)。
+
+下载公开 v1.4.16 MSI（21,057,536 bytes）并通过 Windows Installer COM 数据库只读查询 `Property` 和 `File` 表，没有安装或执行它。包身份为 Mirror Cloud 1.4.16，唯一 File 项是 `image-hosting-platform-desktop.exe`，文件版本 1.4.16.0、表中大小 43,947,008 bytes；下载字节 SHA256 `be757d7cfdd6a08220b4a618ee53f0ca73365c2c94df85d9e6de7ee986305dbc`，Windows 报 MSI `NotSigned`。当前 `D:\Mirror Cloud\image-hosting-platform-desktop.exe` 同样报告 `NotSigned`。此样本仅覆盖 v1.4.16 MSI/当前安装程序，不代表未来签名候选。
+
+根据该包结构新增 `docs/SIGNPATH_MSI_ARTIFACT_CONFIGURATION.xml`：根节点按 workflow 上传的 installers ZIP 结构，签名唯一 `*-setup.exe`；在 `*.msi` 内先验证唯一 `image-hosting-platform-desktop.exe` 的 Authenticode，再签外层 MSI。新增 `docs/SIGNPATH_APP_EXE_ARTIFACT_CONFIGURATION.xml`，按实际安装 EXE 的版本资源约束产品名、文件/产品版本、公司名和版权信息。两个 XML 都已通过 SignPath 官方 v1 XSD 校验。配置仍是草案，必须上传 SignPath，检查解析后的文件结构/签名目标，并在实际测试与正式策略下分别试验。同步移除 `release.yml` 中给 installers Artifact Configuration 传入未声明/未使用的 `version` 参数；应用 EXE 配置仍传入其 `version` 参数。未请求签名、未启用 SignPath、未生成签名候选。
+
+调整了 `docs/CODE_SIGNING_LICENSE_INVENTORY.md` 与 `docs/SIGNPATH_APPLICATION_DRAFT.md`，将对真实 MSI 的发现及边界写清；没有声称 NSIS、未来候选或所有依赖已完成 SBOM 审查。现有 v1.4.16 GitHub Release API 仍显示正文仅含 Full Changelog、未含政策链接；用户已经授权补链接，但本机未安装 GitHub CLI，当前可用 GitHub connector 只提供公开 GET、此前 CUA release 页面处于未登录状态，故本轮无法直接修改现有 Release。未来 release workflow body 已有政策与隐私链接。
+
+SignPath 文档显示，MSI 可做深度签名；Artifact Configuration 的验证指令可验证嵌套文件，并应在签名指令前运行。参考：[deep-signing syntax](https://docs.signpath.io/artifact-configuration/syntax)、[artifact configuration](https://docs.signpath.io/artifact-configuration/)、[GitHub action inputs](https://github.com/SignPath/github-action-submit-signing-request/blob/main/action.yml)。
+
 ## 2026-11-13 — SignPath 发布签名链路准备中
 
 重新核对当前仓库为 `main`、干净工作树、HEAD `ac49909915c0fb364b1a0ef46060943f87c24321`。GitHub 同 SHA CI run `43391911032` 状态 Success（4m38s，workflow desktop-check）；Docs Site run `43391911079` 状态 Success（build 44s、deploy 11s），无跳过。该 SHA 的 CI 检查不覆盖本条之后的未提交变更。

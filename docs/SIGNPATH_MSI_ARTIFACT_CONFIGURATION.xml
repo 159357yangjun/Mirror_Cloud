@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Draft for the `installers` GitHub Actions artifact, which is a ZIP containing
+  exactly one NSIS EXE and one MSI. The nested MSI path is based on inspection of
+  the public v1.4.16 MSI File table.
+  Upload to SignPath, inspect its generated artifact visualization, and test with
+  the actual signing policy before configuring its artifact-configuration slug.
+  Do not treat this checked-in draft as a configured or verified SignPath object.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="*-setup.exe">
+      <authenticode-sign />
+    </pe-file>
+    <msi-file path="*.msi">
+      <pe-file path="image-hosting-platform-desktop.exe">
+        <authenticode-verify />
+      </pe-file>
+      <authenticode-sign />
+    </msi-file>
+  </zip-file>
+</artifact-configuration>

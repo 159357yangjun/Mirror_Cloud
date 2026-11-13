@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Draft for the `app-exe` GitHub Actions artifact. Metadata restrictions were
+  checked against the installed v1.4.16 executable's version resource.
+  Upload to SignPath, inspect the generated configuration, and exercise it with
+  the actual policy before configuring its artifact-configuration slug.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <pe-file path="image-hosting-platform-desktop.exe"
+           product-name="Mirror Cloud"
+           product-version="${version}"
+           file-version="${version}"
+           company-name="Multi-cloud Publisher Contributors"
+           copyright="Copyright (c) 2026 Multi-cloud Publisher Contributors">
+    <authenticode-sign />
+  </pe-file>
+</artifact-configuration>

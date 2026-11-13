@@ -22,13 +22,15 @@ Mirror Cloud is an open-source Windows desktop application for uploading and man
 - Sign the project's own Windows application executable first.
 - Build the NSIS and MSI installers from that signed executable.
 - Sign the outer NSIS EXE and MSI packages.
-- Do not claim third-party binaries as Mirror Cloud-owned signing artifacts. For the MSI, verify the embedded application executable before signing the MSI; generate/review its exact nested-file configuration from a real project build sample.
+- Do not claim third-party binaries as Mirror Cloud-owned signing artifacts. For the MSI, verify the embedded application executable before signing the MSI; the nested-file configuration draft is grounded in the actual public v1.4.16 MSI sample and still requires SignPath review and a signed-candidate run.
 - Keep SHA256 manifests and the Ed25519 update-manifest signature downstream of Authenticode signing so they describe the final signed installer bytes.
 - Require human approval for every SignPath request and retain request, workflow, source commit, signer identity and verification records.
+- The standalone application EXE Artifact Configuration draft is `docs/SIGNPATH_APP_EXE_ARTIFACT_CONFIGURATION.xml`; it constrains the signed executable's product/version/company metadata based on the installed v1.4.16 file resource.
+- For MSI signing, verify the already-signed application executable inside the package, then Authenticode-sign the outer MSI. A draft configuration based on the actual v1.4.16 MSI File table is checked in at `docs/SIGNPATH_MSI_ARTIFACT_CONFIGURATION.xml`; it has not yet been uploaded or exercised in SignPath.
 
 ## Proposed build and review process
 
-The release workflow on `main` has an opt-in SignPath path: it signs the application executable, builds NSIS/MSI installers from that executable, submits the installers for SignPath approval and signing, verifies Authenticode status and signer, and only then computes final hashes and publishes. CI passed through source `f2f84bc8011c72f5065be669b3ef90ae1c6b3e22`. This workflow has not yet submitted a SignPath request or produced a signed candidate, and MSI nested-file signing still depends on a generated and reviewed artifact configuration from a real build sample. No SignPath request has been submitted.
+The release workflow on `main` has an opt-in SignPath path: it signs the application executable, builds NSIS/MSI installers from that executable, submits the installers for SignPath approval and signing, verifies Authenticode status and signer, and only then computes final hashes and publishes. The public v1.4.16 MSI sample has now been inspected: its File table contains only `image-hosting-platform-desktop.exe`; the MSI draft verifies that nested EXE and signs the MSI. A separate app-executable draft constrains PE metadata. These local XML drafts have not yet been uploaded; the workflow has not submitted a SignPath request or produced a signed candidate. Both configurations require upload, review in SignPath, and successful real signing requests before use.
 
 One GitHub account currently maintains the source and would also review outside contributions and approve signing requests. Ask SignPath whether this arrangement is permitted and how to enforce those roles for an individual maintainer; do not invent additional team members. GitHub and SignPath MFA must be confirmed directly on the accounts.
 
