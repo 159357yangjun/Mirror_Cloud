@@ -14,6 +14,10 @@ SignPath 文档显示，MSI 可做深度签名；Artifact Configuration 的验�
 
 为加强可验证构建，给 `release.yml` 增加 GitHub `actions/attest@v4.2.2`（固定到官方标签解析出的 commit `1e69f48acb82d1966a394da916b4c1698aa569d6`），在 Authenticode 与 update-manifest 完成后对 `release/*` 逐文件生成构建来源证明。顶层增加 `attestations: write`、`id-token: write`、`artifact-metadata: write`。对应源码 `4a517bbc2431b9a216b3b3e868e6daad2927dcfe` 的 GitHub `desktop-check` 与 `strict-manifest-and-source-alignment` 均 completed/success；但这两个检查没有执行手动发布工作流中的 attestation 运行时，也没有用 `gh attestation verify` 独立验证真实候选资产。参考：[actions/attest](https://github.com/actions/attest)、[GitHub artifact attestations](https://docs.github.com/en/actions/concepts/security/artifact-attestations)。
 
+随后提交 `4b7f38e09807274e78f69c735182729a8696f59d` 的完整 CI 与 strict-manifest/source-alignment 均通过。通过 GitHub Actions REST workflow_dispatch 触发候选 run `43406205980`，`sign_with_signpath=false`，无 tag、不发布 Release。Windows 打包、release-file 上传、依赖锁上传及 `Attest final release artifacts` 均 success；`publish-release` skipped 为预期。run URL: https://github.com/159357yangjun/Mirror_Cloud/actions/runs/43406205980。
+
+用 GitHub CLI v2.104.0（Windows x64 ZIP SHA256 `08c06d10482f12c478018cd259f64acbd5f625712cadf331aad19ba973c879e5`）从工件 ZIP 解出 6 个候选文件，逐个运行 `gh attestation verify`，限制 `--repo 159357yangjun/Mirror_Cloud`、`--signer-workflow 159357yangjun/Mirror_Cloud/.github/workflows/release.yml` 和 `--source-ref refs/heads/main`；六项验证全部通过。setup EXE SHA256 `785de3771e5685d2fff6391aec5c319b62ff679c86f1b6e854a08e944d159ffa`，MSI SHA256 `33b08348208de1886271b9f2d395a56ef65d648fb51bc7fb92e6113c2e1379a5`；source ZIP、SHA256SUMS、update manifest 与 `.sig` 也均通过。该验证只证明 GitHub workflow 来源，不是 Authenticode 签名；候选未安装。临时 CLI/工件文件残留于 `%TEMP%\mirror-cloud-attestation-43406205980`：PowerShell 清理操作两次被策略拒绝，尚未清理。
+
 ## 2026-11-13 — SignPath 发布签名链路准备中
 
 重新核对当前仓库为 `main`、干净工作树、HEAD `ac49909915c0fb364b1a0ef46060943f87c24321`。GitHub 同 SHA CI run `43391911032` 状态 Success（4m38s，workflow desktop-check）；Docs Site run `43391911079` 状态 Success（build 44s、deploy 11s），无跳过。该 SHA 的 CI 检查不覆盖本条之后的未提交变更。
