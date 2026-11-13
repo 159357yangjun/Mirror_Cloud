@@ -1,7 +1,7 @@
 # Code-signing eligibility: license inventory (preliminary)
 
 Date checked: 2026-11-13
-Source revision revalidated against current `main`: `b7347f52be163cfd8a8ac6cc39c57f9545cf2dbe` (the Cargo/npm manifests and lockfiles are unchanged since inventory source `f2f84bc8011c72f5065be669b3ef90ae1c6b3e22`)
+Latest dependency-bearing revision revalidated: `eabeb32cfb3bad3a7714e7901f4d2dec1e4d368a` (the Cargo/npm manifests and lockfiles are unchanged since inventory source `f2f84bc8011c72f5065be669b3ef90ae1c6b3e22`)
 
 ## Declared project license
 
@@ -53,7 +53,7 @@ The observed identifiers were compared with the [OSI approved-license list](http
 
 ## Revalidation against current main
 
-On 2026-11-13, `git diff --name-only f2f84bc8011c72f5065be669b3ef90ae1c6b3e22..b7347f52be163cfd8a8ac6cc39c57f9545cf2dbe` was checked for Cargo/npm manifests and lockfiles; none changed. The inventory source inputs therefore still match current `main` at `b7347f52be163cfd8a8ac6cc39c57f9545cf2dbe`. Its GitHub CI run `43411563344` completed successfully, including Rust check/tests and desktop/docs builds. This does not establish SignPath eligibility or replace an exact candidate SBOM/package-content review.
+On 2026-11-13, `git diff --name-only f2f84bc8011c72f5065be669b3ef90ae1c6b3e22..eabeb32cfb3bad3a7714e7901f4d2dec1e4d368a` was checked for Cargo/npm manifests and lockfiles; none changed. The inventory inputs were revalidated through `main` at `eabeb32cfb3bad3a7714e7901f4d2dec1e4d368a`. The preceding dependency-identical commit `b7347f52be163cfd8a8ac6cc39c57f9545cf2dbe` passed GitHub CI run `43411563344`, including Rust check/tests and desktop/docs builds; `eabeb32` also passed docs-only CI run `43412928678`. This does not establish SignPath eligibility or replace an exact candidate SBOM/package-content review.
 
 ## Remaining review required
 
@@ -93,7 +93,7 @@ On 2026-11-13, `git diff --name-only f2f84bc8011c72f5065be669b3ef90ae1c6b3e22..b
 
 **Potential eligibility blockers requiring a written SignPath determination or remediation:**
 
-- `tiny-keccak 2.0.2` declares `CC0-1.0` with no alternate license in crates.io metadata. The lockfile dependency path is `storage-opendal -> opendal (services-oss) -> opendal-service-oss -> reqsign-aliyun-oss -> rust-ini -> ordered-multimap -> dlv-list -> const-random -> const-random-macro -> tiny-keccak`; `crates/storage-opendal/Cargo.toml` explicitly enables OpenDAL's `services-oss` feature. `const-random-macro` is a build-time proc-macro dependency; package metadata does not prove its code is linked into the final executable. Ask SignPath whether build-time source dependencies are in scope, or replace the dependency chain if they require every build component to use an OSI-approved license.
+- `tiny-keccak 2.0.2` declares `CC0-1.0` with no alternate license in crates.io metadata. The lockfile dependency path is `storage-opendal -> opendal (services-oss) -> opendal-service-oss -> reqsign-aliyun-oss -> rust-ini -> ordered-multimap -> dlv-list -> const-random -> const-random-macro -> tiny-keccak`; `crates/storage-opendal/Cargo.toml` explicitly enables OpenDAL's `services-oss` feature. Exact published Cargo manifests were inspected: `reqsign-aliyun-oss 3.2.0` and `reqsign-aws-core 3.2.0` depend on `rust-ini 0.21`; `rust-ini 0.21.3` depends on `ordered-multimap 0.7`; `ordered-multimap 0.7.3` depends on `dlv-list 0.5`; and `dlv-list 0.5.2` declares `const-random 0.1.15` as a non-optional dependency. That crate in turn depends on `const-random-macro 0.1.16`, which declares `tiny-keccak 2.0.2`. This is not merely a package appearing in Cargo.lock because of an optional feature. The `tiny-keccak` edge is in a compile-time proc-macro chain; this confirms source/build dependency reachability, not that its code is linked into the final executable. Ask SignPath whether build-time source dependencies are in scope, or replace the dependency chain if they require every build component to use an OSI-approved license.
 - `mdn-data` appears twice with `CC0-1.0` in the website lockfile, through the `css-tree` website build chain.
 
 **Target and license-expression notes:**
