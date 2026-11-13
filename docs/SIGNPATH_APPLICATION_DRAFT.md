@@ -28,15 +28,20 @@ Mirror Cloud is an open-source Windows desktop application for uploading and man
 
 ## Proposed build and review process
 
-The release workflow on `main` is being prepared to upload artifacts from GitHub-hosted Windows runners to SignPath. It will wait for the configured SignPath human approval, retrieve the signed artifact, verify its Authenticode status and signer, and only then package, hash, and publish. GitHub Actions CI and Docs Site passed for source `ac49909915c0fb364b1a0ef46060943f87c24321`; the opt-in signing-flow commit `4639d53b8e606c4d220812f9dea9e7ca31fa181e` passed the main CI workflow. No SignPath request has yet been submitted.
+The release workflow on `main` has an opt-in SignPath path: it signs the application executable, builds NSIS/MSI installers from that executable, submits the installers for SignPath approval and signing, verifies Authenticode status and signer, and only then computes final hashes and publishes. CI passed through source `f2f84bc8011c72f5065be669b3ef90ae1c6b3e22`. This workflow has not yet submitted a SignPath request or produced a signed candidate, and MSI nested-file signing still depends on a generated and reviewed artifact configuration from a real build sample. No SignPath request has been submitted.
 
 One GitHub account currently maintains the source and would also review outside contributions and approve signing requests. Ask SignPath whether this arrangement is permitted and how to enforce those roles for an individual maintainer; do not invent additional team members. GitHub and SignPath MFA must be confirmed directly on the accounts.
 
 ## Questions requiring SignPath's determination
 
-1. Is the project eligible when two website-only build-tool lock entries for transitive `mdn-data` declare `CC0-1.0`, which is not on OSI's approved-license list, while the Windows desktop runtime does not declare/use those website packages?
+1. Is the project eligible with the exact locked dependency declarations below, given the rule that all components must use OSI-approved licenses?
+   - `tiny-keccak 2.0.2` declares only `CC0-1.0` and is reachable through the explicitly enabled `storage-opendal` / OpenDAL OSS-service dependency chain.
+   - Two website build-tool entries for `mdn-data` declare `CC0-1.0`.
+   - `webpki-root-certs 1.0.9` declares `CDLA-Permissive-2.0` and is reachable through the `reqwest` dependency graph.
+   - `dunce 1.0.5` declares `CC0-1.0 OR MIT-0 OR Apache-2.0`.
+   See `docs/CODE_SIGNING_LICENSE_INVENTORY.md` for the exact lockfile scan and remaining package-content review.
 2. Can one individual hold the author, non-committer reviewer, and signing-approver responsibilities for this project, and what review safeguards are required?
-3. Does the current policy wording and website/release link placement meet the project's home-page and download/release-page requirement? The next generated GitHub Release is configured to include direct links; the already-published v1.4.16 page still needs a direct link before the application is presented as complete.
+3. Does the current public policy wording and placement meet the terms? The website policy exists, but the existing v1.4.16 GitHub Release body does not yet contain a direct policy link. Future releases from the current workflow include policy and privacy links.
 
 ## Maintainer-only details to provide in the application form
 

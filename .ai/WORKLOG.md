@@ -746,3 +746,13 @@ db7e0f6的UI run41286063639/job124787490444中，44px触控命中检查已通过
 交付报告、测试说明、candidate-verification.json及pipeline-evidence.json均在该目录；完整云端证据在工作会话outputs/rebuild-2026-11-01，云端UI归档digest已比对，640/1440实图已目视。首次CI/两轮UI失败及针对性修正见WORKLOG前文，没有改阈值/跳门/重签形状或主题基线。仅保留安装包/证据，无临时探针代码或.download残留。
 
 本条为本机文档闭环，不改变已构建a264721源码；本次不再推送记录提交以触发重复CI。真实用户升级G3、凭据/图床、原生个人视频、用户DPI仍缺；安装器未在本机自动执行，未安装SDK/依赖或上传个人MP4。
+
+## 2026-11-13 — SignPath eligibility inventory update
+
+Source reviewed: `f2f84bc8011c72f5065be669b3ef90ae1c6b3e22` on `main`. Exact Cargo.lock package versions were queried through crates.io version metadata: 650 registry package entries across 582 crate names, every locked version had a license declaration; 13 workspace crates inherit the workspace MIT declaration. The expressions and per-entry counts are recorded in `docs/CODE_SIGNING_LICENSE_INVENTORY.md`.
+
+The new material finding is `tiny-keccak 2.0.2` (`CC0-1.0`) reachable through OpenDAL's `services-oss`, which is explicitly enabled in `crates/storage-opendal/Cargo.toml`. The website lockfile separately contains two `mdn-data` CC0 declarations. `webpki-root-certs 1.0.9` declares `CDLA-Permissive-2.0`; `dunce 1.0.5` offers `CC0-1.0 OR MIT-0 OR Apache-2.0`. These metadata and dependency paths are not a source-text/legal review or proof of installer contents. Under the current SignPath terms, project-wide eligibility is not yet established. Application draft questions were updated; no application or third-party message was submitted.
+
+Re-reviewed `.github/workflows/release.yml` signing order: sign app EXE, bundle signed executable into NSIS/MSI, submit installer signing requests, verify SignPath signer, then stage checksums and Ed25519 update manifest. The SignPath path remains unexecuted; MSI nested-file artifact configuration still needs a real build sample and review. Public README/home/download pages link the policy; public v1.4.16 Release body lacks a direct link, while future releases from the workflow include links.
+
+Local documentation checks: `git diff --check` passed; `python scripts/check_docs_site.py` passed all 16 checks. No Rust build or tests were run. Current working changes are documentation/task/worklog only; after commit and push, CI status must be checked against the new exact SHA. User said they will provide the application contact and account/MFA/role confirmations; no details or secrets were received or stored.
