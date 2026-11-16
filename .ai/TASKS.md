@@ -1,5 +1,13 @@
 # TASKS
 
+## 进行中：插件化重构（Kernel + Plugins v1，P0 已完成）
+
+- 用户已批准边界与范围：内核保留发布闭环/宿主/存储 port+凭据+S3 兜底/任务队列/SQLite/基础 UI；14 个内置插件承接业务能力；v1 只做内置插件（默认启用、可禁用），第三方动态插件放 v2。
+- P0 产物（未提交）：`docs/PLUGIN_FIRST_ARCHITECTURE.md`、`docs/adr/0001`–`0004`、`docs/schemas/plugin-manifest-v2.schema.json`、`docs/PLUGIN_COMMAND_MAP.md`（99 条全量）、`scripts/backup_db.ps1`、`scripts/baseline_metrics.py`、`.ai/baseline/2026-11-16.md`。
+- P0 核对：schema JSON 可解析；命令映射 99/99 覆盖；备份脚本语法通过；静态基线已采集（crate 11,513 行、src-tauri 14,195 行、前端 9,049 行、99 命令、98 处 `invoke(`）。
+- 缺口：运行时性能基线（发布 p95/冷启动/RSS/安装包体积）待云端 CI；DDL 与 2.0.0 仍未授权；P0 未跑全量 `validate.py`/`check_user_flow.py`（无产品代码变更）。
+- 下一步 P1（第 2–4 周）：新建 `crates/kernel-api`/`plugin-host`/`kernel`，`plugin_invoke` 分发器，前端 registry + `PageHost`，内置插件幂等种子，`check_plugin_contracts.py`/`check_kernel_deps.py`；验收口径「行为零变化 + 640 flow/99 契约/23 unit 全绿」。
+
 ## 进行中：SignPath Foundation 开源代码签名
 
 - 已推送公开隐私与代码签名政策草案，远端 CI `43391911032` 与 Docs Site `43391911079` 在源码 `ac49909915c0fb364b1a0ef46060943f87c24321` 成功。

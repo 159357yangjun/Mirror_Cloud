@@ -1,5 +1,34 @@
 # WORKLOG
 
+## 2026-11-16 — 插件化 P0：边界 ADR、manifest v2 契约、命令映射与静态基线
+
+起始 `main@69ec25d7a86a0830ad17cc330662fa83218dfb44`（1.4.16），改动前工作区干净（`git status --short` 仅本轮新增文件）。用户批准「内核 + 内置插件」边界与「v1 只做内置插件、第三方放 v2」，要求按阶段执行；本轮执行 P0，不改任何产品代码、不构建、不推送。
+
+新增文件：
+
+- `docs/adr/0001-kernel-boundary.md`：内核保留「应用壳/更新器/插件宿主/存储 port+凭据+S3 兜底/发布闭环/任务队列与 SQLite/基础 UI/CLI 与 Local HTTP 骨架」，其余 14 个内置插件承接；拒绝微内核、feature flag、纯文档三种替代。
+- `docs/adr/0002-plugin-manifest-v2.md`：`api_version/schema_version=2`，宿主兼容 v1 声明式清单；`contributes` 白名单 9 键；权限新增 `provider_config`、`fs_paths`；v1 不加载磁盘代码，`native` 必须随构建编入。
+- `docs/adr/0003-command-dispatch.md`：内核命令保留原名并收敛 ≤30 条；插件命令统一 `plugin_invoke(plugin_id, method, payload)`，错误码固定 6 种，审计不记录 payload 原文；`check_contracts.py` 改为「内核白名单 + 插件 manifest」双向对账。
+- `docs/adr/0004-ui-slots.md`：5 个 slot（`nav.main`/`page.main`/`settings.section`/`settings.storage`/`tray.menu`），构建期 `import.meta.glob` 收集插件入口，禁用即注销；离线可用、不远程加载 UI。
+- `docs/schemas/plugin-manifest-v2.schema.json`：JSON Schema 2020-12，15 个顶层属性、9 类贡献点，相对路径禁止 `..`，命令/页面/路由 id 有正则约束。
+- `docs/PLUGIN_COMMAND_MAP.md`：99 条 `#[tauri::command]` 逐条归属（内核 37、portable-migration 21、cloud-browser 14、integrations-os 9、workflow 6、publish-strategy 4、reconcile 4、ai-assistant 3、diagnostics 1），含来源文件、P4 收敛动作与契约检查口径。
+- `scripts/backup_db.ps1`：默认备份 `%APPDATA%\dev.multicloud.publisher\publisher.sqlite3`（路径与 `apps/desktop/src-tauri/src/lib.rs:87-89` 一致），校验 SQLite 文件头、复制 WAL/SHM、输出 SHA256 边车、默认保留 30 天。
+- `scripts/baseline_metrics.py` + `.ai/baseline/2026-11-16.md`：静态基线（crate 11,513 行、src-tauri 14,195 行/22 文件、前端 63 文件/9,049 行、99 命令、98 处 `invoke(`、8 页面、144 docs、64 scripts）。
+
+核对与验证（本机实跑）：
+
+- `docs/schemas/plugin-manifest-v2.schema.json` 用 Python `json.load` 解析通过；命令名覆盖检查 99/99（无遗漏）。
+- `py -3 scripts/baseline_metrics.py --out .ai/baseline/2026-11-16.md` 成功，输出 `command_total=99`、`invoke_total=98`。
+- `scripts/backup_db.ps1` 用 PowerShell Parser 做语法校验通过；未对真实库执行（需用户在场并另行确认运行的应用版本）。
+- `docs/PLUGIN_FIRST_ARCHITECTURE.md` 的数字与附录 A 已按同一口径修正（前端 98 处 `invoke(`，泛型写法另 3 处；原始行口径）。
+
+缺口与边界：
+
+- **运行时性能基线未采集**：发布 p95、冷启动、RSS、安装包体积需真实构建与目标环境，按 `AGENTS.md` 由云端 CI 采集；本轮不伪造数值，P4 复测时补齐同一口径。
+- DDL（`plugin_state`、`plugin_capabilities`）与版本号 2.0.0 **仍未授权**，P0 未触库、未改版本号。
+- 本轮未执行 `validate.py` / `check_user_flow.py` 全量（无代码变更，且部分检查依赖构建产物）；P1 起每阶段全量跑。
+- 本地提交未推送；工作区新增文件将在提交报告中给出 SHA 与 Diff。
+
 ## 2026-11-13 — SignPath MSI Artifact Configuration draft grounded in release sample
 
 当前仓库 `main` / HEAD `0999e0496bfc758dca66466e2be384144738976c` 与 `origin/main` 一致；改动前工作区干净。GitHub REST `check-runs` 初次读取时 `desktop-check` 仍 in_progress；随后复查显示 `strict-manifest-and-source-alignment` 与 `desktop-check` 均 completed/success（desktop-check 于 2026-11-13 09:23:36Z 结束）。此状态只属于改动前 SHA；未覆盖本条记录的未提交改动。状态查询链接：[commit checks](https://github.com/159357yangjun/Mirror_Cloud/commit/0999e0496bfc758dca66466e2be384144738976c/checks)。

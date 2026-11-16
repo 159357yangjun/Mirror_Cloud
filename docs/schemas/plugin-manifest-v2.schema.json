@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mirror-cloud.dev/schemas/plugin-manifest-v2.schema.json",
+  "title": "Mirror Cloud plugin manifest v2",
+  "description": "插件契约（v2）。v1 清单由宿主 v1 解析器处理，本 schema 只覆盖 api_version=2 与 schema_version=2。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["api_version", "schema_version", "id", "name", "version", "kind", "permissions", "contributes"],
+  "properties": {
+    "api_version": { "const": 2 },
+    "schema_version": { "const": 2 },
+    "id": { "$ref": "#/$defs/pluginId" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "version": { "$ref": "#/$defs/semver" },
+    "kind": { "enum": ["declarative", "native", "wasm"] },
+    "builtin": { "type": "boolean", "default": false },
+    "description": { "type": "string", "maxLength": 1024 },
+    "kernel": { "type": "string", "pattern": "^\\s*[<>=~^]*\\s*[0-9]+\\.[0-9]+\\.[0-9]+.*$", "maxLength": 64 },
+    "requires": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/pluginId" },
+      "uniqueItems": true,
+      "maxItems": 16
+    },
+    "permissions": {
+      "type": "array",
+      "items": { "enum": ["read_asset", "network", "secret", "external_write", "provider_config", "fs_paths"] },
+      "uniqueItems": true,
+      "maxItems": 8
+    },
+    "default_enabled": { "type": "boolean" },
+    "config_schema_ref": { "$ref": "#/$defs/relativeJsonPath" },
+    "settings_schema_ref": { "$ref": "#/$defs/relativeJsonPath" },
+    "contributes": { "$ref": "#/$defs/contributions" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "native" } } },
+      "then": { "required": ["builtin"] },
+      "description": "v1 只允许随构建编入的内置插件声明 native；外部 native 动态库一律拒绝。"
+    },
+    {
+      "if": { "properties": { "kind": { "const": "wasm" } } },
+      "then": { "properties": { "builtin": { "const": false } } },
+      "description": "wasm 为 v2 预留；v1 宿主加载到此类清单时直接拒绝启用。"
+    }
+  ],
+  "$defs": {
+    "pluginId": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,63}$" },
+    "semver": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$", "maxLength": 64 },
+    "contributionId": { "type": "string", "pattern": "^[a-z][a-z0-9._-]{1,63}$" },
+    "relativeJsonPath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9._/-]+\\.json$",
+      "maxLength": 200
+    },
+    "permission": { "enum": ["read_asset", "network", "secret", "external_write", "provider_config", "fs_paths"] },
+    "hookName": {
+      "enum": ["before_process", "after_process", "after_upload", "on_publish_failure", "on_gallery_delete", "manual_trigger"]
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]{2,63}$" },
+        "permission": { "$ref": "#/$defs/permission" },
+        "input_schema_ref": { "$ref": "#/$defs/relativeJsonPath" },
+        "output_schema_ref": { "$ref": "#/$defs/relativeJsonPath" },
+        "timeout_ms": { "type": "integer", "minimum": 1000, "maximum": 120000, "default": 30000 },
+        "tests_only": { "type": "boolean", "default": false },
+        "description": { "type": "string", "maxLength": 200 }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "display", "config_schema_ref"],
+      "properties": {
+        "key": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$" },
+        "display": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "config_schema_ref": { "$ref": "#/$defs/relativeJsonPath" },
+        "capabilities": {
+          "type": "array",
+          "items": { "enum": ["private_read", "share_link", "directory_listing", "delete", "move", "batch", "repair"] },
+          "uniqueItems": true
+        }
+      }
+    },
+    "transformStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "order", "display"],
+      "properties": {
+        "id": { "$ref": "#/$defs/contributionId" },
+        "order": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "display": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "description": { "type": "string", "maxLength": 200 }
+      }
+    },
+    "publishStrategy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display"],
+      "properties": {
+        "id": { "$ref": "#/$defs/contributionId" },
+        "display": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "config_schema_ref": { "$ref": "#/$defs/relativeJsonPath" },
+        "description": { "type": "string", "maxLength": 200 }
+      }
+    },
+    "uiPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "slot", "title", "order", "entry"],
+      "properties": {
+        "id": { "$ref": "#/$defs/contributionId" },
+        "slot": { "enum": ["nav.main", "page.main", "settings.section", "settings.storage", "tray.menu"] },
+        "title": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "icon": { "type": "string", "maxLength": 40 },
+        "order": { "type": "integer", "minimum": -1000, "maximum": 1000 },
+        "when": { "type": "string", "pattern": "^setting:[a-z][a-z0-9-]{1,63}\\.[A-Za-z0-9_.-]{1,64}$" },
+        "entry": { "type": "string", "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9._/-]+\\.tsx$", "maxLength": 200 }
+      }
+    },
+    "httpRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "path", "handler"],
+      "properties": {
+        "method": { "enum": ["GET", "POST", "PUT", "DELETE"] },
+        "path": { "type": "string", "pattern": "^/[A-Za-z0-9_./-]{1,120}$" },
+        "handler": { "$ref": "#/$defs/contributionId" },
+        "permission": { "$ref": "#/$defs/permission" }
+      }
+    },
+    "trayItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "order"],
+      "properties": {
+        "id": { "$ref": "#/$defs/contributionId" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "order": { "type": "integer", "minimum": -1000, "maximum": 1000 }
+      }
+    },
+    "cliCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "description"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,31}$" },
+        "description": { "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    },
+    "contributions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "providers": { "type": "array", "items": { "$ref": "#/$defs/provider" }, "maxItems": 16 },
+        "transform_steps": { "type": "array", "items": { "$ref": "#/$defs/transformStep" }, "maxItems": 32 },
+        "publish_strategies": { "type": "array", "items": { "$ref": "#/$defs/publishStrategy" }, "maxItems": 8 },
+        "hooks": { "type": "array", "items": { "$ref": "#/$defs/hookName" }, "uniqueItems": true },
+        "commands": { "type": "array", "items": { "$ref": "#/$defs/command" }, "maxItems": 64 },
+        "ui": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pages": { "type": "array", "items": { "$ref": "#/$defs/uiPage" }, "maxItems": 16 }
+          }
+        },
+        "http_routes": { "type": "array", "items": { "$ref": "#/$defs/httpRoute" }, "maxItems": 16 },
+        "tray_items": { "type": "array", "items": { "$ref": "#/$defs/trayItem" }, "maxItems": 16 },
+        "cli_commands": { "type": "array", "items": { "$ref": "#/$defs/cliCommand" }, "maxItems": 16 }
+      }
+    }
+  }
+}
