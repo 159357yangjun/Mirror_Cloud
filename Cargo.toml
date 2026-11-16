@@ -14,6 +14,9 @@ members = [
   "crates/image-processing",
   "crates/workflow-engine",
   "crates/plugin-runtime",
+  "crates/kernel-api",
+  "crates/plugin-host",
+  "crates/kernel",
 ]
 
 [workspace.package]

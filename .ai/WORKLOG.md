@@ -1,5 +1,40 @@
 # WORKLOG
 
+## 2026-11-16 — 插件化 P1：内核契约 crate、plugin_invoke、前端 registry
+
+起始 `main@374de7f`（P0 文档提交之上），未改产品行为。本轮按「P1 只改传输与注册方式，不改命令名」执行：
+
+新增文件：
+
+- `crates/kernel-api/src/lib.rs`：清单 v2 类型（`PluginId`/`PluginKind`/`Capability` 8 值/`ContributionPoint` 9 值/`PluginManifestV2::validate`/`PluginFailure`/`PluginInvokeError`/`BuiltinPlugin` trait），7 个单测。
+- `crates/plugin-host/src/lib.rs`：`PluginHost`（注册、启用/禁用、贡献查询、`plugin_invoke` 分发、错误码补齐），4 个单测。
+- `crates/kernel/src/lib.rs` + `builtin.rs`：14 个内置插件清单与实例（`native` 校验、`default_enabled=true`），`Kernel::with_builtin_plugins()`、`provider_owner()`；`diagnostics.get` 返回静态状态，其余方法 `unknown_method`；4+2 个单测。
+- `apps/desktop/src-tauri/src/commands/plugin_invoke.rs`：Tauri 边界，锁中毒映射 `internal`。
+- `apps/desktop/src/plugin-ui/{types,registry}.ts`、`PageHost.tsx`：7 个页面映射（内核 4 + 插件 3），`import.meta.glob` 收集插件入口。
+- `scripts/check_kernel_deps.py`：三个新 crate 的依赖方向（只允许 workspace 基础依赖）。
+- `scripts/check_plugin_contracts.py`：14 插件/14 贡献/9 贡献点、schema 顶层属性与权限枚举、ADR/registry/`plugin_invoke` 存在性。
+
+修改文件：
+
+- `Cargo.toml`（members +3）、`apps/desktop/src-tauri/Cargo.toml`（deps+2）、`lib.rs`（`AppState.kernel`、setup 装配、handler +1）、`commands.rs`（模块导出）；`App.tsx` 改用 `<PageHost/>`。
+- `docs/PLUGIN_COMMAND_MAP.md`：P1 新增 `plugin_invoke` 后 100 条（内核 38），补 P1 落地与偏差说明。
+- `.ai/baseline/2026-11-16-p1.md`：P1 静态基线（crate 12,642 行、src-tauri 23 文件/14,232 行、前端 66 文件/9,139 行、100 命令、98 处 `invoke(`）。
+
+核对与验证（本机实跑）：
+
+- `npx tsc -b`（`apps/desktop`）→ exit 0。
+- `py -3 scripts/check_kernel_deps.py` → `kernel deps ok (3 crates checked)`。
+- `py -3 scripts/check_plugin_contracts.py` → `plugin contracts ok (plugins=14, contributions=14, points=9)`。
+- `py -3 scripts/check_contracts.py` → `frontend invokes: 99 | Rust commands: 100 | registered: 100`（OK）。
+- `py -3 scripts/check_workflow_action_pins.py` → 55 refs passed。
+
+缺口与限制：
+
+- 本机无 `cargo`/`rustc`，三个新 crate 与 `plugin_invoke` **未编译**（按 AGENTS.md 交云端 CI 验证，U 级）。
+- 本机 Python 3.10 缺 `tomllib`，`validate.py`/`check_tauri_dependency_family.py`/`check_release_version.py` 无法本地运行（CI 环境跑）；`check_user_flow.py` 的 640 条流程未跑。
+- `page.workflows` 已在清单声明但未映射 UI（迁移前该页从未渲染，P2 随 workflow UI 迁移补齐）。
+- 未推送、未新建分支；DDL 与 2.0.0 仍未授权。
+
 ## 2026-11-16 — 插件化 P0：边界 ADR、manifest v2 契约、命令映射与静态基线
 
 起始 `main@69ec25d7a86a0830ad17cc330662fa83218dfb44`（1.4.16），改动前工作区干净（`git status --short` 仅本轮新增文件）。用户批准「内核 + 内置插件」边界与「v1 只做内置插件、第三方放 v2」，要求按阶段执行；本轮执行 P0，不改任何产品代码、不构建、不推送。

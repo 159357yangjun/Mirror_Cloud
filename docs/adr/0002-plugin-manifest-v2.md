@@ -21,6 +21,8 @@
 3. **`kind`**：`declarative`（v1 三种能力）、`native`（内置 crate，构建期编入）、`wasm`（v2 预留，v1 宿主直接拒绝）。
 4. **贡献点白名单**（`contributes` 下只允许这 9 个键，未知键拒绝）：
    `providers`、`transform_steps`、`publish_strategies`、`hooks`、`commands`、`ui`、`http_routes`、`tray_items`、`cli_commands`。
+
+   **P1 落地偏差（记录）**：`crates/kernel-api` 的 `PluginManifestV2` 目前把 `contributes` 表示为归一化 `Vec<Contribution>{point,id,label,description}`（宿主内部形式），与本 schema 的 `contributes` 对象不是逐字节同形。v1 的内置插件由代码构造清单、不读磁盘 `plugin.json`，因此 P1 行为不受影响；P2 引入 `plugin.json` 文件与加载器时，加载器负责把 schema 对象映射到归一化贡献列表，并在 `check_plugin_contracts.py` 补一条 schema → 宿主的 round-trip 断言。契约字段名仍以本 schema 为准。
 5. **schema 引用**：`config_schema_ref` / `settings_schema_ref` / 命令 `input_schema_ref` 一律为插件目录内相对路径，禁止绝对路径与 `..`；构建期与安装期各校验一次。
 6. **权限**：保留 `read_asset/network/secret/external_write`，新增 `provider_config`（改写存储配置）与 `fs_paths`（导出/迁移类路径访问）；实际生效 = manifest 声明 ∩ 用户授权（沿用现有两层 Gate）。
 7. **依赖**：`kernel` 为 semver 范围；`requires` 为插件 id 数组，宿主做拓扑排序并拒绝环。

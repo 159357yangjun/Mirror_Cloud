@@ -1,12 +1,15 @@
 # TASKS
 
-## 进行中：插件化重构（Kernel + Plugins v1，P0 已完成）
+## 进行中：插件化重构（Kernel + Plugins v1，P0/P1 已完成）
 
 - 用户已批准边界与范围：内核保留发布闭环/宿主/存储 port+凭据+S3 兜底/任务队列/SQLite/基础 UI；14 个内置插件承接业务能力；v1 只做内置插件（默认启用、可禁用），第三方动态插件放 v2。
-- P0 产物（未提交）：`docs/PLUGIN_FIRST_ARCHITECTURE.md`、`docs/adr/0001`–`0004`、`docs/schemas/plugin-manifest-v2.schema.json`、`docs/PLUGIN_COMMAND_MAP.md`（99 条全量）、`scripts/backup_db.ps1`、`scripts/baseline_metrics.py`、`.ai/baseline/2026-11-16.md`。
+- P0 产物（已提交 `374de7f`）：`docs/PLUGIN_FIRST_ARCHITECTURE.md`、`docs/adr/0001`–`0004`、`docs/schemas/plugin-manifest-v2.schema.json`、`docs/PLUGIN_COMMAND_MAP.md`（99 条全量）、`scripts/backup_db.ps1`、`scripts/baseline_metrics.py`、`.ai/baseline/2026-11-16.md`。
 - P0 核对：schema JSON 可解析；命令映射 99/99 覆盖；备份脚本语法通过；静态基线已采集（crate 11,513 行、src-tauri 14,195 行、前端 9,049 行、99 命令、98 处 `invoke(`）。
 - 缺口：运行时性能基线（发布 p95/冷启动/RSS/安装包体积）待云端 CI；DDL 与 2.0.0 仍未授权；P0 未跑全量 `validate.py`/`check_user_flow.py`（无产品代码变更）。
-- 下一步 P1（第 2–4 周）：新建 `crates/kernel-api`/`plugin-host`/`kernel`，`plugin_invoke` 分发器，前端 registry + `PageHost`，内置插件幂等种子，`check_plugin_contracts.py`/`check_kernel_deps.py`；验收口径「行为零变化 + 640 flow/99 契约/23 unit 全绿」。
+- P1 产物（工作区，待提交）：`crates/kernel-api`（464 行）、`crates/plugin-host`（314 行）、`crates/kernel`（351 行）、`apps/desktop/src-tauri/src/commands/plugin_invoke.rs`、`apps/desktop/src/plugin-ui/{types,registry}.ts` + `PageHost.tsx`、`scripts/check_kernel_deps.py`、`scripts/check_plugin_contracts.py`；`AppState.kernel` 装配、handler 注册、14 插件种子（仅 `diagnostics.get` 真实可调）。
+- P1 核对：`npx tsc -b` exit 0；`check_kernel_deps.py`、`check_plugin_contracts.py`（14 插件/14 贡献/9 贡献点）、`check_contracts.py`（前端 99 / Rust 100 / 注册 100）、`check_workflow_action_pins.py` 全通过；P1 静态基线 `.ai/baseline/2026-11-16-p1.md`（crate 12,642 行、src-tauri 14,232 行、前端 66 文件/9,139 行）。
+- P1 缺口：本机无 Rust 工具链，新 crate 未编译（U，交云端 CI）；本机 Python 3.10 无 `tomllib`，`validate.py`/`check_tauri_dependency_family.py`/`check_release_version.py` 未跑；`check_user_flow.py` 640 条未跑。
+- 下一步 P2（第 5–7 周）：按 `docs/PLUGIN_COMMAND_MAP.md` 把 61 条插件命令逐组迁入 `plugin-host`（每个插件实现 `BuiltinPlugin`），`check_contracts.py` 增加 `plugin_invoke` 双向对账；DDL 与 2.0.0 需点名授权后才能动。
 
 ## 进行中：SignPath Foundation 开源代码签名
 

@@ -20,6 +20,8 @@ credential-store = { path = "../../../crates/credential-store" }
 domain = { path = "../../../crates/domain" }
 hex.workspace = true
 image-processing = { path = "../../../crates/image-processing" }
+kernel = { path = "../../../crates/kernel" }
+kernel-api = { path = "../../../crates/kernel-api" }
 futures.workspace = true
 mime_guess.workspace = true
 persistence-sqlite = { path = "../../../crates/persistence-sqlite" }

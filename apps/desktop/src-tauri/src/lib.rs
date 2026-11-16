@@ -39,6 +39,8 @@ pub struct AppState {
     pub data_dir: PathBuf,
     pub local_api_token: Arc<RwLock<String>>,
     pub local_api_running: Arc<AtomicBool>,
+    /// 插件内核（ADR 0001）：内置插件注册表与 `plugin_invoke` 分发。
+    pub kernel: Arc<std::sync::RwLock<kernel::Kernel>>,
 }
 
 /// Bring the main window back into view: unminimise, show, focus - in that order, because a
@@ -100,6 +102,9 @@ pub fn run() {
                     .map_err(std::io::Error::other)?;
             let local_api_token = Arc::new(RwLock::new(local_api_token));
             let local_api_running = Arc::new(AtomicBool::new(false));
+            // 内置插件全部注册后才进入事件循环；任何清单错误都在启动期暴露。
+            let kernel = kernel::Kernel::with_builtin_plugins()
+                .map_err(|error| std::io::Error::other(error.to_string()))?;
             let state = AppState {
                 storages: StorageRepository::new(pool.clone()),
                 assets: AssetRepository::new(pool.clone()),
@@ -115,6 +120,7 @@ pub fn run() {
                 data_dir: data_dir.clone(),
                 local_api_token: local_api_token.clone(),
                 local_api_running: local_api_running.clone(),
+                kernel: Arc::new(std::sync::RwLock::new(kernel)),
             };
             app.manage(state);
             app.manage(commands::updater::new_pending_store());
@@ -232,6 +238,7 @@ pub fn run() {
             commands::get_ai_settings,
             commands::save_ai_settings,
             commands::ai_plan_workflow,
+            commands::plugin_invoke,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Multi-cloud Publisher");

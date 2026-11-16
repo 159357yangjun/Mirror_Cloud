@@ -41,6 +41,8 @@ pub(crate) mod portable_assets;
 pub use portable_assets::*;
 pub(crate) mod plugin_import;
 pub(crate) mod plugins;
+pub(crate) mod plugin_invoke;
+pub use plugin_invoke::*;
 pub use plugin_import::*;
 #[cfg(test)]
 mod r2_private_live_e2e;

@@ -1,0 +1,10 @@
+[package]
+name = "kernel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kernel-api = { path = "../kernel-api" }
+plugin-host = { path = "../plugin-host" }
+serde_json.workspace = true

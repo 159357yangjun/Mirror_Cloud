@@ -3,13 +3,7 @@ import { AppShell } from './components/AppShell'
 import { UploadDialog } from './components/UploadDialog'
 import { copyText, getOutputPreferences, isTauriRuntime } from './lib/desktop'
 import { formatPublishedAsset } from './lib/output'
-import { AssetsPage } from './pages/AssetsPage'
-import { PublishPage } from './pages/PublishPage'
-import { SettingsPage } from './pages/SettingsPage'
-import { GalleryPage } from './pages/GalleryPage'
-import { StoragesPage } from './pages/StoragesPage'
-import { TasksPage } from './pages/TasksPage'
-import { PluginsPage } from './pages/PluginsPage'
+import { PageHost } from './plugin-ui/PageHost'
 import { ToastViewport } from './components/ToastViewport'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { useAppStore } from './store/useAppStore'
@@ -40,13 +34,7 @@ export default function App() {
 
   return (
     <AppShell>
-      {page === 'publish' && <PublishPage />}
-      {page === 'assets' && <AssetsPage />}
-      {page === 'storages' && <StoragesPage />}
-      {page === 'gallery' && <GalleryPage />}
-      {page === 'plugins' && <PluginsPage />}
-      {page === 'tasks' && <TasksPage />}
-      {page === 'settings' && <SettingsPage />}
+      <PageHost page={page} />
       <UploadDialog />
       <ToastViewport />
       <ConfirmDialog />

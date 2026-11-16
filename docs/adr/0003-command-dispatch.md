@@ -28,13 +28,15 @@
 
 ```rust
 #[tauri::command]
-async fn plugin_invoke(
+fn plugin_invoke(
     state: State<'_, AppState>,
     plugin_id: String,
     method: String,
-    payload: serde_json::Value,
+    payload: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, PluginInvokeError>;
 ```
+
+`payload` 缺省等价于 `{}`（P1 落地为 `Option<Value>`，`None` → `Value::Null`，由插件自行宽容处理）。
 
 分发器依次执行：
 
@@ -46,7 +48,9 @@ async fn plugin_invoke(
 6. 返回 JSON 通过 `output_schema` 校验（P2 起启用）；
 7. 写审计：`plugin_execution_logs`（`run_plugin` 已有），记录 plugin_id/method/耗时/结果码，**不记录 payload 原文**。
 
-错误码固定：`disabled | unknown_method | permission_denied | invalid_payload | timeout | internal`，前端按码提示，不再解析自由文本。
+错误码固定 7 种：`disabled | unknown_plugin | unknown_method | permission_denied | invalid_payload | timeout | internal`，前端按码提示，不再解析自由文本。
+
+（P1 落地增补 `unknown_plugin`：非法 id 或未注册插件不伪装成 `unknown_method`；该码在 P0 草案中遗漏，见本 ADR 修订记录。）
 
 ### 3. 前端 SDK
 
