@@ -43,6 +43,7 @@ pub struct DiagnosticsPlugin {
     tasks: TaskEngine,
     data_dir: PathBuf,
     local_api_running: Arc<AtomicBool>,
+    app_version: String,
     manifest: PluginManifestV2,
 }
 
@@ -54,6 +55,7 @@ impl DiagnosticsPlugin {
         tasks: TaskEngine,
         data_dir: PathBuf,
         local_api_running: Arc<AtomicBool>,
+        app_version: String,
     ) -> Self {
         Self {
             storages,
@@ -62,6 +64,7 @@ impl DiagnosticsPlugin {
             tasks,
             data_dir,
             local_api_running,
+            app_version,
             manifest: manifest(),
         }
     }
@@ -128,7 +131,7 @@ impl DiagnosticsPlugin {
 
         Ok(json!({
             "status": if warnings.is_empty() { "healthy" } else { "attention" },
-            "appVersion": env!("CARGO_PKG_VERSION"),
+            "appVersion": self.app_version,
             "dataDir": self.data_dir.to_string_lossy(),
             "databaseReady": true,
             "localApiRunning": local_api_running,

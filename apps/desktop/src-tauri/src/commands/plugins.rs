@@ -644,78 +644,27 @@ pub async fn run_plugin(
 
 #[tauri::command]
 pub async fn get_ai_settings(state: State<'_, AppState>) -> CmdResult<Value> {
-    load_ai_settings(state.inner()).await
+    // P2：逻辑在 `plugin-ai-assistant`，命令只做边界转换。
+    let kernel = state.kernel.read().await;
+    kernel
+        .invoke("ai-assistant", "ai.get_settings", &Value::Null)
+        .await
+        .map_err(|error| error.to_string())
 }
 #[tauri::command]
-pub async fn save_ai_settings(state: State<'_, AppState>, mut settings: Value) -> CmdResult<Value> {
-    let key = settings
-        .get("apiKey")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
-    if key.is_empty() {
-        let _ = state.credentials.delete(AI_CREDENTIAL_KEY);
-    } else {
-        state
-            .credentials
-            .set_json(AI_CREDENTIAL_KEY, &key)
-            .map_err(|e| e.to_string())?;
-    }
-    if let Some(obj) = settings.as_object_mut() {
-        obj.remove("apiKey");
-    }
-    state
-        .settings
-        .set(AI_SETTINGS_KEY, &settings)
+pub async fn save_ai_settings(state: State<'_, AppState>, settings: Value) -> CmdResult<Value> {
+    let kernel = state.kernel.read().await;
+    kernel
+        .invoke("ai-assistant", "ai.save_settings", &settings)
         .await
-        .map_err(|e| e.to_string())?;
-    load_ai_settings(state.inner()).await
+        .map_err(|error| error.to_string())
 }
 #[tauri::command]
 pub async fn ai_plan_workflow(state: State<'_, AppState>, request: String) -> CmdResult<Value> {
-    let settings = load_ai_settings(state.inner()).await?;
-    let base = settings
-        .get("baseUrl")
-        .and_then(Value::as_str)
-        .ok_or("baseUrl missing")?;
-    let model = settings
-        .get("model")
-        .and_then(Value::as_str)
-        .filter(|v| !v.is_empty())
-        .ok_or("model missing")?;
-    let plugins = state
-        .plugins
-        .list()
+    let payload = json!({ "request": request });
+    let kernel = state.kernel.read().await;
+    kernel
+        .invoke("ai-assistant", "ai.plan_workflow", &payload)
         .await
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .filter(|p| p.enabled)
-        .map(|p| json!({"id":p.id,"name":p.name}))
-        .collect::<Vec<_>>();
-    let prompt = format!(
-        "You are a workflow planner for an image publishing app. User request: {request}. Installed plugins: {}. Return strict JSON with keys name, steps, suggestedPlugins, explanation. Never claim an action was executed.",
-        serde_json::to_string(&plugins).unwrap_or_default()
-    );
-    let mut req=reqwest::Client::new().post(format!("{}/chat/completions",base.trim_end_matches('/'))).json(&json!({"model":model,"response_format":{"type":"json_object"},"messages":[{"role":"user","content":prompt}]}));
-    if let Some(key) = settings
-        .get("apiKey")
-        .and_then(Value::as_str)
-        .filter(|v| !v.is_empty())
-    {
-        req = req.bearer_auth(key)
-    }
-    let v: Value = req
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .error_for_status()
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())?;
-    let text = v
-        .pointer("/choices/0/message/content")
-        .and_then(Value::as_str)
-        .ok_or("AI returned no content")?;
-    serde_json::from_str(text).map_err(|e| format!("AI returned invalid JSON: {e}"))
+        .map_err(|error| error.to_string())
 }

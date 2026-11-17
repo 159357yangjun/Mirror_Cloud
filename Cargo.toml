@@ -17,7 +17,8 @@ members = [
   "crates/kernel-api",
   "crates/plugin-host",
   "crates/kernel",
-  "crates/plugins/*",
+  "crates/plugins/ai-assistant",
+  "crates/plugins/diagnostics",
 ]
 
 [workspace.package]

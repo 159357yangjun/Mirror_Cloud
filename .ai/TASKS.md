@@ -12,6 +12,9 @@
 - 下一步 P2（第 5–7 周）：按 `docs/PLUGIN_COMMAND_MAP.md` 把 61 条插件命令逐组迁入 `plugin-host`（每个插件实现 `BuiltinPlugin`），`check_contracts.py` 增加 `plugin_invoke` 双向对账；DDL 与 2.0.0 已于 2026-11-17 获授权（P3 前先跑 `scripts/backup_db.ps1`）。
 - P2 进展（2026-11-17）：`BuiltinPlugin::invoke` 改 async（ADR 0005），`PluginHost::register_override` 支持占位实例替换；首个真实插件 `crates/plugins/diagnostics`（`diagnostics.get`）落地，`get_system_diagnostics` 改为委托 `plugin_invoke`；workspace members 加 `crates/plugins/*`、src-tauri 依赖 `plugin-diagnostics`。本机 rust 1.98.1 已装（`D:\rust`），但无 MSVC 链接器，`cargo check` 失败于 build script 链接（U，交云端 CI）。
 - P2 待办：把 `validate.py`/`check_plugin_contracts.py` 纳入插件目录扫描；随后按映射表迁移 provider/publish-strategy/workflow 组。
+- P2 续（2026-11-17）：`plugin-ai-assistant` 落地（`ai.get_settings`/`ai.save_settings`/`ai.plan_workflow`），`commands/plugins.rs` 三命令改为委托；workspace members 改为显式两条（`crates/plugins/ai-assistant`、`crates/plugins/diagnostics`，`validate.py` 不展开 glob）；diagnostics `appVersion` 注入产品版本；修复 `check_user_flow.py` 指纹表 pre-existing 漂移（2583/189,008/`1d7221bb…`）。
+- P2 续验证（本机 py3.12）：`validate.py` OK、`check_contracts.py` OK（99/100/100）、`check_user_flow.py` 642/642 OK、`check_plugin_contracts.py` OK（14/14/9）、`check_kernel_deps.py` OK；`cargo check` 仍无法本机执行（无 MSVC 链接器），交云端 CI。
+
 
 ## 进行中：SignPath Foundation 开源代码签名
 

@@ -2320,6 +2320,7 @@ dependencies = [
  "kernel-api",
  "mime_guess",
  "persistence-sqlite",
+ "plugin-ai-assistant",
  "plugin-diagnostics",
  "plugin-runtime",
  "reqwest",
@@ -3533,6 +3534,18 @@ dependencies = [
  "quick-xml 0.42.0",
  "serde",
  "time",
+]
+
+[[package]]
+name = "plugin-ai-assistant"
+version = "1.4.16"
+dependencies = [
+ "async-trait",
+ "credential-store",
+ "kernel-api",
+ "persistence-sqlite",
+ "reqwest",
+ "serde_json",
 ]
 
 [[package]]

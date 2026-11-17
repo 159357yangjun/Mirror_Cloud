@@ -123,6 +123,15 @@ pub fn run() {
                     tasks.clone(),
                     data_dir.clone(),
                     local_api_running.clone(),
+                    env!("CARGO_PKG_VERSION").to_string(),
+                )))
+                .map_err(|error| std::io::Error::other(error.to_string()))?;
+            // P2：AI 助手也换成真实实现（设置 + 凭据库）。
+            kernel
+                .register_override(Arc::new(plugin_ai_assistant::AiAssistantPlugin::new(
+                    settings.clone(),
+                    plugins.clone(),
+                    credentials.clone(),
                 )))
                 .map_err(|error| std::io::Error::other(error.to_string()))?;
             let state = AppState {

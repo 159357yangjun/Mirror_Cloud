@@ -24,6 +24,14 @@
 - `py -3 scripts/check_kernel_deps.py` → `kernel deps ok (3 crates checked)`。
 - `cargo check`（rust 1.98.1，`D:\rust`）→ **失败**：`linker link.exe not found`（本机无 MSVC C++ 工具链，VS 2022 BuildTools 未装 VC 组件）。Rust 改动未编译（U），交云端 CI。
 
+### 续：ai-assistant 迁移、CI 静态门修复
+
+- `crates/plugins/ai-assistant`（`plugin-ai-assistant`）：设置读写 + 凭据库 + 工作流规划；`commands/plugins.rs` 的 `get_ai_settings`/`save_ai_settings`/`ai_plan_workflow` 改为委托 `kernel.invoke("ai-assistant", …)`，原实现删除（单一实现）。
+- `Cargo.toml` members 由 `crates/plugins/*` 改为显式两条：`validate.py` 不展开 glob，CI `Static validation` 即因此失败（run 44077969936）。
+- diagnostics `appVersion` 改为构造期注入 `env!("CARGO_PKG_VERSION")`（产品版本），不再误报插件 crate 的 `2.0.0-dev.1`。
+- 修复 pre-existing 静态门：`scripts/check_user_flow.py` 的 CHANGELOG 指纹行（2576/188,327/`2aee04b0…`）与 HEAD blob 不一致，按 `scripts/fingerprint_rows.mjs` 实测更新为 2583/189,008/`1d7221bb…`；`69ec25d` 起 CI 即红，非本轮引入。
+- 本机验证（`D:\tools\python312\python.exe`）：`validate.py` OK（21 migrations / 17 tables / members OK / 1.4.16）；`check_contracts.py` OK（frontend 99 / Rust 100 / registered 100）；`check_user_flow.py` 642/642 OK；`check_plugin_contracts.py` OK（plugins=14, contributions=14, points=9）；`check_kernel_deps.py` OK。Rust 编译仍只能在云端 CI 做（U）。
+
 状态：P2 首个插件迁移完成但未经编译验证；下一步按 `docs/PLUGIN_COMMAND_MAP.md` 迁移 provider/publish-strategy/workflow 组。
 
 

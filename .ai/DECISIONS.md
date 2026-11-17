@@ -25,3 +25,10 @@
 - 迁移方式：`PluginHost::register_override(instance)` 用真实实现替换同 id 占位实例，**清单唯一来源仍是内核装配表**；未知 id 报 `unknown_host`，替换不改清单/开关/贡献点，避免插件自述清单漂移。
 - 迁移期 Tauri 命令保留原名与返回类型，内部委托插件方法，前端调用名不变；P4 再切 `invokePlugin` 并删包装。
 - 用户已于 2026-11-17 授权：本机安装 rustup + stable 工具链、推送触发云端 CI、P3 的 DDL（`plugin_state`/`plugin_capabilities`）与产品版本 2.0.0（P3 前先跑 `scripts/backup_db.ps1`）；连续执行至 P4。
+
+## 2026-11-17 — P2 续：ai-assistant 迁移与静态门修复
+
+- `ai-assistant` 迁移：设置读 `SettingsRepository`（键 `ai.provider`），`apiKey` 只进 OS 凭据库（`ai:provider`），历史明文键在读取时一次性迁移；`ai.plan_workflow` 仍走 OpenAI 兼容 `chat/completions`（`response_format=json_object`），失败映射 `invalid_payload`/`internal`。迁移期 Tauri 命令原名保留，仅委托插件。
+- diagnostics 的 `appVersion` 改为**产品版本**：构造期注入 `env!("CARGO_PKG_VERSION")`（来自 `src-tauri`，1.4.16），不再使用插件 crate 自身的 `2.0.0-dev.1`，否则诊断输出与界面/更新器版本不一致。
+- 指纹表修复：`scripts/check_user_flow.py` 的 CHANGELOG 表行停在 2576 行 / 188,327 字节 / `2aee04b0…`，而 HEAD blob 与磁盘均为 2583 行 / 189,008 字节 / `1d7221bb…`；该漂移在 `69ec25d` 就已存在（其 CI 43419429725 亦为 failure），非本轮引入。按表规则用 `scripts/fingerprint_rows.mjs` 的实测值更新表行，并把末列基线数改为 642。
+
