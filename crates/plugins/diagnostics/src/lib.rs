@@ -5,14 +5,14 @@
 //! 组装与 `SystemDiagnosticsView` 同形的 JSON（camelCase）。逻辑单份，命令侧只做反序列化。
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use kernel_api::{
     BuiltinPlugin, InvokeErrorCode, PluginFailure, PluginId, PluginKind, PluginManifestV2,
 };
 use persistence_sqlite::{PluginRepository, StorageRepository, WorkflowRepository};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use task_engine::TaskEngine;
 
 /// 本插件对外的清单 id（与 `crates/kernel/src/builtin.rs` 的装配表一致）。
@@ -105,10 +105,7 @@ impl DiagnosticsPlugin {
                 )
             })
             .count();
-        let failed_task_count = tasks
-            .iter()
-            .filter(|task| task.status == "failed")
-            .count();
+        let failed_task_count = tasks.iter().filter(|task| task.status == "failed").count();
         let enabled_storage_count = storages.iter().filter(|storage| storage.enabled).count();
         let enabled_plugin_count = plugins.iter().filter(|plugin| plugin.enabled).count();
         let local_api_running = self.local_api_running.load(Ordering::Acquire);
@@ -118,7 +115,8 @@ impl DiagnosticsPlugin {
             warnings.push("没有已启用的 Storage，发布入口将不可用".to_string());
         }
         if default_workflow.is_none() {
-            warnings.push("没有默认 Workflow，Typora / 快捷键 / Local API 无法自动发布".to_string());
+            warnings
+                .push("没有默认 Workflow，Typora / 快捷键 / Local API 无法自动发布".to_string());
         }
         if !local_api_running {
             warnings.push("Local HTTP API 未运行，ShareX/脚本集成将不可用".to_string());

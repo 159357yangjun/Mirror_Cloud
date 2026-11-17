@@ -6,8 +6,8 @@
 use std::sync::Arc;
 
 use kernel_api::{
-    BuiltinPlugin, Capability, Contribution, ContributionPoint, InvokeErrorCode, PluginId,
-    PluginFailure, PluginKind, PluginManifestV2,
+    BuiltinPlugin, Capability, Contribution, ContributionPoint, InvokeErrorCode, PluginFailure,
+    PluginId, PluginKind, PluginManifestV2,
 };
 use serde_json::Value;
 
@@ -56,7 +56,10 @@ impl BuiltinPlugin for PendingPlugin {
     async fn invoke(&self, method: &str, _payload: &Value) -> Result<Value, PluginFailure> {
         Err(PluginFailure::new(
             InvokeErrorCode::UnknownMethod,
-            format!("method {method} lands with the P2 migration of {}", self.manifest.id),
+            format!(
+                "method {method} lands with the P2 migration of {}",
+                self.manifest.id
+            ),
         ))
     }
 }
@@ -95,21 +98,41 @@ pub fn manifests() -> Vec<PluginManifestV2> {
             "provider-github",
             "GitHub 托管",
             "把图片托管到 GitHub 仓库（jsDelivr 风格外链可选）。",
-            vec![Capability::Network, Capability::Secret, Capability::ProviderConfig],
-            vec![contribution(ContributionPoint::Provider, "provider.github", "GitHub")],
+            vec![
+                Capability::Network,
+                Capability::Secret,
+                Capability::ProviderConfig,
+            ],
+            vec![contribution(
+                ContributionPoint::Provider,
+                "provider.github",
+                "GitHub",
+            )],
         ),
         native(
             "provider-gitee",
             "Gitee 托管",
             "把图片托管到 Gitee 仓库。",
-            vec![Capability::Network, Capability::Secret, Capability::ProviderConfig],
-            vec![contribution(ContributionPoint::Provider, "provider.gitee", "Gitee")],
+            vec![
+                Capability::Network,
+                Capability::Secret,
+                Capability::ProviderConfig,
+            ],
+            vec![contribution(
+                ContributionPoint::Provider,
+                "provider.gitee",
+                "Gitee",
+            )],
         ),
         native(
             "provider-opendal-extra",
             "OpenDAL 额外后端",
             "OSS、COS 与 WebDAV 三类存储后端。",
-            vec![Capability::Network, Capability::Secret, Capability::ProviderConfig],
+            vec![
+                Capability::Network,
+                Capability::Secret,
+                Capability::ProviderConfig,
+            ],
             vec![
                 contribution(ContributionPoint::Provider, "provider.oss", "阿里云 OSS"),
                 contribution(ContributionPoint::Provider, "provider.cos", "腾讯云 COS"),
@@ -121,14 +144,22 @@ pub fn manifests() -> Vec<PluginManifestV2> {
             "图片处理",
             "缩放、格式转换、质量与重命名模板。",
             vec![Capability::ReadAsset],
-            vec![contribution(ContributionPoint::ImageOp, "image.resize", "缩放")],
+            vec![contribution(
+                ContributionPoint::ImageOp,
+                "image.resize",
+                "缩放",
+            )],
         ),
         native(
             "workflow",
             "工作流",
             "线性 Step 的润色、压缩、水印与路径模板。",
             vec![Capability::ReadAsset],
-            vec![contribution(ContributionPoint::Page, "page.workflows", "工作流")],
+            vec![contribution(
+                ContributionPoint::Page,
+                "page.workflows",
+                "工作流",
+            )],
         ),
         native(
             "publish-strategy",
@@ -137,7 +168,11 @@ pub fn manifests() -> Vec<PluginManifestV2> {
             vec![Capability::ReadAsset, Capability::ProviderConfig],
             vec![
                 contribution(ContributionPoint::Page, "page.publish", "发布"),
-                contribution(ContributionPoint::PublishStrategy, "strategy.primary", "主备镜像"),
+                contribution(
+                    ContributionPoint::PublishStrategy,
+                    "strategy.primary",
+                    "主备镜像",
+                ),
             ],
         ),
         native(
@@ -152,7 +187,11 @@ pub fn manifests() -> Vec<PluginManifestV2> {
             "云端文件浏览",
             "浏览、移动、删除云端文件并同步专辑索引。",
             vec![Capability::Network],
-            vec![contribution(ContributionPoint::Page, "page.gallery", "云端文件")],
+            vec![contribution(
+                ContributionPoint::Page,
+                "page.gallery",
+                "云端文件",
+            )],
         ),
         native(
             "portable-migration",
@@ -173,21 +212,33 @@ pub fn manifests() -> Vec<PluginManifestV2> {
             "系统集成",
             "Typora、全局快捷键、右键菜单与 Local HTTP API。",
             vec![Capability::FsPaths],
-            vec![contribution(ContributionPoint::TrayItem, "tray.integrations", "系统集成")],
+            vec![contribution(
+                ContributionPoint::TrayItem,
+                "tray.integrations",
+                "系统集成",
+            )],
         ),
         native(
             "ai-assistant",
             "AI 助手",
             "设置 AI 提供方并规划上传工作流。",
             vec![Capability::Network, Capability::Secret],
-            vec![contribution(ContributionPoint::Settings, "settings.ai", "AI 助手")],
+            vec![contribution(
+                ContributionPoint::Settings,
+                "settings.ai",
+                "AI 助手",
+            )],
         ),
         native(
             "themes",
             "主题与皮肤",
             "内置主题与配色变量。",
             vec![],
-            vec![contribution(ContributionPoint::Settings, "settings.theme", "外观")],
+            vec![contribution(
+                ContributionPoint::Settings,
+                "settings.theme",
+                "外观",
+            )],
         ),
         native(
             "diagnostics",

@@ -27,7 +27,8 @@ impl PluginId {
         let value = value.into();
         let mut chars = value.chars();
         let starts_ok = chars.next().is_some_and(|c| c.is_ascii_lowercase());
-        let rest_ok = chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '.');
+        let rest_ok =
+            chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '.');
         if !starts_ok || !rest_ok || !(3..=64).contains(&value.len()) {
             return Err(ManifestError::InvalidId(value));
         }
@@ -219,7 +220,8 @@ pub enum ManifestError {
 fn valid_contribution_id(value: &str) -> bool {
     let mut chars = value.chars();
     let starts_ok = chars.next().is_some_and(|c| c.is_ascii_lowercase());
-    let rest_ok = chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.' || c == '-');
+    let rest_ok = chars
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.' || c == '-');
     starts_ok && rest_ok && (2..=96).contains(&value.len())
 }
 
@@ -227,7 +229,8 @@ impl PluginManifestV2 {
     /// 结构性校验：版本、命名、贡献点唯一性、能力去重、设置 schema 体积。
     /// 形态约束（`native` 必须随构建编入）由宿主在注册时另行判定。
     pub fn validate(&self) -> Result<(), ManifestError> {
-        if self.api_version != MANIFEST_API_VERSION || self.schema_version != MANIFEST_SCHEMA_VERSION
+        if self.api_version != MANIFEST_API_VERSION
+            || self.schema_version != MANIFEST_SCHEMA_VERSION
         {
             return Err(ManifestError::UnsupportedVersion(
                 self.api_version,
@@ -245,13 +248,17 @@ impl PluginManifestV2 {
         }
         if self.kind == PluginKind::Wasm {
             // v1 不装载磁盘代码；WASM 留给 v2，清单阶段先拒绝，避免误判为已支持。
-            return Err(ManifestError::InvalidField("kind=wasm is not supported in v1"));
+            return Err(ManifestError::InvalidField(
+                "kind=wasm is not supported in v1",
+            ));
         }
 
         let mut contribution_ids = BTreeSet::new();
         for contribution in &self.contributes {
             if !valid_contribution_id(&contribution.id) {
-                return Err(ManifestError::InvalidContributionId(contribution.id.clone()));
+                return Err(ManifestError::InvalidContributionId(
+                    contribution.id.clone(),
+                ));
             }
             let unique = format!("{}.{}", contribution.point.id_prefix(), contribution.id);
             if !contribution_ids.insert(unique.clone()) {
@@ -262,12 +269,15 @@ impl PluginManifestV2 {
         let mut capabilities = BTreeSet::new();
         for capability in &self.permissions {
             if !capabilities.insert(capability.as_str()) {
-                return Err(ManifestError::DuplicateCapability(capability.as_str().into()));
+                return Err(ManifestError::DuplicateCapability(
+                    capability.as_str().into(),
+                ));
             }
         }
 
         if let Some(schema) = &self.settings_schema {
-            let bytes = serde_json::to_vec(schema).map_err(|_| ManifestError::SettingsSchemaTooLarge)?;
+            let bytes =
+                serde_json::to_vec(schema).map_err(|_| ManifestError::SettingsSchemaTooLarge)?;
             if bytes.len() > MAX_SETTINGS_SCHEMA_BYTES {
                 return Err(ManifestError::SettingsSchemaTooLarge);
             }
@@ -334,7 +344,12 @@ pub struct PluginInvokeError {
 }
 
 impl PluginInvokeError {
-    pub fn new(plugin_id: impl Into<String>, method: impl Into<String>, code: InvokeErrorCode, message: impl Into<String>) -> Self {
+    pub fn new(
+        plugin_id: impl Into<String>,
+        method: impl Into<String>,
+        code: InvokeErrorCode,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
             plugin_id: plugin_id.into(),
             method: method.into(),
@@ -401,7 +416,11 @@ mod tests {
             version: "1.0.0".into(),
             description: String::new(),
             kind: PluginKind::Native,
-            permissions: vec![Capability::Network, Capability::Secret, Capability::ProviderConfig],
+            permissions: vec![
+                Capability::Network,
+                Capability::Secret,
+                Capability::ProviderConfig,
+            ],
             default_enabled: true,
             contributes: vec![Contribution {
                 point: ContributionPoint::Provider,
@@ -440,14 +459,20 @@ mod tests {
         let mut item = manifest();
         let duplicate = item.contributes[0].clone();
         item.contributes.push(duplicate);
-        assert!(matches!(item.validate(), Err(ManifestError::DuplicateContribution(_))));
+        assert!(matches!(
+            item.validate(),
+            Err(ManifestError::DuplicateContribution(_))
+        ));
     }
 
     #[test]
     fn rejects_duplicate_capabilities() {
         let mut item = manifest();
         item.permissions.push(Capability::Network);
-        assert!(matches!(item.validate(), Err(ManifestError::DuplicateCapability(_))));
+        assert!(matches!(
+            item.validate(),
+            Err(ManifestError::DuplicateCapability(_))
+        ));
     }
 
     #[test]

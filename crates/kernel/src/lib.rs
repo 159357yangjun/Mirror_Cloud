@@ -17,7 +17,9 @@ pub struct Kernel {
 
 impl Kernel {
     /// 用显式实例构造（测试与未来动态插件用）。
-    pub fn new(instances: Vec<std::sync::Arc<dyn kernel_api::BuiltinPlugin>>) -> Result<Self, HostError> {
+    pub fn new(
+        instances: Vec<std::sync::Arc<dyn kernel_api::BuiltinPlugin>>,
+    ) -> Result<Self, HostError> {
         let mut host = PluginHost::new();
         host.register_all(instances)?;
         Ok(Self { host })
@@ -65,7 +67,10 @@ impl Kernel {
     }
 
     /// 某个贡献点的有效贡献（已启用插件）。
-    pub fn contributions(&self, point: ContributionPoint) -> Vec<(PluginId, kernel_api::Contribution)> {
+    pub fn contributions(
+        &self,
+        point: ContributionPoint,
+    ) -> Vec<(PluginId, kernel_api::Contribution)> {
         self.host.contributions(point)
     }
 }

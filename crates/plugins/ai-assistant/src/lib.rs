@@ -8,7 +8,7 @@ use kernel_api::{
     PluginKind, PluginManifestV2,
 };
 use persistence_sqlite::{PluginRepository, SettingsRepository};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// 插件 id（与 `crates/kernel/src/builtin.rs` 装配表一致）。
 pub const PLUGIN_ID: &str = "ai-assistant";
@@ -221,7 +221,8 @@ mod tests {
     #[test]
     fn manifest_is_valid_and_matches_kernel_id() {
         let item = manifest();
-        item.validate().expect("ai-assistant manifest must validate");
+        item.validate()
+            .expect("ai-assistant manifest must validate");
         assert_eq!(item.id.as_str(), PLUGIN_ID);
         assert!(item.default_enabled);
         assert_eq!(item.kind, PluginKind::Native);

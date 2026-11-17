@@ -6,12 +6,12 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use kernel_api::{
-    BuiltinPlugin, Contribution, ContributionPoint, InvokeErrorCode, ManifestError, PluginDescriptor,
-    PluginId, PluginInvokeError, PluginKind, PluginManifestV2,
-};
 #[cfg(test)]
 use kernel_api::PluginFailure;
+use kernel_api::{
+    BuiltinPlugin, Contribution, ContributionPoint, InvokeErrorCode, ManifestError,
+    PluginDescriptor, PluginId, PluginInvokeError, PluginKind, PluginManifestV2,
+};
 use serde_json::Value;
 
 /// 宿主装配错误。
@@ -69,7 +69,10 @@ impl PluginHost {
     }
 
     /// 一次性注册全部内置插件；任一失败则整体失败（P1 种子幂等、无部分状态）。
-    pub fn register_all(&mut self, instances: Vec<Arc<dyn BuiltinPlugin>>) -> Result<(), HostError> {
+    pub fn register_all(
+        &mut self,
+        instances: Vec<Arc<dyn BuiltinPlugin>>,
+    ) -> Result<(), HostError> {
         for instance in instances {
             self.register_builtin(instance)?;
         }
@@ -161,7 +164,7 @@ impl PluginHost {
                     method,
                     InvokeErrorCode::UnknownPlugin,
                     "invalid plugin id",
-                ))
+                ));
             }
         };
         let Some(plugin) = self.plugins.get(&id) else {
