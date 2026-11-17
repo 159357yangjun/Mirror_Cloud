@@ -30,8 +30,8 @@ pub fn manifest() -> PluginManifestV2 {
         contributes: vec![Contribution {
             point: ContributionPoint::Settings,
             id: "ai".to_string(),
-            label: "AI".to_string(),
-            description: "AI 模型与凭据设置。".to_string(),
+            label: Some("AI".to_string()),
+            description: Some("AI 模型与凭据设置。".to_string()),
         }],
         settings_schema: None,
     }
