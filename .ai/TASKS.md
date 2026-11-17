@@ -1,6 +1,6 @@
 # TASKS
 
-## 进行中：插件化重构（Kernel + Plugins v1，P0/P1 已完成）
+## 进行中：插件化重构（Kernel + Plugins v1，P0/P1 完成，P2 进行中）
 
 - 用户已批准边界与范围：内核保留发布闭环/宿主/存储 port+凭据+S3 兜底/任务队列/SQLite/基础 UI；14 个内置插件承接业务能力；v1 只做内置插件（默认启用、可禁用），第三方动态插件放 v2。
 - P0 产物（已提交 `374de7f`）：`docs/PLUGIN_FIRST_ARCHITECTURE.md`、`docs/adr/0001`–`0004`、`docs/schemas/plugin-manifest-v2.schema.json`、`docs/PLUGIN_COMMAND_MAP.md`（99 条全量）、`scripts/backup_db.ps1`、`scripts/baseline_metrics.py`、`.ai/baseline/2026-11-16.md`。
@@ -9,7 +9,9 @@
 - P1 产物（工作区，待提交）：`crates/kernel-api`（464 行）、`crates/plugin-host`（314 行）、`crates/kernel`（351 行）、`apps/desktop/src-tauri/src/commands/plugin_invoke.rs`、`apps/desktop/src/plugin-ui/{types,registry}.ts` + `PageHost.tsx`、`scripts/check_kernel_deps.py`、`scripts/check_plugin_contracts.py`；`AppState.kernel` 装配、handler 注册、14 插件种子（仅 `diagnostics.get` 真实可调）。
 - P1 核对：`npx tsc -b` exit 0；`check_kernel_deps.py`、`check_plugin_contracts.py`（14 插件/14 贡献/9 贡献点）、`check_contracts.py`（前端 99 / Rust 100 / 注册 100）、`check_workflow_action_pins.py` 全通过；P1 静态基线 `.ai/baseline/2026-11-16-p1.md`（crate 12,642 行、src-tauri 14,232 行、前端 66 文件/9,139 行）。
 - P1 缺口：本机无 Rust 工具链，新 crate 未编译（U，交云端 CI）；本机 Python 3.10 无 `tomllib`，`validate.py`/`check_tauri_dependency_family.py`/`check_release_version.py` 未跑；`check_user_flow.py` 640 条未跑。
-- 下一步 P2（第 5–7 周）：按 `docs/PLUGIN_COMMAND_MAP.md` 把 61 条插件命令逐组迁入 `plugin-host`（每个插件实现 `BuiltinPlugin`），`check_contracts.py` 增加 `plugin_invoke` 双向对账；DDL 与 2.0.0 需点名授权后才能动。
+- 下一步 P2（第 5–7 周）：按 `docs/PLUGIN_COMMAND_MAP.md` 把 61 条插件命令逐组迁入 `plugin-host`（每个插件实现 `BuiltinPlugin`），`check_contracts.py` 增加 `plugin_invoke` 双向对账；DDL 与 2.0.0 已于 2026-11-17 获授权（P3 前先跑 `scripts/backup_db.ps1`）。
+- P2 进展（2026-11-17）：`BuiltinPlugin::invoke` 改 async（ADR 0005），`PluginHost::register_override` 支持占位实例替换；首个真实插件 `crates/plugins/diagnostics`（`diagnostics.get`）落地，`get_system_diagnostics` 改为委托 `plugin_invoke`；workspace members 加 `crates/plugins/*`、src-tauri 依赖 `plugin-diagnostics`。本机 rust 1.98.1 已装（`D:\rust`），但无 MSVC 链接器，`cargo check` 失败于 build script 链接（U，交云端 CI）。
+- P2 待办：把 `validate.py`/`check_plugin_contracts.py` 纳入插件目录扫描；随后按映射表迁移 provider/publish-strategy/workflow 组。
 
 ## 进行中：SignPath Foundation 开源代码签名
 

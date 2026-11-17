@@ -2316,8 +2316,11 @@ dependencies = [
  "futures",
  "hex",
  "image-processing",
+ "kernel",
+ "kernel-api",
  "mime_guess",
  "persistence-sqlite",
+ "plugin-diagnostics",
  "plugin-runtime",
  "reqwest",
  "ring",
@@ -2620,6 +2623,27 @@ checksum = "5dea2b27dd239b2556ed7a25ba842fe47fd602e7fc7433c2a8d6106d4d9edd70"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "kernel"
+version = "1.4.16"
+dependencies = [
+ "async-trait",
+ "kernel-api",
+ "plugin-host",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "kernel-api"
+version = "1.4.16"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -3509,6 +3533,28 @@ dependencies = [
  "quick-xml 0.42.0",
  "serde",
  "time",
+]
+
+[[package]]
+name = "plugin-diagnostics"
+version = "1.4.16"
+dependencies = [
+ "async-trait",
+ "kernel-api",
+ "persistence-sqlite",
+ "serde_json",
+ "task-engine",
+]
+
+[[package]]
+name = "plugin-host"
+version = "1.4.16"
+dependencies = [
+ "async-trait",
+ "kernel-api",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
 ]
 
 [[package]]

@@ -1,0 +1,12 @@
+[package]
+name = "plugin-diagnostics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+kernel-api = { path = "../../kernel-api" }
+persistence-sqlite = { path = "../../persistence-sqlite" }
+task-engine = { path = "../../task-engine" }
+serde_json.workspace = true

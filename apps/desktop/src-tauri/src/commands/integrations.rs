@@ -70,7 +70,7 @@ pub struct GlobalShortcutInfo {
     pub note: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemDiagnosticsView {
     pub status: String,
@@ -747,78 +747,14 @@ fn show_main_window(app: &AppHandle) {
 pub async fn get_system_diagnostics(
     state: State<'_, AppState>,
 ) -> CmdResult<SystemDiagnosticsView> {
-    let storages = state
-        .storages
-        .list()
+    // P2：诊断逻辑已迁入 `plugin-diagnostics`，命令只做边界转换（ADR 0005）。
+    let kernel = state.kernel.read().await;
+    let value = kernel
+        .invoke("diagnostics", "diagnostics.get", &serde_json::Value::Null)
         .await
         .map_err(|error| error.to_string())?;
-    let plugins = state
-        .plugins
-        .list()
-        .await
-        .map_err(|error| error.to_string())?;
-    let tasks = state
-        .tasks
-        .list(10_000)
-        .await
-        .map_err(|error| error.to_string())?;
-    let workflows = state
-        .workflows
-        .list()
-        .await
-        .map_err(|error| error.to_string())?;
-    let default_workflow = workflows
-        .iter()
-        .find(|workflow| workflow.is_default)
-        .map(|workflow| workflow.workflow.name.clone());
-    let active_task_count = tasks
-        .iter()
-        .filter(|task| {
-            matches!(
-                task.status.as_str(),
-                "queued" | "preparing" | "running" | "paused"
-            )
-        })
-        .count();
-    let failed_task_count = tasks.iter().filter(|task| task.status == "failed").count();
-    let enabled_storage_count = storages.iter().filter(|storage| storage.enabled).count();
-    let enabled_plugin_count = plugins.iter().filter(|plugin| plugin.enabled).count();
-    let local_api_running = state.local_api_running.load(Ordering::Acquire);
-    let mut warnings = Vec::new();
-    if enabled_storage_count == 0 {
-        warnings.push("没有已启用的 Storage，发布入口将不可用".into());
-    }
-    if default_workflow.is_none() {
-        warnings.push("没有默认 Workflow，Typora / 快捷键 / Local API 无法自动发布".into());
-    }
-    if !local_api_running {
-        warnings.push("Local HTTP API 未运行，ShareX/脚本集成将不可用".into());
-    }
-    if failed_task_count > 0 {
-        warnings.push(format!(
-            "任务中心存在 {failed_task_count} 个失败任务，请检查最近错误"
-        ));
-    }
-    Ok(SystemDiagnosticsView {
-        status: if warnings.is_empty() {
-            "healthy".into()
-        } else {
-            "attention".into()
-        },
-        app_version: env!("CARGO_PKG_VERSION").into(),
-        data_dir: state.data_dir.to_string_lossy().into_owned(),
-        database_ready: true,
-        local_api_running,
-        storage_count: storages.len(),
-        enabled_storage_count,
-        plugin_count: plugins.len(),
-        enabled_plugin_count,
-        task_count: tasks.len(),
-        active_task_count,
-        failed_task_count,
-        default_workflow,
-        warnings,
-    })
+    drop(kernel);
+    serde_json::from_value(value).map_err(|error| error.to_string())
 }
 
 #[tauri::command]

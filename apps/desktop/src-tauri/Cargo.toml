@@ -25,6 +25,7 @@ kernel-api = { path = "../../../crates/kernel-api" }
 futures.workspace = true
 mime_guess.workspace = true
 persistence-sqlite = { path = "../../../crates/persistence-sqlite" }
+plugin-diagnostics = { path = "../../../crates/plugins/diagnostics" }
 plugin-runtime = { path = "../../../crates/plugin-runtime" }
 reqwest.workspace = true
 ring = "=0.17.14"

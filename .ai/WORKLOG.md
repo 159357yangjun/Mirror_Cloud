@@ -1,5 +1,32 @@
 # WORKLOG
 
+## 2026-11-17 — 插件化 P2：async 插件契约、diagnostics 迁移与内核装配
+
+起始 `main@f58e601`（P1 提交之上）。本轮把插件调用改为异步、落地第一个真实插件，其余插件仍为占位实例：
+
+新增文件：
+
+- `docs/adr/0005-async-plugin-invoke.md`：异步 `invoke` 的动机（同步签名无法 `await` 仓储、`block_on` 在 runtime 内 panic）、决策与后果。
+- `crates/plugins/diagnostics/{Cargo.toml,src/lib.rs}`：`plugin-diagnostics`，实现 `diagnostics.get`（与 1.4.16 `get_system_diagnostics` 逐字段对齐，camelCase JSON）。
+
+修改文件：
+
+- `crates/kernel-api`：`BuiltinPlugin::invoke` 改 `async_trait`（`&self, method, payload`），依赖加 `async-trait`。
+- `crates/plugin-host`：`invoke` async；新增 `register_override`（替换同 id 实例、保留清单/开关，未知 id → `unknown_host`）；`#[tokio::test]`。
+- `crates/kernel`：`invoke` async、`register_override` 包装；`PendingPlugin`/`DiagnosticsPlugin` 的 impl 改 async。
+- `apps/desktop/src-tauri`：`AppState.kernel` 改 `tokio::sync::RwLock`；setup 先构造仓储/任务引擎，再 `register_override(DiagnosticsPlugin)`，最后填 `AppState`；`plugin_invoke` 命令 async；`get_system_diagnostics` 改为 `plugin_invoke("diagnostics","diagnostics.get")` + `serde_json::from_value`（视图加 `Deserialize`）。
+- `Cargo.toml`：members 加 `crates/plugins/*`；`apps/desktop/src-tauri/Cargo.toml` 加 `plugin-diagnostics`。
+- `scripts/check_kernel_deps.py`：ALLOWED 增 `async-trait`（kernel-api/plugin-host/kernel）。
+
+验证（本机）：
+
+- `npx tsc -b`（`apps/desktop`）→ exit 0。
+- `py -3 scripts/check_kernel_deps.py` → `kernel deps ok (3 crates checked)`。
+- `cargo check`（rust 1.98.1，`D:\rust`）→ **失败**：`linker link.exe not found`（本机无 MSVC C++ 工具链，VS 2022 BuildTools 未装 VC 组件）。Rust 改动未编译（U），交云端 CI。
+
+状态：P2 首个插件迁移完成但未经编译验证；下一步按 `docs/PLUGIN_COMMAND_MAP.md` 迁移 provider/publish-strategy/workflow 组。
+
+
 ## 2026-11-16 — 插件化 P1：内核契约 crate、plugin_invoke、前端 registry
 
 起始 `main@374de7f`（P0 文档提交之上），未改产品行为。本轮按「P1 只改传输与注册方式，不改命令名」执行：

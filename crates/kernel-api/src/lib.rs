@@ -6,6 +6,7 @@
 use std::collections::BTreeSet;
 use std::fmt;
 
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -375,11 +376,15 @@ pub struct PluginDescriptor {
 }
 
 /// 内置插件必须实现的宿主契约：声明清单 + 处理 `plugin_invoke` 的方法调用。
+///
+/// 插件实例在构造期注入仓储/凭据等服务句柄，方法本身是异步的（数据库与网络都在
+/// 异步侧）；宿主 `plugin_invoke` 直接 await，不阻塞 Tauri 命令线程。
+#[async_trait]
 pub trait BuiltinPlugin: Send + Sync {
     fn manifest(&self) -> PluginManifestV2;
 
     /// 方法名约定 `<domain>.<verb>`，例如 `diagnostics.get`；未知方法返回 `unknown_method`。
-    fn invoke(&self, method: &str, payload: &Value) -> Result<Value, PluginFailure>;
+    async fn invoke(&self, method: &str, payload: &Value) -> Result<Value, PluginFailure>;
 }
 
 #[cfg(test)]

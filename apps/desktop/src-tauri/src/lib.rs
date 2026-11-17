@@ -39,8 +39,9 @@ pub struct AppState {
     pub data_dir: PathBuf,
     pub local_api_token: Arc<RwLock<String>>,
     pub local_api_running: Arc<AtomicBool>,
-    /// 插件内核（ADR 0001）：内置插件注册表与 `plugin_invoke` 分发。
-    pub kernel: Arc<std::sync::RwLock<kernel::Kernel>>,
+    /// 插件内核（ADR 0001/0005）：内置插件注册表与 `plugin_invoke` 分发。
+    /// 插件方法可 await，故用 tokio RwLock，命令侧 `read().await` 后调用。
+    pub kernel: Arc<tokio::sync::RwLock<kernel::Kernel>>,
 }
 
 /// Bring the main window back into view: unminimise, show, focus - in that order, because a
@@ -103,24 +104,43 @@ pub fn run() {
             let local_api_token = Arc::new(RwLock::new(local_api_token));
             let local_api_running = Arc::new(AtomicBool::new(false));
             // 内置插件全部注册后才进入事件循环；任何清单错误都在启动期暴露。
-            let kernel = kernel::Kernel::with_builtin_plugins()
+            let mut kernel = kernel::Kernel::with_builtin_plugins()
+                .map_err(|error| std::io::Error::other(error.to_string()))?;
+            let storages = StorageRepository::new(pool.clone());
+            let assets = AssetRepository::new(pool.clone());
+            let asset_staging = AssetStagingRepository::new(pool.clone());
+            let settings = SettingsRepository::new(pool.clone());
+            let groups = StorageGroupRepository::new(pool.clone());
+            let workflows = WorkflowRepository::new(pool.clone());
+            let plugins = PluginRepository::new(pool.clone());
+            let tasks = TaskEngine::new(task_repo);
+            // P2：diagnostics 换成真实实现（ADR 0005）。清单仍以内核装配表为准。
+            kernel
+                .register_override(Arc::new(plugin_diagnostics::DiagnosticsPlugin::new(
+                    storages.clone(),
+                    plugins.clone(),
+                    workflows.clone(),
+                    tasks.clone(),
+                    data_dir.clone(),
+                    local_api_running.clone(),
+                )))
                 .map_err(|error| std::io::Error::other(error.to_string()))?;
             let state = AppState {
-                storages: StorageRepository::new(pool.clone()),
-                assets: AssetRepository::new(pool.clone()),
-                asset_staging: AssetStagingRepository::new(pool.clone()),
-                settings: SettingsRepository::new(pool.clone()),
-                groups: StorageGroupRepository::new(pool.clone()),
-                workflows: WorkflowRepository::new(pool.clone()),
-                plugins: PluginRepository::new(pool.clone()),
+                storages,
+                assets,
+                asset_staging,
+                settings,
+                groups,
+                workflows,
+                plugins,
                 journal: persistence_sqlite::journal::SqliteEventJournal::new(pool),
-                tasks: TaskEngine::new(task_repo),
+                tasks,
                 credentials,
                 upload_semaphore: Arc::new(tokio::sync::Semaphore::new(4)),
                 data_dir: data_dir.clone(),
                 local_api_token: local_api_token.clone(),
                 local_api_running: local_api_running.clone(),
-                kernel: Arc::new(std::sync::RwLock::new(kernel)),
+                kernel: Arc::new(RwLock::new(kernel)),
             };
             app.manage(state);
             app.manage(commands::updater::new_pending_store());

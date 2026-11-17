@@ -28,17 +28,25 @@ impl Kernel {
         Self::new(builtin::instances())
     }
 
+    /// 用真实实现替换占位实例（P2 起逐插件迁移；清单仍以 [`builtin::manifests`] 为准）。
+    pub fn register_override(
+        &mut self,
+        instance: std::sync::Arc<dyn kernel_api::BuiltinPlugin>,
+    ) -> Result<(), HostError> {
+        self.host.register_override(instance)
+    }
+
     pub fn host(&self) -> &PluginHost {
         &self.host
     }
 
-    pub fn invoke(
+    pub async fn invoke(
         &self,
         plugin_id: &str,
         method: &str,
         payload: &Value,
     ) -> Result<Value, PluginInvokeError> {
-        self.host.invoke(plugin_id, method, payload)
+        self.host.invoke(plugin_id, method, payload).await
     }
 
     pub fn descriptors(&self) -> Vec<PluginDescriptor> {
@@ -104,11 +112,12 @@ mod tests {
         assert!(ids.contains(&"page.publish"));
     }
 
-    #[test]
-    fn diagnostics_plugin_answers_its_own_method() {
+    #[tokio::test]
+    async fn diagnostics_plugin_answers_its_own_method() {
         let kernel = Kernel::with_builtin_plugins().unwrap();
         let value = kernel
             .invoke("diagnostics", "diagnostics.get", &serde_json::json!({}))
+            .await
             .unwrap();
         assert_eq!(value["status"], "ok");
     }

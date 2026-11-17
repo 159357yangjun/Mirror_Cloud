@@ -76,6 +76,21 @@ impl PluginHost {
         Ok(())
     }
 
+    /// 用真实实现替换同 id 的占位实例（P2 起逐插件迁移）。
+    ///
+    /// 只换实例，保留既有清单与开关状态：清单的唯一来源仍是内核装配表，
+    /// 插件实现不得借替换机会改动 id / 贡献点 / 权限。
+    pub fn register_override(&mut self, instance: Arc<dyn BuiltinPlugin>) -> Result<(), HostError> {
+        let id = instance.manifest().id;
+        match self.plugins.get_mut(&id) {
+            Some(plugin) => {
+                plugin.instance = instance;
+                Ok(())
+            }
+            None => Err(HostError::UnknownPlugin(id.to_string())),
+        }
+    }
+
     pub fn is_enabled(&self, plugin_id: &str) -> bool {
         let Ok(id) = PluginId::new(plugin_id) else {
             return false;
@@ -131,8 +146,8 @@ impl PluginHost {
     }
 
     /// `plugin_invoke` 分发：禁用 → `disabled`；未知插件 → `unknown_plugin`；
-    /// 其余交给插件实例，失败时补齐插件 id 与方法名。
-    pub fn invoke(
+    /// 其余交给插件实例，失败时补齐插件 id 与方法名。插件方法可 await 数据库/网络。
+    pub async fn invoke(
         &self,
         plugin_id: &str,
         method: &str,
@@ -176,6 +191,7 @@ impl PluginHost {
         plugin
             .instance
             .invoke(method, payload)
+            .await
             .map_err(|failure| {
                 PluginInvokeError::new(plugin_id, method, failure.code, failure.message)
             })
@@ -223,6 +239,7 @@ pub(crate) struct EchoPlugin {
 }
 
 #[cfg(test)]
+#[async_trait::async_trait]
 impl BuiltinPlugin for EchoPlugin {
     fn manifest(&self) -> PluginManifestV2 {
         PluginManifestV2 {
@@ -245,7 +262,7 @@ impl BuiltinPlugin for EchoPlugin {
         }
     }
 
-    fn invoke(&self, method: &str, payload: &Value) -> Result<Value, PluginFailure> {
+    async fn invoke(&self, method: &str, payload: &Value) -> Result<Value, PluginFailure> {
         match method {
             "echo.get" => Ok(payload.clone()),
             _ => Err(PluginFailure::new(
@@ -283,21 +300,33 @@ mod tests {
         assert_eq!(host.contributions(ContributionPoint::Page).len(), 2);
     }
 
-    #[test]
-    fn invoke_dispatches_to_plugin() {
-        let value = host().invoke("test-echo-a", "echo.get", &json!({"x": 1})).unwrap();
+    #[tokio::test]
+    async fn invoke_dispatches_to_plugin() {
+        let value = host()
+            .invoke("test-echo-a", "echo.get", &json!({"x": 1}))
+            .await
+            .unwrap();
         assert_eq!(value, json!({"x": 1}));
     }
 
-    #[test]
-    fn invoke_reports_unknown_plugin_method_and_disabled() {
+    #[tokio::test]
+    async fn invoke_reports_unknown_plugin_method_and_disabled() {
         let mut host = host();
-        let error = host.invoke("missing-plugin", "echo.get", &json!({})).unwrap_err();
+        let error = host
+            .invoke("missing-plugin", "echo.get", &json!({}))
+            .await
+            .unwrap_err();
         assert_eq!(error.code, InvokeErrorCode::UnknownPlugin);
-        let error = host.invoke("test-echo-a", "nope", &json!({})).unwrap_err();
+        let error = host
+            .invoke("test-echo-a", "nope", &json!({}))
+            .await
+            .unwrap_err();
         assert_eq!(error.code, InvokeErrorCode::UnknownMethod);
         host.set_enabled("test-echo-a", false).unwrap();
-        let error = host.invoke("test-echo-a", "echo.get", &json!({})).unwrap_err();
+        let error = host
+            .invoke("test-echo-a", "echo.get", &json!({}))
+            .await
+            .unwrap_err();
         assert_eq!(error.code, InvokeErrorCode::Disabled);
         // 禁用后贡献点也消失。
         assert_eq!(host.contributions(ContributionPoint::Page).len(), 1);

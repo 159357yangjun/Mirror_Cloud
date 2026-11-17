@@ -2,9 +2,9 @@
 """内核依赖方向守卫（ADR 0001/0002）。
 
 规则（越界即失败）：
-- `crates/kernel-api` 只能依赖 workspace 的 serde / serde_json / thiserror，不得有 path 依赖；
-- `crates/plugin-host` 只能依赖 kernel-api / serde_json / thiserror；
-- `crates/kernel` 只能依赖 kernel-api / plugin-host / serde_json；
+- `crates/kernel-api` 只能依赖 workspace 的 async-trait / serde / serde_json / thiserror，不得有 path 依赖；
+- `crates/plugin-host` 只能依赖 async-trait / kernel-api / serde_json / thiserror；
+- `crates/kernel` 只能依赖 async-trait / kernel-api / plugin-host / serde_json；
 - 三个 crate 都必须是 workspace 成员，且 desktop 依赖 kernel + kernel-api。
 
 用法：py -3 scripts/check_kernel_deps.py
@@ -18,9 +18,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 ALLOWED = {
-    "crates/kernel-api": {"serde", "serde_json", "thiserror"},
-    "crates/plugin-host": {"kernel-api", "serde_json", "thiserror"},
-    "crates/kernel": {"kernel-api", "plugin-host", "serde_json"},
+    "crates/kernel-api": {"async-trait", "serde", "serde_json", "thiserror"},
+    "crates/plugin-host": {"async-trait", "kernel-api", "serde_json", "thiserror"},
+    "crates/kernel": {"async-trait", "kernel-api", "plugin-host", "serde_json"},
 }
 
 FORBIDDEN_PREFIXES = ("domain", "storage-", "persistence-", "tauri", "reqwest", "tokio")

@@ -47,12 +47,13 @@ struct PendingPlugin {
     manifest: PluginManifestV2,
 }
 
+#[async_trait::async_trait]
 impl BuiltinPlugin for PendingPlugin {
     fn manifest(&self) -> PluginManifestV2 {
         self.manifest.clone()
     }
 
-    fn invoke(&self, method: &str, _payload: &Value) -> Result<Value, PluginFailure> {
+    async fn invoke(&self, method: &str, _payload: &Value) -> Result<Value, PluginFailure> {
         Err(PluginFailure::new(
             InvokeErrorCode::UnknownMethod,
             format!("method {method} lands with the P2 migration of {}", self.manifest.id),
@@ -66,12 +67,13 @@ struct DiagnosticsPlugin {
     manifest: PluginManifestV2,
 }
 
+#[async_trait::async_trait]
 impl BuiltinPlugin for DiagnosticsPlugin {
     fn manifest(&self) -> PluginManifestV2 {
         self.manifest.clone()
     }
 
-    fn invoke(&self, method: &str, _payload: &Value) -> Result<Value, PluginFailure> {
+    async fn invoke(&self, method: &str, _payload: &Value) -> Result<Value, PluginFailure> {
         match method {
             "diagnostics.get" => Ok(serde_json::json!({
                 "status": "ok",
