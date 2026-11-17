@@ -118,6 +118,24 @@ def main() -> int:
     if "commands::plugin_invoke" not in lib_rs:
         fail(failures, "plugin_invoke is not registered in invoke_handler")
 
+    # P2：已落地的插件 crate 必须自述同一 id、暴露 manifest()；
+    # 目录名与插件 id 一一对应（crates/plugins/<id>）。
+    plugins_dir = ROOT / "crates/plugins"
+    for plugin in sorted(EXPECTED_PLUGINS):
+        crate = plugins_dir / plugin
+        if not crate.is_dir():
+            continue
+        source = crate / "src/lib.rs"
+        if not source.is_file():
+            fail(failures, f"plugin crate {plugin} has no src/lib.rs")
+            continue
+        body = source.read_text(encoding="utf-8")
+        if f'PLUGIN_ID: &str = "{plugin}"' not in body:
+            fail(failures, f"plugin crate {plugin} does not declare PLUGIN_ID = {plugin}")
+        if "pub fn manifest()" not in body:
+            fail(failures, f"plugin crate {plugin} does not expose pub fn manifest()")
+
+
     if failures:
         for failure in failures:
             print(f"FAIL {failure}")
