@@ -1,0 +1,16 @@
+[package]
+name = "plugin-provider-opendal-extra"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+kernel-api = { path = "../../kernel-api" }
+provider-registry = { path = "../../provider-registry" }
+serde_json.workspace = true
+storage-core = { path = "../../storage-core" }
+storage-opendal = { path = "../../storage-opendal" }
+
+[dev-dependencies]
+tokio.workspace = true

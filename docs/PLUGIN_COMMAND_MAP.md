@@ -40,6 +40,15 @@
 | `cancel_task` / `retry_task` | commands/storage_entries.rs | 任务队列（与 cloud-browser 同文件，归属内核） |
 | `plugin_invoke` | commands/plugin_invoke.rs | P1 统一插件入口：`plugin_id + method + payload`，错误码见 ADR 0003 |
 
+**P2 落地（2026-11-18）— provider 构造抽取**：`github`/`gitee`/`oss`/`cos`/`webdav` 的构造代码已从
+`apps/desktop/src-tauri/src/services/provider_factory.rs` 的 `match provider_key` 迁入三个内置插件
+`crates/plugins/provider-github`、`crates/plugins/provider-gitee`、`crates/plugins/provider-opendal-extra`
+（各自声明 `provider.github` / `provider.gitee` / `provider.oss|cos|webdav` 贡献）。宿主保留 `r2`/`s3`
+兜底构造器（`BuiltinS3Constructor`）与 `build_provider` 薄壳（查 `crates/provider-registry` 的
+`ProviderRegistry`）。这三个插件不暴露 IPC 命令（`plugin_invoke` 返回 `unknown_method`），能力通过构造注册表
+提供给 `commands.rs` 与 `cli.rs`；两处用户可见错误文案（"is not wired in this build" /
+"is not supported by the Typora bridge"）不变。
+
 ## 插件命令
 
 ### `workflow`（6）

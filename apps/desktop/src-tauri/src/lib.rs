@@ -151,6 +151,19 @@ pub fn run() {
                     ),
                 ))
                 .map_err(|error| std::io::Error::other(error.to_string()))?;
+            // P2：三个 provider 插件换成真实构造器实例（复用装配表已声明的 provider.* 贡献）。
+            // 宿主侧 `provider_factory` 仍保留 r2/s3 的 S3 兼容兜底。
+            kernel
+                .register_override(Arc::new(plugin_provider_github::ProviderGitHubPlugin))
+                .map_err(|error| std::io::Error::other(error.to_string()))?;
+            kernel
+                .register_override(Arc::new(plugin_provider_gitee::ProviderGiteePlugin))
+                .map_err(|error| std::io::Error::other(error.to_string()))?;
+            kernel
+                .register_override(Arc::new(
+                    plugin_provider_opendal_extra::ProviderOpenDalExtraPlugin,
+                ))
+                .map_err(|error| std::io::Error::other(error.to_string()))?;
             let state = AppState {
                 storages,
                 assets,

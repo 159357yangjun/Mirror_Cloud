@@ -48,4 +48,12 @@
 - 本地编译通道：`1.98.1-x86_64-pc-windows-gnu` 工具链安装完成（rustup 自愈半装状态），配合 `D:\mingw64\mingw64\bin` 的 gcc 加入 PATH，`RUSTUP_TOOLCHAIN='1.98.1-x86_64-pc-windows-gnu' cargo check -p plugin-publish-strategy -p plugin-workflow -p kernel -p plugin-host -p kernel-api --tests` 通过（exit 0）。此后插件代码可在本机静态验证，云端 CI 仍是构建与测试的最终判定。
 - 工具链环境变量口径：所有 cargo 调用固定带 `RUSTUP_HOME=D:\rust\rustup`、`CARGO_HOME=D:\rust\cargo`、`RUSTUP_TOOLCHAIN='1.98.1-x86_64-pc-windows-gnu'`（stable-msvc 已损坏，禁用）。
 
+## 2026-11-18 — P2 续：provider 工厂抽取为注册表 + provider 插件
+
+- 抽取方式：新建 `crates/provider-registry`（`ProviderConstructor` trait + `ProviderRegistry` 按键查表），`github`/`gitee`/`oss`/`cos`/`webdav` 的构造代码迁入 `crates/plugins/provider-github`、`provider-gitee`、`provider-opendal-extra` 三个内置插件；宿主保留 `r2`/`s3` 兜底（`provider_factory::BuiltinS3Constructor`）。
+- 接口约束：`CredentialReader::read_json` 返回 `serde_json::Value` 而非泛型 `T`——泛型方法使 trait 失去 dyn 兼容性，而注册表需持有 `&dyn CredentialReader`；类型化解析上移到调用方（各构造器与 `BuiltinS3Constructor`），行为与迁移前一致。
+- 兼容承诺：`provider_factory::build_provider` 签名与两处用户可见错误文案不变，`commands.rs`（"is not wired in this build"）与 `cli.rs`（"is not supported by the Typora bridge"）的调用点不动；`ProviderRegistry::build` 的 `unsupported` 回调由 `Fn(&str)` 放宽为 `FnOnce(&str)`，以承接 `build_provider` 的 `FnOnce` 签名。
+- 插件边界：三个 provider 插件不暴露 IPC 命令（`plugin_invoke` 返回 `unknown_method`），能力经 `ProviderRegistry` 提供给宿主；其 `manifest` 复用装配表已声明的 `provider.*` 贡献，经 `register_override` 注册进 kernel。
+- 验证口径：本机 `cargo check --workspace --tests` 与 `cargo test`（provider/workflow/publish-strategy/kernel/plugin-host 共 30 项）通过；`cargo test -p image-hosting-platform-desktop provider_factory` 因 gnu 工具链链接的测试二进制在本机加载失败（`STATUS_ENTRYPOINT_NOT_FOUND`）无法运行，交云端 CI（MSVC）判定。
+
 

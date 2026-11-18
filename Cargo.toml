@@ -21,6 +21,10 @@ members = [
   "crates/plugins/diagnostics",
   "crates/plugins/workflow",
   "crates/plugins/publish-strategy",
+  "crates/provider-registry",
+  "crates/plugins/provider-github",
+  "crates/plugins/provider-gitee",
+  "crates/plugins/provider-opendal-extra",
 ]
 
 [workspace.package]

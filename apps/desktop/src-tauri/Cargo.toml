@@ -29,6 +29,10 @@ plugin-ai-assistant = { path = "../../../crates/plugins/ai-assistant" }
 plugin-diagnostics = { path = "../../../crates/plugins/diagnostics" }
 plugin-workflow = { path = "../../../crates/plugins/workflow" }
 plugin-publish-strategy = { path = "../../../crates/plugins/publish-strategy" }
+plugin-provider-github = { path = "../../../crates/plugins/provider-github" }
+plugin-provider-gitee = { path = "../../../crates/plugins/provider-gitee" }
+plugin-provider-opendal-extra = { path = "../../../crates/plugins/provider-opendal-extra" }
+provider-registry = { path = "../../../crates/provider-registry" }
 plugin-runtime = { path = "../../../crates/plugin-runtime" }
 reqwest.workspace = true
 ring = "=0.17.14"

@@ -75,3 +75,5 @@
 - 已接线未提交：`publish-strategy`（群组 CRUD 3 条；`repair_asset` 暂留内核待 P3）；本地 `cargo check --workspace --tests` 通过（gnu 工具链）。
 - 待办：P2 其余组（`reconcile` 4、`cloud-browser` 14、`portable-migration` 21、`integrations-os` 9）按映射表迁移；P3 provider 插件（github/gitee/opendal-extra）、DDL（plugin_state/plugin_capabilities）、版本 2.0.0；P4 前端 `invokePlugin` 收敛与内核命令收敛到 ≤30。
 - 编译验证口径：本地 `cargo check --workspace --tests` 已可用（gnu 工具链 + MinGW gcc），`cargo test` 与打包仍以云端 CI 为准。
+- P2 进展（2026-11-18，provider 工厂）：新建 `crates/provider-registry` 与三个 provider 插件（`provider-github`/`provider-gitee`/`provider-opendal-extra`），`provider_factory.rs` 改查表薄壳，宿主保留 `r2`/`s3` 兜底；`lib.rs` 注册三个插件实例，`build_provider` 签名与错误文案不变。本地 `cargo check --workspace --tests`、`cargo test`（30 项）通过；desktop 测试二进制因 gnu 链接加载失败，交云端 CI。
+- 解锁：`reconcile`/`cloud-browser`/`repair_asset` 的迁移此前被 provider 构造阻塞，本轮后具备启动条件；下一步按映射表迁移 `reconcile`（4）与 `cloud-browser`（14）。

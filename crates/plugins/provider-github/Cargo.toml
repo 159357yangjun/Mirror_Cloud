@@ -1,0 +1,16 @@
+[package]
+name = "plugin-provider-github"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+kernel-api = { path = "../../kernel-api" }
+provider-registry = { path = "../../provider-registry" }
+serde_json.workspace = true
+storage-core = { path = "../../storage-core" }
+storage-github = { path = "../../storage-github" }
+
+[dev-dependencies]
+tokio.workspace = true

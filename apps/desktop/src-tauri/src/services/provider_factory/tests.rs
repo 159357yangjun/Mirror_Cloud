@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 
 use chrono::Utc;
-use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -16,9 +15,9 @@ struct MemoryCredentials {
 }
 
 impl CredentialReader for MemoryCredentials {
-    fn read_json<T: DeserializeOwned>(&self, reference: &str) -> Result<T, String> {
+    fn read_json(&self, reference: &str) -> Result<Value, String> {
         self.reads.borrow_mut().push(reference.to_owned());
-        serde_json::from_value(self.value.clone()?).map_err(|error| error.to_string())
+        self.value.clone()
     }
 }
 

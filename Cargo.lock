@@ -2322,9 +2322,13 @@ dependencies = [
  "persistence-sqlite",
  "plugin-ai-assistant",
  "plugin-diagnostics",
+ "plugin-provider-gitee",
+ "plugin-provider-github",
+ "plugin-provider-opendal-extra",
  "plugin-publish-strategy",
  "plugin-runtime",
  "plugin-workflow",
+ "provider-registry",
  "reqwest",
  "ring",
  "serde",
@@ -3573,6 +3577,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin-provider-gitee"
+version = "1.4.16"
+dependencies = [
+ "async-trait",
+ "kernel-api",
+ "provider-registry",
+ "serde_json",
+ "storage-core",
+ "storage-gitee",
+ "tokio",
+]
+
+[[package]]
+name = "plugin-provider-github"
+version = "1.4.16"
+dependencies = [
+ "async-trait",
+ "kernel-api",
+ "provider-registry",
+ "serde_json",
+ "storage-core",
+ "storage-github",
+ "tokio",
+]
+
+[[package]]
+name = "plugin-provider-opendal-extra"
+version = "1.4.16"
+dependencies = [
+ "async-trait",
+ "kernel-api",
+ "provider-registry",
+ "serde_json",
+ "storage-core",
+ "storage-opendal",
+ "tokio",
+]
+
+[[package]]
 name = "plugin-publish-strategy"
 version = "1.4.16"
 dependencies = [
@@ -3745,6 +3788,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "provider-registry"
+version = "1.4.16"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "credential-store",
+ "domain",
+ "persistence-sqlite",
+ "serde",
+ "serde_json",
+ "storage-core",
+ "uuid",
 ]
 
 [[package]]

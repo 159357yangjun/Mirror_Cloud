@@ -93,6 +93,32 @@
 
 状态：publish-strategy 插件已接线并本地静态验证，未提交推送。下一步按映射表继续迁移（`reconcile`/`cloud-browser`/`portable-migration`/`integrations-os`，以及 P3 的 provider 插件与 DDL）。
 
+## 2026-11-18 — 插件化 P2：provider 工厂抽取（注册表 + 三个 provider 插件）
+
+起始 `main@7a1d0a2`（publish-strategy 插件已推送）。本轮把 `apps/desktop/src-tauri/src/services/provider_factory.rs` 的 `match provider_key` 硬编码拆为可注册的构造器表：
+
+新增文件：
+
+- `crates/provider-registry/{Cargo.toml,src/lib.rs}`：`CredentialReader`（`read_json` 返回 `serde_json::Value`，泛型方法会破坏 dyn 兼容性）、`ProviderBuildContext{record, credentials}`、`trait ProviderConstructor{ provider_keys, build }`、`ProviderRegistry`（按键查表、缺凭据引用先失败、未注册键用调用方文案）；3 个单测。
+- `crates/plugins/provider-github/{Cargo.toml,src/lib.rs}`：`PLUGIN_ID="provider-github"`，`manifest()`（Native，权限 Network/Secret/ProviderConfig，贡献 `provider.github`）、`GitHubProviderConstructor`（键 `["github"]`）、`ProviderGitHubPlugin`（`BuiltinPlugin`，invoke 返回 `unknown_method`）；3 个单测。
+- `crates/plugins/provider-gitee/{Cargo.toml,src/lib.rs}`：同形，键 `["gitee"]`、`GiteeProviderConstructor`；3 个单测。
+- `crates/plugins/provider-opendal-extra/{Cargo.toml,src/lib.rs}`：`PLUGIN_ID="provider-opendal-extra"`，贡献 `provider.oss`/`provider.cos`/`provider.webdav`，`OpenDalExtraConstructor`（键 `["oss","cos","webdav"]`，按 `provider_key` 分发 `OpenDalStorage::oss/cos/webdav`）；3 个单测。
+
+修改文件：
+
+- `apps/desktop/src-tauri/src/services/provider_factory.rs`：删原 `CredentialReader` 定义与六个存储构造分支，改为查表薄壳；新增 `BuiltinS3Constructor`（宿主保留 `r2`/`s3` 兜底）与 `provider_registry()`（`OnceLock` 惰性注册宿主兜底 + 三个插件构造器）；`build_provider` 签名与错误文案不变，`commands.rs`/`cli.rs` 调用点不动。
+- `apps/desktop/src-tauri/src/lib.rs`：setup 在 publish-strategy override 之后、`AppState` 构造之前，注册三个 provider 插件实例。
+- `Cargo.toml` / `apps/desktop/src-tauri/Cargo.toml`：members 与依赖补 `provider-registry` 与三个 provider 插件（显式路径）。
+- `docs/PLUGIN_COMMAND_MAP.md`：内核命令表后补「P2 落地（2026-11-18）— provider 构造抽取」说明。
+
+核对与验证（本机实跑）：
+
+- `cargo check --workspace --tests --offline` → exit 0（gnu 工具链）。
+- `cargo test`（`provider-registry`、三个 provider 插件、`plugin-workflow`、`plugin-publish-strategy`、`kernel`、`plugin-host`）→ 全部通过。
+- `cargo test -p image-hosting-platform-desktop provider_factory` 无法在本机跑：测试二进制以 gnu 工具链链接，加载失败 `STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139)`，交云端 CI（MSVC）判定。
+- 静态门：`validate.py`、`check_plugin_contracts.py`（14/14/9）、`check_kernel_deps.py`、`check_contracts.py`（前端 99 / Rust 100 / 注册 100）、`check_user_flow.py`（642/642）全过。
+
+状态：provider 工厂抽取已落地并本地静态验证，未提交推送。`reconcile`/`cloud-browser`/`repair_asset` 原先被阻塞的迁移（依赖 provider 构造）现在可以启动。
 
 ## 2026-11-16 — 插件化 P1：内核契约 crate、plugin_invoke、前端 registry
 
