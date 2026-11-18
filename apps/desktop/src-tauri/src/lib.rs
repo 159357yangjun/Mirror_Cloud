@@ -134,6 +134,14 @@ pub fn run() {
                     credentials.clone(),
                 )))
                 .map_err(|error| std::io::Error::other(error.to_string()))?;
+            // P2：工作流也换成真实实现（工作流 + 存储 + 多云组仓储）。
+            kernel
+                .register_override(Arc::new(plugin_workflow::WorkflowPlugin::new(
+                    workflows.clone(),
+                    storages.clone(),
+                    groups.clone(),
+                )))
+                .map_err(|error| std::io::Error::other(error.to_string()))?;
             let state = AppState {
                 storages,
                 assets,

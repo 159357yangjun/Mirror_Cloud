@@ -48,6 +48,12 @@
 
 发布入口 `publish_*_with_workflow` 仍在内核；插件只提供步骤定义、命名模板与配方。
 
+**P2 落地（2026-11-18）**：实现在 `crates/plugins/workflow/src/lib.rs`（`plugin-workflow`），上表六条命令改为薄包装委托
+`kernel.invoke("workflow", "workflow.<method>", payload)`，方法名为 `workflow.list_recipes` / `workflow.create_from_recipe` /
+`workflow.create_custom_workflow` / `workflow.list_workflows` / `workflow.set_default_workflow` / `workflow.delete_workflow`。
+原 `commands.rs` 的配方目录（`builtin_recipes`）、`workflow_from_fields` 组合与 `WorkflowView` 映射随实现迁入插件（命令层保留
+`workflow_from_fields`/`validate_publish_target` 供默认管线维护路径复用）。命令名、入参与返回结构对前端不变。
+
 ### `publish-strategy`（4）
 
 `create_storage_group`、`list_storage_groups`、`delete_storage_group`、`repair_asset`（来源 `commands.rs`）。

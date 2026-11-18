@@ -12,7 +12,7 @@
 修改文件：
 
 - `crates/kernel-api`：`BuiltinPlugin::invoke` 改 `async_trait`（`&self, method, payload`），依赖加 `async-trait`。
-- `crates/plugin-host`：`invoke` async；新增 `register_override`（替换同 id 实例、保留清单/开关，未知 id → `unknown_host`）；`#[tokio::test]`。
+- `crates/plugin-host`：`invoke` async；新增 `register_override`（替换同 id 实例、保留清单/开关，未知 id → `HostError::UnknownPlugin`）；`#[tokio::test]`。
 - `crates/kernel`：`invoke` async、`register_override` 包装；`PendingPlugin`/`DiagnosticsPlugin` 的 impl 改 async。
 - `apps/desktop/src-tauri`：`AppState.kernel` 改 `tokio::sync::RwLock`；setup 先构造仓储/任务引擎，再 `register_override(DiagnosticsPlugin)`，最后填 `AppState`；`plugin_invoke` 命令 async；`get_system_diagnostics` 改为 `plugin_invoke("diagnostics","diagnostics.get")` + `serde_json::from_value`（视图加 `Deserialize`）。
 - `Cargo.toml`：members 加 `crates/plugins/*`；`apps/desktop/src-tauri/Cargo.toml` 加 `plugin-diagnostics`。
@@ -39,6 +39,32 @@
 - 以上两项：`47e7413`、`74793b5` 本地提交；推送时 GitHub HTTPS 前三次反复 `Recv failure: Connection was reset` / `Failed to connect ... port 443`（`api.github.com` 可达、TCP 探测为 True），后台重试第 4 次成功，`9735f50..369c3bc`。CI run 44085904850（`74793b5`）`desktop-check` 全绿（26 步，含 `Rust check`、`Rust tests`、`Desktop build`、`Docs build`）。
 
 状态：P2 首个插件迁移完成但未经编译验证；下一步按 `docs/PLUGIN_COMMAND_MAP.md` 迁移 provider/publish-strategy/workflow 组。
+
+
+## 2026-11-18 — 插件化 P2：workflow 插件迁移与内核接线
+
+起始 `main@0216ae1`（P2 前一提交之上）。本轮按映射表迁移 `workflow` 组（6 条命令），逻辑单份实现于插件 crate，`src-tauri` 命令改为薄包装：
+
+新增文件：
+
+- `crates/plugins/workflow/Cargo.toml`：package `plugin-workflow`（deps async-trait/domain/kernel-api/persistence-sqlite/serde_json/uuid，dev tokio）。
+- `crates/plugins/workflow/src/lib.rs`：`PLUGIN_ID="workflow"`、`manifest()`（Native、`ReadAsset`、贡献 `page.workflows`）、`builtin_recipes()`（4 条配方与原 `commands.rs` 逐字一致）、`workflow_from_fields()`/`workflow_view()`（camelCase 映射），`invoke` 分发 `workflow.list_recipes` / `workflow.list_workflows` / `workflow.create_from_recipe` / `workflow.create_custom_workflow` / `workflow.set_default_workflow` / `workflow.delete_workflow`，未知方法 `unknown_method`；4 个单测。
+
+修改文件：
+
+- `Cargo.toml`：members 增 `crates/plugins/workflow`（显式路径，`validate.py` 不展开 glob）。
+- `apps/desktop/src-tauri/Cargo.toml`：增 `plugin-workflow` 依赖。
+- `apps/desktop/src-tauri/src/commands.rs`：删除 `RecipeDefinition`/`builtin_recipes`/`workflow_view`（迁移后无人引用）；六条 workflow 命令改为 `state.kernel.read().await.invoke("workflow", "workflow.<method>", payload)` + `serde_json::from_value`；`list_workflows` 保留 `resolve_default_publish_target`/`sync_system_default_pipeline` 前导逻辑；命令名、入参、返回结构对前端不变。
+- `apps/desktop/src-tauri/src/lib.rs`：setup 在 ai-assistant override 之后注册 `WorkflowPlugin::new(workflows, storages, groups)`。
+- `docs/PLUGIN_COMMAND_MAP.md`：`workflow` 段补「P2 落地（2026-11-18）」小节。
+
+核对与验证（本机实跑）：
+
+- `D:\tools\python312\python.exe scripts\validate.py` → `JSON/TOML: OK | SQLite migrations: 21 OK | tables: 17 | workspace members: OK | version alignment: 1.4.16`。
+- `check_plugin_contracts.py` → `plugin contracts ok (plugins=14, contributions=14, points=9)`（新增插件 crate 扫描通过）；`check_kernel_deps.py` OK；`check_contracts.py` → 前端 99 / Rust 100 / 注册 100；`check_user_flow.py` → 642/642。
+- `cargo fmt --all`（rustc 1.98.1，`D:\rust`）已执行，未额外改动工作区。
+- `cargo metadata --offline` 更新 `Cargo.lock`（+14 行，含 `plugin-workflow`）。
+- **Rust 编译仍未在本地执行**：本机无 MSVC 链接器（`link.exe not found`）；尝试 gnu 目标工具链 `1.98.1-x86_64-pc-windows-gnu`，该工具链安装不完整（`missing manifest in toolchain`），`rustup toolchain install ... --force` 前台 600s 未完成，转后台任务 `pwsh-b144307182314dd9` 仍在跑。P2 代码正确性交云端 CI（U）。
 
 
 ## 2026-11-16 — 插件化 P1：内核契约 crate、plugin_invoke、前端 registry

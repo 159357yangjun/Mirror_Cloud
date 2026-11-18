@@ -336,20 +336,6 @@ pub struct AssetView {
     pub plugin_outputs: Vec<PluginExecutionView>,
 }
 
-#[derive(Debug, Clone)]
-struct RecipeDefinition {
-    key: &'static str,
-    name: &'static str,
-    description: &'static str,
-    badge: &'static str,
-    format: &'static str,
-    quality: u8,
-    max_width: Option<u32>,
-    max_height: Option<u32>,
-    rename_template: &'static str,
-    recommended: bool,
-}
-
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipeView {
@@ -406,59 +392,6 @@ pub struct WorkflowView {
     pub target_kind: String,
     pub target_id: String,
     pub target_name: String,
-}
-
-fn builtin_recipes() -> Vec<RecipeDefinition> {
-    vec![
-        RecipeDefinition {
-            key: "blog_balanced",
-            name: "博客 · WebP 均衡",
-            description: "限制长边到 2560px，WebP 82%，适合博客、Markdown 与日常图片。",
-            badge: "推荐",
-            format: "webp",
-            quality: 82,
-            max_width: Some(2560),
-            max_height: Some(2560),
-            rename_template: "images/{year}/{month}/{hash:12}-u{uuid}-{stem}.{ext}",
-            recommended: true,
-        },
-        RecipeDefinition {
-            key: "docs_crisp",
-            name: "文档 · 清晰优先",
-            description: "限制到 1920px，WebP 90%，更适合截图、教程和项目文档。",
-            badge: "文档",
-            format: "webp",
-            quality: 90,
-            max_width: Some(1920),
-            max_height: Some(1920),
-            rename_template: "docs/{year}/{month}/{hash:12}-u{uuid}.{ext}",
-            recommended: false,
-        },
-        RecipeDefinition {
-            key: "small_fast",
-            name: "分享 · 小体积",
-            description: "限制到 1600px，WebP 72%，优先减少上传时间和公网流量。",
-            badge: "极速",
-            format: "webp",
-            quality: 72,
-            max_width: Some(1600),
-            max_height: Some(1600),
-            rename_template: "share/{year}/{month}/{hash:12}-u{uuid}.{ext}",
-            recommended: false,
-        },
-        RecipeDefinition {
-            key: "original_keep",
-            name: "原图 · 不转换",
-            description: "不改变图片内容，仅统一远端命名；适合需要保留原始编码的资源。",
-            badge: "原图",
-            format: "original",
-            quality: 100,
-            max_width: None,
-            max_height: None,
-            rename_template: "original/{year}/{month}/{hash:12}-u{uuid}-{stem}.{ext}",
-            recommended: false,
-        },
-    ]
 }
 
 fn publish_target_to_setting(target: &PublishTarget) -> Value {
@@ -1455,22 +1388,14 @@ pub async fn delete_storage_group(state: State<'_, AppState>, group_id: String) 
 }
 
 #[tauri::command]
-pub fn list_recipes() -> Vec<RecipeView> {
-    builtin_recipes()
-        .into_iter()
-        .map(|recipe| RecipeView {
-            key: recipe.key.into(),
-            name: recipe.name.into(),
-            description: recipe.description.into(),
-            badge: recipe.badge.into(),
-            format: recipe.format.into(),
-            quality: recipe.quality,
-            max_width: recipe.max_width,
-            max_height: recipe.max_height,
-            rename_template: recipe.rename_template.into(),
-            recommended: recipe.recommended,
-        })
-        .collect()
+pub async fn list_recipes(state: State<'_, AppState>) -> CmdResult<Vec<RecipeView>> {
+    // P2：配方目录在 `plugin-workflow`，命令只做边界转换。
+    let kernel = state.kernel.read().await;
+    let value = kernel
+        .invoke("workflow", "workflow.list_recipes", &Value::Null)
+        .await
+        .map_err(|error| error.to_string())?;
+    serde_json::from_value(value).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -1478,44 +1403,14 @@ pub async fn create_workflow_from_recipe(
     state: State<'_, AppState>,
     input: CreateWorkflowFromRecipeInput,
 ) -> CmdResult<WorkflowView> {
-    let recipe = builtin_recipes()
-        .into_iter()
-        .find(|recipe| recipe.key == input.recipe_key)
-        .ok_or_else(|| format!("Unknown recipe: {}", input.recipe_key))?;
-    let target = validate_publish_target(&state, &input.target_kind, &input.target_id).await?;
-    let name = input
-        .name
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or(recipe.name)
-        .to_string();
-    let workflow = workflow_from_fields(
-        name,
-        recipe.format,
-        recipe.quality,
-        recipe.max_width,
-        recipe.max_height,
-        recipe.rename_template,
-        target,
-    )?;
-    state
-        .workflows
-        .insert(
-            &workflow,
-            recipe.description,
-            Some(recipe.key),
-            input.set_default,
-        )
+    // P2：组合逻辑在 `plugin-workflow`，命令只做边界转换。
+    let payload = serde_json::to_value(&input).map_err(|error| error.to_string())?;
+    let kernel = state.kernel.read().await;
+    let value = kernel
+        .invoke("workflow", "workflow.create_from_recipe", &payload)
         .await
         .map_err(|error| error.to_string())?;
-    let record = state
-        .workflows
-        .get(workflow.id)
-        .await
-        .map_err(|error| error.to_string())?
-        .ok_or("Workflow was created but could not be reloaded")?;
-    workflow_view(&state, record).await
+    serde_json::from_value(value).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -1523,45 +1418,14 @@ pub async fn create_custom_workflow(
     state: State<'_, AppState>,
     input: CreateCustomWorkflowInput,
 ) -> CmdResult<WorkflowView> {
-    if input.name.trim().is_empty() {
-        return Err("Workflow name cannot be empty".into());
-    }
-    if !(1..=100).contains(&input.quality) {
-        return Err("Quality must be between 1 and 100".into());
-    }
-    if !matches!(input.format.as_str(), "original" | "jpeg" | "png" | "webp") {
-        return Err("Unsupported image output format".into());
-    }
-    if input.rename_template.trim().is_empty() {
-        return Err("Rename template cannot be empty".into());
-    }
-    let target = validate_publish_target(&state, &input.target_kind, &input.target_id).await?;
-    let workflow = workflow_from_fields(
-        input.name.trim().into(),
-        &input.format,
-        input.quality,
-        input.max_width.filter(|value| *value > 0),
-        input.max_height.filter(|value| *value > 0),
-        input.rename_template.trim(),
-        target,
-    )?;
-    state
-        .workflows
-        .insert(
-            &workflow,
-            input.description.as_deref().unwrap_or_default().trim(),
-            None,
-            input.set_default,
-        )
+    // P2：组合逻辑在 `plugin-workflow`，命令只做边界转换。
+    let payload = serde_json::to_value(&input).map_err(|error| error.to_string())?;
+    let kernel = state.kernel.read().await;
+    let value = kernel
+        .invoke("workflow", "workflow.create_custom_workflow", &payload)
         .await
         .map_err(|error| error.to_string())?;
-    let record = state
-        .workflows
-        .get(workflow.id)
-        .await
-        .map_err(|error| error.to_string())?
-        .ok_or("Workflow was created but could not be reloaded")?;
-    workflow_view(&state, record).await
+    serde_json::from_value(value).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -1572,16 +1436,13 @@ pub async fn list_workflows(state: State<'_, AppState>) -> CmdResult<Vec<Workflo
     {
         sync_system_default_pipeline(state.inner(), None).await?;
     }
-    let records = state
-        .workflows
-        .list()
+    // P2：列表与映射在 `plugin-workflow`，命令只做边界转换。
+    let kernel = state.kernel.read().await;
+    let value = kernel
+        .invoke("workflow", "workflow.list_workflows", &Value::Null)
         .await
         .map_err(|error| error.to_string())?;
-    let mut views = Vec::with_capacity(records.len());
-    for record in records {
-        views.push(workflow_view(&state, record).await?);
-    }
-    Ok(views)
+    serde_json::from_value(value).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -1589,31 +1450,26 @@ pub async fn set_default_workflow(
     state: State<'_, AppState>,
     workflow_id: String,
 ) -> CmdResult<()> {
-    let id = Uuid::parse_str(&workflow_id).map_err(|error| error.to_string())?;
-    if state
-        .workflows
-        .get(id)
-        .await
-        .map_err(|error| error.to_string())?
-        .is_none()
-    {
-        return Err("Workflow not found".into());
-    }
-    state
-        .workflows
-        .set_default(id)
+    // P2：状态变更在 `plugin-workflow`，命令只做边界转换。
+    let payload = json!({ "workflowId": workflow_id });
+    let kernel = state.kernel.read().await;
+    kernel
+        .invoke("workflow", "workflow.set_default_workflow", &payload)
         .await
         .map_err(|error| error.to_string())
+        .map(|_| ())
 }
 
 #[tauri::command]
 pub async fn delete_workflow(state: State<'_, AppState>, workflow_id: String) -> CmdResult<()> {
-    let id = Uuid::parse_str(&workflow_id).map_err(|error| error.to_string())?;
-    state
-        .workflows
-        .delete(id)
+    // P2：状态变更在 `plugin-workflow`，命令只做边界转换。
+    let payload = json!({ "workflowId": workflow_id });
+    let kernel = state.kernel.read().await;
+    kernel
+        .invoke("workflow", "workflow.delete_workflow", &payload)
         .await
         .map_err(|error| error.to_string())
+        .map(|_| ())
 }
 
 #[tauri::command]
@@ -2044,78 +1900,6 @@ async fn validate_publish_target(
         }
         _ => Err("Publish target must be storage or group".into()),
     }
-}
-
-async fn workflow_view(state: &AppState, record: WorkflowRecord) -> CmdResult<WorkflowView> {
-    let mut format = "original".to_string();
-    let mut quality = 100u8;
-    let mut max_width = None;
-    let mut max_height = None;
-    let mut rename_template = "uploads/{year}/{month}/{hash:12}-u{uuid}-{stem}.{ext}".to_string();
-    let mut target_kind = String::new();
-    let mut target_id = String::new();
-    let mut target_name = String::new();
-
-    for step in &record.workflow.steps {
-        match step {
-            WorkflowStep::Resize {
-                max_width: width,
-                max_height: height,
-            } => {
-                max_width = (*width != u32::MAX).then_some(*width);
-                max_height = (*height != u32::MAX).then_some(*height);
-            }
-            WorkflowStep::Convert {
-                format: target_format,
-                quality: target_quality,
-            } => {
-                format = target_format.clone();
-                quality = *target_quality;
-            }
-            WorkflowStep::Rename { template } => rename_template = template.clone(),
-            WorkflowStep::Publish { target } => match target {
-                PublishTarget::Storage { storage_id } => {
-                    target_kind = "storage".into();
-                    target_id = storage_id.to_string();
-                    target_name = state
-                        .storages
-                        .get(*storage_id)
-                        .await
-                        .map_err(|error| error.to_string())?
-                        .map(|storage| storage.name)
-                        .unwrap_or_else(|| "已删除的存储".into());
-                }
-                PublishTarget::StorageGroup { storage_group_id } => {
-                    target_kind = "group".into();
-                    target_id = storage_group_id.to_string();
-                    target_name = state
-                        .groups
-                        .get(*storage_group_id)
-                        .await
-                        .map_err(|error| error.to_string())?
-                        .map(|group| group.name)
-                        .unwrap_or_else(|| "已删除的多云组".into());
-                }
-            },
-            WorkflowStep::Output { .. } => {}
-        }
-    }
-
-    Ok(WorkflowView {
-        id: record.workflow.id.to_string(),
-        name: record.workflow.name,
-        description: record.description,
-        source_recipe: record.source_recipe,
-        is_default: record.is_default,
-        format,
-        quality,
-        max_width,
-        max_height,
-        rename_template,
-        target_kind,
-        target_id,
-        target_name,
-    })
 }
 
 async fn load_ai_settings(state: &AppState) -> CmdResult<Value> {

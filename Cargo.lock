@@ -2323,6 +2323,7 @@ dependencies = [
  "plugin-ai-assistant",
  "plugin-diagnostics",
  "plugin-runtime",
+ "plugin-workflow",
  "reqwest",
  "ring",
  "serde",
@@ -3579,6 +3580,19 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+]
+
+[[package]]
+name = "plugin-workflow"
+version = "1.4.16"
+dependencies = [
+ "async-trait",
+ "domain",
+ "kernel-api",
+ "persistence-sqlite",
+ "serde_json",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

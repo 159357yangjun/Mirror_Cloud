@@ -22,7 +22,7 @@
 
 - 同步 `invoke` 无法在插件内 `await` 仓储（桌面命令处于 tokio runtime，`block_on` 会 panic），故 `BuiltinPlugin::invoke` 改 `async_trait`，`PluginHost`/`Kernel::invoke` 一并 async；`AppState.kernel` 改 `tokio::sync::RwLock`（ADR 0005）。
 - 插件不接收 context 参数：仓储/凭据/运行态句柄在构造期注入插件实例（`SqlitePool` 克隆廉价），`BuiltinPlugin` 签名保持 `invoke(&self, method, payload)`。
-- 迁移方式：`PluginHost::register_override(instance)` 用真实实现替换同 id 占位实例，**清单唯一来源仍是内核装配表**；未知 id 报 `unknown_host`，替换不改清单/开关/贡献点，避免插件自述清单漂移。
+- 迁移方式：`PluginHost::register_override(instance)` 用真实实现替换同 id 占位实例，**清单唯一来源仍是内核装配表**；未知 id 报 `HostError::UnknownPlugin`，替换不改清单/开关/贡献点，避免插件自述清单漂移。
 - 迁移期 Tauri 命令保留原名与返回类型，内部委托插件方法，前端调用名不变；P4 再切 `invokePlugin` 并删包装。
 - 用户已于 2026-11-17 授权：本机安装 rustup + stable 工具链、推送触发云端 CI、P3 的 DDL（`plugin_state`/`plugin_capabilities`）与产品版本 2.0.0（P3 前先跑 `scripts/backup_db.ps1`）；连续执行至 P4。
 
@@ -31,4 +31,12 @@
 - `ai-assistant` 迁移：设置读 `SettingsRepository`（键 `ai.provider`），`apiKey` 只进 OS 凭据库（`ai:provider`），历史明文键在读取时一次性迁移；`ai.plan_workflow` 仍走 OpenAI 兼容 `chat/completions`（`response_format=json_object`），失败映射 `invalid_payload`/`internal`。迁移期 Tauri 命令原名保留，仅委托插件。
 - diagnostics 的 `appVersion` 改为**产品版本**：构造期注入 `env!("CARGO_PKG_VERSION")`（来自 `src-tauri`，1.4.16），不再使用插件 crate 自身的 `2.0.0-dev.1`，否则诊断输出与界面/更新器版本不一致。
 - 指纹表修复：`scripts/check_user_flow.py` 的 CHANGELOG 表行停在 2576 行 / 188,327 字节 / `2aee04b0…`，而 HEAD blob 与磁盘均为 2583 行 / 189,008 字节 / `1d7221bb…`；该漂移在 `69ec25d` 就已存在（其 CI 43419429725 亦为 failure），非本轮引入。按表规则用 `scripts/fingerprint_rows.mjs` 的实测值更新表行，并把末列基线数改为 642。
+
+## 2026-11-18 — P2 续：workflow 插件迁移
+
+- 迁移策略：按 `docs/PLUGIN_COMMAND_MAP.md` 逐组搬移，`workflow` 组（6 条命令）是第二个真实插件。实现集中放在 `crates/plugins/workflow`，`apps/desktop/src-tauri` 命令只做边界转换（序列化入参 → `kernel.invoke("workflow", "workflow.<method>", payload)` → `serde_json::from_value` 还原），**逻辑单份**，不保留双实现。
+- 组合逻辑归属：内置配方目录、`workflow_from_fields`、`workflow_view` 的 camelCase 映射随实现迁入插件；命令层仅保留默认管线维护所需的前导逻辑（`list_workflows` 的 `resolve_default_publish_target`/`sync_system_default_pipeline`），与原行为一致。
+- 依赖方向：插件 crate 允许依赖 `domain`/`persistence-sqlite`（插件持有仓储句柄，构造期注入），但仍不依赖 Tauri/`src-tauri`；`check_kernel_deps.py` 守卫的仍是三个内核 crate。
+- 前端与命令名不变：`list_recipes`/`create_workflow_from_recipe`/`create_custom_workflow`/`list_workflows`/`set_default_workflow`/`delete_workflow` 的入参（camelCase）与返回结构保持原样，P4 才收敛到 `invokePlugin`。
+- 编译验证口径：本机无 MSVC 链接器，gnu 目标工具链（`1.98.1-x86_64-pc-windows-gnu`）安装未完成（`missing manifest in toolchain`），本地 `cargo check` 无法执行（U）；插件代码正确性由云端 CI 的 `Rust check`/`Rust tests` 判定，不本地伪造成功。
 
