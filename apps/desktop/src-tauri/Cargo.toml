@@ -28,6 +28,7 @@ persistence-sqlite = { path = "../../../crates/persistence-sqlite" }
 plugin-ai-assistant = { path = "../../../crates/plugins/ai-assistant" }
 plugin-diagnostics = { path = "../../../crates/plugins/diagnostics" }
 plugin-workflow = { path = "../../../crates/plugins/workflow" }
+plugin-publish-strategy = { path = "../../../crates/plugins/publish-strategy" }
 plugin-runtime = { path = "../../../crates/plugin-runtime" }
 reqwest.workspace = true
 ring = "=0.17.14"

@@ -68,3 +68,10 @@
 ## 保留与范围
 
 历史合成Gitee测试对象、三个关闭本地样例插件和旧官方模板样本保留未删除；SQLite各阶段加密备份已恢复校验。旧1.4.10应用内安装失败与后续手动安装正式1.4.12、再从1.4.12真实签名更新成功分别记录。社区索引/WASM未实施；真实R2、Typora编辑器UI、个人MP4/壁纸字节和链接公开访问本轮未验。私钥异地备份未确认，未新增依赖/DDL/identifier或更换签名公钥。
+
+## 插件化重构 P2（进行中，2026-11-18）
+
+- 已完成并推送：`diagnostics`、`ai-assistant`、`workflow` 三个真实插件（`crates/plugins/*`），命令层薄包装委托 `kernel.invoke`，逻辑单份；`9735f50`（async 契约 + diagnostics）、`369c3bc`（ai-assistant + 静态门修复）、`74793b5`（契约脚本加插件 crate 扫描）、`cba817a`（workflow）。
+- 已接线未提交：`publish-strategy`（群组 CRUD 3 条；`repair_asset` 暂留内核待 P3）；本地 `cargo check --workspace --tests` 通过（gnu 工具链）。
+- 待办：P2 其余组（`reconcile` 4、`cloud-browser` 14、`portable-migration` 21、`integrations-os` 9）按映射表迁移；P3 provider 插件（github/gitee/opendal-extra）、DDL（plugin_state/plugin_capabilities）、版本 2.0.0；P4 前端 `invokePlugin` 收敛与内核命令收敛到 ≤30。
+- 编译验证口径：本地 `cargo check --workspace --tests` 已可用（gnu 工具链 + MinGW gcc），`cargo test` 与打包仍以云端 CI 为准。

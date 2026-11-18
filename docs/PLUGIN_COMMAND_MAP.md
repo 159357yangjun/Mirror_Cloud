@@ -58,6 +58,8 @@
 
 `create_storage_group`、`list_storage_groups`、`delete_storage_group`、`repair_asset`（来源 `commands.rs`）。
 
+**P2 落地（2026-11-18）**：`create_storage_group`/`list_storage_groups`/`delete_storage_group` 已迁入插件 crate `crates/plugins/publish-strategy`，命令层改为薄包装，分别委托 `publishStrategy.create_group` / `publishStrategy.list_groups` / `publishStrategy.delete_group`；群组校验、私有 R2/S3 混组拒绝与 group view 序列化随迁移进入插件。`delete_storage_group` 保留内核的默认目标守卫、`sync_system_default_pipeline` 与 `cleanup_legacy_workflows_referencing_target` 前置逻辑（属于系统默认管线职责，非插件边界）。`repair_asset` 暂留内核：依赖 provider 工厂与 `tauri::AppHandle` 任务事件（`emit_task`），待 P3 抽出 provider factory 后再迁。
+
 ### `reconcile`（4）
 
 `run_reconciliation_sweep`、`get_reconciliation_settings`、`set_reconciliation_settings`、`get_reconciliation_history`（来源 `commands/reconcile.rs`）。

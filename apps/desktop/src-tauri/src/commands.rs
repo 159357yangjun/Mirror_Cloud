@@ -11,8 +11,8 @@ use domain::{
     StorageGroupStrategy, Workflow, WorkflowStep,
 };
 use persistence_sqlite::{
-    AssetPluginOutputRecord, DeploymentWriteRecord, NewStorageGroupMember, PluginRecord,
-    PublishedAssetRecord, StorageGroupRecord, StorageRecord, TaskRecord, WorkflowRecord,
+    AssetPluginOutputRecord, DeploymentWriteRecord, PluginRecord, PublishedAssetRecord,
+    StorageGroupRecord, StorageRecord, TaskRecord, WorkflowRecord,
 };
 use plugin_runtime::{PluginContext, PluginHook, PluginManifest, PluginPermission};
 use serde::{Deserialize, Serialize};
@@ -254,7 +254,7 @@ pub struct TaskView {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateStorageGroupMemberInput {
     pub storage_id: String,
@@ -262,7 +262,7 @@ pub struct CreateStorageGroupMemberInput {
     pub priority: i32,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateStorageGroupInput {
     pub name: String,
@@ -270,7 +270,7 @@ pub struct CreateStorageGroupInput {
     pub members: Vec<CreateStorageGroupMemberInput>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StorageGroupMemberView {
     pub storage_id: String,
@@ -280,7 +280,7 @@ pub struct StorageGroupMemberView {
     pub priority: i32,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StorageGroupView {
     pub id: String,
@@ -336,7 +336,7 @@ pub struct AssetView {
     pub plugin_outputs: Vec<PluginExecutionView>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecipeView {
     pub key: String,
@@ -351,7 +351,7 @@ pub struct RecipeView {
     pub recommended: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateWorkflowFromRecipeInput {
     pub recipe_key: String,
@@ -361,7 +361,7 @@ pub struct CreateWorkflowFromRecipeInput {
     pub set_default: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateCustomWorkflowInput {
     pub name: String,
@@ -376,7 +376,7 @@ pub struct CreateCustomWorkflowInput {
     pub set_default: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowView {
     pub id: String,
@@ -1276,91 +1276,35 @@ pub async fn create_storage_group(
     state: State<'_, AppState>,
     input: CreateStorageGroupInput,
 ) -> CmdResult<StorageGroupView> {
-    let name = input.name.trim();
-    if name.is_empty() {
-        return Err("Storage Group name cannot be empty".into());
-    }
-    if !matches!(
-        input.strategy.as_str(),
-        "mirror_all" | "primary_with_backups"
-    ) {
-        return Err("Unsupported storage group strategy".into());
-    }
-    if input.members.len() < 2 {
-        return Err("A Storage Group requires at least two storages".into());
-    }
-
-    let mut unique = std::collections::HashSet::new();
-    let mut primary_count = 0usize;
-    let mut members = Vec::with_capacity(input.members.len());
-    let mut selected_records = Vec::with_capacity(input.members.len());
-    for member in input.members {
-        let storage_id = Uuid::parse_str(&member.storage_id).map_err(|error| error.to_string())?;
-        if !unique.insert(storage_id) {
-            return Err("The same storage cannot appear twice in a Storage Group".into());
-        }
-        let role = match member.role.as_str() {
-            "primary" => {
-                primary_count += 1;
-                "primary"
-            }
-            "mirror" => "mirror",
-            "backup" => "backup",
-            _ => return Err(format!("Unsupported deployment role: {}", member.role)),
-        };
-        let storage = state
-            .storages
-            .get(storage_id)
-            .await
-            .map_err(|error| error.to_string())?
-            .ok_or_else(|| format!("Storage {storage_id} does not exist"))?;
-        if !storage.enabled {
-            return Err(format!("Storage {} is disabled", storage.name));
-        }
-        selected_records.push(storage);
-        members.push(NewStorageGroupMember {
-            storage_id,
-            role: role.into(),
-            priority: member.priority.max(0),
-        });
-    }
-    if primary_count != 1 {
-        return Err("A Storage Group must contain exactly one primary storage".into());
-    }
-    // Reject mixed public/private intents before INSERT, not only during upload.
-    // Every selected storage record has already been checked for existence and enabled state.
-    validate_group_access_intents(&selected_records, members.len())?;
-
-    let id = Uuid::new_v4();
-    state
-        .groups
-        .insert(id, name, &input.strategy, &members)
+    // P2：群组校验与插入在 `plugin-publish-strategy`，命令只做边界转换。
+    let payload = serde_json::to_value(&input).map_err(|error| error.to_string())?;
+    let kernel = state.kernel.read().await;
+    let value = kernel
+        .invoke("publish-strategy", "publishStrategy.create_group", &payload)
         .await
         .map_err(|error| error.to_string())?;
-    let group = state
-        .groups
-        .get(id)
-        .await
-        .map_err(|error| error.to_string())?
-        .ok_or("Storage Group was created but could not be reloaded")?;
-    Ok(storage_group_view(group))
+    serde_json::from_value(value).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub async fn list_storage_groups(state: State<'_, AppState>) -> CmdResult<Vec<StorageGroupView>> {
-    Ok(state
-        .groups
-        .list()
+    // P2：群组列表在 `plugin-publish-strategy`，命令只做边界转换。
+    let kernel = state.kernel.read().await;
+    let value = kernel
+        .invoke(
+            "publish-strategy",
+            "publishStrategy.list_groups",
+            &Value::Null,
+        )
         .await
-        .map_err(|error| error.to_string())?
-        .into_iter()
-        .map(storage_group_view)
-        .collect())
+        .map_err(|error| error.to_string())?;
+    serde_json::from_value(value).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 pub async fn delete_storage_group(state: State<'_, AppState>, group_id: String) -> CmdResult<()> {
     let id = Uuid::parse_str(&group_id).map_err(|error| error.to_string())?;
+    // 默认目标守卫与系统默认管线清理是内核职责（默认管线与 Workflow 存储），先做再委托插件删除。
     if let Some((target, _)) = resolve_default_publish_target(state.inner()).await? {
         if matches!(target, PublishTarget::StorageGroup { storage_group_id } if storage_group_id == id)
         {
@@ -1380,11 +1324,14 @@ pub async fn delete_storage_group(state: State<'_, AppState>, group_id: String) 
         },
     )
     .await?;
-    state
-        .groups
-        .delete(id)
+    // P2：删除在 `plugin-publish-strategy`，命令只做边界转换。
+    let payload = json!({ "groupId": group_id });
+    let kernel = state.kernel.read().await;
+    kernel
+        .invoke("publish-strategy", "publishStrategy.delete_group", &payload)
         .await
         .map_err(|error| error.to_string())
+        .map(|_| ())
 }
 
 #[tauri::command]
@@ -3136,25 +3083,6 @@ fn deployment_role_from_str(value: &str) -> CmdResult<DeploymentRole> {
         "mirror" => Ok(DeploymentRole::Mirror),
         "backup" => Ok(DeploymentRole::Backup),
         _ => Err(format!("Unsupported deployment role: {value}")),
-    }
-}
-
-fn storage_group_view(record: StorageGroupRecord) -> StorageGroupView {
-    StorageGroupView {
-        id: record.id.to_string(),
-        name: record.name,
-        strategy: record.strategy,
-        members: record
-            .members
-            .into_iter()
-            .map(|member| StorageGroupMemberView {
-                storage_id: member.storage_id.to_string(),
-                storage_name: member.storage_name,
-                provider_key: member.provider_key,
-                role: member.role,
-                priority: member.priority,
-            })
-            .collect(),
     }
 }
 

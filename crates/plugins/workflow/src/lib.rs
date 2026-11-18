@@ -321,7 +321,7 @@ fn invalid(message: &str) -> PluginFailure {
     PluginFailure::new(InvokeErrorCode::InvalidPayload, message.to_string())
 }
 
-fn internal(message: String) -> PluginFailure {
+fn internal(message: impl Into<String>) -> PluginFailure {
     PluginFailure::new(InvokeErrorCode::Internal, message)
 }
 

@@ -38,5 +38,14 @@
 - 组合逻辑归属：内置配方目录、`workflow_from_fields`、`workflow_view` 的 camelCase 映射随实现迁入插件；命令层仅保留默认管线维护所需的前导逻辑（`list_workflows` 的 `resolve_default_publish_target`/`sync_system_default_pipeline`），与原行为一致。
 - 依赖方向：插件 crate 允许依赖 `domain`/`persistence-sqlite`（插件持有仓储句柄，构造期注入），但仍不依赖 Tauri/`src-tauri`；`check_kernel_deps.py` 守卫的仍是三个内核 crate。
 - 前端与命令名不变：`list_recipes`/`create_workflow_from_recipe`/`create_custom_workflow`/`list_workflows`/`set_default_workflow`/`delete_workflow` 的入参（camelCase）与返回结构保持原样，P4 才收敛到 `invokePlugin`。
-- 编译验证口径：本机无 MSVC 链接器，gnu 目标工具链（`1.98.1-x86_64-pc-windows-gnu`）安装未完成（`missing manifest in toolchain`），本地 `cargo check` 无法执行（U）；插件代码正确性由云端 CI 的 `Rust check`/`Rust tests` 判定，不本地伪造成功。
+- 编译验证口径（当时）：本机无 MSVC 链接器，gnu 目标工具链（`1.98.1-x86_64-pc-windows-gnu`）安装未完成（`missing manifest in toolchain`），本地 `cargo check` 无法执行（U）；插件代码正确性由云端 CI 的 `Rust check`/`Rust tests` 判定，不本地伪造成功。（后续同日已装好 gnu 工具链并补 MinGW PATH，见下节，本条口径已更新。）
+
+## 2026-11-18 — P2 续：publish-strategy 插件迁移与本地编译通道
+
+- 迁移策略：`publish-strategy` 组 4 条命令中，`create_storage_group`/`list_storage_groups`/`delete_storage_group` 迁入新插件 crate `crates/plugins/publish-strategy`，命令层改薄包装，委托 `publishStrategy.create_group` / `publishStrategy.list_groups` / `publishStrategy.delete_group`；群组校验（名称、strategy 枚举、≥2 成员、唯一存储、单 primary、存在且 enabled）与私有 R2/S3 混组拒绝随实现迁入插件，**逻辑单份**。
+- 边界归属：`delete_storage_group` 的默认目标守卫、`sync_system_default_pipeline`、`cleanup_legacy_workflows_referencing_target` 属系统默认管线职责，留在内核命令层先做，再委托插件删除；`repair_asset` 依赖 provider 工厂与 `tauri::AppHandle` 任务事件（`emit_task`），暂留内核，待 P3 抽出 provider factory 后再迁（插件源码已注释说明）。
+- 依赖方向：插件 crate 依赖 `kernel-api`/`persistence-sqlite`/`serde_json`/`uuid`/`async-trait`，仍不依赖 Tauri/`src-tauri`；`StorageRecord` 新增字段 `capabilities_json` 需在测试构造中补齐（`crates/persistence-sqlite/src/lib.rs:42-54`）。
+- 本地编译通道：`1.98.1-x86_64-pc-windows-gnu` 工具链安装完成（rustup 自愈半装状态），配合 `D:\mingw64\mingw64\bin` 的 gcc 加入 PATH，`RUSTUP_TOOLCHAIN='1.98.1-x86_64-pc-windows-gnu' cargo check -p plugin-publish-strategy -p plugin-workflow -p kernel -p plugin-host -p kernel-api --tests` 通过（exit 0）。此后插件代码可在本机静态验证，云端 CI 仍是构建与测试的最终判定。
+- 工具链环境变量口径：所有 cargo 调用固定带 `RUSTUP_HOME=D:\rust\rustup`、`CARGO_HOME=D:\rust\cargo`、`RUSTUP_TOOLCHAIN='1.98.1-x86_64-pc-windows-gnu'`（stable-msvc 已损坏，禁用）。
+
 

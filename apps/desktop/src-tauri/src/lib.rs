@@ -142,6 +142,15 @@ pub fn run() {
                     groups.clone(),
                 )))
                 .map_err(|error| std::io::Error::other(error.to_string()))?;
+            // P2：发布策略（多云组创建/列出/删除）换成真实实现；默认目标守卫与管线清理仍留内核。
+            kernel
+                .register_override(Arc::new(
+                    plugin_publish_strategy::PublishStrategyPlugin::new(
+                        storages.clone(),
+                        groups.clone(),
+                    ),
+                ))
+                .map_err(|error| std::io::Error::other(error.to_string()))?;
             let state = AppState {
                 storages,
                 assets,

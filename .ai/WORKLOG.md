@@ -64,7 +64,34 @@
 - `check_plugin_contracts.py` → `plugin contracts ok (plugins=14, contributions=14, points=9)`（新增插件 crate 扫描通过）；`check_kernel_deps.py` OK；`check_contracts.py` → 前端 99 / Rust 100 / 注册 100；`check_user_flow.py` → 642/642。
 - `cargo fmt --all`（rustc 1.98.1，`D:\rust`）已执行，未额外改动工作区。
 - `cargo metadata --offline` 更新 `Cargo.lock`（+14 行，含 `plugin-workflow`）。
-- **Rust 编译仍未在本地执行**：本机无 MSVC 链接器（`link.exe not found`）；尝试 gnu 目标工具链 `1.98.1-x86_64-pc-windows-gnu`，该工具链安装不完整（`missing manifest in toolchain`），`rustup toolchain install ... --force` 前台 600s 未完成，转后台任务 `pwsh-b144307182314dd9` 仍在跑。P2 代码正确性交云端 CI（U）。
+- **Rust 编译（后续已落地，见下节）**：本机无 MSVC 链接器（`link.exe not found`）；尝试 gnu 目标工具链 `1.98.1-x86_64-pc-windows-gnu`，该工具链安装不完整（`missing manifest in toolchain`），`rustup toolchain install ... --force` 前台 600s 未完成，转后台任务 `pwsh-b144307182314dd9`；该后台任务最终退出码 0，`1.98.1-x86_64-pc-windows-gnu` 安装完成，本地编译通道随之打通。
+
+## 2026-11-18 — 插件化 P2：publish-strategy 插件迁移与本地编译通道
+
+起始 `main@cba817a`（workflow 插件已推送）。本轮迁移 `publish-strategy` 组 4 条命令中的 3 条群组 CRUD，并打通本地 Rust 编译验证：
+
+新增文件：
+
+- `crates/plugins/publish-strategy/Cargo.toml`：package `plugin-publish-strategy`（deps async-trait/kernel-api/persistence-sqlite/serde_json/uuid，dev chrono+tokio）。
+- `crates/plugins/publish-strategy/src/lib.rs`：`PLUGIN_ID="publish-strategy"`、`manifest()`（`ReadAsset`+`ProviderConfig`，贡献 `page.publish` + `strategy.primary`，取值对齐 `crates/kernel/src/builtin.rs:164-177`）、`PublishStrategyPlugin::new(storages, groups)`、`group_view()`（camelCase）、`create_group()`（校验与 1.4.16 `create_storage_group` 同口径：name、strategy 枚举、≥2 成员、唯一存储、单 primary、存在且 enabled）、`list_groups()`、`delete_group()`（只删群组）；私有访问意图校验 `storage_requests_private` + `validate_group_access_intents` 搬入插件；`invoke` 分发 `publishStrategy.create_group` / `publishStrategy.list_groups` / `publishStrategy.delete_group`，未知方法 `unknown_method`；2 个单测（manifest 校验、私有/公开混组拒绝）。
+
+修改文件：
+
+- `Cargo.toml`：members 增 `crates/plugins/publish-strategy`。
+- `apps/desktop/src-tauri/Cargo.toml`：增 `plugin-publish-strategy` 依赖。
+- `apps/desktop/src-tauri/src/commands.rs`：`create_storage_group`/`list_storage_groups`/`delete_storage_group` 改薄包装，委托 `publishStrategy.*`；删除迁移后无人引用的 `storage_group_view`；`delete_storage_group` 保留内核默认目标守卫、`sync_system_default_pipeline`、`cleanup_legacy_workflows_referencing_target` 前导逻辑（系统默认管线职责）。`repair_asset` 因依赖 provider 工厂与 `tauri::AppHandle` 任务事件，暂留内核，待 P3 抽 provider factory 后再迁。
+- `apps/desktop/src-tauri/src/lib.rs`：setup 在 workflow override 之后注册 `PublishStrategyPlugin::new(storages, groups)`。
+- `docs/PLUGIN_COMMAND_MAP.md`：`publish-strategy` 段补「P2 落地（2026-11-18）」小节。
+- 边界序列化补全：`commands.rs` 中 `CreateStorageGroupInput`/`CreateStorageGroupMemberInput`/`CreateWorkflowFromRecipeInput`/`CreateCustomWorkflowInput` 增 `Serialize`，`StorageGroupMemberView`/`StorageGroupView`/`RecipeView`/`WorkflowView` 增 `Deserialize`（薄包装需要双向 JSON 转换；结构体字段不变，前端契约不变）。
+
+核对与验证（本机实跑）：
+
+- 工具链：`rustup toolchain install 1.98.1-x86_64-pc-windows-gnu --profile minimal --force` 后台任务退出码 0，`1.98.1-x86_64-pc-windows-gnu` 可用；编译时 PATH 前置 `D:\mingw64\mingw64\bin`（gcc 链接器），固定环境 `RUSTUP_HOME=D:\rust\rustup`、`CARGO_HOME=D:\rust\cargo`、`RUSTUP_TOOLCHAIN=1.98.1-x86_64-pc-windows-gnu`（`stable-msvc` 已损坏，禁用）。
+- `cargo check -p plugin-publish-strategy -p plugin-workflow -p kernel -p plugin-host -p kernel-api --tests` → exit 0。
+- `cargo check --workspace --tests` → exit 0（仅剩既有告警：`storage-core` 的 `StorageErrorKind`、`application` 测试的 `StorageId`、`commands/plugin_invoke.rs` 的 `InvokeErrorCode`、`commands/integrations.rs` 的 `HttpRequest.method`，均非本轮引入）。
+- `cargo fmt --all` 已执行；`cargo metadata --offline` 更新 `Cargo.lock`（含 `plugin-publish-strategy`）。
+
+状态：publish-strategy 插件已接线并本地静态验证，未提交推送。下一步按映射表继续迁移（`reconcile`/`cloud-browser`/`portable-migration`/`integrations-os`，以及 P3 的 provider 插件与 DDL）。
 
 
 ## 2026-11-16 — 插件化 P1：内核契约 crate、plugin_invoke、前端 registry

@@ -2322,6 +2322,7 @@ dependencies = [
  "persistence-sqlite",
  "plugin-ai-assistant",
  "plugin-diagnostics",
+ "plugin-publish-strategy",
  "plugin-runtime",
  "plugin-workflow",
  "reqwest",
@@ -3569,6 +3570,19 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+]
+
+[[package]]
+name = "plugin-publish-strategy"
+version = "1.4.16"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "kernel-api",
+ "persistence-sqlite",
+ "serde_json",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
