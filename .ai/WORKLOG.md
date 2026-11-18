@@ -32,6 +32,12 @@
 - 修复 pre-existing 静态门：`scripts/check_user_flow.py` 的 CHANGELOG 指纹行（2576/188,327/`2aee04b0…`）与 HEAD blob 不一致，按 `scripts/fingerprint_rows.mjs` 实测更新为 2583/189,008/`1d7221bb…`；`69ec25d` 起 CI 即红，非本轮引入。
 - 本机验证（`D:\tools\python312\python.exe`）：`validate.py` OK（21 migrations / 17 tables / members OK / 1.4.16）；`check_contracts.py` OK（frontend 99 / Rust 100 / registered 100）；`check_user_flow.py` 642/642 OK；`check_plugin_contracts.py` OK（plugins=14, contributions=14, points=9）；`check_kernel_deps.py` OK。Rust 编译仍只能在云端 CI 做（U）。
 
+### 续：CI `Rust check` 修错
+
+- CI run 44082692431（`b325ce4`）静态门全绿、`Rust format` 绿；`Rust check` 报 `error[E0308]`：`crates/plugins/ai-assistant/src/lib.rs:33` 的 `label: "AI".to_string()` 与 `kernel-api` 的 `Contribution.label: Option<String>` 不符（`description` 同）。改为 `Some(...)` 并 `cargo fmt`。
+- `check_plugin_contracts.py` 增加「已落地插件 crate 必须声明同名 `PLUGIN_ID` 与 `pub fn manifest()`」的扫描（`crates/plugins/<id>`）。
+- 以上两项：`47e7413`、`74793b5` 本地提交；推送时 GitHub HTTPS 前三次反复 `Recv failure: Connection was reset` / `Failed to connect ... port 443`（`api.github.com` 可达、TCP 探测为 True），后台重试第 4 次成功，`9735f50..369c3bc`。CI run 44085904850（`74793b5`）`desktop-check` 全绿（26 步，含 `Rust check`、`Rust tests`、`Desktop build`、`Docs build`）。
+
 状态：P2 首个插件迁移完成但未经编译验证；下一步按 `docs/PLUGIN_COMMAND_MAP.md` 迁移 provider/publish-strategy/workflow 组。
 
 
