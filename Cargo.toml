@@ -25,6 +25,8 @@ members = [
   "crates/plugins/provider-github",
   "crates/plugins/provider-gitee",
   "crates/plugins/provider-opendal-extra",
+  "crates/remote-index",
+  "crates/plugins/reconcile",
 ]
 
 [workspace.package]

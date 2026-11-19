@@ -32,7 +32,9 @@ plugin-publish-strategy = { path = "../../../crates/plugins/publish-strategy" }
 plugin-provider-github = { path = "../../../crates/plugins/provider-github" }
 plugin-provider-gitee = { path = "../../../crates/plugins/provider-gitee" }
 plugin-provider-opendal-extra = { path = "../../../crates/plugins/provider-opendal-extra" }
+plugin-reconcile = { path = "../../../crates/plugins/reconcile" }
 provider-registry = { path = "../../../crates/provider-registry" }
+remote-index = { path = "../../../crates/remote-index" }
 plugin-runtime = { path = "../../../crates/plugin-runtime" }
 reqwest.workspace = true
 ring = "=0.17.14"

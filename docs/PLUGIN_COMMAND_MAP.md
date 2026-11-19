@@ -73,9 +73,13 @@
 
 `run_reconciliation_sweep`、`get_reconciliation_settings`、`set_reconciliation_settings`、`get_reconciliation_history`（来源 `commands/reconcile.rs`）。
 
+**P2 落地（2026-11-19）**：四条命令已迁入插件 crate `crates/plugins/reconcile`，命令层改为薄包装，分别委托 `reconcile.run_sweep` / `reconcile.get_settings` / `reconcile.set_settings` / `reconcile.get_history`。扫描核心与节律纯函数随迁移进入插件（`src/sweep.rs` / `src/cadence.rs`，原 `apps/desktop/src-tauri/src/reconcile_cadence.rs` 已删除），依赖从 `&AppState` 改为显式 `SweepDeps`；后台定时器由 `ReconcilePlugin::start_background` 自持，宿主 setup 只注册实例并调用一次（原 `commands::reconcile::start_background_reconciler` 已删除）。`sync_one_storage` 属 `cloud-browser` 组，抽为共享 crate `crates/remote-index` 供两侧共用，未塞进本插件。
+
 ### `cloud-browser`（14）
 
 `browse_storage`、`create_temporary_share_link`、`preview_private_storage_entry`、`delete_storage_entry`、`download_storage_entry`、`move_storage_entry`、`create_storage_directory`、`batch_delete_storage_entries`、`batch_move_storage_entries`、`batch_rename_storage_entries`、`queue_batch_delete_storage_entries`、`queue_batch_move_storage_entries`、`queue_batch_rename_storage_entries`（来源 `commands/storage_entries.rs`），以及 `sync_storage_asset_index`（来源 `commands/remote_index.rs`）。
+
+**P2 预置（2026-11-19）**：`sync_storage_asset_index` 的扫描核心（`sync_one_storage` / `finish_and_report` / 预算记账）已抽到共享 crate `crates/remote-index`，命令仍是内核薄包装；本组其余 13 条待迁。
 
 ### `portable-migration`（21）
 

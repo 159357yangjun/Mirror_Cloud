@@ -1,6 +1,5 @@
 pub mod cli;
 mod commands;
-pub mod reconcile_cadence;
 mod rollback;
 mod services;
 mod update_security;
@@ -92,6 +91,7 @@ pub fn run() {
             let db_path = data_dir.join("publisher.sqlite3");
             let pool = tauri::async_runtime::block_on(persistence_sqlite::connect_path(&db_path))
                 .map_err(|error| std::io::Error::other(error.to_string()))?;
+            let journal = SqliteEventJournal::new(pool.clone());
             tauri::async_runtime::block_on(persistence_sqlite::migrate(&pool))
                 .map_err(|error| std::io::Error::other(error.to_string()))?;
             let task_repo = TaskRepository::new(pool.clone());
@@ -164,6 +164,19 @@ pub fn run() {
                     plugin_provider_opendal_extra::ProviderOpenDalExtraPlugin,
                 ))
                 .map_err(|error| std::io::Error::other(error.to_string()))?;
+            // P2：索引对账换成真实实现（扫描 + 调度 + 后台循环）；provider 注册表按 Arc 注入，
+            // 插件不再经 AppState 间接取依赖。后台循环在 `app.manage` 之后由同一实例启动。
+            let reconcile = Arc::new(plugin_reconcile::ReconcilePlugin::new(
+                assets.clone(),
+                storages.clone(),
+                journal.clone(),
+                settings.clone(),
+                credentials.clone(),
+                services::provider_factory::provider_registry(),
+            ));
+            kernel
+                .register_override(reconcile.clone())
+                .map_err(|error| std::io::Error::other(error.to_string()))?;
             let state = AppState {
                 storages,
                 assets,
@@ -172,7 +185,7 @@ pub fn run() {
                 groups,
                 workflows,
                 plugins,
-                journal: persistence_sqlite::journal::SqliteEventJournal::new(pool),
+                journal,
                 tasks,
                 credentials,
                 upload_semaphore: Arc::new(tokio::sync::Semaphore::new(4)),
@@ -191,7 +204,8 @@ pub fn run() {
                 local_api_token,
                 local_api_running,
             );
-            commands::reconcile::start_background_reconciler(app.handle());
+            // 后台对账循环由插件自持；默认关闭，启用前不产生远端请求（见 cadence 模块）。
+            reconcile.start_background();
             if let Some(window) = app.get_webview_window("main") {
                 window.show()?;
             }

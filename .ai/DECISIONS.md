@@ -2,6 +2,15 @@
 
 当前更新签名、正式发布与插件前三项实施均已有用户授权，无待重复批准事项。按已定范围收口，不加入社区索引或 WASM。更高版本签名下载/安装和插件原生 UI 实测缺口如实保留，不因等待用户交互而扩大结论。长期规则见 AGENTS.md。
 
+## 2026-11-19 — P2：reconcile 迁移与共享扫描 crate
+
+- 迁移边界：reconcile 组 4 条命令进 `crates/plugins/reconcile`；依赖从 `&AppState` 改为 `SweepDeps<'a>{assets,storages,journal,settings,credentials,registry}`，插件不再持有宿主状态类型，编译期即可看出越界。
+- `sync_one_storage` 归属：命令映射表把它算在 `cloud-browser` 组，但 reconcile 的 `refresh_stale_indexes` 也要用它，故抽成共享 crate `crates/remote-index`（内核命令与 reconcile 插件共用），而不是塞进 reconcile 插件形成反向依赖。
+- 后台定时器移交插件：`ReconcilePlugin::start_background(self: Arc<Self>)` 自持循环，宿主 `lib.rs` 只注册实例并调用一次；`commands::reconcile::start_background_reconciler` 删除。理由：定时行为是插件能力，留在宿主会让插件禁用后仍有后台流量。
+- `provider_registry()` 返回 `Arc<ProviderRegistry>`：插件需在构造期拿到注册表构造 provider，返回 `&'static` 无法注入。
+- 门禁随源码搬位，不放宽：`check_user_flow.py` 的 30 余条 reconcile/remote-index 断言改指向 `crates/plugins/reconcile/src/{sweep,cadence,lib}.rs` 与 `crates/remote-index/src/lib.rs`，并用 `pub async fn run_sweep_inner(`/`pub fn sweep_summary(`/`deps: &SweepDeps` 等新签名替换旧字面量。迁移中漏掉的两个既有测试已补回，未删任何断言。
+- 验证口径：本机 gnu 工具链可做 `cargo check --workspace --tests` 与各 crate 单测；MSVC 专有二进制测试仍交云端 CI，不写成已验。
+
 ## 2026-11-16 — 插件化边界与契约（P0）
 
 - 内核边界：保留应用壳/托盘骨架/更新器与签名/插件宿主/存储 port+凭据+S3 兜底/单目标发布闭环/任务队列与 SQLite/基础 UI/CLI 与 Local HTTP 骨架；其余全部迁插件（ADR 0001）。用户已确认该边界。

@@ -515,7 +515,8 @@ desktop_publish = commands[commands.find('async fn publish_clipboard_image_with_
 require('persistence_sqlite::journal::record_publish_events(' in commands
         and 'persistence_sqlite::journal::record_publish_events(' in cli,
         'both the desktop and Typora publish paths append to the journal')
-require('journal: persistence_sqlite::journal::SqliteEventJournal::new(pool' in lib
+require('let journal = SqliteEventJournal::new(pool.clone());' in lib
+        and 'journal,' in lib
         and 'journal: persistence_sqlite::journal::SqliteEventJournal::new(pool' in cli,
         'the journal handle is constructed for the desktop AppState and the CLI context alike')
 require('SettingsRepository::new(pool.clone())' in cli,
@@ -554,8 +555,10 @@ require('use storage_core' not in text('crates/persistence-sqlite/src/journal.rs
         'the persistence layer does not depend on the storage abstraction for this mapping')
 # Reconciliation sweep wiring: a command that is never registered is indistinguishable from dead
 # code, and one that repairs silently would be worse than no sweep at all.
-reconcile_src = text('apps/desktop/src-tauri/src/commands/reconcile.rs')
-cadence_src = text('apps/desktop/src-tauri/src/reconcile_cadence.rs')
+reconcile_cmd = text('apps/desktop/src-tauri/src/commands/reconcile.rs')
+reconcile_src = text('crates/plugins/reconcile/src/sweep.rs')
+plugin_src = text('crates/plugins/reconcile/src/lib.rs')
+cadence_src = text('crates/plugins/reconcile/src/cadence.rs')
 timestamps_src = text('crates/domain/src/deployment_timestamps.rs')
 tier_src = text('crates/domain/src/confirmation_tier.rs')
 error_kind_src = text('crates/domain/src/storage_error_kind.rs')
@@ -675,11 +678,12 @@ require('async fn an_unresolvable_storage_counts_as_a_failed_point' in storage_c
 # --- publish dispatch step four: scheduled reconciliation -----------------------------------
 # A timer that talks to remote storage is the first code in this app that runs unattended, so these
 # assertions exist to keep "it can run periodically" from silently becoming "it does".
-require('pub fn start_background_reconciler' in reconcile_src
-        and 'commands::reconcile::start_background_reconciler(app.handle())' in lib,
-        'the background reconciler is started once at setup')
-require('if !should_run_on_tick(&config) {' in reconcile_src
-        and 'continue;' in reconcile_src[reconcile_src.index('start_background_reconciler'):],
+require('pub fn start_background(self: Arc<Self>)' in plugin_src
+        and 'reconcile.start_background();' in lib
+        and 'register_override(reconcile.clone())' in lib,
+        'the background reconciler is started once at setup, by the plugin that owns it')
+require('if !crate::cadence::should_run_on_tick(&config) {' in plugin_src
+        and 'continue;' in plugin_src[plugin_src.index('should_run_on_tick'):],
         'a tick without permission sends nothing')
 require(_cadence_default_is_disabled(cadence_src),
         'background reconciliation defaults to disabled rather than enabled')
@@ -692,8 +696,8 @@ require('MIN_INTERVAL_MINUTES: u32 = 30' in cadence_src
 require('SWEEP_ROW_BUDGET' in cadence_src
         and 'rows.len() as i64 >= SWEEP_ROW_BUDGET' in reconcile_src,
         'one sweep is bounded by a row budget regardless of library size')
-require('advance_cursor(rows.len(), seen_cursor)' in reconcile_src
-        and 'cursor = report.next_cursor.clone()' in reconcile_src,
+require('next_cursor: advance_cursor(rows.len(), seen_cursor)' in reconcile_src
+        and 'cursor = report.next_cursor.clone()' in plugin_src,
         'the sweep cursor advances between cycles instead of re-reading the newest page')
 require(_cadence_wraps_on_short_page(cadence_src),
         'a finished walk wraps to the newest page so later cycles reach older deployments')
@@ -703,11 +707,11 @@ require('d.deployed_at < ? ORDER BY d.deployed_at DESC' in persistence
 require('pub deployed_at: Option<String>' in persistence
         and 'deployed_at: row.try_get("deployed_at")?' in persistence,
         'the location record exposes the cursor column the rotation depends on')
-require('async fn run_sweep_inner(' in reconcile_src
-        and '    state: &AppState,' in reconcile_src
-        and 'Ok(run_sweep_inner(&state, &providers, None, false).await)' in reconcile_src
-        and 'let report = run_sweep_inner(&state, &providers, cursor.clone(), true).await;' in reconcile_src,
-        'one sweep core serves both the command and the timer, taking AppState not State')
+require('pub async fn run_sweep_inner(' in reconcile_src
+        and '    deps: &SweepDeps' in reconcile_src
+        and 'run_sweep_inner(deps, &providers, None, false).await' in reconcile_src
+        and 'run_sweep_inner(&self.sweep_deps(), &providers, cursor.clone(), true).await' in plugin_src,
+        'one sweep core serves both the command and the timer, taking explicit dependencies rather than State')
 require('fn idle(skipped_by_policy: bool)' in reconcile_src
         and 'pub skipped_by_policy: bool' in reconcile_src
         and 'pub error: Option<String>' in reconcile_src,
@@ -740,9 +744,9 @@ _probe_needle = ''
 # harness needle: firing M35's needle at AppShell's cache short-circuit is how one mutant was
 # reported guilty of three siblings' properties (§26 teardown).
 _NEEDLE_OWNERS = {
-    'the summary carries a timestamp of its own and an explicit findings switch': 'apps/desktop/src-tauri/src/commands/reconcile.rs',
-    'error and skipped outrank clean before any count is consulted (asserted inside the function body)': 'apps/desktop/src-tauri/src/commands/reconcile.rs',
-    'the manual command persists a line while the scheduled path persists findings': 'apps/desktop/src-tauri/src/commands/reconcile.rs',
+    'the summary carries a timestamp of its own and an explicit findings switch': 'crates/plugins/reconcile/src/sweep.rs',
+    'error and skipped outrank clean before any count is consulted (asserted inside the function body)': 'crates/plugins/reconcile/src/sweep.rs',
+    'the manual command persists a line while the scheduled path persists findings': 'crates/plugins/reconcile/src/sweep.rs',
     'the safety mapping still takes Result<bool,()> - persistence does not see the storage error type': 'crates/persistence-sqlite/src/journal.rs',
     'the mapping keeps its positive arm positive: only Ok(false) may read as absent': 'crates/persistence-sqlite/src/journal.rs',
     'inconclusive findings carry their kind through detect_drift': 'crates/persistence-sqlite/src/journal.rs',
@@ -784,7 +788,7 @@ def _flat_needle(whole, start_marker, end_marker, label):
         needle_flat = ' '.join(_probe_needle.split())
         require(needle_flat in body or _probe_needle in body, f'{label} [mutation probe]')
 
-require('pub(crate) fn sweep_summary(report: &SweepReport, include_findings: bool) -> Value {' in reconcile_src
+require('pub fn sweep_summary(report: &SweepReport, include_findings: bool) -> Value {' in reconcile_src
         and '"lastSweepAt": Utc:' + ':now().to_rfc3339(),' in reconcile_src,
         'the summary carries a timestamp of its own and an explicit findings switch')
 _needle('"lastSweepAt": Utc::now().to_rfc3339(),',
@@ -802,15 +806,15 @@ _flat_needle('"error" } else if report.skipped_by_policy { "skipped" } else if r
              'fn sweep_outcome(report: &SweepReport)',
              '/// The persisted form of a finished sweep.',
              'error and skipped outrank clean before any count is consulted (asserted inside the function body)')
-require('run_sweep_inner(&state, &providers, None, false).await' in reconcile_src
-        and 'let report = run_sweep_inner(&state, &providers, cursor.clone(), true).await;' in reconcile_src,
+require('run_sweep_inner(deps, &providers, None, false).await' in reconcile_src
+        and 'run_sweep_inner(&self.sweep_deps(), &providers, cursor.clone(), true).await' in plugin_src,
         'the manual command persists a line while the scheduled path persists findings')
 _needle('Ok(true) => RemoteObservation::Present,',
         'the mapping keeps its positive arm positive: only Ok(false) may read as absent')
-_needle('let report = run_sweep_inner(&state, &providers, cursor.clone(), true).await;',
+_needle('run_sweep_inner(deps, &providers, None, false).await',
         'the manual command persists a line while the scheduled path persists findings')
-require('record_sweep_outcome(state, &failed, false).await;' in reconcile_src
-        and 'record_sweep_outcome(state, &report, persist_summary).await;' in reconcile_src,
+require('record_sweep_outcome(deps, &failed, false).await;' in reconcile_src
+        and 'record_sweep_outcome(deps, &report, persist_summary).await;' in reconcile_src,
         'both sweep exits record, and only the scheduled exit can carry findings')
 require('pub const SWEEP_HISTORY_DAYS: i64 = 7;' in reconcile_src
         and 'pub const SWEEP_HISTORY_MAX_ENTRIES: usize = 50;' in reconcile_src
@@ -1213,17 +1217,18 @@ require('== ScanCompleteness::Complete' not in remote_scan_rs,
         'the persistence layer never re-implements "complete means trustworthy"')
 
 remote_index = text('apps/desktop/src-tauri/src/commands/remote_index.rs')
-view_body = _rust_block(remote_index, 'pub struct RemoteIndexSyncView {')
+remote_index_lib = text('crates/remote-index/src/lib.rs')
+view_body = _rust_block(remote_index_lib, 'pub struct RemoteIndexSyncView {')
 require('pub scans: Vec<ScanOutcomeView>' in view_body,
         'the sync command returns a per-storage verdict, not only counters')
-finish_body = _rust_block(remote_index, 'async fn finish_and_report(')
+finish_body = _rust_block(remote_index_lib, 'async fn finish_and_report(')
 require('insert_scan(pool, &record).await' in finish_body,
         'every sweep writes its row through the shared exit path')
-require('state.journal.pool()' in finish_body,
+require('journal.pool()' in finish_body,
         'the write reaches SQLite through the pool the app already owns')
 require('error_count: observation.read_failure_count(),' in finish_body,
         'the persisted error count is derived from the accumulator rather than a parallel tally')
-limit_body = _rust_block(remote_index, 'fn listing_hit_page_limit(')
+limit_body = _rust_block(remote_index_lib, 'fn listing_hit_page_limit(')
 require('count == ceiling' in limit_body and 'count >= ceiling' not in limit_body,
         'provider truncation is detected by equality with the stated ceiling, so an adapter whose '
         'constant is wrong surfaces as a different bug instead of being absorbed here')
@@ -1231,7 +1236,7 @@ require('count == ceiling' in limit_body and 'count >= ceiling' not in limit_bod
 # reach the accumulator rather than only the message list. A whole-file substring test is satisfied
 # by any occurrence, which is how the earlier version of this gate passed while naming nothing:
 # measured by deleting one of what were then three sites and seeing the run stay green.
-read_loop = _slice_between(remote_index, 'let entries = match provider.list(&directory).await {',
+read_loop = _slice_between(remote_index_lib, 'let entries = match provider.list(&directory).await {',
                            'record_directory_listed', 'read loop')
 require(read_loop != '', 'the mid-walk read path was located to be read')
 require('observation.record_read_failure();' in read_loop,
@@ -1241,7 +1246,7 @@ listing_guard = _slice_between(remote_index, 'if !provider.capabilities().list {
 require('finish_and_report' not in listing_guard,
         'a storage that cannot list is refused before a scan row is written: recording it would '
         'claim we observed a remote we never opened')
-require('error_count: observation.read_failure_count(),' in remote_index,
+require('error_count: observation.read_failure_count(),' in remote_index_lib,
         'the persisted error count is derived from the accumulator rather than a parallel tally')
 # --- step one: the index refresh becomes a scheduled behaviour ---------------------------------
 #
@@ -1249,7 +1254,7 @@ require('error_count: observation.read_failure_count(),' in remote_index,
 # the four decisions that make that safe: who is asked, when, what gets stored, and what happens on
 # a first install.
 
-cadence_rs = text('apps/desktop/src-tauri/src/reconcile_cadence.rs')
+cadence_rs = text('crates/plugins/reconcile/src/cadence.rs')
 scan_due_body = _rust_block(cadence_rs, 'pub fn scan_due(')
 clamp_scan = _rust_block(cadence_rs, 'fn clamp_scan_interval(')
 from_value_body = _rust_block(cadence_rs, 'pub fn from_value(')
@@ -1317,7 +1322,7 @@ legacy_calls = [body for body in call_bodies
 require(not legacy_calls,
         f'every setReconciliationSettings call passes the scan cadence (offenders: {legacy_calls})')
 
-reconcile_rs2 = text('apps/desktop/src-tauri/src/commands/reconcile.rs')
+reconcile_rs2 = text('crates/plugins/reconcile/src/sweep.rs')
 refresh_body = _rust_block(reconcile_rs2, 'async fn refresh_stale_indexes(')
 require(refresh_body != '', 'the index refresh function exists')
 require('if !scan_due(last, now, config.scan_interval_minutes)' in refresh_body,
@@ -1325,23 +1330,23 @@ require('if !scan_due(last, now, config.scan_interval_minutes)' in refresh_body,
 require('last_scan_at(pool, *storage_id).await' in refresh_body,
         'freshness comes from the scan history itself rather than a second timestamp that could '
         'disagree with the snapshot it qualifies')
-require('sync_one_storage(state, &storage, provider, &mut summary).await' in refresh_body,
+require('sync_one_storage(deps.assets, deps.journal, &storage, provider, &mut summary).await' in refresh_body,
         'the scheduled path runs the same walk the manual button runs')
-loop_body = _slice_between(reconcile_rs2, 'if !should_run_on_tick(&config)', 'run_sweep_inner',
-                           'tick order')
-require('refresh_stale_indexes(&state, &providers, &config).await;' in loop_body,
+loop_body = _slice_between(plugin_src, 'if !crate::cadence::should_run_on_tick(&config)',
+                           'run_sweep_inner', 'tick order')
+require('crate::sweep::refresh_stale_indexes(&self.sweep_deps(), &providers, &config).await;' in loop_body,
         'the refresh runs before the probe pass, so a tick uses the current listing')
 
 index_rs3 = text('apps/desktop/src-tauri/src/commands/remote_index.rs')
-finish3 = _rust_block(index_rs3, 'async fn finish_and_report(')
+finish3 = _rust_block(remote_index_lib, 'async fn finish_and_report(')
 require('let store_listing = completeness == ScanCompleteness::Complete;' in finish3,
         'only a complete walk stores its listing: a partial set would let a later sweep conclude '
         'absence from a list known to be short')
 require('} else if store_listing {' in finish3,
         'the store decision gates the write rather than running after it')
-helper_sig = _slice_between(index_rs3, 'pub(crate) async fn sync_one_storage(', ') {',
+helper_sig = _slice_between(remote_index_lib, 'pub async fn sync_one_storage(', ') {',
                             'helper signature')
-require('sync_one_storage(state, &storage, provider, &mut summary).await' in refresh_body,
+require('sync_one_storage(deps.assets, deps.journal, &storage, provider, &mut summary).await' in refresh_body,
         'the scheduled path runs the same walk the manual button runs')
 require('summary: &mut RemoteIndexSyncView' in helper_sig,
         'the walk is callable by the scheduler with a provider it already built')
@@ -1350,8 +1355,8 @@ cmd_body = _slice_between(index_rs3, 'pub async fn sync_storage_asset_index(',
 require('!provider.capabilities().list' in cmd_body and 'finish_and_report' not in cmd_body,
         'a storage that cannot list is refused in the command, before any scan row exists')
 
-require('observation.directory_budget_exhausted();' in remote_index
-        and 'observation.file_budget_exhausted();' in remote_index,
+require('observation.directory_budget_exhausted();' in remote_index_lib
+        and 'observation.file_budget_exhausted();' in remote_index_lib,
         'both of our own budgets are recorded on the accumulator rather than only announced')
 
 github_rs = text('crates/storage-github/src/lib.rs')
@@ -1381,7 +1386,7 @@ require('scans: RemoteScanOutcome[]' in desktop_ts,
 # things that make it readable rather than merely computed: one colour per bucket, a stated reason
 # for the level, and no invented grade for an object with no local row.
 
-reconcile_rs_s2 = text('apps/desktop/src-tauri/src/commands/reconcile.rs')
+reconcile_rs_s2 = text('crates/plugins/reconcile/src/sweep.rs')
 tier_rs = text('crates/domain/src/confirmation_tier.rs')
 strength_impl = _rust_block(tier_rs, 'impl TierStrength {')
 tier_impl = _rust_block(tier_rs, 'impl ConfirmationTier {')
@@ -1522,10 +1527,10 @@ require("'online','degraded'" not in belief_sql,
         'the belief query does not re-narrow to online rows - that filter is what made the '
         'unrecorded direction unreachable')
 
-reconcile_rs = text('apps/desktop/src-tauri/src/commands/reconcile.rs')
+reconcile_rs = text('crates/plugins/reconcile/src/sweep.rs')
 compare_fn = _rust_block(reconcile_rs, 'async fn compare_against_snapshots(')
-probe_loop = reconcile_rs[reconcile_rs.find('async fn run_sweep_inner('):
-                          reconcile_rs.find('const PATHS_PER_KIND')]
+probe_loop = reconcile_rs[reconcile_rs.find('pub async fn run_sweep_inner('):
+                          reconcile_rs.find('pub async fn refresh_stale_indexes(')]
 require(compare_fn != '' and probe_loop != '',
         'both reconciliation halves are present to be read')
 require('ScanCompleteness::Partial => RemoteSide::Partial(paths)' in compare_fn
@@ -1544,10 +1549,10 @@ require('SNAPSHOT_MAX_AGE_HOURS: i64 = 24' in reconcile_rs,
         'the freshness window is a named constant, not a number buried in a call')
 
 index_rs2 = text('apps/desktop/src-tauri/src/commands/remote_index.rs')
-finish2 = _rust_block(index_rs2, 'async fn finish_and_report(')
+finish2 = _rust_block(remote_index_lib, 'async fn finish_and_report(')
 require('insert_scan_entries(pool, record_id, listed_paths).await' in finish2,
         'the sweep that produced a scan also stores its listing')
-require('listed_paths.push(remote_path.clone())' in index_rs2,
+require('listed_paths.push(remote_path.clone())' in remote_index_lib,
         'the listing is collected during the walk rather than reconstructed afterwards')
 
 desktop_ts2 = text('apps/desktop/src/lib/desktop.ts')
@@ -1565,7 +1570,7 @@ require('MIN_SCAN_INTERVAL_MINUTES = 60' in desktop_ts2
         and 'DEFAULT_SCAN_INTERVAL_MINUTES = 24 * 60' in desktop_ts2,
         'the UI mirrors both the floor and the default so it can refuse a value the backend would '
         'silently raise')
-require('scan_interval_minutes: Option<u32>' in reconcile_rs,
+require('scan_interval_minutes: Option<u32>' in reconcile_cmd,
         'the setter takes the new field as optional: an older caller keeps working and takes the '
         'default rather than failing to bind')
 require('scanIntervalSaveMutation' in settings_page
@@ -1583,7 +1588,7 @@ require('htmlFor="reconcile-scan-interval"' in settings_page
 require('首次安装不会自动扫描' in settings_page,
         'the page states the no-first-scan rule where the switch is, rather than leaving it to a log')
 
-index_gate_rs = text('apps/desktop/src-tauri/src/commands/remote_index.rs')
+index_gate_rs = text('crates/remote-index/src/lib.rs')
 require('let store_listing = completeness == ScanCompleteness::Complete;' in index_gate_rs,
         'storing is gated on coverage at the write site')
 require('云端有但本地没记录' in settings_tsx and '应存在但快照里没有' in settings_tsx

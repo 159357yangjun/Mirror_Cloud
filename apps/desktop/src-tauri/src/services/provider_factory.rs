@@ -43,19 +43,24 @@ impl ProviderConstructor for BuiltinS3Constructor {
     }
 }
 
-/// 全局注册表：宿主兜底 + 三个 provider 插件构造器。启动期构建一次。
-pub(crate) fn provider_registry() -> &'static ProviderRegistry {
-    static REGISTRY: OnceLock<ProviderRegistry> = OnceLock::new();
-    REGISTRY.get_or_init(|| {
-        let mut registry = ProviderRegistry::new();
-        registry.register(Arc::new(BuiltinS3Constructor));
-        registry.register(Arc::new(plugin_provider_github::GitHubProviderConstructor));
-        registry.register(Arc::new(plugin_provider_gitee::GiteeProviderConstructor));
-        registry.register(Arc::new(
-            plugin_provider_opendal_extra::OpenDalExtraConstructor,
-        ));
-        registry
-    })
+/// 全局注册表：宿主兜底 + 三个 provider 插件构造器。启动期构建一次，之后按 `Arc` 共享。
+///
+/// 返回 `Arc` 而不是 `&'static`，因为宿主既要用它构造 provider，也要把它注入 `reconcile`
+/// 插件（插件实例持有 `Arc<ProviderRegistry>`）。
+pub(crate) fn provider_registry() -> Arc<ProviderRegistry> {
+    static REGISTRY: OnceLock<Arc<ProviderRegistry>> = OnceLock::new();
+    REGISTRY
+        .get_or_init(|| {
+            let mut registry = ProviderRegistry::new();
+            registry.register(Arc::new(BuiltinS3Constructor));
+            registry.register(Arc::new(plugin_provider_github::GitHubProviderConstructor));
+            registry.register(Arc::new(plugin_provider_gitee::GiteeProviderConstructor));
+            registry.register(Arc::new(
+                plugin_provider_opendal_extra::OpenDalExtraConstructor,
+            ));
+            Arc::new(registry)
+        })
+        .clone()
 }
 
 /// 构造存储后端；未注册的键由 `unsupported` 给出用户可见文案。

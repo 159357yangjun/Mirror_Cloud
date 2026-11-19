@@ -1,5 +1,27 @@
 # WORKLOG
 
+## 2026-11-19 — 插件化 P2：reconcile 迁移与门禁随源码搬位
+
+起始 `main@5c14940`（provider 工厂抽取已推送）。本轮把 reconcile 组 4 条命令迁入独立插件，并把门禁断言从被搬走的源码改指向新位置：
+
+新增：
+
+- `crates/remote-index/{Cargo.toml,src/lib.rs}`（371 行）：扫描核心 `sync_one_storage` / `finish_and_report` / 预算记账 / `RemoteIndexSyncView` 从 `commands/remote_index.rs` 迁出，成共享 crate（`cloud-browser` 与 `reconcile` 共用）。
+- `crates/plugins/reconcile/{Cargo.toml,src/lib.rs,src/sweep.rs,src/cadence.rs}`：`plugin-reconcile`，`PLUGIN_ID="reconcile"`，invoke 分派 `reconcile.run_sweep`/`get_settings`/`set_settings`/`get_history`，`start_background` 自持定时器；`cadence.rs` 由原 `reconcile_cadence.rs` 原样复制；`sweep.rs` 用 `SweepDeps<'a>` 显式依赖替代 `&AppState`。补回迁移时漏移植的两个测试（`a_default_install_never_sends_probes_from_the_timer`、`an_unreadable_history_row_degrades_to_nothing_recorded_rather_than_zero`）。
+
+修改：
+
+- `commands/reconcile.rs` 1094 → 80 行薄包装；`commands/remote_index.rs` 391 → 72 行薄包装；`services/provider_factory.rs` 的 `provider_registry()` 返回 `Arc<ProviderRegistry>`；`lib.rs` 提升 `journal` 局部变量、注册 `ReconcilePlugin`、`start_background()` 取代旧调用；删 `src/reconcile_cadence.rs`；根 `Cargo.toml`/`src-tauri/Cargo.toml` 补两条 path 依赖；`scripts/check_user_flow.py` 断言改指向 `crates/plugins/reconcile/src/{sweep,cadence,lib}.rs` 与 `crates/remote-index/src/lib.rs`，并把自指纹行更新为 2588 行。
+- `docs/PLUGIN_COMMAND_MAP.md`：`reconcile` 段补 P2 落地、`cloud-browser` 段补 `remote-index` 预置说明。
+
+验证（本机 gnu 工具链）：
+
+- `cargo check --workspace --tests --offline` → exit 0（仅既有告警）。
+- `cargo test -p plugin-reconcile -p remote-index -p kernel -p plugin-host -p provider-registry` → 27 + 6 + 4 + 3 通过。
+- 静态门：`validate.py`、`check_contracts.py`（99/100/100）、`check_plugin_contracts.py`（14/14/9）、`check_kernel_deps.py`、`check_docs_site.py`（16）、`check_workflow_action_pins.py`（55）、`check_release_version.py`（26/26）、`check_tauri_dependency_family.py` 全过。
+
+未决：`check_user_flow.py` 的 HEAD-blob 指纹断言须在提交后才绿；桌面端 `provider_factory` 二进制测试仍只能等云端 MSVC CI。
+
 ## 2026-11-17 — 插件化 P2：async 插件契约、diagnostics 迁移与内核装配
 
 起始 `main@f58e601`（P1 提交之上）。本轮把插件调用改为异步、落地第一个真实插件，其余插件仍为占位实例：
