@@ -77,7 +77,7 @@
 
 - 已完成并推送：`diagnostics`、`ai-assistant`、`workflow` 三个真实插件（`crates/plugins/*`），命令层薄包装委托 `kernel.invoke`，逻辑单份；`9735f50`（async 契约 + diagnostics）、`369c3bc`（ai-assistant + 静态门修复）、`74793b5`（契约脚本加插件 crate 扫描）、`cba817a`（workflow）。
 - 已提交并推送：`publish-strategy`（群组 CRUD 3 条迁入 `crates/plugins/publish-strategy`；`repair_asset` 暂留内核待 P3）`7a1d0a2`；`reconcile` 4 条迁入 `crates/plugins/reconcile` + 共享 `crates/remote-index` `551be54`；`provider 工厂` 抽取（`crates/provider-registry` + provider-github/gitee/opendal-extra）`5c14940`。
-- 待提交：`cloud-browser` 13 条迁入 `crates/plugins/cloud-browser`（宿主依赖经注入 trait），本机 `cargo check --workspace --tests` 与插件测试通过。
+- 已提交并推送：`cloud-browser` 13 条迁入 `crates/plugins/cloud-browser`（宿主依赖经注入 trait），`f3621d3`；本机 `cargo check --workspace --tests` 与插件测试通过，静态门全绿，`git ls-remote origin main` = `f3621d37e231f5fa8d4a74d798d50f739e4027b8`。
 - 待办：P2 剩余组（`portable-migration` 21、`integrations-os` 9、`image-transform` 1）按映射表迁移；P3 provider 插件（github/gitee/opendal-extra）、DDL（plugin_state/plugin_capabilities）、版本 2.0.0；P4 前端 `invokePlugin` 收敛与内核命令收敛到 ≤30。
 - 编译验证口径：本地 `cargo check --workspace --tests` 已可用（gnu 工具链 + MinGW gcc），`cargo test` 与打包仍以云端 CI 为准。
 - P2 进展（2026-11-18，provider 工厂）：新建 `crates/provider-registry` 与三个 provider 插件（`provider-github`/`provider-gitee`/`provider-opendal-extra`），`provider_factory.rs` 改查表薄壳，宿主保留 `r2`/`s3` 兜底；`lib.rs` 注册三个插件实例，`build_provider` 签名与错误文案不变。本地 `cargo check --workspace --tests`、`cargo test`（30 项）通过；desktop 测试二进制因 gnu 链接加载失败，交云端 CI。
