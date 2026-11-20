@@ -14,6 +14,7 @@ tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
 application = { path = "../../../crates/application" }
+async-trait.workspace = true
 bytes.workspace = true
 chrono.workspace = true
 credential-store = { path = "../../../crates/credential-store" }
@@ -33,6 +34,7 @@ plugin-provider-github = { path = "../../../crates/plugins/provider-github" }
 plugin-provider-gitee = { path = "../../../crates/plugins/provider-gitee" }
 plugin-provider-opendal-extra = { path = "../../../crates/plugins/provider-opendal-extra" }
 plugin-reconcile = { path = "../../../crates/plugins/reconcile" }
+plugin-cloud-browser = { path = "../../../crates/plugins/cloud-browser" }
 provider-registry = { path = "../../../crates/provider-registry" }
 remote-index = { path = "../../../crates/remote-index" }
 plugin-runtime = { path = "../../../crates/plugin-runtime" }

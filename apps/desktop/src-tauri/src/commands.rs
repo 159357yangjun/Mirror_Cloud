@@ -3,7 +3,8 @@ use std::{
     sync::Arc,
 };
 
-use application::{CloudMutationCore, PublishMember, PublisherCore};
+use application::{PublishMember, PublisherCore};
+use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::Utc;
 use domain::{
@@ -18,7 +19,7 @@ use plugin_runtime::{PluginContext, PluginHook, PluginManifest, PluginPermission
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use storage_core::{StorageEntry, StorageError, StorageProvider, UploadRequest};
+use storage_core::{StorageEntry, StorageProvider, UploadRequest};
 use storage_gitee::{GiteeCredentials, GiteeStorage, GiteeStorageConfig};
 use storage_github::{GitHubCredentials, GitHubStorage, GitHubStorageConfig};
 use storage_opendal::{
@@ -205,7 +206,7 @@ pub struct StorageView {
     pub access_mode: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StorageEntryView {
     pub name: String,
@@ -215,14 +216,14 @@ pub struct StorageEntryView {
     pub public_url: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BatchStorageFailureView {
     pub path: String,
     pub error: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BatchStorageOperationView {
     pub succeeded: usize,
@@ -1850,39 +1851,44 @@ async fn validate_publish_target(
 }
 
 async fn load_ai_settings(state: &AppState) -> CmdResult<Value> {
-    let mut settings = state
-        .settings
+    load_ai_settings_with(&state.settings, &state.credentials).await
+}
+
+/// The same reader, expressed over the two repositories the plugin hook actually touches.
+/// `GalleryDeleteRunner` is built before `AppState` exists, so it cannot reach `&AppState`.
+async fn load_ai_settings_with(
+    settings: &persistence_sqlite::SettingsRepository,
+    credentials: &credential_store::CredentialStore,
+) -> CmdResult<Value> {
+    let mut settings_value = settings
         .get(AI_SETTINGS_KEY)
         .await
         .map_err(|e| e.to_string())?
         .unwrap_or(json!({"baseUrl":"https://api.openai.com/v1","model":""}));
-    let legacy_key = settings
+    let legacy_key = settings_value
         .get("apiKey")
         .and_then(Value::as_str)
         .filter(|v| !v.is_empty())
         .map(str::to_string);
     if let Some(legacy_key) = legacy_key {
-        state
-            .credentials
+        credentials
             .set_json(AI_CREDENTIAL_KEY, &legacy_key)
             .map_err(|e| e.to_string())?;
-        if let Some(obj) = settings.as_object_mut() {
+        if let Some(obj) = settings_value.as_object_mut() {
             obj.remove("apiKey");
         }
-        state
-            .settings
-            .set(AI_SETTINGS_KEY, &settings)
+        settings
+            .set(AI_SETTINGS_KEY, &settings_value)
             .await
             .map_err(|e| e.to_string())?;
     }
-    let key = state
-        .credentials
+    let key = credentials
         .get_json::<String>(AI_CREDENTIAL_KEY)
         .unwrap_or_default();
-    if let Some(obj) = settings.as_object_mut() {
+    if let Some(obj) = settings_value.as_object_mut() {
         obj.insert("apiKey".into(), Value::String(key));
     }
-    Ok(settings)
+    Ok(settings_value)
 }
 
 #[derive(Default)]
@@ -1910,7 +1916,32 @@ async fn run_enabled_plugins_for_hook(
     mime_type: &str,
     metadata: Value,
 ) -> PluginRunSummary {
-    let rows = match state.plugins.list().await {
+    run_enabled_plugins_for_hook_with(
+        &state.plugins,
+        &state.settings,
+        &state.credentials,
+        hook,
+        asset_name,
+        public_url,
+        mime_type,
+        metadata,
+    )
+    .await
+}
+
+/// The hook runner over the three repositories it actually touches, so a plugin can carry the
+/// hook without an `AppState` (the gallery-delete runner is registered before `AppState` is built).
+async fn run_enabled_plugins_for_hook_with(
+    plugin_repo: &persistence_sqlite::PluginRepository,
+    settings: &persistence_sqlite::SettingsRepository,
+    credentials: &credential_store::CredentialStore,
+    hook: PluginHook,
+    asset_name: &str,
+    public_url: Option<&str>,
+    mime_type: &str,
+    metadata: Value,
+) -> PluginRunSummary {
+    let rows = match plugin_repo.list().await {
         Ok(rows) => rows,
         Err(error) => {
             return PluginRunSummary {
@@ -1919,7 +1950,7 @@ async fn run_enabled_plugins_for_hook(
             };
         }
     };
-    let ai_settings = load_ai_settings(state).await.ok();
+    let ai_settings = load_ai_settings_with(settings, credentials).await.ok();
     let mut summary = PluginRunSummary::default();
     for row in rows.into_iter().filter(|row| row.enabled) {
         let manifest = match plugins::effective_manifest(&row) {
@@ -1972,8 +2003,7 @@ async fn run_enabled_plugins_for_hook(
         {
             Ok(output) => {
                 let duration_ms = started.elapsed().as_millis().min(i64::MAX as u128) as i64;
-                let _ = state
-                    .plugins
+                let _ = plugin_repo
                     .record_execution(
                         &manifest.id,
                         &manifest.name,
@@ -1995,8 +2025,7 @@ async fn run_enabled_plugins_for_hook(
                 let message = error.to_string();
                 let audit_message = truncate_plugin_log_message(&message);
                 let duration_ms = started.elapsed().as_millis().min(i64::MAX as u128) as i64;
-                let _ = state
-                    .plugins
+                let _ = plugin_repo
                     .record_execution(
                         &manifest.id,
                         &manifest.name,
@@ -2048,6 +2077,80 @@ async fn run_gallery_delete_plugins(state: &AppState, storage_id: Uuid, remote_p
     .await;
     if !summary.failures.is_empty() {
         tracing::warn!(failures = ?summary.failures, "gallery-delete plugin hook failed");
+    }
+}
+
+/// Gallery-delete hook over the three repositories it touches, so the host side of
+/// `plugin_cloud_browser::GalleryDeleteRunner` can be built before `AppState` exists.
+pub(crate) async fn run_gallery_delete_hook_with(
+    plugin_repo: &persistence_sqlite::PluginRepository,
+    settings: &persistence_sqlite::SettingsRepository,
+    credentials: &credential_store::CredentialStore,
+    storage_id: Uuid,
+    remote_path: &str,
+) {
+    let name = remote_path.rsplit('/').next().unwrap_or(remote_path);
+    let summary = run_enabled_plugins_for_hook_with(
+        plugin_repo,
+        settings,
+        credentials,
+        PluginHook::OnGalleryDelete,
+        name,
+        None,
+        "application/octet-stream",
+        json!({"source":"gallery_delete","storageId":storage_id.to_string(),"remotePath":remote_path}),
+    )
+    .await;
+    if !summary.failures.is_empty() {
+        tracing::warn!(failures = ?summary.failures, "gallery-delete plugin hook failed");
+    }
+}
+
+/// Host side of `plugin_cloud_browser::TaskEventSink`: publishes the same `task://updated`
+/// payload the in-kernel `emit_task` helper publishes.
+pub(crate) struct AppTaskEventSink {
+    pub(crate) app: AppHandle,
+}
+
+#[async_trait]
+impl plugin_cloud_browser::TaskEventSink for AppTaskEventSink {
+    async fn emit_task(&self, task_id: Uuid, status: &str, progress: u8, error: Option<String>) {
+        emit_task(&self.app, task_id, status, progress, error);
+    }
+}
+
+/// Host side of `plugin_cloud_browser::GalleryDeleteRunner`.
+pub(crate) struct AppGalleryDeleteRunner {
+    plugins: persistence_sqlite::PluginRepository,
+    settings: persistence_sqlite::SettingsRepository,
+    credentials: credential_store::CredentialStore,
+}
+
+impl AppGalleryDeleteRunner {
+    pub(crate) fn new(
+        plugins: persistence_sqlite::PluginRepository,
+        settings: persistence_sqlite::SettingsRepository,
+        credentials: credential_store::CredentialStore,
+    ) -> Self {
+        Self {
+            plugins,
+            settings,
+            credentials,
+        }
+    }
+}
+
+#[async_trait]
+impl plugin_cloud_browser::GalleryDeleteRunner for AppGalleryDeleteRunner {
+    async fn run_gallery_delete(&self, storage_id: Uuid, remote_path: &str) {
+        run_gallery_delete_hook_with(
+            &self.plugins,
+            &self.settings,
+            &self.credentials,
+            storage_id,
+            remote_path,
+        )
+        .await;
     }
 }
 

@@ -2,6 +2,15 @@
 
 当前更新签名、正式发布与插件前三项实施均已有用户授权，无待重复批准事项。按已定范围收口，不加入社区索引或 WASM。更高版本签名下载/安装和插件原生 UI 实测缺口如实保留，不因等待用户交互而扩大结论。长期规则见 AGENTS.md。
 
+## 2026-11-19 — P2：cloud-browser 迁移与宿主依赖注入
+
+- 插件不依赖 tauri：`cloud-browser` 插件 crate 只依赖应用/领域/持久化/provider 注册表等非 UI crate，宿主侧依赖一律经注入 trait 进入——`TaskEventSink::emit_task` 替代 `emit_task`、`GalleryDeleteRunner::run_gallery_delete` 替代 `run_gallery_delete_plugins`。若让插件直接持有 `AppHandle`/`AppState`，插件边界即失真，也无法在无 UI 环境（CLI/SDK）复用与测试。
+- 后台批量改用 `TaskEngine::create` + `tokio::spawn`：原 `spawn_cloud_batch_task` 依赖 `tauri::async_runtime::spawn`，留在插件会破坏可测试性；任务事件出口改由 `TaskEventSink` 注入，宿主用包了 `AppHandle` 的实现发 `task://updated`。
+- `retry_task` 留在内核：其职责是任务状态校验与重排队（kind/status/attempt/requeue），属任务队列能力；重跑动作本身委托插件的 `cloud.respawn_batch_task`，单一实现，不复制逻辑。
+- 内核视图类型补 `Deserialize`、`PrivateImagePreview.mime_type` 由 `&'static str` 改 `String`：薄包装需要 JSON↔Rust 类型双向转换，Serde 不能从 owned JSON 反序列化借用的 `&'static str`；改 owned 类型不改变线上 JSON 结构，前端契约不变。
+- 门禁随源码搬位，不放宽：`check_user_flow.py` 的 10 条 cloud 断言（cloud delete/move 的 Deployment 状态、应用核心委托、批量边界与模板、gallery-delete 钩子、持久化任务 kind、批处理协作停止）改指向 `crates/plugins/cloud-browser/src/lib.rs`，条件与标签保持，未删任何断言。
+- 验证口径：本机 gnu 工具链可跑 `cargo check --workspace --tests` 与各插件 crate 单测；MSVC 专有二进制测试仍交云端 CI，不写成已验。
+
 ## 2026-11-19 — P2：reconcile 迁移与共享扫描 crate
 
 - 迁移边界：reconcile 组 4 条命令进 `crates/plugins/reconcile`；依赖从 `&AppState` 改为 `SweepDeps<'a>{assets,storages,journal,settings,credentials,registry}`，插件不再持有宿主状态类型，编译期即可看出越界。

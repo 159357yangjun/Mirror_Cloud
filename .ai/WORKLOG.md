@@ -1,5 +1,30 @@
 # WORKLOG
 
+## 2026-11-19 — 插件化 P2：cloud-browser 迁移
+
+起始 `main@551be54`（reconcile 已推送）。本轮把 `cloud-browser` 组 13 条命令迁入独立插件，宿主侧依赖经注入 trait 解耦：
+
+新增：
+
+- `crates/plugins/cloud-browser/{Cargo.toml,src/lib.rs}`（约 1600 行）：`plugin-cloud-browser`，`PLUGIN_ID="cloud-browser"`，`manifest()` 对齐 `crates/kernel/src/builtin.rs:185-195`（权限 `[Capability::Network]`、贡献 `page.gallery`）。插件不依赖 tauri，宿主侧依赖由两个注入 trait 提供：`TaskEventSink::emit_task`（替代 `emit_task`）与 `GalleryDeleteRunner::run_gallery_delete`（替代 `run_gallery_delete_plugins`）。13 个业务方法（`browse_storage` … `queue_batch_rename_storage_entries`）与原 `commands/storage_entries.rs` 逐字同口径；纯函数辅助（路径归一化、批名渲染、私有预览签名、批量边界 1–100）一并迁入。后台批量改为 `TaskEngine::create` + `tokio::spawn`（替代 `tauri::async_runtime::spawn`），新增 `respawn_cloud_batch_task` 供 `retry_task` 复用。测试模块 9 个纯函数用例。
+- 根 `Cargo.toml` members 增 `crates/plugins/cloud-browser`（显式路径，`validate.py` 不展开 glob）。
+
+修改：
+
+- `apps/desktop/src-tauri/src/commands/storage_entries.rs`：1034 → 约 250 行薄包装，13 条命令委托 `kernel.invoke("cloud-browser", "cloud.<method>", payload)`；`cancel_task` 保留内核；`retry_task` 保留校验（kind/status/attempt/requeue），末步改委托 `cloud.respawn_batch_task`。
+- `apps/desktop/src-tauri/src/commands.rs`：`load_ai_settings` / `run_enabled_plugins_for_hook` 拆出 `_with(settings, credentials)` / `_with(plugin_repo, settings, credentials, …)` 版本供插件钩子复用（参数名用 `plugin_repo` 以免遮蔽同名子模块）；新增 `AppTaskEventSink`（包 `AppHandle`，实现插件 `TaskEventSink`）与 `AppGalleryDeleteRunner`（实现插件 `GalleryDeleteRunner`）；`StorageEntryView` / `BatchStorageFailureView` / `BatchStorageOperationView` 补 `Deserialize`。
+- `apps/desktop/src-tauri/src/lib.rs` setup：在 reconcile override 后注册 `CloudBrowserPlugin`，注入 `AppTaskEventSink` / `AppGalleryDeleteRunner`。
+- `apps/desktop/src-tauri/Cargo.toml` 增 `plugin-cloud-browser`、`async-trait` 依赖。
+- `PrivateImagePreview.mime_type` 由 `&'static str` 改为 `String`（serde 反序列化 owned JSON 所需，线上 JSON 格式不变）。
+- `scripts/check_user_flow.py`：10 条 cloud 断言（cloud delete/move/rename 的 Deployment 状态、应用核心委托、批量边界与模板、gallery-delete 钩子、持久化任务 kind、批处理协作停止）改指向 `crates/plugins/cloud-browser/src/lib.rs`，条件与标签不变，未放宽任何检查；新增 `cloud_browser_plugin` 变量绑定；自指纹行更新为 2589 行。
+
+验证（本机 gnu 工具链，`RUSTUP_TOOLCHAIN=1.98.1-x86_64-pc-windows-gnu` + `D:\mingw64\mingw64\bin`）：
+
+- `cargo check --workspace --tests --offline` → exit 0，仅剩既有 3 告警（`storage-core` StorageErrorKind、`application` StorageId、`plugin_invoke` InvokeErrorCode）。
+- `cargo test -p plugin-cloud-browser -p plugin-reconcile -p plugin-workflow -p plugin-publish-strategy -p provider-registry -p remote-index -p kernel -p plugin-host` → 6/9/4/2/27/4/3，合计 55 项 0 失败。
+- 静态门（`D:\tools\python312\python.exe`）：`validate.py`、`check_contracts.py`（99/100/100）、`check_plugin_contracts.py`（14/14/9）、`check_kernel_deps.py`、`check_docs_site.py`（16）、`check_workflow_action_pins.py`（55）、`check_r2_live_workflow.py`（10）、`check_tauri_dependency_family.py`、`check_user_flow.py`（642 条对齐工作区，仅未提交时的 HEAD-blob 自指断言，提交后转绿）全过。
+- `crates/plugins/cloud-browser/Cargo.toml` 的 `version` 改 `version.workspace = true`，消除 `check_tauri_dependency_family` 的版本不同步告警。
+
 ## 2026-11-19 — 插件化 P2：reconcile 迁移与门禁随源码搬位
 
 起始 `main@5c14940`（provider 工厂抽取已推送）。本轮把 reconcile 组 4 条命令迁入独立插件，并把门禁断言从被搬走的源码改指向新位置：

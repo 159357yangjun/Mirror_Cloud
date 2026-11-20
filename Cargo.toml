@@ -27,6 +27,7 @@ members = [
   "crates/plugins/provider-opendal-extra",
   "crates/remote-index",
   "crates/plugins/reconcile",
+  "crates/plugins/cloud-browser",
 ]
 
 [workspace.package]

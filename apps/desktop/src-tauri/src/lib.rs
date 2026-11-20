@@ -177,6 +177,28 @@ pub fn run() {
             kernel
                 .register_override(reconcile.clone())
                 .map_err(|error| std::io::Error::other(error.to_string()))?;
+            // P2：云端文件浏览换成真实实现（浏览/分享/预览/删除/下载/移动 + 批量任务）。
+            // 插件不依赖 tauri：`TaskEventSink` 与 `GalleryDeleteRunner` 由宿主注入。
+            let task_events = Arc::new(commands::AppTaskEventSink {
+                app: app.handle().clone(),
+            });
+            let gallery_delete = Arc::new(commands::AppGalleryDeleteRunner::new(
+                plugins.clone(),
+                settings.clone(),
+                credentials.clone(),
+            ));
+            let cloud_browser = Arc::new(plugin_cloud_browser::CloudBrowserPlugin::new(
+                storages.clone(),
+                assets.clone(),
+                tasks.clone(),
+                credentials.clone(),
+                services::provider_factory::provider_registry(),
+                task_events,
+                gallery_delete,
+            ));
+            kernel
+                .register_override(cloud_browser.clone())
+                .map_err(|error| std::io::Error::other(error.to_string()))?;
             let state = AppState {
                 storages,
                 assets,

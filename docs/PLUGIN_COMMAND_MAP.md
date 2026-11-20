@@ -79,7 +79,7 @@
 
 `browse_storage`、`create_temporary_share_link`、`preview_private_storage_entry`、`delete_storage_entry`、`download_storage_entry`、`move_storage_entry`、`create_storage_directory`、`batch_delete_storage_entries`、`batch_move_storage_entries`、`batch_rename_storage_entries`、`queue_batch_delete_storage_entries`、`queue_batch_move_storage_entries`、`queue_batch_rename_storage_entries`（来源 `commands/storage_entries.rs`），以及 `sync_storage_asset_index`（来源 `commands/remote_index.rs`）。
 
-**P2 预置（2026-11-19）**：`sync_storage_asset_index` 的扫描核心（`sync_one_storage` / `finish_and_report` / 预算记账）已抽到共享 crate `crates/remote-index`，命令仍是内核薄包装；本组其余 13 条待迁。
+**P2 落地（2026-11-19）**：本组 13 条命令（`browse_storage` … `queue_batch_rename_storage_entries`）已迁入插件 crate `crates/plugins/cloud-browser`，命令层改为薄包装，委托 `cloud.<method>`；`sync_storage_asset_index` 的扫描核心（`sync_one_storage` / `finish_and_report` / 预算记账）已抽到共享 crate `crates/remote-index`，命令仍为内核薄包装。插件不依赖 tauri：宿主侧依赖经 `TaskEventSink`（替代 `emit_task`）与 `GalleryDeleteRunner`（替代 `run_gallery_delete_plugins`）注入；后台批量用 `TaskEngine::create` + `tokio::spawn`（替代 `tauri::async_runtime::spawn`）。`cancel_task` / `retry_task` 留在内核，`retry_task` 末步改委托插件的 `cloud.respawn_batch_task`。内核视图类型 `StorageEntryView` / `BatchStorageFailureView` / `BatchStorageOperationView` 补 `Deserialize`，`PrivateImagePreview.mime_type` 由 `&'static str` 改为 `String`（serde 反序列化所需，线上 JSON 不变）。`check_user_flow.py` 的 10 条 cloud 断言改指向插件源码，未放宽任何条件。
 
 ### `portable-migration`（21）
 

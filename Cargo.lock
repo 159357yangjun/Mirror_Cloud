@@ -2309,6 +2309,7 @@ name = "image-hosting-platform-desktop"
 version = "1.4.16"
 dependencies = [
  "application",
+ "async-trait",
  "bytes",
  "chrono",
  "credential-store",
@@ -2321,6 +2322,7 @@ dependencies = [
  "mime_guess",
  "persistence-sqlite",
  "plugin-ai-assistant",
+ "plugin-cloud-browser",
  "plugin-diagnostics",
  "plugin-provider-gitee",
  "plugin-provider-github",
@@ -3554,6 +3556,26 @@ dependencies = [
  "persistence-sqlite",
  "reqwest",
  "serde_json",
+]
+
+[[package]]
+name = "plugin-cloud-browser"
+version = "0.1.0"
+dependencies = [
+ "application",
+ "async-trait",
+ "chrono",
+ "credential-store",
+ "domain",
+ "kernel-api",
+ "persistence-sqlite",
+ "provider-registry",
+ "serde",
+ "serde_json",
+ "storage-core",
+ "task-engine",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

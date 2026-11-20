@@ -12,7 +12,8 @@
 - 下一步 P2（第 5–7 周）：按 `docs/PLUGIN_COMMAND_MAP.md` 把 61 条插件命令逐组迁入 `plugin-host`（每个插件实现 `BuiltinPlugin`），`check_contracts.py` 增加 `plugin_invoke` 双向对账；DDL 与 2.0.0 已于 2026-11-17 获授权（P3 前先跑 `scripts/backup_db.ps1`）。
 - P2 进展（2026-11-18）：diagnostics、ai-assistant、workflow（`cba817a`）、publish-strategy（`7a1d0a2`）、provider 工厂抽取（`5c14940`：`crates/provider-registry` + provider-github/gitee/opendal-extra 三插件）已落地并推送。
 - P2 进展（2026-11-19）：reconcile 已迁移——新增 `crates/remote-index`（共享扫描核心）与 `crates/plugins/reconcile`（`sweep.rs` + `cadence.rs` + `lib.rs`），命令层改薄包装，后台定时器移交 `ReconcilePlugin::start_background`，`src/reconcile_cadence.rs` 已删；`check_user_flow.py` 断言随源码搬位并补回两个漏移植测试。本机 `cargo check --workspace --tests` 与相关 crate 测试全绿，静态门全过。
-- 剩余 P2：`cloud-browser`（14，扫描核心已在 `crates/remote-index`）、`portable-migration`（21）、`integrations-os`（9）、`image-transform`（1）。
+- P2 进展（2026-11-19）：cloud-browser 已迁移——13 条命令迁入 `crates/plugins/cloud-browser`（插件不依赖 tauri，宿主经 `TaskEventSink`/`GalleryDeleteRunner` 注入）；`commands/storage_entries.rs` 1034 → 约 250 行薄包装，`cancel_task`/`retry_task` 留内核（`retry_task` 末步委托 `cloud.respawn_batch_task`）；`commands.rs` 拆出 `_with` 版本并新增两个宿主 trait 实现，内核视图类型补 `Deserialize`。本机 `cargo check --workspace --tests` 与插件测试（55 项）全绿，静态门全过（`check_user_flow.py` 10 条 cloud 断言改指向插件源码，条件未放宽）。
+- 剩余 P2：`portable-migration`（21）、`integrations-os`（9）、`image-transform`（1）。
 - P2 进展（2026-11-17）：`BuiltinPlugin::invoke` 改 async（ADR 0005），`PluginHost::register_override` 支持占位实例替换；首个真实插件 `crates/plugins/diagnostics`（`diagnostics.get`）落地，`get_system_diagnostics` 改为委托 `plugin_invoke`；workspace members 加 `crates/plugins/*`、src-tauri 依赖 `plugin-diagnostics`。本机 rust 1.98.1 已装（`D:\rust`），但无 MSVC 链接器，`cargo check` 失败于 build script 链接（U，交云端 CI）。
 - P2 待办：把 `validate.py`/`check_plugin_contracts.py` 纳入插件目录扫描；随后按映射表迁移 provider/publish-strategy/workflow 组。
 - P2 续（2026-11-17）：`plugin-ai-assistant` 落地（`ai.get_settings`/`ai.save_settings`/`ai.plan_workflow`），`commands/plugins.rs` 三命令改为委托；workspace members 改为显式两条（`crates/plugins/ai-assistant`、`crates/plugins/diagnostics`，`validate.py` 不展开 glob）；diagnostics `appVersion` 注入产品版本；修复 `check_user_flow.py` 指纹表 pre-existing 漂移（2583/189,008/`1d7221bb…`）。
@@ -75,8 +76,9 @@
 ## 插件化重构 P2（进行中，2026-11-18）
 
 - 已完成并推送：`diagnostics`、`ai-assistant`、`workflow` 三个真实插件（`crates/plugins/*`），命令层薄包装委托 `kernel.invoke`，逻辑单份；`9735f50`（async 契约 + diagnostics）、`369c3bc`（ai-assistant + 静态门修复）、`74793b5`（契约脚本加插件 crate 扫描）、`cba817a`（workflow）。
-- 已接线未提交：`publish-strategy`（群组 CRUD 3 条；`repair_asset` 暂留内核待 P3）；本地 `cargo check --workspace --tests` 通过（gnu 工具链）。
-- 待办：P2 其余组（`reconcile` 4、`cloud-browser` 14、`portable-migration` 21、`integrations-os` 9）按映射表迁移；P3 provider 插件（github/gitee/opendal-extra）、DDL（plugin_state/plugin_capabilities）、版本 2.0.0；P4 前端 `invokePlugin` 收敛与内核命令收敛到 ≤30。
+- 已提交并推送：`publish-strategy`（群组 CRUD 3 条迁入 `crates/plugins/publish-strategy`；`repair_asset` 暂留内核待 P3）`7a1d0a2`；`reconcile` 4 条迁入 `crates/plugins/reconcile` + 共享 `crates/remote-index` `551be54`；`provider 工厂` 抽取（`crates/provider-registry` + provider-github/gitee/opendal-extra）`5c14940`。
+- 待提交：`cloud-browser` 13 条迁入 `crates/plugins/cloud-browser`（宿主依赖经注入 trait），本机 `cargo check --workspace --tests` 与插件测试通过。
+- 待办：P2 剩余组（`portable-migration` 21、`integrations-os` 9、`image-transform` 1）按映射表迁移；P3 provider 插件（github/gitee/opendal-extra）、DDL（plugin_state/plugin_capabilities）、版本 2.0.0；P4 前端 `invokePlugin` 收敛与内核命令收敛到 ≤30。
 - 编译验证口径：本地 `cargo check --workspace --tests` 已可用（gnu 工具链 + MinGW gcc），`cargo test` 与打包仍以云端 CI 为准。
 - P2 进展（2026-11-18，provider 工厂）：新建 `crates/provider-registry` 与三个 provider 插件（`provider-github`/`provider-gitee`/`provider-opendal-extra`），`provider_factory.rs` 改查表薄壳，宿主保留 `r2`/`s3` 兜底；`lib.rs` 注册三个插件实例，`build_provider` 签名与错误文案不变。本地 `cargo check --workspace --tests`、`cargo test`（30 项）通过；desktop 测试二进制因 gnu 链接加载失败，交云端 CI。
 - 解锁：`reconcile`/`cloud-browser`/`repair_asset` 的迁移此前被 provider 构造阻塞，本轮后具备启动条件；下一步按映射表迁移 `reconcile`（4）与 `cloud-browser`（14）。
