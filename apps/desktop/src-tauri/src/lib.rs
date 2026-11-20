@@ -199,6 +199,18 @@ pub fn run() {
             kernel
                 .register_override(cloud_browser.clone())
                 .map_err(|error| std::io::Error::other(error.to_string()))?;
+            // P2：迁移与备份换成真实实现（便携资产/引用/分组映射的导出与恢复）。
+            // 只依赖仓储，无 AppHandle/任务依赖，无需宿主注入 trait。
+            let portable = Arc::new(plugin_portable_migration::PortableMigrationPlugin::new(
+                storages.clone(),
+                assets.clone(),
+                asset_staging.clone(),
+                groups.clone(),
+                workflows.clone(),
+            ));
+            kernel
+                .register_override(portable.clone())
+                .map_err(|error| std::io::Error::other(error.to_string()))?;
             let state = AppState {
                 storages,
                 assets,

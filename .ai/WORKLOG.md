@@ -1,5 +1,29 @@
 # WORKLOG
 
+## 2026-11-20 — 插件化 P2：portable-migration 迁移
+
+起始 `main@2c0a998`（cloud-browser 已推送）。本轮把 `portable-migration` 组 21 条命令整体迁入独立插件 crate。这是 P2 里耦合最低的一组：只依赖仓储，无 `AppHandle`、无任务队列、无网络，因此不需要宿主注入 trait。
+
+新增：
+
+- `crates/plugins/portable-migration/{Cargo.toml,src/lib.rs,src/assets.rs,src/backup.rs,src/references.rs}`：`plugin-portable-migration`，`PLUGIN_ID="portable-migration"`，`manifest()` 对齐 `crates/kernel/src/builtin.rs:196-202`（name 迁移与备份、权限 `[Capability::FsPaths, Capability::ReadAsset]`、无贡献点、version `2.0.0-dev.1`）。`PortableMigrationPlugin::new(storages, assets, asset_staging, groups, workflows)` 构造期注入五个仓储；`invoke` 按 21 个 `portable.<method>` 分派，未知方法返回 `unknown_method`。模块划分按原文件一一对应（`assets.rs` 10 条 / `backup.rs` 4 条 / `references.rs` 7 条），原 13 个测试整体搬入 + 1 个 manifest 一致性测试，共 14 个。
+- 根 `Cargo.toml` members 增 `crates/plugins/portable-migration`（显式路径，`validate.py` 不展开 glob）。
+
+修改：
+
+- `apps/desktop/src-tauri/Cargo.toml` 增 `plugin-portable-migration` path 依赖。
+- `apps/desktop/src-tauri/src/lib.rs` setup 在 cloud-browser override 之后注册 `PortableMigrationPlugin::new(storages.clone(), assets.clone(), asset_staging.clone(), groups.clone(), workflows.clone())`。
+- `apps/desktop/src-tauri/src/commands/{portable_assets,portable_backup,portable_references}.rs` 全量改写为薄包装（原 909/492/826 行 → 约 190/80/150 行）：命令名、入参、返回结构不变，统一 `state.kernel.read().await.invoke("portable-migration", "portable.<method>", payload)` + `serde_json::from_value`；`Portable*`/`Staged*` 类型改由插件模块 `pub use` 再导出（加 `#[allow(unused_imports)]`，因为它们只作契约再导出）。四条原无 `state` 参数的纯读命令（`inspect_portable_asset_manifest`、`inspect_portable_storage_manifest`、`inspect_portable_reference_manifest`、`inspect_portable_group_mapping`）补 Tauri 注入的 `State` 参数以便委托内核——前端不传该参数，调用方式不变。
+- `crates/plugins/portable-migration/src/assets.rs`：`PortableBatchDecisionItem` 补 `Serialize`（内核薄包装 `json!` 需要它序列化）；`build_asset_preview` 等两处 `.collect::<Result<Vec<_>, String>>()?` 改 `.map_err(internal)?`（`?` 无法把 `String` 转 `PluginFailure`）。
+
+验证：
+
+- `cargo check --workspace --tests --offline` exit 0（仅剩 4 处既有告警：`storage-core` StorageErrorKind、`application` StorageId、`plugin_invoke` InvokeErrorCode、`integrations` HttpRequest.method）。
+- `cargo test -p plugin-portable-migration` → **14 passed, 0 failed**。
+- 静态门全绿：`validate.py`（21 migrations/17 tables/members OK/1.4.16）、`check_contracts.py`（前端 99 / Rust 100 / 注册 100）、`check_plugin_contracts.py`（14/14/9）、`check_kernel_deps.py`、`check_docs_site.py`（16）、`check_workflow_action_pins.py`（55）、`check_release_version.py`（1.4.16，Cargo.lock 28/28）、`check_tauri_dependency_family.py`（tauri 2.11.5）；`check_user_flow.py` → `USERFLOW_CHECKS total=642 failed=0`。
+- 本机 Rust 工具链接线完成：`rustup set default-host x86_64-pc-windows-gnu`、`rustup default 1.98.1-x86_64-pc-windows-gnu`、用户环境写入 `RUSTUP_HOME=D:\rust\rustup`/`CARGO_HOME=D:\rust\cargo` 与 `PATH += D:\rust\cargo\bin`；项目内不再需要 `RUSTUP_TOOLCHAIN` 覆盖，`rust-toolchain.toml` 的 `channel = "1.98.1"` 现在落到 gnu 版本。
+
+
 ## 2026-11-19 — 插件化 P2：cloud-browser 迁移
 
 起始 `main@551be54`（reconcile 已推送）。本轮把 `cloud-browser` 组 13 条命令迁入独立插件，宿主侧依赖经注入 trait 解耦：

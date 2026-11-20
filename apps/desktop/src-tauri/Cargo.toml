@@ -35,6 +35,7 @@ plugin-provider-gitee = { path = "../../../crates/plugins/provider-gitee" }
 plugin-provider-opendal-extra = { path = "../../../crates/plugins/provider-opendal-extra" }
 plugin-reconcile = { path = "../../../crates/plugins/reconcile" }
 plugin-cloud-browser = { path = "../../../crates/plugins/cloud-browser" }
+plugin-portable-migration = { path = "../../../crates/plugins/portable-migration" }
 provider-registry = { path = "../../../crates/provider-registry" }
 remote-index = { path = "../../../crates/remote-index" }
 plugin-runtime = { path = "../../../crates/plugin-runtime" }

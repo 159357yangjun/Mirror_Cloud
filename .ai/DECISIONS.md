@@ -2,6 +2,14 @@
 
 当前更新签名、正式发布与插件前三项实施均已有用户授权，无待重复批准事项。按已定范围收口，不加入社区索引或 WASM。更高版本签名下载/安装和插件原生 UI 实测缺口如实保留，不因等待用户交互而扩大结论。长期规则见 AGENTS.md。
 
+## 2026-11-20 — P2：portable-migration 迁移（零宿主依赖）
+
+- 该组整体迁入 `crates/plugins/portable-migration`，不引入任何注入 trait：它只依赖 `StorageRepository`/`AssetRepository`/`AssetStagingRepository`/`StorageGroupRepository`/`WorkflowRepository`，无 `AppHandle`、无 `TaskEngine`、无网络。为没有耦合的地方硬造 trait 只会增加误用面。
+- 四个纯读命令补 Tauri `State` 参数：`inspect_*` 系列原本不需要状态，但薄包装要经内核分发，必须拿到 `kernel`。Tauri 的 `State` 由框架注入、前端不传，因此命令名与参数契约对前端不变；这比给插件加一套「无状态单例」入口更简单，也避免同一逻辑出现两条调用路径。
+- `PortableBatchDecisionItem` 补 `Serialize`：它只在入参位置出现，插件侧原本只需 `Deserialize`；内核薄包装用 `json!` 组装载荷，需要它可序列化。加 derive 不改线上字段。
+- 契约类型改由插件模块 `pub use` 再导出（`#[allow(unused_imports)]`）：`commands.rs` 里已有 `pub use portable_*::*;`，前端与 CLI 通过这些名字引用视图类型。把类型定义搬到插件后继续从命令模块导出，可在不触碰任何调用方的前提下完成迁移；`allow` 只是压制「再导出未被本 crate 使用」的提示，不是放宽检查。
+
+
 ## 2026-11-19 — P2：cloud-browser 迁移与宿主依赖注入
 
 - 插件不依赖 tauri：`cloud-browser` 插件 crate 只依赖应用/领域/持久化/provider 注册表等非 UI crate，宿主侧依赖一律经注入 trait 进入——`TaskEventSink::emit_task` 替代 `emit_task`、`GalleryDeleteRunner::run_gallery_delete` 替代 `run_gallery_delete_plugins`。若让插件直接持有 `AppHandle`/`AppState`，插件边界即失真，也无法在无 UI 环境（CLI/SDK）复用与测试。

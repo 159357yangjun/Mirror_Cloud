@@ -2324,6 +2324,7 @@ dependencies = [
  "plugin-ai-assistant",
  "plugin-cloud-browser",
  "plugin-diagnostics",
+ "plugin-portable-migration",
  "plugin-provider-gitee",
  "plugin-provider-github",
  "plugin-provider-opendal-extra",
@@ -3560,7 +3561,7 @@ dependencies = [
 
 [[package]]
 name = "plugin-cloud-browser"
-version = "0.1.0"
+version = "1.4.16"
 dependencies = [
  "application",
  "async-trait",
@@ -3598,6 +3599,21 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+]
+
+[[package]]
+name = "plugin-portable-migration"
+version = "1.4.16"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "domain",
+ "kernel-api",
+ "persistence-sqlite",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

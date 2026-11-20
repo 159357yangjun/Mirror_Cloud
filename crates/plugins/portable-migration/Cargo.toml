@@ -1,0 +1,18 @@
+[package]
+name = "plugin-portable-migration"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+domain = { path = "../../domain" }
+kernel-api = { path = "../../kernel-api" }
+persistence-sqlite = { path = "../../persistence-sqlite" }
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

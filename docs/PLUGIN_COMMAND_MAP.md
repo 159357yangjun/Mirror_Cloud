@@ -89,6 +89,8 @@
 
 `commands/portable_references.rs`（7）：`export_portable_reference_manifest`、`inspect_portable_reference_manifest`、`preview_portable_reference_restore`、`restore_portable_storage_group`、`export_portable_group_mapping`、`inspect_portable_group_mapping`、`restore_portable_workflow`。
 
+**P2 落地（2026-11-20）**：21 条命令的实现已迁入 `crates/plugins/portable-migration`（`src/assets.rs` 10 条、`src/backup.rs` 4 条、`src/references.rs` 7 条），命令层三个文件改为薄包装委托 `kernel.invoke("portable-migration", "portable.<method>", payload)`。该插件只依赖仓储（`StorageRepository`/`AssetRepository`/`AssetStagingRepository`/`StorageGroupRepository`/`WorkflowRepository`），无 `AppHandle`、无任务队列、无网络，因此没有宿主侧注入 trait。命令名、入参与返回结构对前端不变；`Portable*`/`Staged*` 类型由插件模块 `pub use` 再导出以维持契约。三条原本无 `state` 参数的纯读命令（`inspect_portable_asset_manifest`、`inspect_portable_storage_manifest`、`inspect_portable_reference_manifest`、`inspect_portable_group_mapping`）补了 Tauri 注入的 `State` 参数以便委托内核（前端不传该参数，调用方式不变）。
+
 ### `integrations-os`（9）
 
 `get_global_shortcut_info`、`set_global_shortcut_enabled`、`get_windows_context_menu_info`、`install_windows_context_menu`、`uninstall_windows_context_menu`、`get_local_api_info`、`regenerate_local_api_token`、`get_typora_integration_info`、`open_typora`（来源 `commands/integrations.rs`）。

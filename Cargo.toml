@@ -28,6 +28,7 @@ members = [
   "crates/remote-index",
   "crates/plugins/reconcile",
   "crates/plugins/cloud-browser",
+  "crates/plugins/portable-migration",
 ]
 
 [workspace.package]
